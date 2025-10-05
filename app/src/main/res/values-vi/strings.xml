@@ -1,0 +1,455 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Monica</string>
+    
+    <!-- General -->
+    <string name="ok">OK</string>
+    <string name="cancel">Hủy</string>
+    <string name="save">Lưu</string>
+    <string name="delete">Xóa</string>
+    <string name="edit">Sửa</string>
+    <string name="search">Tìm kiếm</string>
+    <string name="settings">Cài đặt</string>
+    <string name="back">Quay lại</string>
+    <string name="logout">Đăng xuất</string>
+    <string name="yes">Có</string>
+    <string name="no">Không</string>
+    
+    <!-- Login Screen -->
+    <string name="setup_master_password">Thiết lập mật khẩu chính</string>
+    <string name="enter_master_password">Nhập mật khẩu chính</string>
+    <string name="master_password">Mật khẩu chính</string>
+    <string name="confirm_master_password">Xác nhận mật khẩu chính</string>
+    <string name="set_up_password">Thiết lập mật khẩu</string>
+    <string name="unlock">Mở khóa</string>
+    <string name="use_biometric">Sử dụng xác thực sinh trắc học</string>
+    <string name="biometric_title">Xác thực sinh trắc học</string>
+    <string name="biometric_subtitle">Sử dụng vân tay hoặc khuôn mặt để mở khóa Monica</string>
+    <string name="use_master_password">Sử dụng mật khẩu chính</string>
+    <string name="show_password">Hiện mật khẩu</string>
+    <string name="hide_password">Ẩn mật khẩu</string>
+    
+    <!-- Password List Screen -->
+    <string name="search_passwords">Tìm kiếm mật khẩu...</string>
+    <string name="no_passwords_saved">Chưa có mật khẩu nào được lưu</string>
+    <string name="no_passwords_found">Không tìm thấy mật khẩu</string>
+    <string name="add_password">Thêm mật khẩu</string>
+    <string name="clear_search">Xóa tìm kiếm</string>
+    <string name="logout_confirmation">Bạn có chắc chắn muốn đăng xuất?</string>
+    <string name="copy_username">Sao chép tên người dùng</string>
+    <string name="copy_password">Sao chép mật khẩu</string>
+    <string name="copy">Sao chép</string>
+    
+    <!-- Add/Edit Password Screen -->
+    <string name="add_password_title">Thêm mật khẩu</string>
+    <string name="edit_password_title">Sửa mật khẩu</string>
+    <string name="title_required">Tiêu đề *</string>
+    <string name="website_url">Website/URL</string>
+    <string name="username_email">Tên người dùng/Email</string>
+    <string name="password_required">Mật khẩu *</string>
+    <string name="notes">Ghi chú</string>
+    <string name="generate_password">Tạo mật khẩu</string>
+    <string name="password_strength_very_weak">Rất yếu</string>
+    <string name="password_strength_weak">Yếu</string>
+    <string name="password_strength_moderate">Trung bình</string>
+    <string name="password_strength_strong">Mạnh</string>
+    <string name="password_strength_very_strong">Rất mạnh</string>
+    
+    <!-- Password Generator -->
+    <string name="password_generator_title">Trình tạo mật khẩu</string>
+    <string name="password_generator">Trình tạo mật khẩu</string>
+    <string name="length">Độ dài: %d</string>
+    <string name="length_value">Độ dài: %d</string>
+    <string name="uppercase_letters">Chữ hoa (A-Z)</string>
+    <string name="uppercase_az">Chữ hoa (A-Z)</string>
+    <string name="lowercase_letters">Chữ thường (a-z)</string>
+    <string name="lowercase_az">Chữ thường (a-z)</string>
+    <string name="numbers">Số (0-9)</string>
+    <string name="numbers_09">Số (0-9)</string>
+    <string name="symbols">Ký tự đặc biệt (!@#$...)</string>
+    <string name="exclude_similar">Loại trừ ký tự tương tự</string>
+    <string name="use_password">Sử dụng mật khẩu</string>
+    <string name="generate_new_password">Tạo mật khẩu mới</string>
+    <string name="show">Hiện</string>
+    <string name="hide">Ẩn</string>
+    
+    <!-- TOTP Authenticator -->
+    <string name="add_totp_title">Thêm xác thực</string>
+    <string name="edit_totp_title">Sửa xác thực</string>
+    <string name="totp_name_required">Tên *</string>
+    <string name="totp_name_example">Ví dụ: Tài khoản Google</string>
+    <string name="enter_name">Vui lòng nhập tên</string>
+    <string name="secret_key_required">Khóa bí mật *</string>
+    <string name="secret_key_example">ABCD EFGH IJKL MNOP</string>
+    <string name="secret_key_hint">Khóa mã hóa Base32, thường hiển thị dưới mã QR</string>
+    <string name="enter_secret_key">Vui lòng nhập khóa bí mật</string>
+    <string name="scan_qr_code">Quét mã QR</string>
+    <string name="issuer">Nhà phát hành</string>
+    <string name="issuer_example">Ví dụ: Google</string>
+    <string name="account_name">Tên tài khoản</string>
+    <string name="account_name_example">Ví dụ: user@gmail.com</string>
+    <string name="notes_optional">Ghi chú tùy chọn</string>
+    <string name="advanced_options">Tùy chọn nâng cao</string>
+    <string name="time_period_seconds">Chu kỳ thời gian (giây)</string>
+    <string name="usually_30_seconds">Thường là 30 giây</string>
+    <string name="code_digits">Số chữ số mã</string>
+    <string name="usually_6_digits">Thường là 6 chữ số</string>
+    <string name="how_to_get_secret_key">Làm thế nào để lấy khóa bí mật?</string>
+    <string name="secret_key_instructions">1. Tìm cài đặt \"Xác thực hai yếu tố\" trên trang web\n2. Chọn \"Sử dụng ứng dụng xác thực\"\n3. Sao chép khóa bí mật hiển thị hoặc quét mã QR\n4. Dán khóa vào ô nhập ở trên</string>
+    
+    <!-- Bank Card -->
+    <string name="add_bank_card_title">Thêm thẻ ngân hàng</string>
+    <string name="edit_bank_card_title">Sửa thẻ ngân hàng</string>
+    <string name="no_bank_cards_title">Chưa có thẻ ngân hàng</string>
+    <string name="no_bank_cards_description">Nhấn nút + ở góc dưới bên phải để thêm thẻ ngân hàng đầu tiên</string>
+    <string name="card_name">Tên thẻ</string>
+    <string name="card_name_example">Ví dụ: Thẻ lương</string>
+    <string name="bank_name">Tên ngân hàng</string>
+    <string name="bank_name_example">Ví dụ: Vietcombank</string>
+    <string name="card_type">Loại thẻ</string>
+    <string name="debit_card">Thẻ ghi nợ</string>
+    <string name="credit_card">Thẻ tín dụng</string>
+    <string name="prepaid_card">Thẻ trả trước</string>
+    <string name="card_number_required">Số thẻ *</string>
+    <string name="cardholder_name">Tên chủ thẻ</string>
+    <string name="expiry_date">Ngày hết hạn</string>
+    <string name="month">Tháng</string>
+    <string name="year">Năm</string>
+    <string name="cvv">CVV</string>
+    <string name="notes_placeholder">Thêm ghi chú...</string>
+    
+    <!-- Document -->
+    <string name="add_document_title">Thêm giấy tờ</string>
+    <string name="edit_document_title">Sửa giấy tờ</string>
+    <string name="no_documents_title">Chưa có giấy tờ</string>
+    <string name="no_documents_description">Nhấn nút + ở góc dưới bên phải để thêm giấy tờ đầu tiên</string>
+    <string name="document_name">Tên giấy tờ</string>
+    <string name="document_name_example">Ví dụ: CMND của tôi</string>
+    <string name="document_type">Loại giấy tờ</string>
+    <string name="id_card">CMND/CCCD</string>
+    <string name="passport">Hộ chiếu</string>
+    <string name="drivers_license">Giấy phép lái xe</string>
+    <string name="social_security_card">Thẻ bảo hiểm xã hội</string>
+    <string name="other_document">Giấy tờ khác</string>
+    <string name="document_number_required">Số giấy tờ *</string>
+    <string name="holder_name">Tên chủ sở hữu</string>
+    <string name="holder_name_example">Nguyễn Văn A</string>
+    <string name="issue_date">Ngày cấp</string>
+    <string name="expiry_date_label">Ngày hết hạn</string>
+    <string name="issuing_authority">Cơ quan cấp</string>
+    <string name="issuing_authority_example">Ví dụ: Công an TP. Hà Nội</string>
+    <string name="document_encryption_notice">Tất cả thông tin và ảnh giấy tờ được mã hóa và lưu trữ cục bộ trên thiết bị của bạn</string>
+    <string name="document_photo_front">Ảnh %s (Mặt trước)</string>
+    <string name="document_photo_back">Ảnh %s (Mặt sau, Tùy chọn)</string>
+    
+    <!-- TOTP List -->
+    <string name="search_authenticator">Tìm kiếm xác thực</string>
+    <string name="clear">Xóa</string>
+    <string name="no_authenticators_title">Chưa có xác thực</string>
+    <string name="no_authenticators_description">Nhấn nút + ở góc dưới bên phải để thêm xác thực</string>
+    <string name="delete_authenticator_title">Xóa xác thực</string>
+    <string name="delete_authenticator_message">Bạn có chắc chắn muốn xóa \"%s\"? Hành động này không thể hoàn tác.</string>
+    
+    <!-- QR Scanner -->
+    <string name="scan_qr_code_title">Quét mã QR</string>
+    <string name="grant_permission">Cấp quyền</string>
+    <string name="go_back">Quay lại</string>
+    <string name="camera_permission_required">Quét mã QR cần quyền truy cập camera. Vui lòng cấp quyền camera để tiếp tục.</string>
+    
+    <!-- Image Picker -->
+    <string name="gallery">Thư viện</string>
+    <string name="camera">Camera</string>
+    
+    <!-- Export/Import Data -->
+    <string name="export_data_title">Xuất dữ liệu</string>
+    <string name="exporting">Đang xuất...</string>
+    <string name="start_export">Bắt đầu xuất</string>
+    <string name="import_data_title">Nhập dữ liệu</string>
+    <string name="importing">Đang nhập...</string>
+    <string name="start_import">Bắt đầu nhập</string>
+    
+    <!-- Support Author -->
+    <string name="support_author_title">Ủng hộ tác giả</string>
+    <string name="software_free_title">💝 Phần mềm hoàn toàn miễn phí</string>
+    <string name="software_free_description">Monica Password Manager là phần mềm hoàn toàn miễn phí và mã nguồn mở, không có phí bắt buộc. Tất cả tính năng đều miễn phí.</string>
+    <string name="if_helpful_title">🙏 Nếu bạn thấy ứng dụng hữu ích</string>
+    <string name="support_ways_description">Hãy thoải mái ủng hộ tác giả tiếp tục phát triển qua các cách sau:</string>
+    <string name="support_author_qr">Ủng hộ tác giả ❤️</string>
+    <string name="qr_code_description">Mã QR ủng hộ tác giả</string>
+    <string name="save_qr_code">Lưu mã QR vào album</string>
+    <string name="your_support_message">Sự ủng hộ của bạn là động lực để tôi tiếp tục phát triển!</string>
+    <string name="thank_you_title">Cảm ơn bạn đã sử dụng Monica Password Manager!</string>
+    <string name="thank_you_message">Hy vọng nó mang lại sự an toàn và thuận tiện cho cuộc sống số của bạn.</string>
+    <string name="storage_permission_needed">Cần quyền lưu trữ để lưu ảnh</string>
+    <string name="qr_code_saved">Đã lưu mã QR vào album</string>
+    <string name="save_failed">Lưu thất bại</string>
+    <string name="save_failed_with_error">Lưu thất bại: %s</string>
+    
+    <!-- Password Entry Card -->
+    <string name="username">Tên người dùng</string>
+    <string name="password">Mật khẩu</string>
+    <string name="password_hidden">••••••••</string>
+    <string name="delete_password_title">Xóa mật khẩu</string>
+    <string name="delete_password_message">Bạn có chắc chắn muốn xóa \"%s\"?</string>
+    
+    <!-- Error Messages -->
+    <string name="error_password_too_short">Mật khẩu chính phải có ít nhất 6 ký tự</string>
+    <string name="error_password_must_be_6_digits">Mật khẩu phải là 6 chữ số</string>
+    <string name="error_password_min_6_digits">Mật khẩu phải có ít nhất 6 chữ số</string>
+    <string name="error_password_must_be_numeric">Mật khẩu chỉ được chứa số</string>
+    <string name="error_passwords_not_match">Mật khẩu không khớp</string>
+    <string name="error_invalid_password">Mật khẩu chính không hợp lệ</string>
+    <string name="error_authentication_failed">Xác thực thất bại</string>
+    <string name="error_title_required">Tiêu đề là bắt buộc</string>
+    <string name="error_password_required">Mật khẩu là bắt buộc</string>
+    <string name="password_min_6_digits">Tối thiểu 6 chữ số</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Cài đặt</string>
+    <string name="language">Ngôn ngữ</string>
+    <string name="theme">Giao diện</string>
+    <string name="security">Bảo mật</string>
+    <string name="biometric_authentication">Xác thực sinh trắc học</string>
+    <string name="auto_lock">Tự động khóa</string>
+    <string name="auto_lock_summary">Khóa ứng dụng sau khi không hoạt động</string>
+    <string name="about">Giới thiệu</string>
+    <string name="version">Phiên bản</string>
+    
+    <!-- Language Options -->
+    <string name="language_system">Mặc định hệ thống</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">中文</string>
+    <string name="language_vietnamese">Tiếng Việt</string>
+    
+    <!-- Theme Options -->
+    <string name="theme_system">Mặc định hệ thống</string>
+    <string name="theme_light">Sáng</string>
+    <string name="theme_dark">Tối</string>
+    
+    <!-- Auto Lock Options -->
+    <string name="auto_lock_immediately">Ngay lập tức</string>
+    <string name="auto_lock_1_minute">1 phút</string>
+    <string name="auto_lock_5_minutes">5 phút</string>
+    <string name="auto_lock_15_minutes">15 phút</string>
+    <string name="auto_lock_30_minutes">30 phút</string>
+    <string name="auto_lock_never">Không bao giờ</string>
+    
+    <!-- Reset Password Screen -->
+    <string name="reset_password_title">Đặt lại mật khẩu</string>
+    <string name="reset_password">Đặt lại mật khẩu</string>
+    <string name="reset_master_password">Đặt lại mật khẩu chính</string>
+        <string name="reset_password_description">Vui lòng nhập mật khẩu hiện tại và đặt mật khẩu số mới (tối thiểu 6 chữ số)</string>
+    <string name="reset_password_verified_description">Vui lòng đặt mật khẩu số mới của bạn (tối thiểu 6 chữ số)</string>
+    <string name="current_password">Mật khẩu hiện tại</string>
+    <string name="enter_current_password">Nhập mật khẩu hiện tại</string>
+    <string name="new_password">Mật khẩu mới</string>
+    <string name="enter_new_password">Nhập mật khẩu số mới (tối thiểu 6 chữ số)</string>
+    <string name="confirm_new_password">Xác nhận mật khẩu mới</string>
+    <string name="enter_confirm_password">Xác nhận mật khẩu mới của bạn</string>
+    <string name="current_password_required">Mật khẩu hiện tại là bắt buộc</string>
+    <string name="new_password_required">Mật khẩu mới là bắt buộc</string>
+    <string name="current_password_incorrect">Mật khẩu hiện tại không chính xác</string>
+    <string name="password_reset_success">Đặt lại mật khẩu thành công</string>
+    <string name="password_reset_success_message">Mật khẩu chính của bạn đã được thay đổi thành công. Vui lòng nhớ mật khẩu mới của bạn.</string>
+    <string name="passwords_do_not_match">Mật khẩu không khớp</string>
+    <string name="password_too_short">Mật khẩu phải có ít nhất 6 ký tự</string>
+    
+    <!-- Forgot Password -->
+    <string name="forgot_password">Quên mật khẩu?</string>
+    <string name="forgot_password_title">Đặt lại ứng dụng</string>
+    <string name="forgot_password_warning">Điều này sẽ xóa vĩnh viễn tất cả mật khẩu đã lưu và đặt lại ứng dụng. Hành động này không thể hoàn tác.</string>
+    <string name="forgot_password_confirm">Bạn có chắc chắn muốn đặt lại tất cả dữ liệu?</string>
+    <string name="reset_all_data">Đặt lại tất cả dữ liệu</string>
+    <string name="data_reset_complete">Tất cả dữ liệu đã được đặt lại. Bạn có thể thiết lập mật khẩu chính mới.</string>
+    
+    <!-- Security Questions -->
+    <string name="security_questions">Câu hỏi bảo mật</string>
+    <string name="setup_security_questions">Thiết lập câu hỏi bảo mật</string>
+    <string name="edit_security_questions">Sửa câu hỏi bảo mật</string>
+    <string name="security_questions_description">Thiết lập câu hỏi bảo mật để khôi phục mật khẩu nếu bạn quên. Những câu hỏi này sẽ giúp xác minh danh tính của bạn.</string>
+    <string name="security_question_1">Câu hỏi bảo mật 1</string>
+    <string name="security_question_2">Câu hỏi bảo mật 2</string>
+    <string name="select_question">Chọn một câu hỏi</string>
+    <string name="your_answer">Câu trả lời của bạn</string>
+    <string name="enter_answer_hint">Nhập câu trả lời của bạn (không phân biệt chữ hoa chữ thường)</string>
+    <string name="save_questions">Lưu câu hỏi bảo mật</string>
+    <string name="update_questions">Cập nhật câu hỏi bảo mật</string>
+    <string name="select_first_question">Vui lòng chọn câu hỏi bảo mật đầu tiên</string>
+    <string name="select_second_question">Vui lòng chọn câu hỏi bảo mật thứ hai</string>
+    <string name="questions_must_be_different">Vui lòng chọn hai câu hỏi khác nhau</string>
+    <string name="first_answer_required">Vui lòng cung cấp câu trả lời cho câu hỏi đầu tiên</string>
+    <string name="second_answer_required">Vui lòng cung cấp câu trả lời cho câu hỏi thứ hai</string>
+    
+    <!-- Security Questions Verification -->
+    <string name="verify_identity">Xác minh danh tính</string>
+    <string name="answer_security_questions">Trả lời câu hỏi bảo mật</string>
+    <string name="security_questions_verify_description">Vui lòng trả lời câu hỏi bảo mật của bạn để đặt lại mật khẩu</string>
+    <string name="question_1">Câu hỏi 1:</string>
+    <string name="question_2">Câu hỏi 2:</string>
+    <string name="verify_answers">Xác minh câu trả lời</string>
+    <string name="incorrect_answers">Câu trả lời không chính xác. Vui lòng thử lại.</string>
+    <string name="verification_attempts" formatted="false">Lần thử: %d / %d</string>
+    <string name="too_many_attempts">Quá nhiều lần thử không chính xác. Vui lòng liên hệ hỗ trợ hoặc sử dụng tùy chọn đặt lại hoàn toàn.</string>
+    <string name="back_to_login">Quay lại đăng nhập</string>
+    
+    <!-- Main Screen Bottom Navigation -->
+    <string name="nav_passwords">Mật khẩu</string>
+    <string name="nav_authenticator">Xác thực</string>
+    <string name="nav_documents">Giấy tờ</string>
+    <string name="nav_bank_cards">Thẻ ngân hàng</string>
+    <string name="nav_settings">Cài đặt</string>
+    <string name="add">Thêm</string>
+    
+    <!-- Main Screen Bottom Navigation (Short) -->
+    <string name="nav_passwords_short">MK</string>
+    <string name="nav_authenticator_short">XT</string>
+    <string name="nav_documents_short">GT</string>
+    <string name="nav_bank_cards_short">Thẻ</string>
+    <string name="nav_settings_short">CĐ</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_general">Chung</string>
+    <string name="settings_security">Bảo mật</string>
+    <string name="settings_data_management">Quản lý dữ liệu</string>
+    <string name="settings_about">Giới thiệu</string>
+    <string name="settings_language_description">Ngôn ngữ</string>
+    <string name="settings_auto_lock_title">Tự động khóa</string>
+    <string name="settings_auto_lock_description">Khóa ứng dụng khi không hoạt động</string>
+    <string name="settings_biometric_title">Xác thực sinh trắc học</string>
+    <string name="settings_biometric_description">Sử dụng vân tay hoặc khuôn mặt</string>
+    <string name="settings_change_password">Đổi mật khẩu chính</string>
+    <string name="settings_change_password_description">Thay đổi mật khẩu đăng nhập</string>
+    <string name="settings_security_questions">Câu hỏi bảo mật</string>
+    <string name="settings_security_questions_description">Đặt câu hỏi bảo mật để khôi phục mật khẩu</string>
+    <string name="settings_export_data">Xuất dữ liệu</string>
+    <string name="settings_export_data_description">Xuất dưới dạng file CSV cục bộ</string>
+    <string name="settings_import_data">Nhập dữ liệu</string>
+    <string name="settings_import_data_description">Khôi phục từ file sao lưu</string>
+    <string name="settings_version_info">Thông tin phiên bản</string>
+    <string name="settings_version_number">v1.0.0</string>
+    <string name="settings_support_author">Ủng hộ tác giả</string>
+    <string name="settings_support_author_description">Cảm ơn sự ủng hộ của bạn</string>
+    <string name="settings_privacy_policy">Chính sách bảo mật</string>
+    
+    <!-- Language Selection Dialog -->
+    <string name="dialog_select_language">Chọn ngôn ngữ</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english_name">English</string>
+    
+    <!-- Change Password Screen -->
+    <string name="change_password_title">Đổi mật khẩu chính</string>
+    <string name="change_password_warning_title">Thông báo quan trọng</string>
+    <string name="change_password_warning_message">Sau khi đổi mật khẩu chính, tất cả dữ liệu đã lưu sẽ được mã hóa lại bằng mật khẩu mới. Hãy chắc chắn rằng bạn có thể nhớ mật khẩu mới, nếu không bạn sẽ không thể truy cập dữ liệu của mình.</string>
+    <string name="change_password_current">Mật khẩu hiện tại *</string>
+    <string name="change_password_new">Mật khẩu mới *</string>
+    <string name="change_password_confirm">Xác nhận mật khẩu mới *</string>
+    <string name="change_password_hint">Mật khẩu phải có ít nhất 6 chữ số</string>
+    <string name="change_password_button">Đổi mật khẩu</string>
+    <string name="change_password_success_title">Đổi mật khẩu thành công</string>
+    <string name="change_password_success_message">Mật khẩu chính của bạn đã được đổi thành công và tất cả dữ liệu đã được mã hóa lại bằng mật khẩu mới. Vui lòng đăng nhập bằng mật khẩu mới.</string>
+    <string name="change_password_error_current_empty">Vui lòng nhập mật khẩu hiện tại</string>
+    <string name="change_password_error_new_empty">Vui lòng nhập mật khẩu mới</string>
+    <string name="change_password_error_new_too_short">Mật khẩu mới phải có ít nhất 6 chữ số</string>
+    <string name="change_password_error_confirm_empty">Vui lòng xác nhận mật khẩu mới</string>
+    <string name="change_password_error_not_match">Mật khẩu mới không khớp</string>
+    <string name="change_password_error_same_as_current">Mật khẩu mới không thể giống mật khẩu hiện tại</string>
+    <string name="show_password_desc">Hiện mật khẩu</string>
+    <string name="hide_password_desc">Ẩn mật khẩu</string>
+    
+    <!-- Security Question Screen -->
+    <string name="security_question_title">Câu hỏi bảo mật</string>
+    <string name="security_question_description">Thiết lập câu hỏi bảo mật để khôi phục mật khẩu nếu bạn quên. Những câu hỏi này sẽ giúp xác minh danh tính của bạn.</string>
+    <string name="security_question_label_1">Câu hỏi bảo mật 1 *</string>
+    <string name="security_question_label_2">Câu hỏi bảo mật 2 *</string>
+    <string name="security_question_label_3">Câu hỏi bảo mật 3 *</string>
+    <string name="security_question_select">Chọn một câu hỏi</string>
+    <string name="security_question_custom">Câu hỏi tùy chỉnh</string>
+    <string name="security_question_answer">Câu trả lời của bạn *</string>
+    <string name="security_question_answer_hint">Nhập câu trả lời của bạn (không phân biệt chữ hoa chữ thường)</string>
+    <string name="security_question_save">Lưu câu hỏi bảo mật</string>
+    <string name="security_question_success_title">Thiết lập thành công</string>
+    <string name="security_question_success_message">Câu hỏi bảo mật đã được thiết lập thành công. Bạn có thể sử dụng những câu hỏi này để khôi phục mật khẩu nếu bạn quên.</string>
+    <string name="security_question_error_q1_empty">Vui lòng chọn câu hỏi bảo mật đầu tiên</string>
+    <string name="security_question_error_q2_empty">Vui lòng chọn câu hỏi bảo mật thứ hai</string>
+    <string name="security_question_error_q3_empty">Vui lòng chọn câu hỏi bảo mật thứ ba</string>
+    <string name="security_question_error_duplicate">Tất cả câu hỏi phải khác nhau</string>
+    <string name="security_question_error_a1_empty">Vui lòng cung cấp câu trả lời cho câu hỏi đầu tiên</string>
+    <string name="security_question_error_a2_empty">Vui lòng cung cấp câu trả lời cho câu hỏi thứ hai</string>
+    <string name="security_question_error_a3_empty">Vui lòng cung cấp câu trả lời cho câu hỏi thứ ba</string>
+    
+    <!-- Preset Security Questions -->
+    <string name="security_question_preset_1">Tên khai sinh của mẹ bạn là gì?</string>
+    <string name="security_question_preset_2">Tên của con vật cưng đầu tiên của bạn là gì?</string>
+    <string name="security_question_preset_3">Bạn sinh ra ở thành phố nào?</string>
+    <string name="security_question_preset_4">Cuốn sách yêu thích của bạn là gì?</string>
+    <string name="security_question_preset_5">Tên trường tiểu học của bạn là gì?</string>
+    <string name="security_question_preset_6">Món ăn yêu thích của bạn là gì?</string>
+    <string name="security_question_preset_7">Biệt danh thời thơ ấu của bạn là gì?</string>
+    <string name="security_question_preset_8">Tên người bạn thân nhất thời thơ ấu của bạn là gì?</string>
+    <string name="security_question_preset_9">Công việc đầu tiên của bạn là gì?</string>
+    <string name="security_question_preset_10">Bộ phim yêu thích của bạn là gì?</string>
+    
+    <!-- Export Data Screen -->
+    <string name="export_data_description">Xuất tất cả dữ liệu của bạn dưới dạng file CSV vào bộ nhớ cục bộ. Bạn có thể sử dụng file này để sao lưu hoặc chuyển đổi dữ liệu của mình.</string>
+    <string name="export_data_select_type">Chọn loại dữ liệu để xuất:</string>
+    <string name="export_data_type_passwords">Mật khẩu</string>
+    <string name="export_data_type_totp">Mã TOTP</string>
+    <string name="export_data_type_bank_cards">Thẻ ngân hàng</string>
+    <string name="export_data_type_documents">Giấy tờ</string>
+    <string name="export_data_type_all">Tất cả dữ liệu</string>
+    <string name="export_data_button">Xuất</string>
+    <string name="export_data_success">Xuất dữ liệu thành công</string>
+    <string name="export_data_error">Xuất thất bại</string>
+    
+    <!-- Import Data Screen -->
+    <string name="import_data_description">Nhập dữ liệu từ file sao lưu CSV. Vui lòng đảm bảo định dạng file đúng.</string>
+    <string name="import_data_warning_title">Cảnh báo</string>
+    <string name="import_data_warning_message">Nhập dữ liệu có thể ghi đè dữ liệu hiện có. Vui lòng đảm bảo sao lưu dữ liệu hiện tại trước khi nhập.</string>
+    <string name="import_data_select_file">Chọn file</string>
+    <string name="import_data_button">Nhập</string>
+    <string name="import_data_success">Nhập dữ liệu thành công</string>
+    <string name="import_data_error">Nhập thất bại</string>
+    
+    <!-- Support Author Screen (legacy) -->
+    <string name="support_author_description">Nếu bạn thấy ứng dụng này hữu ích, vui lòng xem xét ủng hộ tác giả. Sự ủng hộ của bạn là động lực lớn nhất để chúng tôi tiếp tục cải thiện!</string>
+    <string name="support_author_thanks">Cảm ơn bạn!</string>
+    <string name="support_author_thanks_message">Cảm ơn bạn đã sử dụng Monica Password Manager. Sự ủng hộ của bạn rất có ý nghĩa!</string>
+    
+    <!-- Common -->
+    <string name="favorite">Yêu thích</string>
+    <string name="search_passwords_hint">Tìm kiếm mật khẩu</string>
+    <string name="return_text">Quay lại</string>
+    <string name="confirm">Xác nhận</string>
+    
+    <!-- Screenshot Protection -->
+    <string name="screenshot_protection">Bảo vệ chụp màn hình</string>
+    <string name="screenshot_protection_enabled">Đã bật - Bảo vệ thông tin nhạy cảm</string>
+    <string name="screenshot_protection_disabled">Đã tắt - Cho phép chụp màn hình</string>
+    
+    <!-- Support Author -->
+    <string name="support_author">Ủng hộ tác giả</string>
+    <string name="support_author_subtitle">Phần mềm hoàn toàn miễn phí, cảm ơn sự ủng hộ của bạn</string>
+    
+    <!-- Data Management in Settings -->
+    <string name="data_management">Quản lý dữ liệu</string>
+    <string name="export_passwords">Xuất mật khẩu</string>
+    <string name="export_passwords_description">Xuất tất cả dữ liệu sang file CSV</string>
+    <string name="import_passwords">Nhập mật khẩu</string>
+    <string name="import_passwords_description">Nhập dữ liệu từ file CSV</string>
+    
+    <!-- Selection Mode -->
+    <string name="selected_items">Đã chọn %d mục</string>
+    <string name="exit_selection_mode">Thoát chế độ chọn</string>
+    <string name="select_all">Chọn tất cả</string>
+    <string name="batch_delete">Xóa hàng loạt</string>
+    <string name="batch_delete_passwords_title">Xóa hàng loạt mật khẩu</string>
+    <string name="batch_delete_passwords_message">Bạn có chắc chắn muốn xóa %d mật khẩu?</string>
+    <string name="batch_delete_totp_title">Xóa hàng loạt TOTP</string>
+    <string name="batch_delete_totp_message">Bạn có chắc chắn muốn xóa %d mục TOTP?</string>
+    <string name="batch_delete_documents_title">Xóa hàng loạt giấy tờ</string>
+    <string name="batch_delete_documents_message">Bạn có chắc chắn muốn xóa %d giấy tờ?</string>
+    <string name="batch_delete_bankcards_title">Xóa hàng loạt thẻ ngân hàng</string>
+    <string name="batch_delete_bankcards_message">Bạn có chắc chắn muốn xóa %d thẻ ngân hàng?</string>
+    <string name="deleted_items">Đã xóa %d mục</string>
+    <string name="enter_master_password_confirm">Vui lòng nhập mật khẩu chính để xác nhận</string>
+</resources>

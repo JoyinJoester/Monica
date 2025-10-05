@@ -1,0 +1,426 @@
+package takagi.ru.monica.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icon/**
+ * 银行卡列表内容
+ */
+@Composable
+private fun BankCardListContent(
+    viewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
+    onCardClick: (Long) -> Unit
+) {
+    takagi.ru.monica.ui.screens.BankCardListScreen(
+        viewModel = viewModel,
+        onCardClick = onCardClick,
+        onSearchClick = { /* TODO */ }
+    )
+}
+
+/**
+ * 证件列表内容
+ */
+@Composable
+private fun DocumentListContent(
+    viewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
+    onDocumentClick: (Long) -> Unit
+) {
+    takagi.ru.monica.ui.screens.DocumentListScreen(
+        viewModel = viewModel,
+        onDocumentClick = onDocumentClick
+    )
+}
+
+/**
+ * 密码条目卡片
+ */droidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
+import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.viewmodel.PasswordViewModel
+
+/**
+ * 带有底部导航的主屏幕
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SimpleMainScreen(
+    passwordViewModel: PasswordViewModel,
+    passwordRepository: PasswordRepository,
+    totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
+    documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
+    onNavigateToAddPassword: (Long?) -> Unit,
+    onNavigateToAddTotp: (Long?) -> Unit,
+    onNavigateToAddBankCard: (Long?) -> Unit,
+    onNavigateToAddDocument: (Long?) -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onLogout: () -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+
+    val tabs = listOf(
+        BottomNavItem.Passwords,
+        BottomNavItem.Authenticator,
+        BottomNavItem.Documents,
+        BottomNavItem.BankCards,
+        BottomNavItem.Settings
+    )
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { 
+                    Text(tabs[selectedTab].title)
+                }
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                tabs.forEachIndexed { index, item ->
+                    NavigationBarItem(
+                        icon = { 
+                            Icon(item.icon, contentDescription = item.title) 
+                        },
+                        label = { 
+                            Text(item.title) 
+                        },
+                        selected = selectedTab == index,
+                        onClick = { 
+                            selectedTab = index 
+                        }
+                    )
+                }
+            }
+        },
+        floatingActionButton = {
+            if (selectedTab in 0..3) { // 只在数据页面显示FAB
+                FloatingActionButton(
+                    onClick = { 
+                        when (selectedTab) {
+                            0 -> onNavigateToAddPassword(null)
+                            1 -> onNavigateToAddTotp(null)
+                            2 -> onNavigateToAddDocument(null)
+                            3 -> onNavigateToAddBankCard(null)
+                            else -> {
+                                // 不应该到达这里
+                            }
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "添加")
+                }
+            }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            when (selectedTab) {
+                0 -> {
+                    // 密码页面 - 使用现有的密码列表
+                    PasswordListContent(
+                        viewModel = passwordViewModel,
+                        onPasswordClick = { password ->
+                            onNavigateToAddPassword(password.id)
+                        }
+                    )
+                }
+                1 -> {
+                    // TOTP验证器页面
+                    TotpListContent(
+                        viewModel = totpViewModel,
+                        onTotpClick = { totpId ->
+                            onNavigateToAddTotp(totpId)
+                        },
+                        onDeleteTotp = { totp ->
+                            totpViewModel.deleteTotpItem(totp)
+                        }
+                    )
+                }
+                2 -> {
+                    // 文档页面
+                    DocumentListContent(
+                        viewModel = documentViewModel,
+                        onDocumentClick = { documentId ->
+                            onNavigateToAddDocument(documentId)
+                        }
+                    )
+                }
+                3 -> {
+                    // 银行卡页面
+                    BankCardListContent(
+                        viewModel = bankCardViewModel,
+                        onCardClick = { cardId ->
+                            onNavigateToAddBankCard(cardId)
+                        }
+                    )
+                }
+                4 -> {
+                    // 设置页面
+                    SettingsContent(
+                        onNavigateToSettings = onNavigateToSettings,
+                        onLogout = onLogout
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 密码列表内容
+ */
+@Composable
+private fun PasswordListContent(
+    viewModel: PasswordViewModel,
+    onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit
+) {
+    val passwordEntries by viewModel.passwordEntries.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+
+    Column {
+        // 搜索框
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = viewModel::updateSearchQuery,
+            label = { Text("搜索密码") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        )
+
+        // 密码列表
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp)
+        ) {
+            items(
+                items = passwordEntries,
+                key = { it.id }
+            ) { password ->
+                PasswordEntryCard(
+                    entry = password,
+                    onClick = { onPasswordClick(password) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+/**
+ * TOTP列表内容
+ */
+@Composable
+private fun TotpListContent(
+    viewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    onTotpClick: (Long) -> Unit,
+    onDeleteTotp: (takagi.ru.monica.data.SecureItem) -> Unit
+) {
+    val totpItems by viewModel.totpItems.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+
+    takagi.ru.monica.ui.screens.TotpListScreen(
+        totpItems = totpItems,
+        searchQuery = searchQuery,
+        onSearchQueryChange = viewModel::updateSearchQuery,
+        onItemClick = onTotpClick,
+        onDeleteItem = onDeleteTotp
+    )
+}
+
+/**
+ * 银行卡列表内容
+ */
+@Composable
+private fun BankCardListContent(
+    viewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
+    onCardClick: (Long) -> Unit
+) {
+    takagi.ru.monica.ui.screens.BankCardListScreen(
+        viewModel = viewModel,
+        onCardClick = onCardClick,
+        onSearchClick = { /* TODO: 实现搜索功能 */ }
+    )
+}
+
+/**
+ * 即将推出内容
+ */
+@Composable
+private fun ComingSoonContent(
+    title: String,
+    description: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            Icons.Default.Build,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineMedium
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(
+            text = "即将推出...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+/**
+ * 设置内容
+ */
+@Composable
+private fun SettingsContent(
+    onNavigateToSettings: () -> Unit,
+    onLogout: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onNavigateToSettings
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Settings, contentDescription = null)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("应用设置")
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = null)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onLogout
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.ExitToApp, contentDescription = null)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("退出登录")
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = null)
+            }
+        }
+    }
+}
+
+/**
+ * 密码条目卡片
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PasswordEntryCard(
+    entry: takagi.ru.monica.data.PasswordEntry,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = entry.title,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (entry.isFavorite) {
+                    Icon(
+                        Icons.Default.Favorite,
+                        contentDescription = "收藏",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            
+            if (entry.website.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = entry.website,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            if (entry.username.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = entry.username,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 底部导航项目
+ */
+sealed class BottomNavItem(
+    val title: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    object Passwords : BottomNavItem("密码", Icons.Default.Lock)
+    object Authenticator : BottomNavItem("验证器", Icons.Default.Security)
+    object Documents : BottomNavItem("文档", Icons.Default.Description)
+    object BankCards : BottomNavItem("银行卡", Icons.Default.CreditCard)
+    object Settings : BottomNavItem("设置", Icons.Default.Settings)
+}

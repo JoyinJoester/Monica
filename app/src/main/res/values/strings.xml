@@ -1,0 +1,454 @@
+<resources>
+    <string name="app_name">Monica</string>
+    
+    <!-- General -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
+    <string name="search">Search</string>
+    <string name="settings">Settings</string>
+    <string name="back">Back</string>
+    <string name="logout">Logout</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    
+    <!-- Login Screen -->
+    <string name="setup_master_password">Set up your master password</string>
+    <string name="enter_master_password">Enter your master password</string>
+    <string name="master_password">Master Password</string>
+    <string name="confirm_master_password">Confirm Master Password</string>
+    <string name="set_up_password">Set Up Password</string>
+    <string name="unlock">Unlock</string>
+    <string name="use_biometric">Use Biometric Authentication</string>
+    <string name="biometric_title">Biometric Authentication</string>
+    <string name="biometric_subtitle">Use your fingerprint or face to unlock Monica</string>
+    <string name="use_master_password">Use Master Password</string>
+    <string name="show_password">Show password</string>
+    <string name="hide_password">Hide password</string>
+    
+    <!-- Password List Screen -->
+    <string name="search_passwords">Search passwords...</string>
+    <string name="no_passwords_saved">No passwords saved yet</string>
+    <string name="no_passwords_found">No passwords found</string>
+    <string name="add_password">Add Password</string>
+    <string name="clear_search">Clear search</string>
+    <string name="logout_confirmation">Are you sure you want to logout?</string>
+    <string name="copy_username">Copy username</string>
+    <string name="copy_password">Copy password</string>
+    <string name="copy">Copy</string>
+    
+    <!-- Add/Edit Password Screen -->
+    <string name="add_password_title">Add Password</string>
+    <string name="edit_password_title">Edit Password</string>
+    <string name="title_required">Title *</string>
+    <string name="website_url">Website/URL</string>
+    <string name="username_email">Username/Email</string>
+    <string name="password_required">Password *</string>
+    <string name="notes">Notes</string>
+    <string name="generate_password">Generate password</string>
+    <string name="password_strength_very_weak">Very Weak</string>
+    <string name="password_strength_weak">Weak</string>
+    <string name="password_strength_moderate">Moderate</string>
+    <string name="password_strength_strong">Strong</string>
+    <string name="password_strength_very_strong">Very Strong</string>
+    
+    <!-- Password Generator -->
+    <string name="password_generator_title">Password Generator</string>
+    <string name="password_generator">Password Generator</string>
+    <string name="length">Length: %d</string>
+    <string name="length_value">Length: %d</string>
+    <string name="uppercase_letters">Uppercase (A-Z)</string>
+    <string name="uppercase_az">Uppercase (A-Z)</string>
+    <string name="lowercase_letters">Lowercase (a-z)</string>
+    <string name="lowercase_az">Lowercase (a-z)</string>
+    <string name="numbers">Numbers (0-9)</string>
+    <string name="numbers_09">Numbers (0-9)</string>
+    <string name="symbols">Symbols (!@#$...)</string>
+    <string name="exclude_similar">Exclude similar</string>
+    <string name="use_password">Use Password</string>
+    <string name="generate_new_password">Generate new password</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    
+    <!-- TOTP Authenticator -->
+    <string name="add_totp_title">Add Authenticator</string>
+    <string name="edit_totp_title">Edit Authenticator</string>
+    <string name="totp_name_required">Name *</string>
+    <string name="totp_name_example">Example: Google Account</string>
+    <string name="enter_name">Please enter name</string>
+    <string name="secret_key_required">Secret Key *</string>
+    <string name="secret_key_example">ABCD EFGH IJKL MNOP</string>
+    <string name="secret_key_hint">Base32-encoded secret key, usually shown below QR code</string>
+    <string name="enter_secret_key">Please enter secret key</string>
+    <string name="scan_qr_code">Scan QR code</string>
+    <string name="issuer">Issuer</string>
+    <string name="issuer_example">Example: Google</string>
+    <string name="account_name">Account Name</string>
+    <string name="account_name_example">Example: user@gmail.com</string>
+    <string name="notes_optional">Optional notes</string>
+    <string name="advanced_options">Advanced Options</string>
+    <string name="time_period_seconds">Time Period (seconds)</string>
+    <string name="usually_30_seconds">Usually 30 seconds</string>
+    <string name="code_digits">Code Digits</string>
+    <string name="usually_6_digits">Usually 6 digits</string>
+    <string name="how_to_get_secret_key">How to get secret key?</string>
+    <string name="secret_key_instructions">1. Find \"Two-Factor Authentication\" settings on the website\n2. Choose \"Use authenticator app\"\n3. Copy the displayed secret key or scan QR code\n4. Paste the key in the input box above</string>
+    
+    <!-- Bank Card -->
+    <string name="add_bank_card_title">Add Bank Card</string>
+    <string name="edit_bank_card_title">Edit Bank Card</string>
+    <string name="no_bank_cards_title">No bank cards yet</string>
+    <string name="no_bank_cards_description">Click the + button in the bottom right to add your first bank card</string>
+    <string name="card_name">Card Name</string>
+    <string name="card_name_example">Example: Salary Card</string>
+    <string name="bank_name">Bank Name</string>
+    <string name="bank_name_example">Example: ICBC</string>
+    <string name="card_type">Card Type</string>
+    <string name="debit_card">Debit Card</string>
+    <string name="credit_card">Credit Card</string>
+    <string name="prepaid_card">Prepaid Card</string>
+    <string name="card_number_required">Card Number *</string>
+    <string name="cardholder_name">Cardholder Name</string>
+    <string name="expiry_date">Expiry Date</string>
+    <string name="month">Month</string>
+    <string name="year">Year</string>
+    <string name="cvv">CVV</string>
+    <string name="notes_placeholder">Add notes...</string>
+    
+    <!-- Document -->
+    <string name="add_document_title">Add Document</string>
+    <string name="edit_document_title">Edit Document</string>
+    <string name="no_documents_title">No documents yet</string>
+    <string name="no_documents_description">Click the + button in the bottom right to add your first document</string>
+    <string name="document_name">Document Name</string>
+    <string name="document_name_example">Example: My ID Card</string>
+    <string name="document_type">Document Type</string>
+    <string name="id_card">ID Card</string>
+    <string name="passport">Passport</string>
+    <string name="drivers_license">Driver\'s License</string>
+    <string name="social_security_card">Social Security Card</string>
+    <string name="other_document">Other Document</string>
+    <string name="document_number_required">Document Number *</string>
+    <string name="holder_name">Holder Name</string>
+    <string name="holder_name_example">John Doe</string>
+    <string name="issue_date">Issue Date</string>
+    <string name="expiry_date_label">Expiry Date</string>
+    <string name="issuing_authority">Issuing Authority</string>
+    <string name="issuing_authority_example">Example: XX Police Bureau</string>
+    <string name="document_encryption_notice">All document information and photos are encrypted and stored locally on your device</string>
+    <string name="document_photo_front">%s Photo (Front)</string>
+    <string name="document_photo_back">%s Photo (Back, Optional)</string>
+    
+    <!-- TOTP List -->
+    <string name="search_authenticator">Search authenticator</string>
+    <string name="clear">Clear</string>
+    <string name="no_authenticators_title">No authenticators</string>
+    <string name="no_authenticators_description">Click the + button in the bottom right to add an authenticator</string>
+    <string name="delete_authenticator_title">Delete Authenticator</string>
+    <string name="delete_authenticator_message">Are you sure you want to delete \"%s\"? This action cannot be undone.</string>
+    
+    <!-- QR Scanner -->
+    <string name="scan_qr_code_title">Scan QR Code</string>
+    <string name="grant_permission">Grant Permission</string>
+    <string name="go_back">Return</string>
+    <string name="camera_permission_required">Scanning QR codes requires camera access. Please grant camera permission to continue.</string>
+    
+    <!-- Image Picker -->
+    <string name="gallery">Gallery</string>
+    <string name="camera">Camera</string>
+    
+    <!-- Export/Import Data -->
+    <string name="export_data_title">Export Data</string>
+    <string name="exporting">Exporting...</string>
+    <string name="start_export">Start Export</string>
+    <string name="import_data_title">Import Data</string>
+    <string name="importing">Importing...</string>
+    <string name="start_import">Start Import</string>
+    
+    <!-- Support Author -->
+    <string name="support_author_title">Support Author</string>
+    <string name="software_free_title">💝 Software is completely free</string>
+    <string name="software_free_description">Monica Password Manager is completely free and open-source software, with no mandatory fees. All features are available for free.</string>
+    <string name="if_helpful_title">🙏 If you find this app helpful</string>
+    <string name="support_ways_description">Feel free to support the author\'s continued development through the following ways:</string>
+    <string name="support_author_qr">Support Author ❤️</string>
+    <string name="qr_code_description">Support author QR code</string>
+    <string name="save_qr_code">Save QR code to album</string>
+    <string name="your_support_message">Your support is my motivation to keep developing!</string>
+    <string name="thank_you_title">Thank you for using Monica Password Manager!</string>
+    <string name="thank_you_message">Hope it brings security and convenience to your digital life.</string>
+    <string name="storage_permission_needed">Storage permission is required to save images</string>
+    <string name="qr_code_saved">QR code saved to album</string>
+    <string name="save_failed">Save failed</string>
+    <string name="save_failed_with_error">Save failed: %s</string>
+    
+    <!-- Password Entry Card -->
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="password_hidden">••••••••</string>
+    <string name="delete_password_title">Delete Password</string>
+    <string name="delete_password_message">Are you sure you want to delete \"%s\"?</string>
+    
+    <!-- Error Messages -->
+    <string name="error_password_too_short">Master password must be at least 6 characters long</string>
+    <string name="error_password_must_be_6_digits">Password must be 6 digits</string>
+    <string name="error_password_min_6_digits">Password must be at least 6 digits</string>
+    <string name="error_password_must_be_numeric">Password must contain only numbers</string>
+    <string name="error_passwords_not_match">Passwords do not match</string>
+    <string name="error_invalid_password">Invalid master password</string>
+    <string name="error_authentication_failed">Authentication failed</string>
+    <string name="error_title_required">Title is required</string>
+    <string name="error_password_required">Password is required</string>
+    <string name="password_min_6_digits">Minimum 6 digits required</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="language">Language</string>
+    <string name="theme">Theme</string>
+    <string name="security">Security</string>
+    <string name="biometric_authentication">Biometric Authentication</string>
+    <string name="auto_lock">Auto Lock</string>
+    <string name="auto_lock_summary">Lock app after inactivity</string>
+    <string name="about">About</string>
+    <string name="version">Version</string>
+    
+    <!-- Language Options -->
+    <string name="language_system">System Default</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">中文</string>
+    <string name="language_vietnamese">Tiếng Việt</string>
+    
+    <!-- Theme Options -->
+    <string name="theme_system">System Default</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    
+    <!-- Auto Lock Options -->
+    <string name="auto_lock_immediately">Immediately</string>
+    <string name="auto_lock_1_minute">1 minute</string>
+    <string name="auto_lock_5_minutes">5 minutes</string>
+    <string name="auto_lock_15_minutes">15 minutes</string>
+    <string name="auto_lock_30_minutes">30 minutes</string>
+    <string name="auto_lock_never">Never</string>
+    
+    <!-- Reset Password Screen -->
+    <string name="reset_password_title">Reset Password</string>
+    <string name="reset_password">Reset Password</string>
+    <string name="reset_master_password">Reset Master Password</string>
+        <string name="reset_password_description">Please enter your current password and set a new numeric password (minimum 6 digits)</string>
+    <string name="reset_password_verified_description">Please set your new numeric password (minimum 6 digits)</string>
+    <string name="current_password">Current Password</string>
+    <string name="enter_current_password">Enter your current password</string>
+    <string name="new_password">New Password</string>
+    <string name="enter_new_password">Enter new numeric password (min 6 digits)</string>
+    <string name="confirm_new_password">Confirm New Password</string>
+    <string name="enter_confirm_password">Confirm your new password</string>
+    <string name="current_password_required">Current password is required</string>
+    <string name="new_password_required">New password is required</string>
+    <string name="current_password_incorrect">Current password is incorrect</string>
+    <string name="password_reset_success">Password Reset Successful</string>
+    <string name="password_reset_success_message">Your master password has been successfully changed. Please remember your new password.</string>
+    <string name="passwords_do_not_match">Passwords do not match</string>
+    <string name="password_too_short">Password must be at least 6 characters</string>
+    
+    <!-- Forgot Password -->
+    <string name="forgot_password">Forgot Password?</string>
+    <string name="forgot_password_title">Reset Application</string>
+    <string name="forgot_password_warning">This will permanently delete all your saved passwords and reset the application. This action cannot be undone.</string>
+    <string name="forgot_password_confirm">Are you sure you want to reset all data?</string>
+    <string name="reset_all_data">Reset All Data</string>
+    <string name="data_reset_complete">All data has been reset. You can now set up a new master password.</string>
+    
+    <!-- Security Questions -->
+    <string name="security_questions">Security Questions</string>
+    <string name="setup_security_questions">Setup Security Questions</string>
+    <string name="edit_security_questions">Edit Security Questions</string>
+    <string name="security_questions_description">Set up security questions to recover your password if you forget it. These questions will help verify your identity.</string>
+    <string name="security_question_1">Security Question 1</string>
+    <string name="security_question_2">Security Question 2</string>
+    <string name="select_question">Select a question</string>
+    <string name="your_answer">Your Answer</string>
+    <string name="enter_answer_hint">Enter your answer (case insensitive)</string>
+    <string name="save_questions">Save Security Questions</string>
+    <string name="update_questions">Update Security Questions</string>
+    <string name="select_first_question">Please select the first security question</string>
+    <string name="select_second_question">Please select the second security question</string>
+    <string name="questions_must_be_different">Please select two different questions</string>
+    <string name="first_answer_required">Please provide an answer to the first question</string>
+    <string name="second_answer_required">Please provide an answer to the second question</string>
+    
+    <!-- Security Questions Verification -->
+    <string name="verify_identity">Verify Identity</string>
+    <string name="answer_security_questions">Answer Security Questions</string>
+    <string name="security_questions_verify_description">Please answer your security questions to reset your password</string>
+    <string name="question_1">Question 1:</string>
+    <string name="question_2">Question 2:</string>
+    <string name="verify_answers">Verify Answers</string>
+    <string name="incorrect_answers">Incorrect answers. Please try again.</string>
+    <string name="verification_attempts" formatted="false">Attempts: %d of %d</string>
+    <string name="too_many_attempts">Too many incorrect attempts. Please contact support or use the complete reset option.</string>
+    <string name="back_to_login">Back to Login</string>
+    
+    <!-- Main Screen Bottom Navigation -->
+    <string name="nav_passwords">Passwords</string>
+    <string name="nav_authenticator">Authenticator</string>
+    <string name="nav_documents">ID Cards</string>
+    <string name="nav_bank_cards">Bank Cards</string>
+    <string name="nav_settings">Settings</string>
+    <string name="add">Add</string>
+    
+    <!-- Main Screen Bottom Navigation (Short) -->
+    <string name="nav_passwords_short">Pwd</string>
+    <string name="nav_authenticator_short">Auth</string>
+    <string name="nav_documents_short">ID</string>
+    <string name="nav_bank_cards_short">Card</string>
+    <string name="nav_settings_short">Set</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_general">General</string>
+    <string name="settings_security">Security</string>
+    <string name="settings_data_management">Data Management</string>
+    <string name="settings_about">About</string>
+    <string name="settings_language_description">Language</string>
+    <string name="settings_auto_lock_title">Auto Lock</string>
+    <string name="settings_auto_lock_description">Lock app when inactive</string>
+    <string name="settings_biometric_title">Biometric Authentication</string>
+    <string name="settings_biometric_description">Use fingerprint or face unlock</string>
+    <string name="settings_change_password">Change Master Password</string>
+    <string name="settings_change_password_description">Change login password</string>
+    <string name="settings_security_questions">Security Questions</string>
+    <string name="settings_security_questions_description">Set security questions for password recovery</string>
+    <string name="settings_export_data">Export Data</string>
+    <string name="settings_export_data_description">Export as CSV file locally</string>
+    <string name="settings_import_data">Import Data</string>
+    <string name="settings_import_data_description">Restore from backup file</string>
+    <string name="settings_version_info">Version Info</string>
+    <string name="settings_version_number">v1.0.0</string>
+    <string name="settings_support_author">Support Author</string>
+    <string name="settings_support_author_description">Thank you for your support</string>
+    <string name="settings_privacy_policy">Privacy Policy</string>
+    
+    <!-- Language Selection Dialog -->
+    <string name="dialog_select_language">Select Language</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english_name">English</string>
+    
+    <!-- Change Password Screen -->
+    <string name="change_password_title">Change Master Password</string>
+    <string name="change_password_warning_title">Important Notice</string>
+    <string name="change_password_warning_message">After changing the master password, all saved data will be re-encrypted with the new password. Please make sure you can remember the new password, otherwise you will not be able to access your data.</string>
+    <string name="change_password_current">Current Password *</string>
+    <string name="change_password_new">New Password *</string>
+    <string name="change_password_confirm">Confirm New Password *</string>
+    <string name="change_password_hint">Password must be at least 6 digits</string>
+    <string name="change_password_button">Change Password</string>
+    <string name="change_password_success_title">Password Changed Successfully</string>
+    <string name="change_password_success_message">Your master password has been successfully changed and all data has been re-encrypted with the new password. Please login with the new password.</string>
+    <string name="change_password_error_current_empty">Please enter current password</string>
+    <string name="change_password_error_new_empty">Please enter new password</string>
+    <string name="change_password_error_new_too_short">New password must be at least 6 digits</string>
+    <string name="change_password_error_confirm_empty">Please confirm new password</string>
+    <string name="change_password_error_not_match">New passwords do not match</string>
+    <string name="change_password_error_same_as_current">New password cannot be the same as current password</string>
+    <string name="show_password_desc">Show password</string>
+    <string name="hide_password_desc">Hide password</string>
+    
+    <!-- Security Question Screen -->
+    <string name="security_question_title">Security Questions</string>
+    <string name="security_question_description">Set up security questions to recover your password if you forget it. These questions will help verify your identity.</string>
+    <string name="security_question_label_1">Security Question 1 *</string>
+    <string name="security_question_label_2">Security Question 2 *</string>
+    <string name="security_question_label_3">Security Question 3 *</string>
+    <string name="security_question_select">Select a question</string>
+    <string name="security_question_custom">Custom question</string>
+    <string name="security_question_answer">Your Answer *</string>
+    <string name="security_question_answer_hint">Enter your answer (case insensitive)</string>
+    <string name="security_question_save">Save Security Questions</string>
+    <string name="security_question_success_title">Setup Successful</string>
+    <string name="security_question_success_message">Security questions have been successfully set up. You can use these questions to recover your password if you forget it.</string>
+    <string name="security_question_error_q1_empty">Please select the first security question</string>
+    <string name="security_question_error_q2_empty">Please select the second security question</string>
+    <string name="security_question_error_q3_empty">Please select the third security question</string>
+    <string name="security_question_error_duplicate">All questions must be different</string>
+    <string name="security_question_error_a1_empty">Please provide an answer to the first question</string>
+    <string name="security_question_error_a2_empty">Please provide an answer to the second question</string>
+    <string name="security_question_error_a3_empty">Please provide an answer to the third question</string>
+    
+    <!-- Preset Security Questions -->
+    <string name="security_question_preset_1">What is your mother\'s maiden name?</string>
+    <string name="security_question_preset_2">What was the name of your first pet?</string>
+    <string name="security_question_preset_3">What city were you born in?</string>
+    <string name="security_question_preset_4">What is your favorite book?</string>
+    <string name="security_question_preset_5">What was the name of your elementary school?</string>
+    <string name="security_question_preset_6">What is your favorite food?</string>
+    <string name="security_question_preset_7">What was your childhood nickname?</string>
+    <string name="security_question_preset_8">What is the name of your best friend from childhood?</string>
+    <string name="security_question_preset_9">What was your first job?</string>
+    <string name="security_question_preset_10">What is your favorite movie?</string>
+    
+    <!-- Export Data Screen -->
+    <string name="export_data_description">Export all your data as a CSV file to local storage. You can use this file to backup or migrate your data.</string>
+    <string name="export_data_select_type">Select data type to export:</string>
+    <string name="export_data_type_passwords">Passwords</string>
+    <string name="export_data_type_totp">TOTP Codes</string>
+    <string name="export_data_type_bank_cards">Bank Cards</string>
+    <string name="export_data_type_documents">Documents</string>
+    <string name="export_data_type_all">All Data</string>
+    <string name="export_data_button">Export</string>
+    <string name="export_data_success">Data exported successfully</string>
+    <string name="export_data_error">Export failed</string>
+    
+    <!-- Import Data Screen -->
+    <string name="import_data_description">Import data from a CSV backup file. Please make sure the file format is correct.</string>
+    <string name="import_data_warning_title">Warning</string>
+    <string name="import_data_warning_message">Importing data may overwrite existing data. Please make sure to backup your current data before importing.</string>
+    <string name="import_data_select_file">Select File</string>
+    <string name="import_data_button">Import</string>
+    <string name="import_data_success">Data imported successfully</string>
+    <string name="import_data_error">Import failed</string>
+    
+    <!-- Support Author Screen (legacy) -->
+    <string name="support_author_description">If you find this app helpful, please consider supporting the author. Your support is the biggest motivation for us to keep improving!</string>
+    <string name="support_author_thanks">Thank You!</string>
+    <string name="support_author_thanks_message">Thank you for using Monica Password Manager. Your support means a lot!</string>
+    
+    <!-- Common -->
+    <string name="favorite">Favorite</string>
+    <string name="search_passwords_hint">Search passwords</string>
+    <string name="return_text">Return</string>
+    <string name="confirm">Confirm</string>
+    
+    <!-- Screenshot Protection -->
+    <string name="screenshot_protection">Screenshot Protection</string>
+    <string name="screenshot_protection_enabled">Enabled - Protecting sensitive information</string>
+    <string name="screenshot_protection_disabled">Disabled - Screenshots allowed</string>
+    
+    <!-- Support Author -->
+    <string name="support_author">Support Author</string>
+    <string name="support_author_subtitle">Software is completely free, thank you for your support</string>
+    
+    <!-- Data Management in Settings -->
+    <string name="data_management">Data Management</string>
+    <string name="export_passwords">Export Passwords</string>
+    <string name="export_passwords_description">Export all data to CSV file</string>
+    <string name="import_passwords">Import Passwords</string>
+    <string name="import_passwords_description">Import data from CSV file</string>
+    
+    <!-- Selection Mode -->
+    <string name="selected_items">%d items selected</string>
+    <string name="exit_selection_mode">Exit selection mode</string>
+    <string name="select_all">Select all</string>
+    <string name="batch_delete">Batch delete</string>
+    <string name="batch_delete_passwords_title">Batch Delete Passwords</string>
+    <string name="batch_delete_passwords_message">Are you sure you want to delete %d passwords?</string>
+    <string name="batch_delete_totp_title">Batch Delete TOTP</string>
+    <string name="batch_delete_totp_message">Are you sure you want to delete %d TOTP items?</string>
+    <string name="batch_delete_documents_title">Batch Delete Documents</string>
+    <string name="batch_delete_documents_message">Are you sure you want to delete %d documents?</string>
+    <string name="batch_delete_bankcards_title">Batch Delete Bank Cards</string>
+    <string name="batch_delete_bankcards_message">Are you sure you want to delete %d bank cards?</string>
+    <string name="deleted_items">Deleted %d items</string>
+    <string name="enter_master_password_confirm">Please enter your master password to confirm</string>
+</resources>
