@@ -238,6 +238,7 @@
     <string name="auto_lock_summary">闲置后锁定应用</string>
     <string name="about">关于</string>
     <string name="version">版本</string>
+    <string name="cannot_open_browser">无法打开浏览器</string>
     
     <!-- Language Options -->
     <string name="language_system">跟随系统</string>

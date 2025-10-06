@@ -298,37 +298,38 @@ fun SecurityStatisticsCardsCompact(
             
             Spacer(modifier = Modifier.height(16.dp))
             
+            // 使用 FlowRow 布局，自动换行
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 CompactStatCard(
                     icon = Icons.Default.ContentCopy,
                     count = duplicatePasswordsCount,
                     label = context.getString(R.string.duplicate_short),
                     color = Color(0xFFFF9800),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = true)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Link,
                     count = duplicateUrlsCount,
                     label = context.getString(R.string.duplicate_url_short),
                     color = Color(0xFF2196F3),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = true)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Warning,
                     count = compromisedPasswordsCount,
                     label = context.getString(R.string.compromised_short),
                     color = Color(0xFFF44336),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = true)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Security,
                     count = no2FAAccountsCount,
                     label = context.getString(R.string.no_2fa_short),
                     color = Color(0xFF9C27B0),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = true)
                 )
             }
         }
@@ -359,19 +360,23 @@ fun CompactStatCard(
                 imageVector = icon,
                 contentDescription = null,
                 tint = color,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = count.toString(),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = color
+                color = color,
+                maxLines = 1,
+                textAlign = TextAlign.Center
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                textAlign = TextAlign.Center
             )
         }
     }

@@ -238,6 +238,7 @@
     <string name="auto_lock_summary">Lock app after inactivity</string>
     <string name="about">About</string>
     <string name="version">Version</string>
+    <string name="cannot_open_browser">Cannot open browser</string>
     
     <!-- Language Options -->
     <string name="language_system">System Default</string>

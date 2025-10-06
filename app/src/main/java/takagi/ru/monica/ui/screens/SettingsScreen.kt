@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import android.app.Activity
 import android.content.ContextWrapper
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
@@ -361,7 +362,19 @@ fun SettingsScreen(
                     icon = Icons.Default.Info,
                     title = context.getString(R.string.version),
                     subtitle = "1.0.2",
-                    onClick = { /* Show version info */ }
+                    onClick = {
+                        // 打开 GitHub 仓库链接
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/JoyinJoester/Monica"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.cannot_open_browser),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
                 )
             }
         }
