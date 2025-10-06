@@ -149,6 +149,10 @@
     <string name="no_authenticators_description">Nhấn nút + ở góc dưới bên phải để thêm xác thực</string>
     <string name="delete_authenticator_title">Xóa xác thực</string>
     <string name="delete_authenticator_message">Bạn có chắc chắn muốn xóa \"%s\"? Hành động này không thể hoàn tác.</string>
+    <string name="delete_document_title">Xóa tài liệu</string>
+    <string name="delete_document_message">Bạn có chắc chắn muốn xóa \"%s\"? Hành động này không thể hoàn tác.</string>
+    <string name="delete_bank_card_title">Xóa thẻ ngân hàng</string>
+    <string name="delete_bank_card_message">Bạn có chắc chắn muốn xóa \"%s\"? Hành động này không thể hoàn tác.</string>
     
     <!-- QR Scanner -->
     <string name="scan_qr_code_title">Quét mã QR</string>
@@ -159,6 +163,9 @@
     <!-- Image Picker -->
     <string name="gallery">Thư viện</string>
     <string name="camera">Camera</string>
+    <string name="download">Tải xuống</string>
+    <string name="download_success">Đã lưu hình ảnh vào thư viện thành công</string>
+    <string name="download_failed">Lưu hình ảnh thất bại</string>
     
     <!-- Export/Import Data -->
     <string name="export_data_title">Xuất dữ liệu</string>

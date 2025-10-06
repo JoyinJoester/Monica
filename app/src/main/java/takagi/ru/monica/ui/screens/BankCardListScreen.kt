@@ -27,6 +27,7 @@ fun BankCardListScreen(
 ) {
     val cards by viewModel.allCards.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
+    var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
     
     Box(modifier = modifier.fillMaxSize()) {
         when {
@@ -52,11 +53,38 @@ fun BankCardListScreen(
                     ) { card ->
                         BankCardCard(
                             item = card,
-                            onClick = { onCardClick(card.id) }
+                            onClick = { onCardClick(card.id) },
+                            onDelete = {
+                                itemToDelete = card
+                            }
                         )
                     }
                 }
             }
         }
+    }
+    
+    // 删除确认对话框
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text(stringResource(R.string.delete_bank_card_title)) },
+            text = { Text(stringResource(R.string.delete_bank_card_message, item.title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCard(item.id)
+                        itemToDelete = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }

@@ -80,6 +80,9 @@ fun TotpListScreen(
                             copyToClipboard(context, code)
                             Toast.makeText(context, "验证码已复制", Toast.LENGTH_SHORT).show()
                         },
+                        onDelete = {
+                            itemToDelete = item
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

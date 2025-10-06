@@ -36,7 +36,8 @@ fun ImagePicker(
     onImageSelected: (String) -> Unit,
     onImageRemoved: () -> Unit,
     modifier: Modifier = Modifier,
-    label: String = "添加照片"
+    label: String = "添加照片",
+    onImageDownloaded: ((Boolean) -> Unit)? = null  // 新增：下载回调
 ) {
     val context = LocalContext.current
     val imageManager = remember { ImageManager(context) }
@@ -45,6 +46,7 @@ fun ImagePicker(
     var isLoading by remember { mutableStateOf(false) }
     var loadedBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var showImageDialog by remember { mutableStateOf(false) }
+    var isDownloading by remember { mutableStateOf(false) }
     
     // 加载现有图片
     LaunchedEffect(imageFileName) {
@@ -191,9 +193,11 @@ fun ImagePicker(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // 图库按钮
                 OutlinedButton(
                     onClick = { imagePickerLauncher.launch("image/*") },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    enabled = !isDownloading
                 ) {
                     Icon(
                         Icons.Default.PhotoLibrary,
@@ -204,9 +208,11 @@ fun ImagePicker(
                     Text(stringResource(R.string.gallery))
                 }
                 
+                // 相机按钮
                 OutlinedButton(
                     onClick = { cameraLauncher.launch(null) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    enabled = !isDownloading
                 ) {
                     Icon(
                         Icons.Default.CameraAlt,
@@ -215,6 +221,40 @@ fun ImagePicker(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(stringResource(R.string.camera))
+                }
+                
+                // 下载按钮（仅在有图片时显示）
+                if (loadedBitmap != null && imageFileName != null) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                isDownloading = true
+                                val success = imageManager.saveImageToGallery(
+                                    imageFileName,
+                                    label.replace(" ", "_")
+                                )
+                                isDownloading = false
+                                onImageDownloaded?.invoke(success)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = !isDownloading
+                    ) {
+                        if (isDownloading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.download))
+                    }
                 }
             }
         }

@@ -148,6 +148,10 @@
     <string name="no_authenticators_description">Click the + button in the bottom right to add an authenticator</string>
     <string name="delete_authenticator_title">Delete Authenticator</string>
     <string name="delete_authenticator_message">Are you sure you want to delete \"%s\"? This action cannot be undone.</string>
+    <string name="delete_document_title">Delete Document</string>
+    <string name="delete_document_message">Are you sure you want to delete \"%s\"? This action cannot be undone.</string>
+    <string name="delete_bank_card_title">Delete Bank Card</string>
+    <string name="delete_bank_card_message">Are you sure you want to delete \"%s\"? This action cannot be undone.</string>
     
     <!-- QR Scanner -->
     <string name="scan_qr_code_title">Scan QR Code</string>
@@ -158,6 +162,9 @@
     <!-- Image Picker -->
     <string name="gallery">Gallery</string>
     <string name="camera">Camera</string>
+    <string name="download">Download</string>
+    <string name="download_success">Image saved to gallery successfully</string>
+    <string name="download_failed">Failed to save image</string>
     
     <!-- Export/Import Data -->
     <string name="export_data_title">Export Data</string>

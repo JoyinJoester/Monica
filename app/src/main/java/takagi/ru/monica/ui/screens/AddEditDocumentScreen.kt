@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import takagi.ru.monica.R
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
@@ -334,6 +335,14 @@ fun AddEditDocumentScreen(
                         emptyList()
                     }
                 },
+                onImageDownloaded = { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) context.getString(R.string.download_success) 
+                        else context.getString(R.string.download_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = stringResource(R.string.document_photo_front, when (documentType) {
                     DocumentType.ID_CARD -> stringResource(R.string.id_card)
@@ -361,6 +370,14 @@ fun AddEditDocumentScreen(
                         } else {
                             imagePaths
                         }
+                    },
+                    onImageDownloaded = { success ->
+                        Toast.makeText(
+                            context,
+                            if (success) context.getString(R.string.download_success) 
+                            else context.getString(R.string.download_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = stringResource(R.string.document_photo_back, when (documentType) {

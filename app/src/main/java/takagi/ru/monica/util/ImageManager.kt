@@ -1,14 +1,22 @@
 package takagi.ru.monica.util
 
 import android.content.Context
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
@@ -175,5 +183,70 @@ class ImageManager(private val context: Context) {
         val ivSpec = IvParameterSpec(IV)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
         return cipher.doFinal(encryptedData)
+    }
+    
+    /**
+     * 保存图片到公共相册
+     * @param fileName 加密图片的文件名
+     * @param displayName 保存到相册的文件名（不包含扩展名）
+     * @return 是否成功保存
+     */
+    suspend fun saveImageToGallery(fileName: String, displayName: String = "Monica_Document"): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // 先解密加载图片
+            val bitmap = loadImage(fileName) ?: return@withContext false
+            
+            // 生成带时间戳的文件名
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val imageName = "${displayName}_$timestamp.jpg"
+            
+            val saved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10 及以上使用 MediaStore
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, imageName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Monica")
+                }
+                
+                val uri = context.contentResolver.insert(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    contentValues
+                )
+                
+                uri?.let {
+                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream)
+                    }
+                    true
+                } ?: false
+            } else {
+                // Android 9 及以下使用传统方式
+                @Suppress("DEPRECATION")
+                val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                val monicaDir = File(picturesDir, "Monica")
+                
+                if (!monicaDir.exists()) {
+                    monicaDir.mkdirs()
+                }
+                
+                val imageFile = File(monicaDir, imageName)
+                FileOutputStream(imageFile).use { outputStream ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream)
+                }
+                
+                // 通知系统扫描新文件
+                @Suppress("DEPRECATION")
+                val mediaScanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+                mediaScanIntent.data = Uri.fromFile(imageFile)
+                context.sendBroadcast(mediaScanIntent)
+                
+                true
+            }
+            
+            saved
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 }

@@ -148,6 +148,10 @@
     <string name="no_authenticators_description">点击右下角 + 按钮添加验证器</string>
     <string name="delete_authenticator_title">删除验证器</string>
     <string name="delete_authenticator_message">确定要删除 \"%s\" 吗？此操作无法撤销。</string>
+    <string name="delete_document_title">删除证件</string>
+    <string name="delete_document_message">确定要删除 \"%s\" 吗？此操作无法撤销。</string>
+    <string name="delete_bank_card_title">删除银行卡</string>
+    <string name="delete_bank_card_message">确定要删除 \"%s\" 吗？此操作无法撤销。</string>
     
     <!-- QR Scanner -->
     <string name="scan_qr_code_title">扫描二维码</string>
@@ -158,6 +162,9 @@
     <!-- Image Picker -->
     <string name="gallery">相册</string>
     <string name="camera">拍照</string>
+    <string name="download">下载</string>
+    <string name="download_success">图片已成功保存到相册</string>
+    <string name="download_failed">保存图片失败</string>
     
     <!-- Export/Import Data -->
     <string name="export_data_title">导出数据</string>

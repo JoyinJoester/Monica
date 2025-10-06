@@ -25,6 +25,7 @@ fun DocumentListScreen(
 ) {
     val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
+    var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
     
     Box(modifier = modifier.fillMaxSize()) {
         when {
@@ -50,11 +51,38 @@ fun DocumentListScreen(
                     ) { document ->
                         DocumentCard(
                             item = document,
-                            onClick = { onDocumentClick(document.id) }
+                            onClick = { onDocumentClick(document.id) },
+                            onDelete = {
+                                itemToDelete = document
+                            }
                         )
                     }
                 }
             }
         }
+    }
+    
+    // 删除确认对话框
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text(stringResource(R.string.delete_document_title)) },
+            text = { Text(stringResource(R.string.delete_document_message, item.title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteDocument(item.id)
+                        itemToDelete = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
