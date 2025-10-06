@@ -58,6 +58,7 @@ fun SimpleMainScreen(
     var selectedPasswordCount by remember { mutableIntStateOf(0) }
     var onExitPasswordSelection by remember { mutableStateOf({}) }
     var onSelectAllPasswords by remember { mutableStateOf({}) }
+    var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     
     // TOTP的选择模式状态
@@ -99,6 +100,7 @@ fun SimpleMainScreen(
                         selectedCount = selectedPasswordCount,
                         onExit = { onExitPasswordSelection() },
                         onSelectAll = { onSelectAllPasswords() },
+                        onFavorite = { onFavoriteSelectedPasswords() },
                         onDelete = { onDeleteSelectedPasswords() }
                     )
                 }
@@ -190,11 +192,12 @@ fun SimpleMainScreen(
                         onPasswordClick = { password ->
                             onNavigateToAddPassword(password.id)
                         },
-                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onDelete ->
                             isPasswordSelectionMode = isSelectionMode
                             selectedPasswordCount = count
                             onExitPasswordSelection = onExit
                             onSelectAllPasswords = onSelectAll
+                            onFavoriteSelectedPasswords = onFavorite
                             onDeleteSelectedPasswords = onDelete
                         }
                     )
@@ -281,6 +284,7 @@ private fun PasswordListContent(
         selectedCount: Int,
         onExit: () -> Unit,
         onSelectAll: () -> Unit,
+        onFavorite: () -> Unit,
         onDelete: () -> Unit
     ) -> Unit
 ) {
@@ -310,6 +314,26 @@ private fun PasswordListContent(
         }
     }
     
+    val favoriteSelected = {
+        // 批量设置为收藏
+        coroutineScope.launch {
+            val toFavorite = passwordEntries.filter { selectedPasswords.contains(it.id) }
+            toFavorite.forEach { entry ->
+                viewModel.toggleFavorite(entry.id, true)
+            }
+            
+            android.widget.Toast.makeText(
+                context,
+                context.getString(R.string.batch_favorited, toFavorite.size),
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            
+            // 退出选择模式
+            isSelectionMode = false
+            selectedPasswords = setOf()
+        }
+    }
+    
     val deleteSelected = {
         showBatchDeleteDialog = true
     }
@@ -321,6 +345,7 @@ private fun PasswordListContent(
             selectedPasswords.size,
             exitSelection,
             selectAll,
+            favoriteSelected,
             deleteSelected
         )
     }
@@ -1427,6 +1452,7 @@ private fun SelectionModeTopBar(
     selectedCount: Int,
     onExit: () -> Unit,
     onSelectAll: () -> Unit,
+    onFavorite: (() -> Unit)? = null,
     onDelete: () -> Unit
 ) {
     TopAppBar(
@@ -1445,6 +1471,23 @@ private fun SelectionModeTopBar(
                     Icons.Outlined.CheckCircle,
                     contentDescription = stringResource(R.string.select_all)
                 )
+            }
+            
+            // 批量收藏按钮 (仅密码列表显示)
+            if (onFavorite != null) {
+                IconButton(
+                    onClick = onFavorite,
+                    enabled = selectedCount > 0
+                ) {
+                    Icon(
+                        Icons.Default.Favorite,
+                        contentDescription = stringResource(R.string.batch_favorite),
+                        tint = if (selectedCount > 0) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
             }
             
             // 批量删除按钮

@@ -458,5 +458,7 @@
     <string name="batch_delete_bankcards_message">确定要删除 %d 张银行卡吗?</string>
     <string name="deleted_items">已删除 %d 项</string>
     <string name="deleted">已删除</string>
+    <string name="batch_favorite">批量收藏</string>
+    <string name="batch_favorited">已将 %d 个密码添加到收藏</string>
     <string name="enter_master_password_confirm">请输入主密码确认</string>
 </resources>
