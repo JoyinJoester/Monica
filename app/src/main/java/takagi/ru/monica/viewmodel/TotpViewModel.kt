@@ -118,4 +118,13 @@ class TotpViewModel(
             repository.updateFavoriteStatus(id, isFavorite)
         }
     }
+    
+    /**
+     * 更新排序顺序
+     */
+    fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        viewModelScope.launch {
+            repository.updateSortOrders(items)
+        }
+    }
 }

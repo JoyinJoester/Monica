@@ -103,6 +103,13 @@ class DocumentViewModel(
         }
     }
     
+    // 更新排序顺序
+    fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        viewModelScope.launch {
+            repository.updateSortOrders(items)
+        }
+    }
+    
     // 搜索证件
     fun searchDocuments(query: String): Flow<List<SecureItem>> {
         return repository.searchItems(query)

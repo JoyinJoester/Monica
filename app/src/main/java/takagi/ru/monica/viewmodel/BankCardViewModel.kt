@@ -103,6 +103,13 @@ class BankCardViewModel(
         }
     }
     
+    // 更新排序顺序
+    fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        viewModelScope.launch {
+            repository.updateSortOrders(items)
+        }
+    }
+    
     // 搜索银行卡
     fun searchCards(query: String): Flow<List<SecureItem>> {
         return repository.searchItems(query)

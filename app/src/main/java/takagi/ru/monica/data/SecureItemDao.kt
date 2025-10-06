@@ -14,7 +14,7 @@ interface SecureItemDao {
     fun getAllItems(): Flow<List<SecureItem>>
     
     // 根据类型获取项目
-    @Query("SELECT * FROM secure_items WHERE itemType = :type ORDER BY isFavorite DESC, updatedAt DESC")
+    @Query("SELECT * FROM secure_items WHERE itemType = :type ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getItemsByType(type: ItemType): Flow<List<SecureItem>>
     
     // 搜索项目
@@ -52,4 +52,16 @@ interface SecureItemDao {
     // 切换收藏状态
     @Query("UPDATE secure_items SET isFavorite = :isFavorite WHERE id = :id")
     suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean)
+    
+    // 更新排序顺序
+    @Query("UPDATE secure_items SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateSortOrder(id: Long, sortOrder: Int)
+    
+    // 批量更新排序顺序
+    @Transaction
+    suspend fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        items.forEach { (id, sortOrder) ->
+            updateSortOrder(id, sortOrder)
+        }
+    }
 }

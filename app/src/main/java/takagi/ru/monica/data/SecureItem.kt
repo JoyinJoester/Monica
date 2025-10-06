@@ -14,18 +14,19 @@ data class SecureItem(
     val id: Long = 0,
     
     // 通用字段
-    val itemType: ItemType,  // 数据类型：TOTP、BANK_CARD、DOCUMENT
+    val itemType: ItemType,  // 数据类型:TOTP、BANK_CARD、DOCUMENT
     val title: String,       // 标题/名称
     val notes: String = "",  // 备注
     val isFavorite: Boolean = false,
+    val sortOrder: Int = 0,  // 排序顺序(用于拖动排序)
     val createdAt: Date = Date(),
     val updatedAt: Date = Date(),
     
-    // 类型特定数据（JSON格式存储）
-    val itemData: String,    // 存储不同类型的具体数据（JSON）
+    // 类型特定数据(JSON格式存储)
+    val itemData: String,    // 存储不同类型的具体数据(JSON)
     
-    // 图片附件路径（加密存储）
-    val imagePaths: String = "" // JSON数组，存储图片文件路径
+    // 图片附件路径(加密存储)
+    val imagePaths: String = "" // JSON数组,存储图片文件路径
 )
 
 /**

@@ -59,4 +59,12 @@ class SecureItemRepository(
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {
         secureItemDao.updateFavoriteStatus(id, isFavorite)
     }
+    
+    suspend fun updateSortOrder(id: Long, sortOrder: Int) {
+        secureItemDao.updateSortOrder(id, sortOrder)
+    }
+    
+    suspend fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        secureItemDao.updateSortOrders(items)
+    }
 }

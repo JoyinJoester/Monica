@@ -11,7 +11,7 @@ import android.content.Context
  */
 @Database(
     entities = [PasswordEntry::class, SecureItem::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -43,6 +43,13 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
         
+        private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 为secure_items表添加sortOrder字段
+                database.execSQL("ALTER TABLE secure_items ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+        
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -50,7 +57,7 @@ abstract class PasswordDatabase : RoomDatabase() {
                     PasswordDatabase::class.java,
                     "password_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance
