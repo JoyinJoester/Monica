@@ -315,16 +315,30 @@ private fun PasswordListContent(
     }
     
     val favoriteSelected = {
-        // 批量设置为收藏
+        // 智能批量收藏/取消收藏
         coroutineScope.launch {
-            val toFavorite = passwordEntries.filter { selectedPasswords.contains(it.id) }
-            toFavorite.forEach { entry ->
-                viewModel.toggleFavorite(entry.id, true)
+            val selectedEntries = passwordEntries.filter { selectedPasswords.contains(it.id) }
+            
+            // 检查是否所有选中的密码都已收藏
+            val allFavorited = selectedEntries.all { it.isFavorite }
+            
+            // 如果全部已收藏,则取消收藏;否则全部设为收藏
+            val newFavoriteState = !allFavorited
+            
+            selectedEntries.forEach { entry ->
+                viewModel.toggleFavorite(entry.id, newFavoriteState)
+            }
+            
+            // 显示提示
+            val message = if (newFavoriteState) {
+                context.getString(R.string.batch_favorited, selectedEntries.size)
+            } else {
+                context.getString(R.string.batch_unfavorited, selectedEntries.size)
             }
             
             android.widget.Toast.makeText(
                 context,
-                context.getString(R.string.batch_favorited, toFavorite.size),
+                message,
                 android.widget.Toast.LENGTH_SHORT
             ).show()
             
