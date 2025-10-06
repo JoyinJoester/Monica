@@ -373,6 +373,10 @@ private fun PasswordListContent(
                             selectedPasswords = setOf(password.id)
                         }
                     },
+                    onToggleFavorite = {
+                        // 切换收藏状态
+                        viewModel.toggleFavorite(password.id, !password.isFavorite)
+                    },
                     isSelectionMode = isSelectionMode,
                     isSelected = selectedPasswords.contains(password.id)
                 )
@@ -1317,6 +1321,7 @@ private fun PasswordEntryCard(
     entry: takagi.ru.monica.data.PasswordEntry,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
+    onToggleFavorite: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false
 ) {
@@ -1366,7 +1371,21 @@ private fun PasswordEntryCard(
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f)
                         )
-                        if (entry.isFavorite) {
+                        // 收藏图标 - 非选择模式下可点击
+                        if (!isSelectionMode && onToggleFavorite != null) {
+                            IconButton(
+                                onClick = onToggleFavorite,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    if (entry.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = stringResource(R.string.favorite),
+                                    tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        } else if (isSelectionMode && entry.isFavorite) {
+                            // 选择模式下只显示,不可点击
                             Icon(
                                 Icons.Default.Favorite,
                                 contentDescription = stringResource(R.string.favorite),

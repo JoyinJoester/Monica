@@ -40,6 +40,7 @@ fun AddEditPasswordScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var isFavorite by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     var showPasswordGenerator by remember { mutableStateOf(false) }
     
@@ -55,6 +56,7 @@ fun AddEditPasswordScreen(
                     username = entry.username
                     password = entry.password
                     notes = entry.notes
+                    isFavorite = entry.isFavorite
                 }
             }
         }
@@ -70,6 +72,15 @@ fun AddEditPasswordScreen(
                     }
                 },
                 actions = {
+                    // 收藏按钮
+                    IconButton(onClick = { isFavorite = !isFavorite }) {
+                        Icon(
+                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = stringResource(R.string.favorite),
+                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        )
+                    }
+                    
                     TextButton(
                         onClick = {
                             if (title.isNotEmpty() && password.isNotEmpty()) {
@@ -79,7 +90,8 @@ fun AddEditPasswordScreen(
                                     website = website,
                                     username = username,
                                     password = password,
-                                    notes = notes
+                                    notes = notes,
+                                    isFavorite = isFavorite
                                 )
                                 
                                 if (isEditing) {

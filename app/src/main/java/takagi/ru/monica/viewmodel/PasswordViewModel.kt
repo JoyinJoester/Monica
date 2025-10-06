@@ -87,6 +87,12 @@ class PasswordViewModel(
         }
     }
     
+    fun toggleFavorite(id: Long, isFavorite: Boolean) {
+        viewModelScope.launch {
+            repository.toggleFavorite(id, isFavorite)
+        }
+    }
+    
     suspend fun getPasswordEntryById(id: Long): PasswordEntry? {
         return repository.getPasswordEntryById(id)?.let { entry ->
             entry.copy(password = securityManager.decryptData(entry.password))

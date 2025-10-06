@@ -39,6 +39,10 @@ class PasswordRepository(
         passwordEntryDao.deletePasswordEntryById(id)
     }
     
+    suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {
+        passwordEntryDao.updateFavoriteStatus(id, isFavorite)
+    }
+    
     suspend fun getPasswordEntriesCount(): Int {
         return passwordEntryDao.getPasswordEntriesCount()
     }
