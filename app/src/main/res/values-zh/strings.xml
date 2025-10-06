@@ -527,6 +527,15 @@
     <string name="duplicate_urls">重复URL</string>
     <string name="compromised_passwords">泄露密码</string>
     <string name="no_twofa">未启用2FA</string>
+    <string name="duplicate_short">重复</string>
+    <string name="duplicate_url_short">重复URL</string>
+    <string name="compromised_short">泄露</string>
+    <string name="no_2fa_short">无2FA</string>
+    <string name="checking_duplicate_passwords">正在检查重复密码…</string>
+    <string name="checking_duplicate_urls">正在检查重复URL…</string>
+    <string name="checking_compromised_passwords">正在检查密码泄露情况…</string>
+    <string name="checking_2fa_status">正在检查2FA状态…</string>
+    <string name="analysis_complete">分析完成！</string>
     <string name="used_in_accounts">在 %d 个账户中使用</string>
     <string name="count_accounts">%d 个账户</string>
     <string name="breached_times">泄露 %,d 次</string>

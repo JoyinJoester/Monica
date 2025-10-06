@@ -290,7 +290,7 @@ fun SecurityStatisticsCardsCompact(
                 IconButton(onClick = onStartAnalysis) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "刷新",
+                        contentDescription = context.getString(R.string.refresh),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -305,28 +305,28 @@ fun SecurityStatisticsCardsCompact(
                 CompactStatCard(
                     icon = Icons.Default.ContentCopy,
                     count = duplicatePasswordsCount,
-                    label = "重复",
+                    label = context.getString(R.string.duplicate_short),
                     color = Color(0xFFFF9800),
                     modifier = Modifier.weight(1f)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Link,
                     count = duplicateUrlsCount,
-                    label = "重复URL",
+                    label = context.getString(R.string.duplicate_url_short),
                     color = Color(0xFF2196F3),
                     modifier = Modifier.weight(1f)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Warning,
                     count = compromisedPasswordsCount,
-                    label = "泄露",
+                    label = context.getString(R.string.compromised_short),
                     color = Color(0xFFF44336),
                     modifier = Modifier.weight(1f)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Security,
                     count = no2FAAccountsCount,
-                    label = "无2FA",
+                    label = context.getString(R.string.no_2fa_short),
                     color = Color(0xFF9C27B0),
                     modifier = Modifier.weight(1f)
                 )
@@ -391,32 +391,19 @@ fun AnalysisProgressView(progress: Int) {
         label = "progress"
     )
     
-    // 旋转动画 - 无限旋转
-    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "rotation")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(
-                durationMillis = 2000,
-                easing = androidx.compose.animation.core.LinearEasing
-            )
-        ),
-        label = "rotation"
-    )
-    
-    // 脉冲动画 - 图标大小
+    // 呼吸动画 - 图标大小（放大缩小）
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "breathing")
     val scale by infiniteTransition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.1f,
+        initialValue = 0.85f,
+        targetValue = 1.15f,
         animationSpec = androidx.compose.animation.core.infiniteRepeatable(
             animation = androidx.compose.animation.core.tween(
-                durationMillis = 1000,
+                durationMillis = 1500,
                 easing = androidx.compose.animation.core.FastOutSlowInEasing
             ),
             repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
         ),
-        label = "scale"
+        label = "breathing_scale"
     )
     
     Column(
@@ -445,15 +432,11 @@ fun AnalysisProgressView(progress: Int) {
                 color = MaterialTheme.colorScheme.primary,
             )
             
-            // 中心旋转图标
+            // 中心呼吸图标（只有缩放动画）
             Icon(
                 imageVector = Icons.Default.Shield,
                 contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp * scale)
-                    .graphicsLayer {
-                        rotationZ = rotation
-                    },
+                modifier = Modifier.size(48.dp * scale),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -481,7 +464,7 @@ fun AnalysisProgressView(progress: Int) {
         
         // 进度阶段提示
         Text(
-            text = getProgressMessage(progress),
+            text = getProgressMessage(progress, context),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -489,13 +472,13 @@ fun AnalysisProgressView(progress: Int) {
     }
 }
 
-private fun getProgressMessage(progress: Int): String {
+private fun getProgressMessage(progress: Int, context: android.content.Context): String {
     return when {
-        progress < 25 -> "正在检查重复密码..."
-        progress < 50 -> "正在检查重复URL..."
-        progress < 75 -> "正在检查密码泄露情况..."
-        progress < 100 -> "正在检查2FA状态..."
-        else -> "分析完成！"
+        progress < 25 -> context.getString(R.string.checking_duplicate_passwords)
+        progress < 50 -> context.getString(R.string.checking_duplicate_urls)
+        progress < 75 -> context.getString(R.string.checking_compromised_passwords)
+        progress < 100 -> context.getString(R.string.checking_2fa_status)
+        else -> context.getString(R.string.analysis_complete)
     }
 }
 

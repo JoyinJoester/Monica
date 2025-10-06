@@ -527,6 +527,15 @@
     <string name="duplicate_urls">Duplicate URLs</string>
     <string name="compromised_passwords">Compromised Passwords</string>
     <string name="no_twofa">No 2FA</string>
+    <string name="duplicate_short">Duplicate</string>
+    <string name="duplicate_url_short">Dup URLs</string>
+    <string name="compromised_short">Breached</string>
+    <string name="no_2fa_short">No 2FA</string>
+    <string name="checking_duplicate_passwords">Checking for duplicate passwords…</string>
+    <string name="checking_duplicate_urls">Checking for duplicate URLs…</string>
+    <string name="checking_compromised_passwords">Checking for password breaches…</string>
+    <string name="checking_2fa_status">Checking 2FA status…</string>
+    <string name="analysis_complete">Analysis complete!</string>
     <string name="used_in_accounts">Used in %d accounts</string>
     <string name="count_accounts">%d accounts</string>
     <string name="breached_times">Breached %,d times</string>
