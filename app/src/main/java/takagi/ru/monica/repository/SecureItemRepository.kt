@@ -55,4 +55,8 @@ class SecureItemRepository(
     suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean) {
         secureItemDao.updateFavoriteStatus(id, isFavorite)
     }
+    
+    suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {
+        secureItemDao.updateFavoriteStatus(id, isFavorite)
+    }
 }

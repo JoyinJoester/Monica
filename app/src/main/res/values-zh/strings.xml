@@ -461,5 +461,7 @@
     <string name="batch_favorite">批量收藏</string>
     <string name="batch_favorited">已将 %d 个密码添加到收藏</string>
     <string name="batch_unfavorited">已将 %d 个密码从收藏中移除</string>
+    <string name="add_to_favorites">添加到收藏</string>
+    <string name="remove_from_favorites">取消收藏</string>
     <string name="enter_master_password_confirm">请输入主密码确认</string>
 </resources>

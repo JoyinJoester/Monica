@@ -11,11 +11,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.util.TotpGenerator
@@ -32,7 +35,8 @@ fun TotpCodeCard(
     onClick: () -> Unit,
     onCopyCode: (String) -> Unit,
     modifier: Modifier = Modifier,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onToggleFavorite: ((Long, Boolean) -> Unit)? = null
 ) {
     // 解析TOTP数据
     val totpData = try {
@@ -127,6 +131,24 @@ fun TotpCodeCard(
                                 expanded = expanded,
                                 onDismissRequest = { expanded = false }
                             ) {
+                                // 收藏选项
+                                if (onToggleFavorite != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(if (item.isFavorite) R.string.remove_from_favorites else R.string.add_to_favorites)) },
+                                        onClick = {
+                                            expanded = false
+                                            onToggleFavorite(item.id, !item.isFavorite)
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                if (item.isFavorite) Icons.Default.FavoriteBorder else Icons.Default.Favorite,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    )
+                                }
+                                
                                 DropdownMenuItem(
                                     text = { Text("删除") },
                                     onClick = {

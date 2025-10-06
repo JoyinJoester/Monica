@@ -462,6 +462,9 @@
     <string name="batch_favorite">Yêu thích hàng loạt</string>
     <string name="batch_favorited">Đã thêm %d mật khẩu vào yêu thích</string>
     <string name="batch_unfavorited">Đã xóa %d mật khẩu khỏi yêu thích</string>
+    <string name="add_to_favorites">Thêm vào yêu thích</string>
+    <string name="remove_from_favorites">Xóa khỏi yêu thích</string>
     <string name="enter_master_password_confirm">Vui lòng nhập mật khẩu chính để xác nhận</string>
 </resources>
+
 

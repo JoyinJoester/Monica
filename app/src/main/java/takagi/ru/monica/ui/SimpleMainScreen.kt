@@ -648,6 +648,9 @@ private fun TotpListContent(
                         onClick = { onTotpClick(item.id) },
                         onDelete = {
                             itemToDelete = item
+                        },
+                        onToggleFavorite = { id, isFavorite ->
+                            viewModel.toggleFavorite(id, isFavorite)
                         }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -835,7 +838,8 @@ private fun TotpListContent(
 private fun TotpItemCard(
     item: takagi.ru.monica.data.SecureItem,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleFavorite: (Long, Boolean) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     
@@ -849,7 +853,8 @@ private fun TotpItemCard(
             clipboard.setPrimaryClip(clip)
             android.widget.Toast.makeText(context, "验证码已复制", android.widget.Toast.LENGTH_SHORT).show()
         },
-        onDelete = onDelete
+        onDelete = onDelete,
+        onToggleFavorite = onToggleFavorite
     )
 }
 
@@ -1001,6 +1006,9 @@ private fun BankCardListContent(
                     onClick = { onCardClick(card.id) },
                     onDelete = {
                         itemToDelete = card
+                    },
+                    onToggleFavorite = { id, isFavorite ->
+                        viewModel.toggleFavorite(id)
                     }
                 )
             }
@@ -1093,12 +1101,14 @@ private fun BankCardListContent(
 private fun BankCardItemCard(
     item: takagi.ru.monica.data.SecureItem,
     onClick: () -> Unit,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onToggleFavorite: ((Long, Boolean) -> Unit)? = null
 ) {
     takagi.ru.monica.ui.components.BankCardCard(
         item = item,
         onClick = onClick,
-        onDelete = onDelete
+        onDelete = onDelete,
+        onToggleFavorite = onToggleFavorite
     )
 }
 
@@ -1250,6 +1260,9 @@ private fun DocumentListContent(
                     onClick = { onDocumentClick(document.id) },
                     onDelete = {
                         itemToDelete = document
+                    },
+                    onToggleFavorite = { id, isFavorite ->
+                        viewModel.toggleFavorite(id)
                     }
                 )
             }
@@ -1342,12 +1355,14 @@ private fun DocumentListContent(
 private fun DocumentItemCard(
     item: takagi.ru.monica.data.SecureItem,
     onClick: () -> Unit,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onToggleFavorite: ((Long, Boolean) -> Unit)? = null
 ) {
     takagi.ru.monica.ui.components.DocumentCard(
         item = item,
         onClick = onClick,
-        onDelete = onDelete
+        onDelete = onDelete,
+        onToggleFavorite = onToggleFavorite
     )
 }
 

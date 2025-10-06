@@ -14,7 +14,7 @@ interface SecureItemDao {
     fun getAllItems(): Flow<List<SecureItem>>
     
     // 根据类型获取项目
-    @Query("SELECT * FROM secure_items WHERE itemType = :type ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM secure_items WHERE itemType = :type ORDER BY isFavorite DESC, updatedAt DESC")
     fun getItemsByType(type: ItemType): Flow<List<SecureItem>>
     
     // 搜索项目
@@ -22,7 +22,7 @@ interface SecureItemDao {
     fun searchItems(query: String): Flow<List<SecureItem>>
     
     // 根据类型搜索
-    @Query("SELECT * FROM secure_items WHERE itemType = :type AND (title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%') ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM secure_items WHERE itemType = :type AND (title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%') ORDER BY isFavorite DESC, updatedAt DESC")
     fun searchItemsByType(type: ItemType, query: String): Flow<List<SecureItem>>
     
     // 获取收藏项目
