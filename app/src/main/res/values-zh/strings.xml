@@ -507,6 +507,19 @@
     <!-- Autofill -->
     <string name="autofill">自动填充</string>
     <string name="autofill_subtitle">为应用和网站自动填充密码</string>
+    <string name="autofill_save_password">保存密码</string>
+    <string name="autofill_save_to_monica">将此密码保存到Monica</string>
+    <string name="autofill_title">标题</string>
+    <string name="autofill_username">用户名</string>
+    <string name="autofill_password">密码</string>
+    <string name="autofill_website_app">网站/应用</string>
+    <string name="autofill_notes">备注</string>
+    <string name="autofill_show_advanced">显示高级选项</string>
+    <string name="autofill_hide_advanced">隐藏高级选项</string>
+    <string name="autofill_save_button">保存密码</string>
+    <string name="autofill_cancel">取消</string>
+    <string name="autofill_never_for_site">从不为此网站保存</string>
+    <string name="autofill_saved_via">通过自动填充保存</string>
     
     <!-- Clear All Data -->
     <string name="clear_all_data">清空所有数据</string>

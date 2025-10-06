@@ -17,11 +17,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
@@ -140,11 +142,13 @@ fun SavePasswordDialog(
     onCancel: () -> Unit,
     onNeverForThisSite: () -> Unit
 ) {
+    val defaultNotes = stringResource(R.string.autofill_saved_via)
+    
     var title by remember { mutableStateOf(website.takeIf { it.isNotBlank() } ?: packageName) }
     var editedUsername by remember { mutableStateOf(username) }
     var editedPassword by remember { mutableStateOf(password) }
     var editedWebsite by remember { mutableStateOf(website) }
-    var notes by remember { mutableStateOf("通过自动填充保存") }
+    var notes by remember { mutableStateOf(defaultNotes) }
     var showAdvancedOptions by remember { mutableStateOf(false) }
     
     Surface(
@@ -185,12 +189,12 @@ fun SavePasswordDialog(
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "保存密码",
+                                text = stringResource(R.string.autofill_save_password),
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "将此密码保存到Monica",
+                                text = stringResource(R.string.autofill_save_to_monica),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -203,7 +207,7 @@ fun SavePasswordDialog(
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
-                        label = { Text("标题") },
+                        label = { Text(stringResource(R.string.autofill_title)) },
                         leadingIcon = {
                             Icon(Icons.Default.Title, contentDescription = null)
                         },
@@ -214,7 +218,7 @@ fun SavePasswordDialog(
                     OutlinedTextField(
                         value = editedUsername,
                         onValueChange = { editedUsername = it },
-                        label = { Text("用户名") },
+                        label = { Text(stringResource(R.string.autofill_username)) },
                         leadingIcon = {
                             Icon(Icons.Default.Person, contentDescription = null)
                         },
@@ -225,7 +229,7 @@ fun SavePasswordDialog(
                     OutlinedTextField(
                         value = editedPassword,
                         onValueChange = { editedPassword = it },
-                        label = { Text("密码") },
+                        label = { Text(stringResource(R.string.autofill_password)) },
                         leadingIcon = {
                             Icon(Icons.Default.Key, contentDescription = null)
                         },
@@ -246,14 +250,19 @@ fun SavePasswordDialog(
                             contentDescription = null
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (showAdvancedOptions) "隐藏高级选项" else "显示高级选项")
+                        Text(
+                            if (showAdvancedOptions) 
+                                stringResource(R.string.autofill_hide_advanced)
+                            else 
+                                stringResource(R.string.autofill_show_advanced)
+                        )
                     }
                     
                     if (showAdvancedOptions) {
                         OutlinedTextField(
                             value = editedWebsite,
                             onValueChange = { editedWebsite = it },
-                            label = { Text("网站/应用") },
+                            label = { Text(stringResource(R.string.autofill_website_app)) },
                             leadingIcon = {
                                 Icon(Icons.Default.Language, contentDescription = null)
                             },
@@ -264,7 +273,7 @@ fun SavePasswordDialog(
                         OutlinedTextField(
                             value = notes,
                             onValueChange = { notes = it },
-                            label = { Text("备注") },
+                            label = { Text(stringResource(R.string.autofill_notes)) },
                             leadingIcon = {
                                 Icon(Icons.Default.Note, contentDescription = null)
                             },
@@ -296,7 +305,7 @@ fun SavePasswordDialog(
                         ) {
                             Icon(Icons.Default.Save, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("保存密码", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.autofill_save_button), style = MaterialTheme.typography.titleMedium)
                         }
                         
                         // 取消按钮
@@ -307,7 +316,7 @@ fun SavePasswordDialog(
                         ) {
                             Icon(Icons.Default.Close, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("取消", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.autofill_cancel), style = MaterialTheme.typography.titleMedium)
                         }
                         
                         // 从不为此网站保存
@@ -317,7 +326,7 @@ fun SavePasswordDialog(
                         ) {
                             Icon(Icons.Default.Block, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("从不为此网站保存")
+                            Text(stringResource(R.string.autofill_never_for_site))
                         }
                     }
                 }

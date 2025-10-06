@@ -20,12 +20,23 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+        
+        // NDK 架构优化 - 只保留常用架构
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
     }
 
     buildTypes {
         release {
+            minifyEnabled true
+            shrinkResources true
+            // 使用标准ProGuard而非优化版
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            shrinkResources false
         }
     }
     compileOptions {

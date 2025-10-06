@@ -507,6 +507,19 @@
     <!-- Autofill -->
     <string name="autofill">Autofill</string>
     <string name="autofill_subtitle">Auto-fill passwords for apps and websites</string>
+    <string name="autofill_save_password">Save Password</string>
+    <string name="autofill_save_to_monica">Save this password to Monica</string>
+    <string name="autofill_title">Title</string>
+    <string name="autofill_username">Username</string>
+    <string name="autofill_password">Password</string>
+    <string name="autofill_website_app">Website/App</string>
+    <string name="autofill_notes">Notes</string>
+    <string name="autofill_show_advanced">Show Advanced Options</string>
+    <string name="autofill_hide_advanced">Hide Advanced Options</string>
+    <string name="autofill_save_button">Save Password</string>
+    <string name="autofill_cancel">Cancel</string>
+    <string name="autofill_never_for_site">Never save for this website</string>
+    <string name="autofill_saved_via">Saved via autofill</string>
     
     <!-- Clear All Data -->
     <string name="clear_all_data">Clear All Data</string>

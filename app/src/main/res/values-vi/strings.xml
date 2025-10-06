@@ -465,6 +465,25 @@
     <string name="add_to_favorites">Thêm vào yêu thích</string>
     <string name="remove_from_favorites">Xóa khỏi yêu thích</string>
     <string name="enter_master_password_confirm">Vui lòng nhập mật khẩu chính để xác nhận</string>
+    
+    <!-- Autofill -->
+    <string name="autofill">Tự động điền</string>
+    <string name="autofill_subtitle">Tự động điền mật khẩu cho ứng dụng và trang web</string>
+    <string name="autofill_save_password">Lưu mật khẩu</string>
+    <string name="autofill_save_to_monica">Lưu mật khẩu này vào Monica</string>
+    <string name="autofill_title">Tiêu đề</string>
+    <string name="autofill_username">Tên người dùng</string>
+    <string name="autofill_password">Mật khẩu</string>
+    <string name="autofill_website_app">Trang web/Ứng dụng</string>
+    <string name="autofill_notes">Ghi chú</string>
+    <string name="autofill_show_advanced">Hiện tùy chọn nâng cao</string>
+    <string name="autofill_hide_advanced">Ẩn tùy chọn nâng cao</string>
+    <string name="autofill_save_button">Lưu mật khẩu</string>
+    <string name="autofill_cancel">Hủy</string>
+    <string name="autofill_never_for_site">Không bao giờ lưu cho trang web này</string>
+    <string name="autofill_saved_via">Đã lưu qua tự động điền</string>
 </resources>
+
+
 
 
