@@ -457,5 +457,6 @@
     <string name="batch_delete_bankcards_title">Batch Delete Bank Cards</string>
     <string name="batch_delete_bankcards_message">Are you sure you want to delete %d bank cards?</string>
     <string name="deleted_items">Deleted %d items</string>
+    <string name="deleted">Deleted</string>
     <string name="enter_master_password_confirm">Please enter your master password to confirm</string>
 </resources>

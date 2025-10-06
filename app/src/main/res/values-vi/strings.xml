@@ -458,5 +458,7 @@
     <string name="batch_delete_bankcards_title">Xóa hàng loạt thẻ ngân hàng</string>
     <string name="batch_delete_bankcards_message">Bạn có chắc chắn muốn xóa %d thẻ ngân hàng?</string>
     <string name="deleted_items">Đã xóa %d mục</string>
+    <string name="deleted">Đã xóa</string>
     <string name="enter_master_password_confirm">Vui lòng nhập mật khẩu chính để xác nhận</string>
 </resources>
+

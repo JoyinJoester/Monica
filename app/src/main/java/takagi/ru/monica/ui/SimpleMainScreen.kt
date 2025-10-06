@@ -502,6 +502,8 @@ private fun TotpListContent(
     
     // 添加单项删除对话框状态
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
+    var singleItemPasswordInput by remember { mutableStateOf("") }
+    var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
     
     // 定义回调函数
     val exitSelection = {
@@ -611,28 +613,85 @@ private fun TotpListContent(
         }
     }
     
-    // 单项删除确认对话框
+    // 单项删除确认对话框(带密码验证)
     itemToDelete?.let { item ->
         AlertDialog(
-            onDismissRequest = { itemToDelete = null },
+            onDismissRequest = { 
+                itemToDelete = null
+                singleItemPasswordInput = ""
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
             title = { Text(stringResource(R.string.delete_authenticator_title)) },
-            text = { Text(stringResource(R.string.delete_authenticator_message, item.title)) },
+            text = { 
+                Column {
+                    Text(stringResource(R.string.delete_authenticator_message, item.title))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = singleItemPasswordInput,
+                        onValueChange = { singleItemPasswordInput = it },
+                        label = { Text(stringResource(R.string.enter_master_password_confirm)) },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onDeleteTotp(item)
-                        itemToDelete = null
-                    }
+                        showSingleItemPasswordVerify = true
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    enabled = singleItemPasswordInput.isNotEmpty()
                 ) {
                     Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { itemToDelete = null }) {
+                TextButton(onClick = { 
+                    itemToDelete = null
+                    singleItemPasswordInput = ""
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
         )
+    }
+    
+    // 单项删除密码验证
+    if (showSingleItemPasswordVerify && itemToDelete != null) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            val securityManager = takagi.ru.monica.security.SecurityManager(context)
+            if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
+                // 删除单项
+                onDeleteTotp(itemToDelete!!)
+                
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.deleted),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                
+                itemToDelete = null
+                singleItemPasswordInput = ""
+                showSingleItemPasswordVerify = false
+            } else {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.current_password_incorrect),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                showSingleItemPasswordVerify = false
+            }
+        }
     }
     
     // 批量删除确认对话框
@@ -766,11 +825,14 @@ private fun BankCardListContent(
     var masterPassword by remember { mutableStateOf("") }
     var showPasswordDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     val cards by viewModel.allCards.collectAsState(initial = emptyList())
     
     // 添加单项删除对话框状态
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
+    var singleItemPasswordInput by remember { mutableStateOf("") }
+    var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
     
     // 通知父组件选择模式状态变化
     LaunchedEffect(isSelectionMode, selectedItems.size) {
@@ -902,28 +964,85 @@ private fun BankCardListContent(
         }
     }
     
-    // 单项删除确认对话框
+    // 单项删除确认对话框(带密码验证)
     itemToDelete?.let { item ->
         AlertDialog(
-            onDismissRequest = { itemToDelete = null },
+            onDismissRequest = { 
+                itemToDelete = null
+                singleItemPasswordInput = ""
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
             title = { Text(stringResource(R.string.delete_bank_card_title)) },
-            text = { Text(stringResource(R.string.delete_bank_card_message, item.title)) },
+            text = { 
+                Column {
+                    Text(stringResource(R.string.delete_bank_card_message, item.title))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = singleItemPasswordInput,
+                        onValueChange = { singleItemPasswordInput = it },
+                        label = { Text(stringResource(R.string.enter_master_password_confirm)) },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteCard(item.id)
-                        itemToDelete = null
-                    }
+                        showSingleItemPasswordVerify = true
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    enabled = singleItemPasswordInput.isNotEmpty()
                 ) {
                     Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { itemToDelete = null }) {
+                TextButton(onClick = { 
+                    itemToDelete = null
+                    singleItemPasswordInput = ""
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
         )
+    }
+    
+    // 单项删除密码验证
+    if (showSingleItemPasswordVerify && itemToDelete != null) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            val securityManager = takagi.ru.monica.security.SecurityManager(context)
+            if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
+                // 删除单项
+                viewModel.deleteCard(itemToDelete!!.id)
+                
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.deleted),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                
+                itemToDelete = null
+                singleItemPasswordInput = ""
+                showSingleItemPasswordVerify = false
+            } else {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.current_password_incorrect),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                showSingleItemPasswordVerify = false
+            }
+        }
     }
 }
 
@@ -955,11 +1074,14 @@ private fun DocumentListContent(
     var masterPassword by remember { mutableStateOf("") }
     var showPasswordDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
     
     // 添加单项删除对话框状态
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
+    var singleItemPasswordInput by remember { mutableStateOf("") }
+    var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
     
     // 通知父组件选择模式状态变化
     LaunchedEffect(isSelectionMode, selectedItems.size) {
@@ -1091,28 +1213,85 @@ private fun DocumentListContent(
         }
     }
     
-    // 单项删除确认对话框
+    // 单项删除确认对话框(带密码验证)
     itemToDelete?.let { item ->
         AlertDialog(
-            onDismissRequest = { itemToDelete = null },
+            onDismissRequest = { 
+                itemToDelete = null
+                singleItemPasswordInput = ""
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
             title = { Text(stringResource(R.string.delete_document_title)) },
-            text = { Text(stringResource(R.string.delete_document_message, item.title)) },
+            text = { 
+                Column {
+                    Text(stringResource(R.string.delete_document_message, item.title))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = singleItemPasswordInput,
+                        onValueChange = { singleItemPasswordInput = it },
+                        label = { Text(stringResource(R.string.enter_master_password_confirm)) },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteDocument(item.id)
-                        itemToDelete = null
-                    }
+                        showSingleItemPasswordVerify = true
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    enabled = singleItemPasswordInput.isNotEmpty()
                 ) {
                     Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { itemToDelete = null }) {
+                TextButton(onClick = { 
+                    itemToDelete = null
+                    singleItemPasswordInput = ""
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
         )
+    }
+    
+    // 单项删除密码验证
+    if (showSingleItemPasswordVerify && itemToDelete != null) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            val securityManager = takagi.ru.monica.security.SecurityManager(context)
+            if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
+                // 删除单项
+                viewModel.deleteDocument(itemToDelete!!.id)
+                
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.deleted),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                
+                itemToDelete = null
+                singleItemPasswordInput = ""
+                showSingleItemPasswordVerify = false
+            } else {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.current_password_incorrect),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                showSingleItemPasswordVerify = false
+            }
+        }
     }
 }
 
