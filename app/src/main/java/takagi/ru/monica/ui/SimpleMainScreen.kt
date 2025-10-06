@@ -500,6 +500,9 @@ private fun TotpListContent(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
+    // 添加单项删除对话框状态
+    var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
+    
     // 定义回调函数
     val exitSelection = {
         isSelectionMode = false
@@ -599,13 +602,37 @@ private fun TotpListContent(
                         item = item,
                         onClick = { onTotpClick(item.id) },
                         onDelete = {
-                            // TODO: 删除确认对话框
+                            itemToDelete = item
                         }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
+    }
+    
+    // 单项删除确认对话框
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text(stringResource(R.string.delete_authenticator_title)) },
+            text = { Text(stringResource(R.string.delete_authenticator_message, item.title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteTotp(item)
+                        itemToDelete = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
     
     // 批量删除确认对话框
@@ -742,6 +769,9 @@ private fun BankCardListContent(
     
     val cards by viewModel.allCards.collectAsState(initial = emptyList())
     
+    // 添加单项删除对话框状态
+    var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
+    
     // 通知父组件选择模式状态变化
     LaunchedEffect(isSelectionMode, selectedItems.size) {
         if (isSelectionMode) {
@@ -865,11 +895,35 @@ private fun BankCardListContent(
                     item = card,
                     onClick = { onCardClick(card.id) },
                     onDelete = {
-                        // TODO: 删除确认对话框
+                        itemToDelete = card
                     }
                 )
             }
         }
+    }
+    
+    // 单项删除确认对话框
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text(stringResource(R.string.delete_bank_card_title)) },
+            text = { Text(stringResource(R.string.delete_bank_card_message, item.title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCard(item.id)
+                        itemToDelete = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 
@@ -903,6 +957,9 @@ private fun DocumentListContent(
     val scope = rememberCoroutineScope()
     
     val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
+    
+    // 添加单项删除对话框状态
+    var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
     
     // 通知父组件选择模式状态变化
     LaunchedEffect(isSelectionMode, selectedItems.size) {
@@ -1027,11 +1084,35 @@ private fun DocumentListContent(
                     item = document,
                     onClick = { onDocumentClick(document.id) },
                     onDelete = {
-                        // TODO: 删除确认对话框
+                        itemToDelete = document
                     }
                 )
             }
         }
+    }
+    
+    // 单项删除确认对话框
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text(stringResource(R.string.delete_document_title)) },
+            text = { Text(stringResource(R.string.delete_document_message, item.title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteDocument(item.id)
+                        itemToDelete = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 
