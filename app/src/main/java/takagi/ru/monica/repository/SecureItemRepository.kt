@@ -67,4 +67,11 @@ class SecureItemRepository(
     suspend fun updateSortOrders(items: List<Pair<Long, Int>>) {
         secureItemDao.updateSortOrders(items)
     }
+    
+    /**
+     * 检查是否存在重复的安全项
+     */
+    suspend fun isDuplicateItem(itemType: ItemType, title: String): Boolean {
+        return secureItemDao.findDuplicateItem(itemType, title) != null
+    }
 }

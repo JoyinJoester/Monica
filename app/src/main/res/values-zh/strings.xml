@@ -28,6 +28,22 @@
     <string name="show_password">显示密码</string>
     <string name="hide_password">隐藏密码</string>
     
+    <!-- Biometric Authentication -->
+    <string name="biometric_login_title">解锁 Monica</string>
+    <string name="biometric_login_subtitle">验证您的身份</string>
+    <string name="biometric_login_description">使用指纹识别解锁</string>
+    <string name="biometric_available">生物识别认证可用</string>
+    <string name="biometric_no_hardware">设备不支持生物识别</string>
+    <string name="biometric_hw_unavailable">生物识别硬件不可用</string>
+    <string name="biometric_none_enrolled">未录入生物信息。请在系统设置中设置指纹或面部识别</string>
+    <string name="biometric_not_available">生物识别认证不可用</string>
+    <string name="biometric_error">生物识别认证错误: %s</string>
+    <string name="biometric_success">认证成功</string>
+    <string name="biometric_unlock">指纹解锁</string>
+    <string name="biometric_unlock_enabled">指纹解锁已启用</string>
+    <string name="biometric_unlock_disabled">指纹解锁已禁用</string>
+    <string name="biometric_cannot_enable">无法启用指纹解锁</string>
+    
     <!-- Password List Screen -->
     <string name="search_passwords">搜索密码...</string>
     <string name="no_passwords_saved">还没有保存任何密码</string>
@@ -38,6 +54,8 @@
     <string name="copy_username">复制用户名</string>
     <string name="copy_password">复制密码</string>
     <string name="copy">复制</string>
+    <string name="username_copied">用户名已复制到剪贴板</string>
+    <string name="password_copied">密码已复制到剪贴板</string>
     
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">添加密码</string>
@@ -443,6 +461,24 @@
     <string name="import_passwords">导入密码</string>
     <string name="import_passwords_description">从CSV文件导入数据</string>
     
+    <!-- WebDAV Backup -->
+    <string name="webdav_backup">WebDAV 备份</string>
+    <string name="webdav_backup_description">备份到 WebDAV 服务器</string>
+    <string name="webdav_config">WebDAV 配置</string>
+    <string name="webdav_server_url">服务器地址</string>
+    <string name="webdav_test_connection">测试连接</string>
+    <string name="webdav_reconfigure">重新配置</string>
+    <string name="webdav_connection_success">连接成功</string>
+    <string name="webdav_connection_failed">连接失败: %s</string>
+    <string name="webdav_fill_all_fields">请填写所有字段</string>
+    <string name="webdav_backup_list">备份列表</string>
+    <string name="webdav_no_backups">未找到备份</string>
+    <string name="delete_backup">删除备份</string>
+    <string name="delete_backup_confirm">确定要删除备份吗:\n%s?</string>
+    <string name="backup_deleted">备份已删除</string>
+    <string name="delete_failed">删除失败: %s</string>
+    <string name="refresh">刷新</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">已选择 %d 项</string>
     <string name="exit_selection_mode">退出选择模式</string>
@@ -466,4 +502,39 @@
     <string name="add_to_favorites">添加到收藏</string>
     <string name="remove_from_favorites">取消收藏</string>
     <string name="enter_master_password_confirm">请输入主密码确认</string>
+    
+    <!-- Autofill -->
+    <string name="autofill">自动填充</string>
+    <string name="autofill_subtitle">为应用和网站自动填充密码</string>
+    
+    <!-- Clear All Data -->
+    <string name="clear_all_data">清空所有数据</string>
+    <string name="clear_all_data_subtitle">删除所有密码、验证器、银行卡和证件数据</string>
+    <string name="clear_all_data_confirm">确认清空所有数据?</string>
+    <string name="clear_all_data_warning">此操作将永久删除所有密码、验证器、银行卡和证件数据，且无法恢复。\n\n建议在清空前先导出备份!</string>
+    <string name="enter_master_password_to_confirm">请输入主密码确认</string>
+    <string name="clearing_data">正在清空数据…</string>
+    <string name="password_incorrect">密码错误</string>
+    
+    <!-- Security Analysis -->
+    <string name="security_analysis">安全分析</string>
+    <string name="security_analysis_description">检查密码安全性、泄露情况和2FA状态</string>
+    <string name="start_security_analysis">开始安全分析</string>
+    <string name="analysis_may_take_time">分析可能需要几分钟时间</string>
+    <string name="security_overview">安全概览</string>
+    <string name="analyzing_security">正在分析安全性…</string>
+    <string name="duplicate_passwords">重复密码</string>
+    <string name="duplicate_urls">重复URL</string>
+    <string name="compromised_passwords">泄露密码</string>
+    <string name="no_twofa">未启用2FA</string>
+    <string name="used_in_accounts">在 %d 个账户中使用</string>
+    <string name="count_accounts">%d 个账户</string>
+    <string name="breached_times">泄露 %,d 次</string>
+    <string name="supports_twofa">支持双重验证</string>
+    <string name="no_duplicate_passwords">太好了！未发现重复密码</string>
+    <string name="no_duplicate_urls">太好了！未发现重复URL</string>
+    <string name="no_compromised_passwords">非常好！未发现泄露密码</string>
+    <string name="all_accounts_have_twofa">所有重要账户都已启用双重验证</string>
+    <string name="pwned_passwords_attribution">技术支持：Have I Been Pwned</string>
+    <string name="twofa_directory_attribution">参考：2FA Directory</string>
 </resources>

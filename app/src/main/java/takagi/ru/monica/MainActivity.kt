@@ -2,9 +2,9 @@ package takagi.ru.monica
 
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +29,7 @@ import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.ResetPasswordScreen
 import takagi.ru.monica.ui.screens.ForgotPasswordScreen
 import takagi.ru.monica.ui.screens.SecurityQuestionsSetupScreen
+import takagi.ru.monica.ui.screens.WebDavBackupScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
@@ -44,7 +45,7 @@ import android.content.Context
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     
     override fun attachBaseContext(newBase: Context?) {
         if (newBase != null) {
@@ -204,6 +205,15 @@ fun MonicaContent(
                 },
                 onNavigateToImportData = {
                     navController.navigate(Screen.ImportData.route)
+                },
+                onNavigateToWebDav = {
+                    navController.navigate(Screen.WebDavBackup.route)
+                },
+                onNavigateToAutofill = {
+                    navController.navigate(Screen.AutofillSettings.route)
+                },
+                onSecurityAnalysis = {
+                    navController.navigate(Screen.SecurityAnalysis.route)
                 },
                 onClearAllData = {
                     // 清空所有数据
@@ -436,6 +446,9 @@ fun MonicaContent(
                 onSupportAuthor = {
                     navController.navigate(Screen.SupportAuthor.route)
                 },
+                onNavigateToWebDav = {
+                    navController.navigate(Screen.WebDavBackup.route)
+                },
                 onClearAllData = {
                     // 清空所有数据
                     android.util.Log.d("MainActivity", "onClearAllData called")
@@ -551,6 +564,44 @@ fun MonicaContent(
                     navController.navigate(Screen.Main.createRoute(tab = 4)) {
                         popUpTo(Screen.Main.routePattern) { inclusive = true }
                     }
+                }
+            )
+        }
+        
+        composable(Screen.WebDavBackup.route) {
+            WebDavBackupScreen(
+                passwordRepository = repository,
+                secureItemRepository = secureItemRepository,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        
+        composable(Screen.AutofillSettings.route) {
+            takagi.ru.monica.ui.screens.AutofillSettingsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        
+        composable(Screen.SecurityAnalysis.route) {
+            val securityViewModel: takagi.ru.monica.viewmodel.SecurityAnalysisViewModel = viewModel {
+                takagi.ru.monica.viewmodel.SecurityAnalysisViewModel(repository)
+            }
+            val analysisData by securityViewModel.analysisData.collectAsState()
+            
+            takagi.ru.monica.ui.screens.SecurityAnalysisScreen(
+                analysisData = analysisData,
+                onStartAnalysis = {
+                    securityViewModel.performSecurityAnalysis()
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToPassword = { passwordId ->
+                    navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
                 }
             )
         }

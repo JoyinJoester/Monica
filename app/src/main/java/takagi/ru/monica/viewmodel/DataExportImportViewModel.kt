@@ -84,6 +84,7 @@ class DataExportImportViewModel(
                     android.util.Log.d("DataImport", "ViewModel收到 ${items.size} 条导入数据")
                     var count = 0
                     var errorCount = 0
+                    var skippedCount = 0
                     // 将导入的数据添加到数据库
                     items.forEach { exportItem ->
                         try {
@@ -94,42 +95,69 @@ class DataExportImportViewModel(
                             if (itemType == ItemType.PASSWORD) {
                                 // PASSWORD类型存入PasswordEntry表
                                 val passwordData = parsePasswordData(exportItem.itemData)
-                                val passwordEntry = PasswordEntry(
-                                    id = 0, // 让数据库自动生成新ID
-                                    title = exportItem.title,
-                                    website = passwordData["website"] ?: "",
-                                    username = passwordData["username"] ?: "",
-                                    password = passwordData["password"] ?: "",
-                                    notes = exportItem.notes,
-                                    isFavorite = exportItem.isFavorite,
-                                    createdAt = Date(exportItem.createdAt),
-                                    updatedAt = Date(exportItem.updatedAt)
+                                val website = passwordData["website"] ?: ""
+                                val username = passwordData["username"] ?: ""
+                                
+                                // 检查是否重复
+                                val isDuplicate = passwordRepository.isDuplicateEntry(
+                                    exportItem.title,
+                                    username,
+                                    website
                                 )
-                                passwordRepository.insertPasswordEntry(passwordEntry)
-                                android.util.Log.d("DataImport", "成功插入到PasswordEntry表: ${exportItem.title}")
+                                
+                                if (!isDuplicate) {
+                                    val passwordEntry = PasswordEntry(
+                                        id = 0, // 让数据库自动生成新ID
+                                        title = exportItem.title,
+                                        website = website,
+                                        username = username,
+                                        password = passwordData["password"] ?: "",
+                                        notes = exportItem.notes,
+                                        isFavorite = exportItem.isFavorite,
+                                        createdAt = Date(exportItem.createdAt),
+                                        updatedAt = Date(exportItem.updatedAt)
+                                    )
+                                    passwordRepository.insertPasswordEntry(passwordEntry)
+                                    android.util.Log.d("DataImport", "成功插入到PasswordEntry表: ${exportItem.title}")
+                                    count++
+                                } else {
+                                    android.util.Log.d("DataImport", "跳过重复密码: ${exportItem.title}")
+                                    skippedCount++
+                                }
                             } else {
                                 // 其他类型存入SecureItem表
-                                val secureItem = SecureItem(
-                                    id = 0, // 让数据库自动生成新ID
-                                    itemType = itemType,
-                                    title = exportItem.title,
-                                    itemData = exportItem.itemData,
-                                    notes = exportItem.notes,
-                                    isFavorite = exportItem.isFavorite,
-                                    imagePaths = exportItem.imagePaths,
-                                    createdAt = Date(exportItem.createdAt),
-                                    updatedAt = Date(exportItem.updatedAt)
+                                // 检查是否重复
+                                val isDuplicate = secureItemRepository.isDuplicateItem(
+                                    itemType,
+                                    exportItem.title
                                 )
-                                secureItemRepository.insertItem(secureItem)
-                                android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
+                                
+                                if (!isDuplicate) {
+                                    val secureItem = SecureItem(
+                                        id = 0, // 让数据库自动生成新ID
+                                        itemType = itemType,
+                                        title = exportItem.title,
+                                        itemData = exportItem.itemData,
+                                        notes = exportItem.notes,
+                                        isFavorite = exportItem.isFavorite,
+                                        imagePaths = exportItem.imagePaths,
+                                        createdAt = Date(exportItem.createdAt),
+                                        updatedAt = Date(exportItem.updatedAt)
+                                    )
+                                    secureItemRepository.insertItem(secureItem)
+                                    android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
+                                    count++
+                                } else {
+                                    android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
+                                    skippedCount++
+                                }
                             }
-                            count++
                         } catch (e: Exception) {
                             errorCount++
                             android.util.Log.e("DataImport", "插入数据库失败: ${exportItem.title}, 错误: ${e.message}", e)
                         }
                     }
-                    android.util.Log.d("DataImport", "导入完成: 成功=$count, 失败=$errorCount")
+                    android.util.Log.d("DataImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
                     Result.success(count)
                 },
                 onFailure = { error ->

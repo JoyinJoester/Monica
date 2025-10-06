@@ -59,6 +59,9 @@ fun SimpleMainScreen(
     onNavigateToSupportAuthor: () -> Unit = {},
     onNavigateToExportData: () -> Unit = {},
     onNavigateToImportData: () -> Unit = {},
+    onNavigateToWebDav: () -> Unit = {},
+    onNavigateToAutofill: () -> Unit = {},
+    onSecurityAnalysis: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     initialTab: Int = 0
 ) {
@@ -274,6 +277,9 @@ fun SimpleMainScreen(
                         onSupportAuthor = onNavigateToSupportAuthor,
                         onExportData = onNavigateToExportData,
                         onImportData = onNavigateToImportData,
+                        onNavigateToWebDav = onNavigateToWebDav,
+                        onNavigateToAutofill = onNavigateToAutofill,
+                        onSecurityAnalysis = onSecurityAnalysis,
                         onClearAllData = onClearAllData,
                         showTopBar = false  // 在标签页中不显示顶栏
                     )

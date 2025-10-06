@@ -1,22 +1,31 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.app.Activity
+import android.content.ContextWrapper
 import android.content.Intent
+import android.widget.Toast
+import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -33,9 +42,33 @@ fun SettingsScreen(
     onExportData: () -> Unit = {},
     onImportData: () -> Unit = {},
     onClearAllData: () -> Unit = {},
+    onNavigateToWebDav: () -> Unit = {},
+    onNavigateToAutofill: () -> Unit = {},
+    onSecurityAnalysis: () -> Unit = {},
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
     val context = LocalContext.current
+    
+    // 从 Context 获取 FragmentActivity - 遍历 ContextWrapper 链
+    val activity = remember {
+        var ctx = context
+        android.util.Log.d("SettingsScreen", "Context type: ${ctx.javaClass.name}")
+        var count = 0
+        while (ctx is ContextWrapper) {
+            count++
+            android.util.Log.d("SettingsScreen", "Level $count: ${ctx.javaClass.name}")
+            if (ctx is FragmentActivity) {
+                android.util.Log.d("SettingsScreen", "Found FragmentActivity at level $count")
+                return@remember ctx
+            }
+            ctx = ctx.baseContext
+        }
+        android.util.Log.e("SettingsScreen", "No FragmentActivity found after $count levels")
+        null
+    }
+    
+    android.util.Log.d("SettingsScreen", "Final activity: $activity")
+    
     val settings by viewModel.settings.collectAsState()
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
@@ -45,6 +78,20 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     
+    // 生物识别帮助类
+    val biometricHelper = remember { BiometricAuthHelper(context) }
+    val isBiometricAvailable = remember { 
+        val available = biometricHelper.isBiometricAvailable()
+        android.util.Log.d("SettingsScreen", "Biometric available: $available")
+        android.util.Log.d("SettingsScreen", "Activity: $activity")
+        available
+    }
+    
+    // 使用本地状态跟踪生物识别开关,避免验证失败时状态不一致
+    var biometricSwitchState by remember(settings.biometricEnabled) { 
+        mutableStateOf(settings.biometricEnabled) 
+    }
+    
     Scaffold(
         topBar = if (showTopBar) {
             {
@@ -53,6 +100,16 @@ fun SettingsScreen(
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.Default.ArrowBack, contentDescription = context.getString(R.string.back))
+                        }
+                    },
+                    actions = {
+                        // 安全分析图标
+                        IconButton(onClick = onSecurityAnalysis) {
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = context.getString(R.string.security_analysis),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 )
@@ -67,6 +124,49 @@ fun SettingsScreen(
                 .padding(paddingValues)
                 .verticalScroll(scrollState)
         ) {
+            // 安全分析入口卡片 - 置顶显示
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .clickable { onSecurityAnalysis() },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = context.getString(R.string.security_analysis),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = context.getString(R.string.security_analysis_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            
             // Theme Settings
             SettingsSection(
                 title = context.getString(R.string.theme)
@@ -95,6 +195,89 @@ fun SettingsScreen(
             SettingsSection(
                 title = context.getString(R.string.security)
             ) {
+                // 生物识别开关
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.Fingerprint,
+                    title = context.getString(R.string.biometric_unlock),
+                    subtitle = if (isBiometricAvailable) {
+                        if (biometricSwitchState)
+                            context.getString(R.string.biometric_unlock_enabled)
+                        else
+                            context.getString(R.string.biometric_unlock_disabled)
+                    } else {
+                        biometricHelper.getBiometricStatusMessage()
+                    },
+                    checked = biometricSwitchState,
+                    enabled = isBiometricAvailable,
+                    onCheckedChange = { newState ->
+                        android.util.Log.d("SettingsScreen", "Switch clicked: newState=$newState, activity=$activity")
+                        if (newState) {
+                            // 用户想启用指纹解锁
+                            if (activity != null) {
+                                android.util.Log.d("SettingsScreen", "Starting biometric authentication...")
+                                // 需要先验证指纹
+                                biometricHelper.authenticate(
+                                    activity = activity,
+                                    title = context.getString(R.string.biometric_login_title),
+                                    subtitle = "验证指纹以启用指纹解锁",
+                                    description = context.getString(R.string.biometric_login_description),
+                                    negativeButtonText = context.getString(R.string.cancel),
+                                    onSuccess = {
+                                        // 验证成功,启用指纹解锁
+                                        android.util.Log.d("SettingsScreen", "Biometric authentication SUCCESS")
+                                        biometricSwitchState = true
+                                        viewModel.updateBiometricEnabled(true)
+                                        Toast.makeText(
+                                            context,
+                                            "指纹解锁已启用",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    onError = { errorCode, errorMsg ->
+                                        // 验证失败,保持关闭状态
+                                        android.util.Log.e("SettingsScreen", "Biometric authentication ERROR: code=$errorCode, msg=$errorMsg")
+                                        biometricSwitchState = false
+                                        Toast.makeText(
+                                            context,
+                                            "指纹验证失败: $errorMsg",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    onCancel = {
+                                        // 用户取消,保持关闭状态
+                                        android.util.Log.d("SettingsScreen", "Biometric authentication CANCELLED")
+                                        biometricSwitchState = false
+                                        Toast.makeText(
+                                            context,
+                                            "已取消",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                )
+                            } else {
+                                // activity 为空,无法验证,恢复开关状态
+                                android.util.Log.e("SettingsScreen", "Activity is NULL! Cannot authenticate")
+                                biometricSwitchState = false
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.biometric_cannot_enable),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        } else {
+                            // 用户想禁用指纹解锁,直接禁用不需要验证
+                            android.util.Log.d("SettingsScreen", "Disabling biometric unlock")
+                            biometricSwitchState = false
+                            viewModel.updateBiometricEnabled(false)
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.biometric_unlock_disabled),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                )
+                
                 SettingsItem(
                     icon = Icons.Default.Security,
                     title = context.getString(R.string.screenshot_protection),
@@ -141,9 +324,23 @@ fun SettingsScreen(
                 )
                 
                 SettingsItem(
+                    icon = Icons.Default.Cloud,
+                    title = context.getString(R.string.webdav_backup),
+                    subtitle = context.getString(R.string.webdav_backup_description),
+                    onClick = onNavigateToWebDav
+                )
+                
+                SettingsItem(
+                    icon = Icons.Default.VpnKey,
+                    title = context.getString(R.string.autofill),
+                    subtitle = context.getString(R.string.autofill_subtitle),
+                    onClick = onNavigateToAutofill
+                )
+                
+                SettingsItem(
                     icon = Icons.Default.DeleteForever,
-                    title = "清空所有数据",
-                    subtitle = "删除所有密码、验证器、银行卡和证件数据",
+                    title = context.getString(R.string.clear_all_data),
+                    subtitle = context.getString(R.string.clear_all_data_subtitle),
                     onClick = { showClearDataDialog = true },
                     iconTint = MaterialTheme.colorScheme.error
                 )
@@ -217,19 +414,19 @@ fun SettingsScreen(
                 )
             },
             title = {
-                Text("确认清空所有数据?")
+                Text(context.getString(R.string.clear_all_data_confirm))
             },
             text = {
                 Column {
                     Text(
-                        "此操作将永久删除所有密码、验证器、银行卡和证件数据,且无法恢复。\n\n建议在清空前先导出备份!",
+                        context.getString(R.string.clear_all_data_warning),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
                         value = clearDataPasswordInput,
                         onValueChange = { clearDataPasswordInput = it },
-                        label = { Text("请输入主密码确认") },
+                        label = { Text(context.getString(R.string.enter_master_password_to_confirm)) },
                         singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
@@ -250,7 +447,7 @@ fun SettingsScreen(
                                 onClearAllData()
                                 android.widget.Toast.makeText(
                                     context,
-                                    "正在清空数据...",
+                                    context.getString(R.string.clearing_data),
                                     android.widget.Toast.LENGTH_SHORT
                                 ).show()
                             } else {
@@ -258,7 +455,7 @@ fun SettingsScreen(
                                 android.util.Log.d("SettingsScreen", "Password verification failed")
                                 android.widget.Toast.makeText(
                                     context,
-                                    "主密码错误",
+                                    context.getString(R.string.password_incorrect),
                                     android.widget.Toast.LENGTH_SHORT
                                 ).show()
                                 clearDataPasswordInput = ""
@@ -271,7 +468,7 @@ fun SettingsScreen(
                     ),
                     enabled = clearDataPasswordInput.isNotEmpty()
                 ) {
-                    Text("确认清空")
+                    Text(context.getString(R.string.confirm))
                 }
             },
             dismissButton = {
@@ -281,7 +478,7 @@ fun SettingsScreen(
                         clearDataPasswordInput = ""
                     }
                 ) {
-                    Text("取消")
+                    Text(context.getString(R.string.cancel))
                 }
             }
         )
@@ -354,6 +551,76 @@ fun SettingsItem(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * 带开关的设置项组件
+ */
+@Composable
+fun SettingsItemWithSwitch(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+    iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) iconTint else iconTint.copy(alpha = 0.38f),
+                modifier = Modifier.size(24.dp)
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (enabled) {
+                        LocalContentColor.current
+                    } else {
+                        LocalContentColor.current.copy(alpha = 0.38f)
+                    }
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (enabled) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    }
+                )
+            }
+            
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled
             )
         }
     }

@@ -62,4 +62,10 @@ interface PasswordEntryDao {
     
     @Query("DELETE FROM password_entries")
     suspend fun deleteAllPasswordEntries()
+    
+    /**
+     * 检查是否存在相同的密码条目(根据title、username、website匹配)
+     */
+    @Query("SELECT * FROM password_entries WHERE title = :title AND username = :username AND website = :website LIMIT 1")
+    suspend fun findDuplicateEntry(title: String, username: String, website: String): PasswordEntry?
 }

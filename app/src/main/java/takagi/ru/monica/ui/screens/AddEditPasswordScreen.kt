@@ -1,5 +1,9 @@
 package takagi.ru.monica.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -10,12 +14,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
@@ -168,7 +179,7 @@ fun AddEditPasswordScreen(
                 leadingIcon = {
                     Icon(Icons.Default.Lock, contentDescription = null)
                 },
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                visualTransformation = if (passwordVisible) ColoredPasswordVisualTransformation() else PasswordVisualTransformation(),
                 trailingIcon = {
                     Row {
                         IconButton(onClick = { showPasswordGenerator = true }) {
@@ -231,6 +242,57 @@ fun AddEditPasswordScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 maxLines = 5
             )
+            
+            // 复制按钮区域（仅编辑模式显示）
+            if (isEditing && (username.isNotEmpty() || password.isNotEmpty())) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 复制账号按钮
+                    if (username.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("username", username)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, context.getString(R.string.username_copied), Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.copy_username))
+                        }
+                    }
+                    
+                    // 复制密码按钮
+                    if (password.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("password", password)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, context.getString(R.string.password_copied), Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.copy_password))
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -243,6 +305,41 @@ fun AddEditPasswordScreen(
                 showPasswordGenerator = false
             }
         )
+    }
+}
+
+/**
+ * 彩色密码显示转换器
+ * 白色=字母, 蓝色=数字, 红色=符号
+ */
+class ColoredPasswordVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val coloredText = buildAnnotatedString {
+            text.forEach { char ->
+                when {
+                    char.isLetter() -> {
+                        // 字母 - 白色/浅色
+                        withStyle(style = SpanStyle(color = Color(0xFFE0E0E0))) {
+                            append(char)
+                        }
+                    }
+                    char.isDigit() -> {
+                        // 数字 - 蓝色
+                        withStyle(style = SpanStyle(color = Color(0xFF64B5F6))) {
+                            append(char)
+                        }
+                    }
+                    else -> {
+                        // 符号 - 红色
+                        withStyle(style = SpanStyle(color = Color(0xFFEF5350))) {
+                            append(char)
+                        }
+                    }
+                }
+            }
+        }
+        
+        return TransformedText(coloredText, OffsetMapping.Identity)
     }
 }
 

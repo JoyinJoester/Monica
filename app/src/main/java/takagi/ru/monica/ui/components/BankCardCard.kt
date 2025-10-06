@@ -81,7 +81,7 @@ fun BankCardCard(
                         Text(
                             text = cardData.bankName,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )
                     }
                 }
@@ -196,8 +196,9 @@ fun BankCardCard(
                 Text(
                     text = maskCardNumber(cardData.cardNumber),
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 2.sp
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 
                 // 卡类型图标
@@ -224,12 +225,14 @@ fun BankCardCard(
                         Text(
                             text = "持卡人",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = cardData.cardholderName,
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -239,12 +242,14 @@ fun BankCardCard(
                         Text(
                             text = "有效期",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = "${cardData.expiryMonth}/${cardData.expiryYear}",
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }

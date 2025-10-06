@@ -64,4 +64,10 @@ interface SecureItemDao {
             updateSortOrder(id, sortOrder)
         }
     }
+    
+    /**
+     * 检查是否存在相同的安全项(根据itemType和title匹配)
+     */
+    @Query("SELECT * FROM secure_items WHERE itemType = :itemType AND title = :title LIMIT 1")
+    suspend fun findDuplicateItem(itemType: ItemType, title: String): SecureItem?
 }

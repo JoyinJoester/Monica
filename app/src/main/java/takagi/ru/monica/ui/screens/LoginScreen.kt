@@ -1,9 +1,11 @@
 package takagi.ru.monica.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -18,7 +20,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
+import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 
@@ -31,6 +35,7 @@ fun LoginScreen(
     onForgotPassword: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
     
     var masterPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -40,6 +45,34 @@ fun LoginScreen(
     var isConfirmingPassword by remember { mutableStateOf(false) }
     
     val isFirstTime = !viewModel.isMasterPasswordSet()
+    
+    // 获取设置
+    val settings = settingsViewModel?.settings?.collectAsState()?.value
+    val biometricEnabled = settings?.biometricEnabled ?: false
+    
+    // 生物识别帮助类
+    val biometricHelper = remember { BiometricAuthHelper(context) }
+    val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
+    
+    // 自动触发生物识别（仅在非首次使用、生物识别可用且已启用时）
+    LaunchedEffect(Unit) {
+        if (!isFirstTime && isBiometricAvailable && biometricEnabled && activity != null) {
+            // 延迟一小段时间以确保界面完全加载
+            kotlinx.coroutines.delay(300)
+            biometricHelper.authenticate(
+                activity = activity,
+                onSuccess = {
+                    onLoginSuccess()
+                },
+                onError = { _, errorMsg ->
+                    errorMessage = context.getString(R.string.biometric_error, errorMsg)
+                },
+                onCancel = {
+                    // 用户取消,继续使用密码登录
+                }
+            )
+        }
+    }
     
     Column(
         modifier = Modifier
@@ -181,6 +214,41 @@ fun LoginScreen(
                     else -> context.getString(R.string.unlock)
                 }
             )
+        }
+        
+        // 生物识别按钮（仅在非首次使用、生物识别可用且已启用时显示）
+        if (!isFirstTime && isBiometricAvailable && biometricEnabled && activity != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = {
+                    biometricHelper.authenticate(
+                        activity = activity,
+                        onSuccess = {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.biometric_success),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            onLoginSuccess()
+                        },
+                        onError = { _, errorMsg ->
+                            errorMessage = context.getString(R.string.biometric_error, errorMsg)
+                        },
+                        onCancel = {
+                            // 用户取消,不做任何操作
+                        }
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Fingerprint,
+                    contentDescription = context.getString(R.string.use_biometric),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(context.getString(R.string.use_biometric))
+            }
         }
         
         // Forgot password option

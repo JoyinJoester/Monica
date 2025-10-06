@@ -82,7 +82,7 @@ fun DocumentCard(
                     Text(
                         text = getDocumentTypeName(documentData.documentType),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
                 
@@ -98,7 +98,7 @@ fun DocumentCard(
                         },
                         contentDescription = documentData.documentType.name,
                         modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                     
                     if (item.isFavorite) {
@@ -205,12 +205,14 @@ fun DocumentCard(
             Text(
                 text = "证件号码",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                fontWeight = FontWeight.Medium
             )
             Text(
                 text = maskDocumentNumber(documentData.documentNumber, documentData.documentType),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -225,12 +227,14 @@ fun DocumentCard(
                         Text(
                             text = "持有人",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = documentData.fullName,
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -240,12 +244,14 @@ fun DocumentCard(
                         Text(
                             text = "有效期至",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = documentData.expiryDate,
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }

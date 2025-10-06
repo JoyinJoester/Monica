@@ -62,4 +62,11 @@ class PasswordRepository(
     suspend fun deleteAllPasswordEntries() {
         passwordEntryDao.deleteAllPasswordEntries()
     }
+    
+    /**
+     * 检查是否存在重复的密码条目
+     */
+    suspend fun isDuplicateEntry(title: String, username: String, website: String): Boolean {
+        return passwordEntryDao.findDuplicateEntry(title, username, website) != null
+    }
 }

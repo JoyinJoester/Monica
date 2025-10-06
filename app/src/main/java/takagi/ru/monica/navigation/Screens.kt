@@ -60,8 +60,11 @@ sealed class Screen(val route: String) {
     object SecurityQuestionsSetup : Screen("security_questions_setup")
     object SecurityQuestionsVerification : Screen("security_questions_verification")
     object SupportAuthor : Screen("support_author")
+    object WebDavBackup : Screen("webdav_backup")
     object ExportData : Screen("export_data")
     object ImportData : Screen("import_data")
     object ChangePassword : Screen("change_password")
     object SecurityQuestion : Screen("security_question")
+    object AutofillSettings : Screen("autofill_settings")
+    object SecurityAnalysis : Screen("security_analysis")
 }

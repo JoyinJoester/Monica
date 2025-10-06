@@ -9,10 +9,18 @@
     <!-- Camera permission for QR code scanning -->
     <uses-permission android:name="android.permission.CAMERA" />
     
+    <!-- Network permissions for WebDAV backup -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
     <!-- Storage permissions for saving images -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    
+    <!-- Autofill permission -->
+    <uses-permission android:name="android.permission.BIND_AUTOFILL_SERVICE"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="true"
@@ -36,6 +44,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- Autofill Service -->
+        <service
+            android:name=".autofill.MonicaAutofillService"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service_config" />
+        </service>
+        
+        <!-- Autofill Save Activity -->
+        <activity
+            android:name=".autofill.AutofillSaveActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Monica"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
     </application>
 
 </manifest>
