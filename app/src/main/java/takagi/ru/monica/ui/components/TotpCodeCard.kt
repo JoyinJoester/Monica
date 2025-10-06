@@ -36,7 +36,9 @@ fun TotpCodeCard(
     onCopyCode: (String) -> Unit,
     modifier: Modifier = Modifier,
     onDelete: (() -> Unit)? = null,
-    onToggleFavorite: ((Long, Boolean) -> Unit)? = null
+    onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
 ) {
     // 解析TOTP数据
     val totpData = try {
@@ -144,6 +146,40 @@ fun TotpCodeCard(
                                                 if (item.isFavorite) Icons.Default.FavoriteBorder else Icons.Default.Favorite,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    )
+                                }
+                                
+                                // 上移选项
+                                if (onMoveUp != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("上移") },
+                                        onClick = {
+                                            expanded = false
+                                            onMoveUp()
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.KeyboardArrowUp,
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+                                }
+                                
+                                // 下移选项
+                                if (onMoveDown != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("下移") },
+                                        onClick = {
+                                            expanded = false
+                                            onMoveDown()
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.KeyboardArrowDown,
+                                                contentDescription = null
                                             )
                                         }
                                     )

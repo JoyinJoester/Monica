@@ -461,6 +461,8 @@
     <string name="batch_favorite">Batch Favorite</string>
     <string name="batch_favorited">Added %d passwords to favorites</string>
     <string name="batch_unfavorited">Removed %d passwords from favorites</string>
+    <string name="group_favorited">Added entire group of %d passwords to favorites</string>
+    <string name="group_unfavorited">Removed entire group of %d passwords from favorites</string>
     <string name="add_to_favorites">Add to Favorites</string>
     <string name="remove_from_favorites">Remove from Favorites</string>
     <string name="enter_master_password_confirm">Please enter your master password to confirm</string>

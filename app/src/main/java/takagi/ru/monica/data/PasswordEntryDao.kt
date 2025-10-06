@@ -9,10 +9,10 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PasswordEntryDao {
     
-    @Query("SELECT * FROM password_entries ORDER BY isFavorite DESC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>>
     
-    @Query("SELECT * FROM password_entries WHERE title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' ORDER BY isFavorite DESC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>>
     
     @Query("SELECT * FROM password_entries WHERE id = :id")
@@ -32,6 +32,30 @@ interface PasswordEntryDao {
     
     @Query("UPDATE password_entries SET isFavorite = :isFavorite WHERE id = :id")
     suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean)
+    
+    @Query("UPDATE password_entries SET isGroupCover = :isGroupCover WHERE id = :id")
+    suspend fun updateGroupCoverStatus(id: Long, isGroupCover: Boolean)
+    
+    @Query("UPDATE password_entries SET isGroupCover = 0 WHERE website = :website")
+    suspend fun clearGroupCover(website: String)
+    
+    @Transaction
+    suspend fun setGroupCover(id: Long, website: String) {
+        // 先清除该分组的所有封面标记
+        clearGroupCover(website)
+        // 再设置新的封面
+        updateGroupCoverStatus(id, true)
+    }
+    
+    @Query("UPDATE password_entries SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateSortOrder(id: Long, sortOrder: Int)
+    
+    @Transaction
+    suspend fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        items.forEach { (id, sortOrder) ->
+            updateSortOrder(id, sortOrder)
+        }
+    }
     
     @Query("SELECT COUNT(*) FROM password_entries")
     suspend fun getPasswordEntriesCount(): Int

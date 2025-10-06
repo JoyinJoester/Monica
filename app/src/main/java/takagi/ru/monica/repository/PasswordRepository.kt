@@ -43,6 +43,18 @@ class PasswordRepository(
         passwordEntryDao.updateFavoriteStatus(id, isFavorite)
     }
     
+    suspend fun updateGroupCoverStatus(id: Long, isGroupCover: Boolean) {
+        passwordEntryDao.updateGroupCoverStatus(id, isGroupCover)
+    }
+    
+    suspend fun setGroupCover(id: Long, website: String) {
+        passwordEntryDao.setGroupCover(id, website)
+    }
+    
+    suspend fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        passwordEntryDao.updateSortOrders(items)
+    }
+    
     suspend fun getPasswordEntriesCount(): Int {
         return passwordEntryDao.getPasswordEntriesCount()
     }

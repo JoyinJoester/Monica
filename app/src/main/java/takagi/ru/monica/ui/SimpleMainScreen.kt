@@ -1,8 +1,14 @@
 package takagi.ru.monica.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,17 +22,22 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
+import kotlin.math.absoluteValue
 
 /**
  * 带有底部导航的主屏幕
@@ -300,6 +311,40 @@ private fun PasswordListContent(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
+    // 堆叠展开状态 - 记录哪些网站的卡片组已展开
+    var expandedWebsites by remember { mutableStateOf(setOf<String>()) }
+    
+    // 按网站分组密码,并按优先级排序
+    val groupedPasswords = remember(passwordEntries) {
+        passwordEntries
+            .groupBy { it.website.ifBlank { "未分类" } }
+            .mapValues { (_, entries) -> entries.sortedBy { it.sortOrder } }
+            .toList()
+            .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
+                // 计算优先级分数
+                val favoriteCount = passwords.count { it.isFavorite }
+                val totalCount = passwords.size
+                val favoriteRate = if (totalCount > 0) favoriteCount.toDouble() / totalCount else 0.0
+                
+                when {
+                    // 优先级1: 整组都已收藏 (favoriteRate = 1.0)
+                    favoriteRate == 1.0 && totalCount > 1 -> 5.0
+                    // 优先级2: 单个已收藏卡片
+                    favoriteRate == 1.0 && totalCount == 1 -> 4.0
+                    // 优先级3: 部分收藏的分组
+                    favoriteRate > 0.0 && totalCount > 1 -> 3.0 + favoriteRate
+                    // 优先级4: 未收藏的分组
+                    favoriteRate == 0.0 && totalCount > 1 -> 2.0
+                    // 优先级5: 未收藏的单个卡片
+                    else -> 1.0
+                }
+            }.thenBy { (_, passwords) ->
+                // 同优先级内按第一个卡片的 sortOrder 排序
+                passwords.firstOrNull()?.sortOrder ?: Int.MAX_VALUE
+            })
+            .toMap()
+    }
+    
     // 定义回调函数
     val exitSelection = {
         isSelectionMode = false
@@ -382,44 +427,104 @@ private fun PasswordListContent(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // 密码列表
+        // 密码列表 - 使用堆叠分组视图
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
-            items(
-                items = passwordEntries,
-                key = { it.id }
-            ) { password ->
-                PasswordEntryCard(
-                    entry = password,
-                    onClick = { 
-                        if (isSelectionMode) {
-                            // 选择模式下切换选择状态
-                            selectedPasswords = if (selectedPasswords.contains(password.id)) {
-                                selectedPasswords - password.id
+            groupedPasswords.forEach { (website, passwords) ->
+                item(key = "group_$website") {
+                    StackedPasswordGroup(
+                        website = website,
+                        passwords = passwords,
+                        isExpanded = expandedWebsites.contains(website),
+                        onToggleExpand = {
+                            expandedWebsites = if (expandedWebsites.contains(website)) {
+                                expandedWebsites - website
                             } else {
-                                selectedPasswords + password.id
+                                expandedWebsites + website
                             }
-                        } else {
-                            onPasswordClick(password)
+                        },
+                        onPasswordClick = onPasswordClick,
+                        onLongClick = {
+                            if (!isSelectionMode) {
+                                isSelectionMode = true
+                                selectedPasswords = setOf(passwords.first().id)
+                            }
+                        },
+                        onToggleFavorite = { password ->
+                            viewModel.toggleFavorite(password.id, !password.isFavorite)
+                        },
+                        onToggleGroupFavorite = {
+                            // 智能切换整组收藏状态
+                            coroutineScope.launch {
+                                val allFavorited = passwords.all { it.isFavorite }
+                                val newState = !allFavorited
+                                
+                                passwords.forEach { password ->
+                                    viewModel.toggleFavorite(password.id, newState)
+                                }
+                                
+                                val message = if (newState) {
+                                    context.getString(R.string.group_favorited, passwords.size)
+                                } else {
+                                    context.getString(R.string.group_unfavorited, passwords.size)
+                                }
+                                
+                                android.widget.Toast.makeText(
+                                    context,
+                                    message,
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onToggleGroupCover = { password ->
+                            // 切换封面状态并移到顶部
+                            coroutineScope.launch {
+                                val websiteKey = password.website.ifBlank { "未分类" }
+                                val newCoverState = !password.isGroupCover
+                                
+                                if (newCoverState) {
+                                    // 设置为封面时,同时移到组内第一位
+                                    val groupPasswords = passwords
+                                    val currentIndex = groupPasswords.indexOfFirst { it.id == password.id }
+                                    
+                                    if (currentIndex > 0) {
+                                        // 需要移动到顶部
+                                        val reordered = groupPasswords.toMutableList()
+                                        val item = reordered.removeAt(currentIndex)
+                                        reordered.add(0, item) // 移到第一位
+                                        
+                                        // 更新sortOrder
+                                        val allPasswords = passwordEntries
+                                        val firstItemInGroup = allPasswords.first { it.website.ifBlank { "未分类" } == websiteKey }
+                                        val startSortOrder = allPasswords.indexOf(firstItemInGroup)
+                                        
+                                        viewModel.updateSortOrders(
+                                            reordered.mapIndexed { idx, entry -> 
+                                                entry.id to (startSortOrder + idx)
+                                            }
+                                        )
+                                    }
+                                }
+                                
+                                // 设置/取消封面
+                                viewModel.toggleGroupCover(password.id, websiteKey, newCoverState)
+                            }
+                        },
+                        isSelectionMode = isSelectionMode,
+                        selectedPasswords = selectedPasswords,
+                        onToggleSelection = { id ->
+                            selectedPasswords = if (selectedPasswords.contains(id)) {
+                                selectedPasswords - id
+                            } else {
+                                selectedPasswords + id
+                            }
                         }
-                    },
-                    onLongClick = {
-                        // 长按进入选择模式
-                        if (!isSelectionMode) {
-                            isSelectionMode = true
-                            selectedPasswords = setOf(password.id)
-                        }
-                    },
-                    onToggleFavorite = {
-                        // 切换收藏状态
-                        viewModel.toggleFavorite(password.id, !password.isFavorite)
-                    },
-                    isSelectionMode = isSelectionMode,
-                    isSelected = selectedPasswords.contains(password.id)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
             }
         }
     }
@@ -643,6 +748,7 @@ private fun TotpListContent(
                     items = totpItems,
                     key = { it.id }
                 ) { item ->
+                    val index = totpItems.indexOf(item)
                     TotpItemCard(
                         item = item,
                         onClick = { onTotpClick(item.id) },
@@ -651,7 +757,29 @@ private fun TotpListContent(
                         },
                         onToggleFavorite = { id, isFavorite ->
                             viewModel.toggleFavorite(id, isFavorite)
-                        }
+                        },
+                        onMoveUp = if (index > 0) {
+                            {
+                                // 交换当前项和上一项的sortOrder
+                                val currentItem = totpItems[index]
+                                val previousItem = totpItems[index - 1]
+                                viewModel.updateSortOrders(listOf(
+                                    currentItem.id to (index - 1),
+                                    previousItem.id to index
+                                ))
+                            }
+                        } else null,
+                        onMoveDown = if (index < totpItems.size - 1) {
+                            {
+                                // 交换当前项和下一项的sortOrder
+                                val currentItem = totpItems[index]
+                                val nextItem = totpItems[index + 1]
+                                viewModel.updateSortOrders(listOf(
+                                    currentItem.id to (index + 1),
+                                    nextItem.id to index
+                                ))
+                            }
+                        } else null
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -839,7 +967,9 @@ private fun TotpItemCard(
     item: takagi.ru.monica.data.SecureItem,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    onToggleFavorite: (Long, Boolean) -> Unit
+    onToggleFavorite: (Long, Boolean) -> Unit,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     
@@ -854,7 +984,9 @@ private fun TotpItemCard(
             android.widget.Toast.makeText(context, "验证码已复制", android.widget.Toast.LENGTH_SHORT).show()
         },
         onDelete = onDelete,
-        onToggleFavorite = onToggleFavorite
+        onToggleFavorite = onToggleFavorite,
+        onMoveUp = onMoveUp,
+        onMoveDown = onMoveDown
     )
 }
 
@@ -1001,6 +1133,7 @@ private fun BankCardListContent(
                 items = cards,
                 key = { it.id }
             ) { card ->
+                val index = cards.indexOf(card)
                 BankCardItemCard(
                     item = card,
                     onClick = { onCardClick(card.id) },
@@ -1009,7 +1142,29 @@ private fun BankCardListContent(
                     },
                     onToggleFavorite = { id, isFavorite ->
                         viewModel.toggleFavorite(id)
-                    }
+                    },
+                    onMoveUp = if (index > 0) {
+                        {
+                            // 交换当前项和上一项的sortOrder
+                            val currentItem = cards[index]
+                            val previousItem = cards[index - 1]
+                            viewModel.updateSortOrders(listOf(
+                                currentItem.id to (index - 1),
+                                previousItem.id to index
+                            ))
+                        }
+                    } else null,
+                    onMoveDown = if (index < cards.size - 1) {
+                        {
+                            // 交换当前项和下一项的sortOrder
+                            val currentItem = cards[index]
+                            val nextItem = cards[index + 1]
+                            viewModel.updateSortOrders(listOf(
+                                currentItem.id to (index + 1),
+                                nextItem.id to index
+                            ))
+                        }
+                    } else null
                 )
             }
         }
@@ -1102,13 +1257,17 @@ private fun BankCardItemCard(
     item: takagi.ru.monica.data.SecureItem,
     onClick: () -> Unit,
     onDelete: (() -> Unit)? = null,
-    onToggleFavorite: ((Long, Boolean) -> Unit)? = null
+    onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
 ) {
     takagi.ru.monica.ui.components.BankCardCard(
         item = item,
         onClick = onClick,
         onDelete = onDelete,
-        onToggleFavorite = onToggleFavorite
+        onToggleFavorite = onToggleFavorite,
+        onMoveUp = onMoveUp,
+        onMoveDown = onMoveDown
     )
 }
 
@@ -1255,6 +1414,7 @@ private fun DocumentListContent(
                 items = documents,
                 key = { it.id }
             ) { document ->
+                val index = documents.indexOf(document)
                 DocumentItemCard(
                     item = document,
                     onClick = { onDocumentClick(document.id) },
@@ -1263,7 +1423,29 @@ private fun DocumentListContent(
                     },
                     onToggleFavorite = { id, isFavorite ->
                         viewModel.toggleFavorite(id)
-                    }
+                    },
+                    onMoveUp = if (index > 0) {
+                        {
+                            // 交换当前项和上一项的sortOrder
+                            val currentItem = documents[index]
+                            val previousItem = documents[index - 1]
+                            viewModel.updateSortOrders(listOf(
+                                currentItem.id to (index - 1),
+                                previousItem.id to index
+                            ))
+                        }
+                    } else null,
+                    onMoveDown = if (index < documents.size - 1) {
+                        {
+                            // 交换当前项和下一项的sortOrder
+                            val currentItem = documents[index]
+                            val nextItem = documents[index + 1]
+                            viewModel.updateSortOrders(listOf(
+                                currentItem.id to (index + 1),
+                                nextItem.id to index
+                            ))
+                        }
+                    } else null
                 )
             }
         }
@@ -1351,18 +1533,231 @@ private fun DocumentListContent(
     }
 }
 
+/**
+ * 堆叠密码卡片组
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun StackedPasswordGroup(
+    website: String,
+    passwords: List<takagi.ru.monica.data.PasswordEntry>,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
+    onLongClick: () -> Unit,
+    onToggleFavorite: (takagi.ru.monica.data.PasswordEntry) -> Unit,
+    onToggleGroupFavorite: () -> Unit,
+    onToggleGroupCover: (takagi.ru.monica.data.PasswordEntry) -> Unit,
+    isSelectionMode: Boolean,
+    selectedPasswords: Set<Long>,
+    onToggleSelection: (Long) -> Unit
+) {
+    // 检查整组是否全部收藏
+    val isGroupFavorited = passwords.all { it.isFavorite }
+    // 检查是否有封面卡片
+    val hasGroupCover = passwords.any { it.isGroupCover }
+    
+    Column(
+        modifier = if (isExpanded && passwords.size > 1) {
+            Modifier.padding(start = 4.dp) // 为边框留出空间
+        } else {
+            Modifier
+        }
+    ) {
+        if (!isExpanded && passwords.size > 1) {
+            // 堆叠视图 - 显示堆叠效果
+            Box {
+                // 底层卡片阴影效果
+                for (i in (passwords.size - 1).coerceAtMost(2) downTo 1) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = (i * 4).dp, end = (i * 4).dp, top = (i * 2).dp)
+                            .alpha(0.3f),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Box(modifier = Modifier.height(60.dp))
+                    }
+                }
+                
+                // 顶层卡片 - 可点击展开
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = onToggleExpand,
+                            onLongClick = onLongClick
+                        ),
+                    colors = if (selectedPasswords.contains(passwords.first().id)) {
+                        androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    } else {
+                        androidx.compose.material3.CardDefaults.cardColors()
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 复选框
+                        if (isSelectionMode) {
+                            androidx.compose.material3.Checkbox(
+                                checked = selectedPasswords.contains(passwords.first().id),
+                                onCheckedChange = null
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    // 堆叠数量徽章
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = "${passwords.size}",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    
+                                    Text(
+                                        text = passwords.first().title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                
+                                // 整组收藏按钮 - 改为心形图标
+                                if (!isSelectionMode) {
+                                    IconButton(
+                                        onClick = { onToggleGroupFavorite() },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            if (isGroupFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                            contentDescription = if (isGroupFavorited) "取消收藏整组" else "收藏整组",
+                                            tint = if (isGroupFavorited) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                } else if (isGroupFavorited) {
+                                    // 选择模式下只显示收藏图标
+                                    Icon(
+                                        Icons.Default.Favorite,
+                                        contentDescription = "已收藏",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            
+                            if (passwords.first().website.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = passwords.first().website,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // 展开视图或单个密码 - 显示所有卡片
+            passwords.forEachIndexed { index, password ->
+                Row {
+                    // 展开状态下显示左侧装饰条
+                    if (isExpanded && passwords.size > 1) {
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    
+                    PasswordEntryCard(
+                        entry = password,
+                        onClick = {
+                            if (isSelectionMode) {
+                                onToggleSelection(password.id)
+                            } else {
+                                onPasswordClick(password)
+                            }
+                        },
+                        onLongClick = onLongClick,
+                        onToggleFavorite = { onToggleFavorite(password) },
+                        onToggleGroupCover = if (passwords.size > 1) {
+                            { onToggleGroupCover(password) }
+                        } else null,
+                        isSelectionMode = isSelectionMode,
+                        isSelected = selectedPasswords.contains(password.id),
+                        canSetGroupCover = passwords.size > 1 && (!hasGroupCover || password.isGroupCover)
+                    )
+                }
+                
+                if (index < passwords.size - 1 && (isExpanded || passwords.size == 1)) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+            
+            // 收起按钮
+            if (isExpanded && passwords.size > 1) {
+                TextButton(
+                    onClick = onToggleExpand,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Default.ExpandLess,
+                        contentDescription = "收起"
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("收起")
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun DocumentItemCard(
     item: takagi.ru.monica.data.SecureItem,
     onClick: () -> Unit,
     onDelete: (() -> Unit)? = null,
-    onToggleFavorite: ((Long, Boolean) -> Unit)? = null
+    onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
 ) {
     takagi.ru.monica.ui.components.DocumentCard(
         item = item,
         onClick = onClick,
         onDelete = onDelete,
-        onToggleFavorite = onToggleFavorite
+        onToggleFavorite = onToggleFavorite,
+        onMoveUp = onMoveUp,
+        onMoveDown = onMoveDown
     )
 }
 
@@ -1376,8 +1771,10 @@ private fun PasswordEntryCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onToggleFavorite: (() -> Unit)? = null,
+    onToggleGroupCover: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    canSetGroupCover: Boolean = false
 ) {
     Card(
         modifier = Modifier
@@ -1394,38 +1791,71 @@ private fun PasswordEntryCard(
             androidx.compose.material3.CardDefaults.cardColors()
         }
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // 复选框
+            if (isSelectionMode) {
+                androidx.compose.material3.Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = null
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            
+            Column(
+                modifier = Modifier.weight(1f)
             ) {
-                // 选择模式下显示复选框
-                if (isSelectionMode) {
-                    androidx.compose.material3.Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                
-                // 标题和信息
-                Column(
-                    modifier = Modifier.weight(1f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Text(
+                        text = entry.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    // 图标区域
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = entry.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        // 收藏图标 - 非选择模式下可点击
+                        // 封面星星图标 - 仅在组内且非选择模式下显示
+                        if (!isSelectionMode && onToggleGroupCover != null) {
+                            IconButton(
+                                onClick = onToggleGroupCover,
+                                modifier = Modifier.size(36.dp),
+                                enabled = canSetGroupCover
+                            ) {
+                                Icon(
+                                    if (entry.isGroupCover) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = if (entry.isGroupCover) "取消封面" else "设为封面",
+                                    tint = if (entry.isGroupCover) {
+                                        MaterialTheme.colorScheme.tertiary
+                                    } else if (canSetGroupCover) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    },
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        } else if (isSelectionMode && entry.isGroupCover) {
+                            // 选择模式下只显示封面图标
+                            Icon(
+                                Icons.Default.Star,
+                                contentDescription = "封面",
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        // 收藏心形图标 - 非选择模式下可点击
                         if (!isSelectionMode && onToggleFavorite != null) {
                             IconButton(
                                 onClick = onToggleFavorite,
@@ -1448,24 +1878,24 @@ private fun PasswordEntryCard(
                             )
                         }
                     }
-                    
-                    if (entry.website.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = entry.website,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    
-                    if (entry.username.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = entry.username,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                }
+                
+                if (entry.website.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = entry.website,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                if (entry.username.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = entry.username,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

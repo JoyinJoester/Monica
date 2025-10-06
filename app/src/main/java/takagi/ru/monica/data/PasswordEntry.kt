@@ -18,5 +18,7 @@ data class PasswordEntry(
     val notes: String = "",
     val createdAt: Date = Date(),
     val updatedAt: Date = Date(),
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val sortOrder: Int = 0, // 排序顺序(用于拖动排序)
+    val isGroupCover: Boolean = false // 是否作为分组封面
 )

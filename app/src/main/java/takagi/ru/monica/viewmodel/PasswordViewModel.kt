@@ -93,6 +93,24 @@ class PasswordViewModel(
         }
     }
     
+    fun toggleGroupCover(id: Long, website: String, isGroupCover: Boolean) {
+        viewModelScope.launch {
+            if (isGroupCover) {
+                // 设置为封面,会自动清除该分组的其他封面
+                repository.setGroupCover(id, website)
+            } else {
+                // 取消封面
+                repository.updateGroupCoverStatus(id, false)
+            }
+        }
+    }
+    
+    fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        viewModelScope.launch {
+            repository.updateSortOrders(items)
+        }
+    }
+    
     suspend fun getPasswordEntryById(id: Long): PasswordEntry? {
         return repository.getPasswordEntryById(id)?.let { entry ->
             entry.copy(password = securityManager.decryptData(entry.password))

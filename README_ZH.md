@@ -127,10 +127,10 @@ cd Monica
 - 点击验证码可复制
 - 倒计时显示剩余时间
 
-### 文档管理
+### 证件管理
 
-1. 切换到"文档"标签页
-2. 添加文档:
+1. 切换到"证件"标签页
+2. 添加证件:
    - 标题
    - 内容
    - 标签 (可选)
@@ -218,15 +218,20 @@ cd Monica
 
 <div align="center">
 
-### 登录与主界面
-| 登录界面 | 密码列表 | TOTP 验证 |
+### 主要功能展示
+| 密码管理 | 添加密码 | TOTP 两步验证 |
 |---------|---------|----------|
-| ![登录](screenshots/login.png) | ![密码](screenshots/passwords.png) | ![TOTP](screenshots/totp.png) |
+| ![密码列表](image/password.png) | ![添加密码](image/addpass.png) | ![TOTP验证](image/2fa.png) |
 
-### 功能界面
-| 添加密码 | 密码详情 | 设置页面 |
+### 其他功能
+| 银行卡管理 | 文档管理 | 删除功能 |
 |---------|---------|----------|
-| ![添加](screenshots/add.png) | ![详情](screenshots/detail.png) | ![设置](screenshots/settings.png) |
+| ![银行卡](image/bank.png) | ![文档](image/doc.png) | ![删除](image/del.png) |
+
+### 设置
+| 设置页面 |
+|---------|
+| ![设置](image/set.png) |
 
 </div>
 

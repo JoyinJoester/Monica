@@ -69,13 +69,20 @@
 
 <div align="center">
 
-| Login | Password List | TOTP Codes |
+### Main Features
+| Password List | Add Password | TOTP Authentication |
 |:---:|:---:|:---:|
-| ![Login](screenshots/login.png) | ![Passwords](screenshots/passwords.png) | ![TOTP](screenshots/totp.png) |
+| ![Password List](image/password.png) | ![Add Password](image/addpass.png) | ![TOTP](image/2fa.png) |
 
-| Documents | Bank Cards | Settings |
+### Additional Features
+| Bank Cards | Doc | Delete Function |
 |:---:|:---:|:---:|
-| ![Documents](screenshots/documents.png) | ![Cards](screenshots/cards.png) | ![Settings](screenshots/settings.png) |
+| ![Bank Cards](image/bank.png) | ![Doc](image/doc.png) | ![Delete](image/del.png) |
+
+### Settings
+| Settings Page |
+|:---:|
+| ![Settings](image/set.png) |
 
 </div>
 
