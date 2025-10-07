@@ -13,7 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.app.Activity
@@ -24,6 +26,7 @@ import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.utils.BiometricAuthHelper
@@ -45,6 +48,7 @@ fun SettingsScreen(
     onClearAllData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
+    onNavigateToBottomNavSettings: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
@@ -189,6 +193,17 @@ fun SettingsScreen(
                     title = context.getString(R.string.language),
                     subtitle = getLanguageDisplayName(settings.language, context),
                     onClick = { showLanguageDialog = true }
+                )
+            }
+
+            SettingsSection(
+                title = context.getString(R.string.bottom_nav_settings)
+            ) {
+                SettingsItem(
+                    icon = Icons.Default.ViewWeek,
+                    title = context.getString(R.string.bottom_nav_settings),
+                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
+                    onClick = onNavigateToBottomNavSettings
                 )
             }
             
@@ -640,6 +655,108 @@ fun SettingsItemWithSwitch(
 }
 
 @Composable
+private fun BottomNavConfigRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    switchEnabled: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Switch(
+                    checked = checked,
+                    onCheckedChange = onCheckedChange,
+                    enabled = switchEnabled
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                IconButton(
+                    onClick = onMoveUp,
+                    enabled = canMoveUp
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowUpward,
+                        contentDescription = stringResource(R.string.bottom_nav_move_up)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(
+                    onClick = onMoveDown,
+                    enabled = canMoveDown
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDownward,
+                        contentDescription = stringResource(R.string.bottom_nav_move_down)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
+    BottomNavContentTab.PASSWORDS -> Icons.Default.Lock
+    BottomNavContentTab.AUTHENTICATOR -> Icons.Default.Security
+    BottomNavContentTab.DOCUMENTS -> Icons.Default.Description
+    BottomNavContentTab.BANK_CARDS -> Icons.Default.CreditCard
+    BottomNavContentTab.LEDGER -> Icons.Default.AccountBalance
+}
+
+private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
+    BottomNavContentTab.PASSWORDS -> R.string.nav_passwords
+    BottomNavContentTab.AUTHENTICATOR -> R.string.nav_authenticator
+    BottomNavContentTab.DOCUMENTS -> R.string.nav_documents
+    BottomNavContentTab.BANK_CARDS -> R.string.nav_bank_cards
+    BottomNavContentTab.LEDGER -> R.string.nav_ledger
+}
+
+@Composable
 fun ThemeSelectionDialog(
     currentTheme: ThemeMode,
     onThemeSelected: (ThemeMode) -> Unit,
@@ -781,5 +898,86 @@ private fun getAutoLockDisplayName(minutes: Int, context: android.content.Contex
         30 -> context.getString(R.string.auto_lock_30_minutes)
         -1 -> context.getString(R.string.auto_lock_never)
         else -> "$minutes ${context.getString(R.string.auto_lock_5_minutes).substringAfter("5")}"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BottomNavSettingsScreen(
+    viewModel: SettingsViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val settings by viewModel.settings.collectAsState()
+    val bottomNavVisibility = settings.bottomNavVisibility
+    val scrollState = rememberScrollState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(text = context.getString(R.string.bottom_nav_settings)) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = context.getString(R.string.back)
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(scrollState)
+        ) {
+            Text(
+                text = context.getString(R.string.bottom_nav_reorder_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+            )
+
+            val bottomNavOrder = settings.bottomNavOrder
+            val visibleCount = bottomNavVisibility.visibleCount()
+            bottomNavOrder.forEachIndexed { index, tab ->
+                val isVisible = bottomNavVisibility.isVisible(tab)
+                val switchEnabled = !isVisible || visibleCount > 1
+                BottomNavConfigRow(
+                    icon = tab.toIcon(),
+                    title = context.getString(tab.toLabelRes()),
+                    subtitle = context.getString(R.string.bottom_nav_toggle_subtitle),
+                    checked = isVisible,
+                    switchEnabled = switchEnabled,
+                    canMoveUp = index > 0,
+                    canMoveDown = index < bottomNavOrder.lastIndex,
+                    onCheckedChange = { checked ->
+                        viewModel.updateBottomNavVisibility(tab, checked)
+                    },
+                    onMoveUp = {
+                        if (index > 0) {
+                            val newOrder = bottomNavOrder.toMutableList().apply {
+                                add(index - 1, removeAt(index))
+                            }
+                            viewModel.updateBottomNavOrder(newOrder)
+                        }
+                    },
+                    onMoveDown = {
+                        if (index < bottomNavOrder.lastIndex) {
+                            val newOrder = bottomNavOrder.toMutableList().apply {
+                                add(index + 1, removeAt(index))
+                            }
+                            viewModel.updateBottomNavOrder(newOrder)
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 }

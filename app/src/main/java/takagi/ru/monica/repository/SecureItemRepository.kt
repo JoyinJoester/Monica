@@ -35,6 +35,10 @@ class SecureItemRepository(
     suspend fun getItemById(id: Long): SecureItem? {
         return secureItemDao.getItemById(id)
     }
+
+    fun observeItemById(id: Long): Flow<SecureItem?> {
+        return secureItemDao.observeItemById(id)
+    }
     
     suspend fun insertItem(item: SecureItem): Long {
         return secureItemDao.insertItem(item)

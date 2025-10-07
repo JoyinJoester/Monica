@@ -27,8 +27,53 @@ data class BankCardData(
     val cvv: String = "",         // CVV安全码（加密存储）
     val bankName: String = "",    // 银行名称
     val cardType: CardType = CardType.CREDIT, // 卡类型
-    val billingAddress: String = "" // 账单地址
+    val billingAddress: String = "" // 账单地址（JSON格式存储BillingAddress）
 )
+
+/**
+ * 账单地址详细信息
+ */
+@Serializable
+data class BillingAddress(
+    val streetAddress: String = "",   // 街道地址
+    val apartment: String = "",       // 公寓/单元号
+    val city: String = "",            // 城市
+    val stateProvince: String = "",   // 州/省
+    val postalCode: String = "",      // 邮政编码
+    val country: String = ""          // 国家
+)
+
+fun BillingAddress.isEmpty(): Boolean {
+    return streetAddress.isBlank() &&
+        apartment.isBlank() &&
+        city.isBlank() &&
+        stateProvince.isBlank() &&
+        postalCode.isBlank() &&
+        country.isBlank()
+}
+
+fun BillingAddress.formatForDisplay(): String {
+    val lines = mutableListOf<String>()
+    if (streetAddress.isNotBlank()) {
+        lines += streetAddress
+    }
+    if (apartment.isNotBlank()) {
+        lines += apartment
+    }
+    val cityState = listOf(city, stateProvince)
+        .filter { it.isNotBlank() }
+        .joinToString(", ")
+    if (cityState.isNotBlank()) {
+        lines += cityState
+    }
+    val postalCountry = listOf(postalCode, country)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    if (postalCountry.isNotBlank()) {
+        lines += postalCountry
+    }
+    return lines.joinToString("\n")
+}
 
 enum class CardType {
     CREDIT,      // 信用卡
@@ -58,3 +103,13 @@ enum class DocumentType {
     SOCIAL_SECURITY,// 社保卡
     OTHER          // 其他
 }
+
+/**
+ * 笔记数据
+ */
+@Serializable
+data class NoteData(
+    val content: String,            // 笔记正文
+    val tags: List<String> = emptyList(), // 标签列表
+    val isMarkdown: Boolean = false      // 是否为Markdown格式
+)

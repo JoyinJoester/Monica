@@ -20,6 +20,8 @@ zxing = "3.5.3"
 zxingAndroidEmbedded = "4.3.0"
 camerax = "1.3.1"
 permissions = "0.32.0"
+commonmark = "0.22.0"
+# vico = "1.14.0"  # Temporarily disabled due to Kotlin compatibility issues
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -78,6 +80,10 @@ accompanist-permissions = { group = "com.google.accompanist", name = "accompanis
 
 # Kotlinx Serialization
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+
+# Markdown
+commonmark = { group = "org.commonmark", name = "commonmark", version.ref = "commonmark" }
+# vico-compose-m3 = { group = "com.patrykandpatrick.vico", name = "compose-m3", version.ref = "vico" }  # Disabled
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

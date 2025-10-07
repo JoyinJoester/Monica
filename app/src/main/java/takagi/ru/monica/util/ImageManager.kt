@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -31,6 +32,7 @@ class ImageManager(private val context: Context) {
     
     companion object {
         private const val IMAGE_DIR = "secure_images"
+        private const val TEMP_IMAGE_DIR = "temp_photos"
         private const val ALGORITHM = "AES/CBC/PKCS5Padding"
         private const val KEY_ALGORITHM = "AES"
         
@@ -45,6 +47,31 @@ class ImageManager(private val context: Context) {
                 mkdirs()
             }
         }
+    }
+    
+    private val tempPhotoDirectory: File by lazy {
+        File(context.cacheDir, TEMP_IMAGE_DIR).apply {
+            if (!exists()) {
+                mkdirs()
+            }
+        }
+    }
+    
+    /**
+     * 创建临时照片 URI（用于拍照）
+     * @return 临时照片的 URI
+     */
+    fun createTempPhotoUri(): Uri {
+        // 生成临时文件
+        val fileName = "temp_photo_${System.currentTimeMillis()}.jpg"
+        val tempFile = File(tempPhotoDirectory, fileName)
+        
+        // 使用 FileProvider 创建 URI
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            tempFile
+        )
     }
     
     /**

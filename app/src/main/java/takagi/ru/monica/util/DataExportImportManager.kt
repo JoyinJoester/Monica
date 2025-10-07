@@ -9,6 +9,7 @@ import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.nio.charset.Charset
 
 /**
  * 数据导入导出管理器
@@ -206,6 +207,7 @@ class DataExportImportManager(private val context: Context) {
     private enum class CsvFormat {
         APP_EXPORT,        // 应用导出格式 (9个字段)
         CHROME_PASSWORD,   // Chrome密码格式 (name,url,username,password,note)
+        ALIPAY_TRANSACTION, // 支付宝交易明细格式
         UNKNOWN
     }
     
@@ -215,6 +217,11 @@ class DataExportImportManager(private val context: Context) {
     private fun detectCsvFormat(firstLine: String): CsvFormat {
         val lowerLine = firstLine.lowercase()
         return when {
+            // 支付宝格式检测
+            lowerLine.contains("交易时间") && lowerLine.contains("收/支") && 
+            lowerLine.contains("金额") -> 
+                CsvFormat.ALIPAY_TRANSACTION
+            
             lowerLine.contains("name") && lowerLine.contains("url") && 
             lowerLine.contains("username") && lowerLine.contains("password") -> 
                 CsvFormat.CHROME_PASSWORD
@@ -229,6 +236,7 @@ class DataExportImportManager(private val context: Context) {
                 when {
                     fields.size >= 9 -> CsvFormat.APP_EXPORT
                     fields.size == 5 -> CsvFormat.CHROME_PASSWORD
+                    fields.size >= 12 -> CsvFormat.ALIPAY_TRANSACTION
                     else -> CsvFormat.UNKNOWN
                 }
             }
@@ -282,6 +290,11 @@ class DataExportImportManager(private val context: Context) {
                             updatedAt = System.currentTimeMillis()
                         )
                     } else null
+                }
+                
+                CsvFormat.ALIPAY_TRANSACTION -> {
+                    // 支付宝格式在专门的方法中处理,这里返回null
+                    null
                 }
                 
                 CsvFormat.UNKNOWN -> null
@@ -346,4 +359,165 @@ class DataExportImportManager(private val context: Context) {
         val timestamp = System.currentTimeMillis()
         return "monica_backup_${timestamp}${EXPORT_FILE_EXTENSION}"
     }
+
+    /**
+     * 从支付宝CSV文件导入账本数据
+     * @param inputUri 输入文件的URI
+     * @return 导入的账本条目列表
+     */
+    suspend fun importAlipayLedgerData(
+        inputUri: Uri
+    ): Result<List<AlipayLedgerItem>> = withContext(Dispatchers.IO) {
+        try {
+            val items = mutableListOf<AlipayLedgerItem>()
+            var lineCount = 0
+            var dataStarted = false
+            var columnIndices: Map<String, Int>? = null
+            
+            context.contentResolver.openInputStream(inputUri)?.use { input ->
+                // 支付宝导出的CSV文件通常是GBK编码
+                BufferedReader(InputStreamReader(input, Charset.forName("GBK"))).use { reader ->
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        lineCount++
+                        
+                        // 查找标题行(包含"交易时间")
+                        if (!dataStarted && line!!.contains("交易时间")) {
+                            // 解析列名获取索引
+                            val headers = parseCsvLine(line!!)
+                            columnIndices = mapOf(
+                                "time" to (headers.indexOfFirst { it.contains("交易时间") }),
+                                "category" to (headers.indexOfFirst { it.contains("交易分类") }),
+                                "counterparty" to (headers.indexOfFirst { it.contains("交易对方") }),
+                                "description" to (headers.indexOfFirst { it.contains("商品说明") }),
+                                "type" to (headers.indexOfFirst { it.contains("收/支") }),
+                                "amount" to (headers.indexOfFirst { it.contains("金额") }),
+                                "paymentMethod" to (headers.indexOfFirst { it.contains("收/付款方式") }),
+                                "status" to (headers.indexOfFirst { it.contains("交易状态") }),
+                                "note" to (headers.indexOfFirst { it.contains("备注") })
+                            )
+                            dataStarted = true
+                            android.util.Log.d("AlipayImport", "找到标题行,列索引: $columnIndices")
+                            continue
+                        }
+                        
+                        // 解析数据行
+                        if (dataStarted && line!!.isNotBlank()) {
+                            val indices = columnIndices // 复制到本地变量避免智能转换问题
+                            if (indices != null) {
+                                try {
+                                    val fields = parseCsvLine(line!!)
+                                    
+                                    // 检查字段数量是否足够
+                                    if (fields.size > (indices["amount"] ?: 6)) {
+                                        val item = parseAlipayTransaction(fields, indices)
+                                        if (item != null) {
+                                            items.add(item)
+                                            android.util.Log.d("AlipayImport", "成功解析第${lineCount}行")
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("AlipayImport", "解析第${lineCount}行失败: ${e.message}", e)
+                                }
+                            }
+                        }
+                    }
+                }
+            } ?: return@withContext Result.failure(Exception("无法读取文件"))
+
+            android.util.Log.d("AlipayImport", "导入完成: 共${items.size}条记录")
+            Result.success(items)
+        } catch (e: Exception) {
+            android.util.Log.e("AlipayImport", "导入失败: ${e.message}", e)
+            Result.failure(Exception("导入支付宝账单失败：${e.message ?: "文件格式错误"}"))
+        }
+    }
+
+    /**
+     * 解析支付宝交易记录
+     */
+    private fun parseAlipayTransaction(
+        fields: List<String>,
+        columnIndices: Map<String, Int>
+    ): AlipayLedgerItem? {
+        try {
+            // 提取字段
+            val timeStr = fields.getOrNull(columnIndices["time"] ?: -1)?.trim() ?: return null
+            val typeStr = fields.getOrNull(columnIndices["type"] ?: -1)?.trim() ?: ""
+            val amountStr = fields.getOrNull(columnIndices["amount"] ?: -1)?.trim() ?: return null
+            val description = fields.getOrNull(columnIndices["description"] ?: -1)?.trim() ?: ""
+            val paymentMethodStr = fields.getOrNull(columnIndices["paymentMethod"] ?: -1)?.trim() ?: ""
+            val category = fields.getOrNull(columnIndices["category"] ?: -1)?.trim() ?: ""
+            val status = fields.getOrNull(columnIndices["status"] ?: -1)?.trim() ?: ""
+            val note = fields.getOrNull(columnIndices["note"] ?: -1)?.trim() ?: ""
+            
+            // 跳过失败的交易
+            if (status.contains("失败") || status.contains("关闭")) {
+                return null
+            }
+            
+            // 解析交易类型
+            val entryType = when {
+                typeStr.contains("收入") -> "INCOME"
+                typeStr.contains("支出") -> "EXPENSE"
+                typeStr.contains("不计收支") -> return null // 跳过不计收支的记录
+                else -> "EXPENSE" // 默认为支出
+            }
+            
+            // 解析金额(移除可能的逗号分隔符)
+            val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
+            val amountInCents = (amount * 100).toLong()
+            
+            // 解析时间 (格式: 2025-10-06 09:23:20)
+            val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA)
+            val occurredAt = try {
+                dateFormat.parse(timeStr) ?: java.util.Date()
+            } catch (e: Exception) {
+                android.util.Log.e("AlipayImport", "解析时间失败: $timeStr", e)
+                java.util.Date()
+            }
+            
+            // 映射支付方式到应用内格式
+            val paymentMethod = when {
+                paymentMethodStr.contains("余额宝") -> "alipay"
+                paymentMethodStr.contains("花呗") -> "alipay"
+                paymentMethodStr.contains("银行卡") || paymentMethodStr.contains("储蓄卡") || paymentMethodStr.contains("信用卡") -> "unionpay"
+                paymentMethodStr.contains("账户余额") || paymentMethodStr.isEmpty() -> "alipay"
+                else -> "alipay"
+            }
+            
+            // 构建备注
+            val fullNote = buildString {
+                if (note.isNotBlank()) append(note)
+                if (category.isNotBlank()) {
+                    if (isNotEmpty()) append(" | ")
+                    append("分类: $category")
+                }
+            }
+            
+            return AlipayLedgerItem(
+                title = description.ifBlank { category.ifBlank { "支付宝交易" } },
+                amountInCents = amountInCents,
+                type = entryType,
+                occurredAt = occurredAt,
+                note = fullNote,
+                paymentMethod = paymentMethod
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AlipayImport", "解析交易失败: ${e.message}", e)
+            return null
+        }
+    }
+
+    /**
+     * 支付宝导入的账本条目
+     */
+    data class AlipayLedgerItem(
+        val title: String,
+        val amountInCents: Long,
+        val type: String, // INCOME 或 EXPENSE
+        val occurredAt: java.util.Date,
+        val note: String,
+        val paymentMethod: String
+    )
 }

@@ -49,6 +49,27 @@ sealed class Screen(val route: String) {
             }
         }
     }
+    object AddEditNote : Screen("add_edit_note/{noteId}") {
+        fun createRoute(noteId: Long? = null): String {
+            return if (noteId != null) {
+                "add_edit_note/$noteId"
+            } else {
+                "add_edit_note/-1"
+            }
+        }
+    }
+    object NoteDetail : Screen("note_detail/{noteId}") {
+        fun createRoute(noteId: Long): String = "note_detail/$noteId"
+    }
+    object AddEditLedgerEntry : Screen("add_edit_ledger_entry/{entryId}") {
+        fun createRoute(entryId: Long? = null): String {
+            return if (entryId != null) {
+                "add_edit_ledger_entry/$entryId"
+            } else {
+                "add_edit_ledger_entry/-1"
+            }
+        }
+    }
     object QrScanner : Screen("qr_scanner")
     object Settings : Screen("settings")
     object ResetPassword : Screen("reset_password?skipCurrentPassword={skipCurrentPassword}") {
@@ -67,4 +88,5 @@ sealed class Screen(val route: String) {
     object SecurityQuestion : Screen("security_question")
     object AutofillSettings : Screen("autofill_settings")
     object SecurityAnalysis : Screen("security_analysis")
+    object BottomNavSettings : Screen("bottom_nav_settings")
 }

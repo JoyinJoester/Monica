@@ -116,7 +116,31 @@
     <string name="month">Tháng</string>
     <string name="year">Năm</string>
     <string name="cvv">CVV</string>
+    <string name="billing_address">Địa chỉ thanh toán</string>
+    <string name="add_billing_address">Thêm địa chỉ thanh toán</string>
+    <string name="edit_billing_address">Sửa địa chỉ thanh toán</string>
+    <string name="billing_address_empty">Chưa lưu địa chỉ thanh toán</string>
+    <string name="remove_billing_address">Xóa địa chỉ thanh toán</string>
+    <string name="billing_address_removed">Đã xóa địa chỉ thanh toán</string>
+    <string name="street_address">Địa chỉ đường phố</string>
+    <string name="street_address_placeholder">Ví dụ: 123 Đường Lê Lợi</string>
+    <string name="apartment">Căn hộ / Phòng (Tùy chọn)</string>
+    <string name="apartment_placeholder">Ví dụ: Tầng 4, Phòng 501</string>
+    <string name="city">Thành phố</string>
+    <string name="city_placeholder">Ví dụ: Hà Nội</string>
+    <string name="state_province">Tỉnh / Thành phố</string>
+    <string name="state_province_placeholder">Ví dụ: Hà Nội</string>
+    <string name="postal_code">Mã bưu điện</string>
+    <string name="postal_code_placeholder">Ví dụ: 100000</string>
+    <string name="country">Quốc gia</string>
+    <string name="country_placeholder">Ví dụ: Việt Nam</string>
+    <string name="billing_address_saved">Đã lưu địa chỉ thanh toán</string>
     <string name="notes_placeholder">Thêm ghi chú...</string>
+    <string name="bottom_nav_settings">Thanh điều hướng dưới</string>
+    <string name="bottom_nav_toggle_subtitle">Hiển thị hoặc ẩn thẻ này trên thanh điều hướng dưới</string>
+    <string name="bottom_nav_reorder_hint">Dùng các mũi tên để sắp xếp tab. Mục Cài đặt luôn ở cuối.</string>
+    <string name="bottom_nav_move_up">Di chuyển tab lên trên</string>
+    <string name="bottom_nav_move_down">Di chuyển tab xuống dưới</string>
     
     <!-- Document -->
     <string name="add_document_title">Thêm giấy tờ</string>
@@ -304,6 +328,7 @@
     <string name="nav_authenticator">Xác thực</string>
     <string name="nav_documents">Giấy tờ</string>
     <string name="nav_bank_cards">Thẻ ngân hàng</string>
+    <string name="nav_notes">Ghi chú</string>
     <string name="nav_settings">Cài đặt</string>
     <string name="add">Thêm</string>
     
@@ -312,7 +337,26 @@
     <string name="nav_authenticator_short">XT</string>
     <string name="nav_documents_short">GT</string>
     <string name="nav_bank_cards_short">Thẻ</string>
+    <string name="nav_notes_short">Note</string>
     <string name="nav_settings_short">CĐ</string>
+
+    <!-- Notes -->
+    <string name="add_note_title">Thêm ghi chú</string>
+    <string name="edit_note_title">Sửa ghi chú</string>
+    <string name="note_content">Nội dung</string>
+    <string name="note_content_placeholder">Viết điều quan trọng cần nhớ...</string>
+    <string name="note_title_label">Tiêu đề</string>
+    <string name="note_title_placeholder">Ví dụ: Ý tưởng dự án</string>
+    <string name="no_notes_title">Chưa có ghi chú</string>
+    <string name="no_notes_description">Nhấn nút + để tạo ghi chú bảo mật đầu tiên của bạn</string>
+    <string name="delete_note_title">Xóa ghi chú</string>
+    <string name="delete_note_message">Bạn có chắc chắn muốn xóa "%s"? Hành động này không thể hoàn tác.</string>
+    <string name="search_notes">Tìm kiếm ghi chú</string>
+    <string name="batch_delete_notes_title">Xóa ghi chú</string>
+    <string name="batch_delete_notes_message">Xóa %1$d ghi chú đã chọn?</string>
+    <string name="note_tags">Thẻ</string>
+    <string name="note_tags_placeholder">Thẻ1, Thẻ2</string>
+    <string name="note_markdown_label">Định dạng Markdown</string>
     
     <!-- Settings Screen -->
     <string name="settings_general">Chung</string>

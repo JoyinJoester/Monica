@@ -1,7 +1,10 @@
 package takagi.ru.monica.ui.components
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
+import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -21,9 +24,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.util.ImageManager
+import takagi.ru.monica.util.LauncherManager
 
 
 /**
@@ -59,37 +64,24 @@ fun ImagePicker(
         }
     }
     
-    // 图片选择器
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            scope.launch {
-                isLoading = true
-                val fileName = imageManager.saveImageFromUri(uri)
-                isLoading = false
-                
-                if (fileName != null) {
-                    onImageSelected(fileName)
-                    loadedBitmap = imageManager.loadImage(fileName)
-                }
-            }
-        }
+    suspend fun saveImageFromUri(uri: Uri): String? {
+        return imageManager.saveImageFromUri(uri)
     }
-    
-    // 拍照
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap: android.graphics.Bitmap? ->
-        bitmap?.let {
-            scope.launch {
-                isLoading = true
-                val fileName = imageManager.saveImage(bitmap)
-                isLoading = false
-                
-                if (fileName != null) {
-                    onImageSelected(fileName)
-                    loadedBitmap = bitmap
+
+    fun launchCameraCapture() {
+        val tempUri = imageManager.createTempPhotoUri()
+        LauncherManager.tempCameraUri = tempUri
+        LauncherManager.launchCamera(tempUri) { success ->
+            if (success) {
+                scope.launch {
+                    isLoading = true
+                    val fileName = saveImageFromUri(tempUri)
+                    isLoading = false
+
+                    if (fileName != null) {
+                        onImageSelected(fileName)
+                        loadedBitmap = imageManager.loadImage(fileName)
+                    }
                 }
             }
         }
@@ -195,7 +187,24 @@ fun ImagePicker(
             ) {
                 // 图库按钮
                 OutlinedButton(
-                    onClick = { imagePickerLauncher.launch("image/*") },
+                    onClick = {
+                        LauncherManager.launchGallery(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        ) { uri ->
+                            uri?.let {
+                                scope.launch {
+                                    isLoading = true
+                                    val fileName = saveImageFromUri(it)
+                                    isLoading = false
+                                    
+                                    if (fileName != null) {
+                                        onImageSelected(fileName)
+                                        loadedBitmap = imageManager.loadImage(fileName)
+                                    }
+                                }
+                            }
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                     enabled = !isDownloading
                 ) {
@@ -210,7 +219,24 @@ fun ImagePicker(
                 
                 // 相机按钮
                 OutlinedButton(
-                    onClick = { cameraLauncher.launch(null) },
+                    onClick = {
+                        val permission = Manifest.permission.CAMERA
+                        if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
+                            launchCameraCapture()
+                        } else {
+                            LauncherManager.requestPermissions(arrayOf(permission)) { result ->
+                                if (result[permission] == true) {
+                                    launchCameraCapture()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.camera_permission_needed),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                     enabled = !isDownloading
                 ) {

@@ -3,8 +3,6 @@ package takagi.ru.monica.ui.screens
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.util.DataExportImportManager
+import takagi.ru.monica.util.LauncherManager
 
 
 /**
@@ -38,26 +37,6 @@ fun ExportDataScreen(
     var isExporting by remember { mutableStateOf(false) }
     
     val exportManager = remember { DataExportImportManager(context) }
-    
-    // 文件保存launcher
-    val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/csv")
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                isExporting = true
-                val result = onExport(it)
-                isExporting = false
-                
-                result.onSuccess { message ->
-                    snackbarHostState.showSnackbar(message)
-                    onNavigateBack()
-                }.onFailure { error ->
-                    snackbarHostState.showSnackbar(error.message ?: "导出失败")
-                }
-            }
-        }
-    }
     
     Scaffold(
         topBar = {
@@ -149,8 +128,23 @@ fun ExportDataScreen(
             // 导出按钮
             Button(
                 onClick = {
-                    // 启动文件选择器
-                    createDocumentLauncher.launch(exportManager.getSuggestedFileName())
+                    // 使用全局launcher启动文件选择器
+                    LauncherManager.launchCreateDocument(exportManager.getSuggestedFileName()) { uri ->
+                        uri?.let {
+                            scope.launch {
+                                isExporting = true
+                                val result = onExport(it)
+                                isExporting = false
+                                
+                                result.onSuccess { message ->
+                                    snackbarHostState.showSnackbar(message)
+                                    onNavigateBack()
+                                }.onFailure { error ->
+                                    snackbarHostState.showSnackbar(error.message ?: "导出失败")
+                                }
+                            }
+                        }
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isExporting

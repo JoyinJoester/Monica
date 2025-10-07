@@ -224,9 +224,9 @@ cd Monica
 | ![密码列表](image/password.png) | ![添加密码](image/addpass.png) | ![TOTP验证](image/2fa.png) |
 
 ### 其他功能
-| 银行卡管理 | 文档管理 | 删除功能 |
+| 银行卡管理 | 证件管理 | 删除功能 |
 |---------|---------|----------|
-| ![银行卡](image/bank.png) | ![文档](image/doc.png) | ![删除](image/del.png) |
+| ![银行卡](image/bank.png) | ![证件](image/doc.png) | ![删除](image/del.png) |
 
 ### 设置
 | 设置页面 |

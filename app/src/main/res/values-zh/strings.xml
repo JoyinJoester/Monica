@@ -10,9 +10,11 @@
     <string name="search">搜索</string>
     <string name="settings">设置</string>
     <string name="back">返回</string>
+    <string name="close">关闭</string>
     <string name="logout">退出登录</string>
     <string name="yes">是</string>
     <string name="no">否</string>
+    <string name="share">分享</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">设置您的主密码</string>
@@ -133,7 +135,32 @@
     <string name="month">月份</string>
     <string name="year">年份</string>
     <string name="cvv">CVV</string>
+    <string name="billing_address">账单地址</string>
+    <string name="add_billing_address">添加账单地址</string>
+    <string name="edit_billing_address">编辑账单地址</string>
+    <string name="billing_address_empty">尚未保存账单地址</string>
+    <string name="remove_billing_address">移除账单地址</string>
+    <string name="billing_address_removed">已移除账单地址</string>
+    <string name="street_address">街道地址</string>
+    <string name="street_address_placeholder">如：中山路123号</string>
+    <string name="apartment">公寓/单元号（可选）</string>
+    <string name="apartment_placeholder">如：2号楼501室</string>
+    <string name="city">城市</string>
+    <string name="city_placeholder">如：北京市</string>
+    <string name="state_province">省/州</string>
+    <string name="state_province_placeholder">如：北京</string>
+    <string name="postal_code">邮政编码</string>
+    <string name="postal_code_placeholder">如：100000</string>
+    <string name="country">国家</string>
+    <string name="country_placeholder">如：中国</string>
+    <string name="billing_address_saved">账单地址已保存</string>
     <string name="notes_placeholder">添加备注信息...</string>
+    <string name="bottom_nav_settings">底部导航栏</string>
+    <string name="bottom_nav_toggle_subtitle">在底部栏中显示或隐藏该页签</string>
+    <string name="bottom_nav_reorder_hint">使用箭头调整顺序，设置页始终位于最后。</string>
+    <string name="bottom_nav_move_up">上移标签</string>
+    <string name="bottom_nav_move_down">下移标签</string>
+    <string name="bottom_nav_settings_entry_subtitle">选择要显示的页签并调整顺序</string>
     
     <!-- Document -->
     <string name="add_document_title">添加证件</string>
@@ -183,6 +210,7 @@
     <string name="download">下载</string>
     <string name="download_success">图片已成功保存到相册</string>
     <string name="download_failed">保存图片失败</string>
+    <string name="camera_permission_needed">需要相机权限才能进行拍照</string>
     
     <!-- Export/Import Data -->
     <string name="export_data_title">导出数据</string>
@@ -322,6 +350,8 @@
     <string name="nav_authenticator">验证器</string>
     <string name="nav_documents">证件</string>
     <string name="nav_bank_cards">银行卡</string>
+    <string name="nav_notes">笔记</string>
+    <string name="nav_ledger">记账</string>
     <string name="nav_settings">设置</string>
     <string name="add">添加</string>
     
@@ -330,7 +360,50 @@
     <string name="nav_authenticator_short">验证</string>
     <string name="nav_documents_short">证件</string>
     <string name="nav_bank_cards_short">银行</string>
+    <string name="nav_notes_short">笔记</string>
+    <string name="nav_ledger_short">记账</string>
     <string name="nav_settings_short">设置</string>
+
+    <!-- Notes -->
+    <string name="add_note_title">添加笔记</string>
+    <string name="edit_note_title">编辑笔记</string>
+    <string name="note_content">内容</string>
+    <string name="note_content_placeholder">写下你的想法...</string>
+    <string name="note_title_label">标题</string>
+    <string name="note_title_placeholder">例如：项目想法</string>
+    <string name="no_notes_title">还没有笔记</string>
+    <string name="no_notes_description">点击右下角的 + 按钮创建第一条安全笔记</string>
+    <string name="delete_note_title">删除笔记</string>
+    <string name="delete_note_message">确定要删除“%s”吗？此操作无法撤销。</string>
+    <string name="search_notes">搜索笔记</string>
+    <string name="batch_delete_notes_title">删除笔记</string>
+    <string name="batch_delete_notes_message">确定要删除选中的 %1$d 条笔记吗？</string>
+    <string name="note_tags">标签</string>
+    <string name="note_tags_placeholder">标签1，标签2</string>
+    <string name="note_markdown_label">Markdown 格式</string>
+    <string name="note_detail_title">笔记</string>
+    <string name="note_detail_not_found_title">找不到笔记</string>
+    <string name="note_detail_not_found_message">该笔记可能已被删除或移动。</string>
+    <string name="note_detail_copied">笔记内容已复制到剪贴板</string>
+    <string name="note_detail_share_title">分享笔记</string>
+    <string name="note_detail_tags_label">标签</string>
+    <string name="note_detail_preview_tab">预览</string>
+    <string name="note_detail_raw_tab">纯文本</string>
+    <string name="note_detail_preview_fullscreen">全屏预览</string>
+    <string name="note_detail_preview_fullscreen_title">Markdown 预览</string>
+    <string name="markdown_action_heading1">标题1</string>
+    <string name="markdown_action_heading2">标题2</string>
+    <string name="markdown_action_heading3">标题3</string>
+    <string name="markdown_action_bold">加粗</string>
+    <string name="markdown_action_italic">斜体</string>
+    <string name="markdown_action_quote">引用</string>
+    <string name="markdown_action_list_unordered">无序列表</string>
+    <string name="markdown_action_list_ordered">有序列表</string>
+    <string name="markdown_action_list_task">任务列表</string>
+    <string name="markdown_action_code">代码</string>
+    <string name="note_detail_empty_content">这条笔记还没有内容。</string>
+    <string name="note_detail_additional_notes">附加备注</string>
+    <string name="note_detail_updated_at">最后更新于 %1$s</string>
     
     <!-- Settings Screen -->
     <string name="settings_general">通用</string>
@@ -560,4 +633,26 @@
     <string name="all_accounts_have_twofa">所有重要账户都已启用双重验证</string>
     <string name="pwned_passwords_attribution">技术支持：Have I Been Pwned</string>
     <string name="twofa_directory_attribution">参考：2FA Directory</string>
+    
+    <!-- Ledger / Accounting -->
+    <string name="ledger_title">记账本</string>
+    <string name="ledger_balance">余额</string>
+    <string name="ledger_income">收入</string>
+    <string name="ledger_expense">支出</string>
+    <string name="ledger_transfer">转账</string>
+    <string name="ledger_add_entry">添加记账</string>
+    <string name="ledger_edit_entry">编辑记账</string>
+    <string name="ledger_entry_type">类型</string>
+    <string name="ledger_amount">金额</string>
+    <string name="ledger_category">分类</string>
+    <string name="ledger_category_none">无分类</string>
+    <string name="ledger_no_category_available">当前类型暂无可用分类</string>
+    <string name="ledger_time">时间</string>
+    <string name="ledger_note">备注</string>
+    <string name="ledger_select_category">选择分类</string>
+    <string name="ledger_empty">还没有记账条目，点击 + 添加一条吧</string>
+    <string name="ledger_payment_method">支付方式</string>
+    <string name="ledger_payment_wechat">微信</string>
+    <string name="ledger_payment_alipay">支付宝</string>
+    <string name="ledger_payment_unionpay">云闪付</string>
 </resources>

@@ -2,6 +2,7 @@ package takagi.ru.monica.data
 
 import androidx.room.TypeConverter
 import java.util.Date
+import takagi.ru.monica.data.ledger.LedgerEntryType
 
 /**
  * Type converters for Room database
@@ -25,5 +26,15 @@ class Converters {
     @TypeConverter
     fun toItemType(value: String?): ItemType? {
         return value?.let { ItemType.valueOf(it) }
+    }
+
+    @TypeConverter
+    fun fromLedgerEntryType(value: LedgerEntryType?): String? {
+        return value?.name
+    }
+
+    @TypeConverter
+    fun toLedgerEntryType(value: String?): LedgerEntryType? {
+        return value?.let { LedgerEntryType.valueOf(it) }
     }
 }

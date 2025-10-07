@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,7 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
@@ -353,8 +354,8 @@ fun AddEditDocumentScreen(
                 })
             )
             
-            // 证件照片（反面）
-            if (documentType != DocumentType.PASSPORT) { // 护照通常不需要反面
+            // 证件照片（背面） - 护照通常不需要背面
+            if (documentType != DocumentType.PASSPORT) {
                 ImagePicker(
                     imageFileName = imagePaths.getOrNull(1),
                     onImageSelected = { fileName ->
@@ -388,32 +389,6 @@ fun AddEditDocumentScreen(
                         DocumentType.OTHER -> stringResource(R.string.other_document)
                     })
                 )
-            }
-            
-            // 提示信息
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.document_encryption_notice),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
         }
     }

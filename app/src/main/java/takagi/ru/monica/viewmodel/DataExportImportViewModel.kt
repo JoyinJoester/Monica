@@ -9,8 +9,11 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.ledger.LedgerEntry
+import takagi.ru.monica.data.ledger.LedgerEntryType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.repository.LedgerRepository
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -22,6 +25,7 @@ import java.util.Date
 class DataExportImportViewModel(
     private val secureItemRepository: SecureItemRepository,
     private val passwordRepository: PasswordRepository,
+    private val ledgerRepository: LedgerRepository,
     private val context: Context
 ) : ViewModel() {
 
@@ -191,5 +195,54 @@ class DataExportImportViewModel(
      */
     fun getSuggestedFileName(): String {
         return exportManager.getSuggestedFileName()
+    }
+
+    /**
+     * 导入支付宝账本数据
+     */
+    suspend fun importAlipayLedgerData(inputUri: Uri): Result<Int> {
+        return try {
+            val result = exportManager.importAlipayLedgerData(inputUri)
+            
+            result.fold(
+                onSuccess = { items ->
+                    android.util.Log.d("AlipayImport", "ViewModel收到 ${items.size} 条支付宝账单")
+                    var count = 0
+                    var errorCount = 0
+                    
+                    items.forEach { alipayItem ->
+                        try {
+                            val ledgerEntry = LedgerEntry(
+                                id = 0,
+                                title = alipayItem.title,
+                                amountInCents = alipayItem.amountInCents,
+                                type = LedgerEntryType.valueOf(alipayItem.type),
+                                occurredAt = alipayItem.occurredAt,
+                                note = alipayItem.note,
+                                paymentMethod = alipayItem.paymentMethod,
+                                createdAt = Date(),
+                                updatedAt = Date()
+                            )
+                            ledgerRepository.upsertEntry(ledgerEntry)
+                            count++
+                            android.util.Log.d("AlipayImport", "成功插入账本: ${alipayItem.title}")
+                        } catch (e: Exception) {
+                            errorCount++
+                            android.util.Log.e("AlipayImport", "插入账本失败: ${alipayItem.title}, 错误: ${e.message}", e)
+                        }
+                    }
+                    
+                    android.util.Log.d("AlipayImport", "导入完成: 成功=$count, 失败=$errorCount")
+                    Result.success(count)
+                },
+                onFailure = { error ->
+                    android.util.Log.e("AlipayImport", "导入失败: ${error.message}", error)
+                    Result.failure(error)
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AlipayImport", "导入异常: ${e.message}", e)
+            Result.failure(e)
+        }
     }
 }

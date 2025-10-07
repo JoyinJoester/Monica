@@ -32,6 +32,10 @@ interface SecureItemDao {
     // 根据ID获取项目
     @Query("SELECT * FROM secure_items WHERE id = :id")
     suspend fun getItemById(id: Long): SecureItem?
+
+    // 监听指定ID的项目变化
+    @Query("SELECT * FROM secure_items WHERE id = :id")
+    fun observeItemById(id: Long): Flow<SecureItem?>
     
     // 插入项目
     @Insert(onConflict = OnConflictStrategy.REPLACE)

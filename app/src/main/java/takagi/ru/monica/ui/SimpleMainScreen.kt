@@ -28,15 +28,19 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
+import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
+import takagi.ru.monica.ui.screens.LedgerScreen
 import kotlin.math.absoluteValue
 
 /**
@@ -50,10 +54,15 @@ fun SimpleMainScreen(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
+    noteViewModel: NoteViewModel,
+    ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
+    onNavigateToAddNote: (Long?) -> Unit,
+    onNavigateToAddLedgerEntry: (Long?) -> Unit,
+    onNavigateToNoteDetail: (Long) -> Unit,
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
     onNavigateToSupportAuthor: () -> Unit = {},
@@ -61,11 +70,13 @@ fun SimpleMainScreen(
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
+    onNavigateToBottomNavSettings: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab) }
+    val defaultTabKey = remember(initialTab) { indexToDefaultTabKey(initialTab) }
+    var selectedTabKey by rememberSaveable { mutableStateOf(defaultTabKey) }
     
     // 密码列表的选择模式状态
     var isPasswordSelectionMode by remember { mutableStateOf(false) }
@@ -96,20 +107,36 @@ fun SimpleMainScreen(
     var onSelectAllBankCards by remember { mutableStateOf({}) }
     var onDeleteSelectedBankCards by remember { mutableStateOf({}) }
 
-    val tabs = listOf(
-        BottomNavItem.Passwords to stringResource(R.string.nav_passwords_short),
-        BottomNavItem.Authenticator to stringResource(R.string.nav_authenticator_short),
-        BottomNavItem.Documents to stringResource(R.string.nav_documents_short),
-        BottomNavItem.BankCards to stringResource(R.string.nav_bank_cards_short),
-        BottomNavItem.Settings to stringResource(R.string.nav_settings_short)
-    )
+    val appSettings by settingsViewModel.settings.collectAsState()
+    val bottomNavVisibility = appSettings.bottomNavVisibility
+
+    val dataTabItems = appSettings.bottomNavOrder
+        .map { it.toBottomNavItem() }
+        .filter { item ->
+            val tab = item.contentTab
+            tab == null || bottomNavVisibility.isVisible(tab)
+        }
+
+    val tabs = buildList {
+        addAll(dataTabItems)
+        add(BottomNavItem.Settings)
+    }
+
+    LaunchedEffect(tabs) {
+        if (tabs.none { it.key == selectedTabKey }) {
+            selectedTabKey = tabs.first().key
+        }
+    }
+
+    val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
+    val currentTabLabel = stringResource(currentTab.fullLabelRes())
 
     Scaffold(
         topBar = {
             // 根据不同页面的选择模式显示对应的顶栏
             when {
                 // 密码页面选择模式
-                selectedTab == 0 && isPasswordSelectionMode -> {
+                currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
                     SelectionModeTopBar(
                         selectedCount = selectedPasswordCount,
                         onExit = { onExitPasswordSelection() },
@@ -119,7 +146,7 @@ fun SimpleMainScreen(
                     )
                 }
                 // TOTP页面选择模式
-                selectedTab == 1 && isTotpSelectionMode -> {
+                currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
                     SelectionModeTopBar(
                         selectedCount = selectedTotpCount,
                         onExit = { onExitTotpSelection() },
@@ -128,7 +155,7 @@ fun SimpleMainScreen(
                     )
                 }
                 // 证件页面选择模式
-                selectedTab == 2 && isDocumentSelectionMode -> {
+                currentTab == BottomNavItem.Documents && isDocumentSelectionMode -> {
                     SelectionModeTopBar(
                         selectedCount = selectedDocumentCount,
                         onExit = { onExitDocumentSelection() },
@@ -137,7 +164,7 @@ fun SimpleMainScreen(
                     )
                 }
                 // 银行卡页面选择模式
-                selectedTab == 3 && isBankCardSelectionMode -> {
+                currentTab == BottomNavItem.BankCards && isBankCardSelectionMode -> {
                     SelectionModeTopBar(
                         selectedCount = selectedBankCardCount,
                         onExit = { onExitBankCardSelection() },
@@ -145,11 +172,15 @@ fun SimpleMainScreen(
                         onDelete = { onDeleteSelectedBankCards() }
                     )
                 }
+                // 记账页面由 LedgerScreen 提供顶栏
+                currentTab == BottomNavItem.Ledger -> {
+                    // 不显示顶部栏，避免重复
+                }
                 // 正常顶栏
                 else -> {
                     TopAppBar(
-                        title = { 
-                            Text(tabs[selectedTab].second)
+                        title = {
+                            Text(currentTabLabel)
                         }
                     )
                 }
@@ -157,7 +188,8 @@ fun SimpleMainScreen(
         },
         bottomBar = {
             NavigationBar {
-                tabs.forEachIndexed { index, (item, label) ->
+                tabs.forEach { item ->
+                    val label = stringResource(item.shortLabelRes())
                     NavigationBarItem(
                         icon = { 
                             Icon(item.icon, contentDescription = label) 
@@ -165,31 +197,51 @@ fun SimpleMainScreen(
                         label = { 
                             Text(label) 
                         },
-                        selected = selectedTab == index,
-                        onClick = { 
-                            selectedTab = index 
-                        }
+                        selected = item.key == currentTab.key,
+                        onClick = { selectedTabKey = item.key }
                     )
                 }
             }
         },
         floatingActionButton = {
-            if (selectedTab in 0..3) { // 只在数据页面显示FAB
-                FloatingActionButton(
-                    onClick = { 
-                        when (selectedTab) {
-                            0 -> onNavigateToAddPassword(null)
-                            1 -> onNavigateToAddTotp(null)
-                            2 -> onNavigateToAddDocument(null)
-                            3 -> onNavigateToAddBankCard(null)
-                            else -> {
-                                // 不应该到达这里
-                            }
-                        }
+            when (currentTab) {
+                BottomNavItem.Passwords -> {
+                    FloatingActionButton(
+                        onClick = { onNavigateToAddPassword(null) }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
                     }
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
                 }
+
+                BottomNavItem.Authenticator -> {
+                    FloatingActionButton(
+                        onClick = { onNavigateToAddTotp(null) }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
+                    }
+                }
+
+                BottomNavItem.Documents -> {
+                    FloatingActionButton(
+                        onClick = { onNavigateToAddDocument(null) }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
+                    }
+                }
+
+                BottomNavItem.BankCards -> {
+                    FloatingActionButton(
+                        onClick = { onNavigateToAddBankCard(null) }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
+                    }
+                }
+
+                BottomNavItem.Ledger -> {
+                    // 记账页面由 LedgerScreen 自身提供 FAB
+                }
+
+                BottomNavItem.Settings -> {}
             }
         }
     ) { paddingValues ->
@@ -198,8 +250,8 @@ fun SimpleMainScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            when (selectedTab) {
-                0 -> {
+            when (currentTab) {
+                BottomNavItem.Passwords -> {
                     // 密码页面 - 使用现有的密码列表
                     PasswordListContent(
                         viewModel = passwordViewModel,
@@ -216,7 +268,7 @@ fun SimpleMainScreen(
                         }
                     )
                 }
-                1 -> {
+                BottomNavItem.Authenticator -> {
                     // TOTP验证器页面
                     TotpListContent(
                         viewModel = totpViewModel,
@@ -235,7 +287,7 @@ fun SimpleMainScreen(
                         }
                     )
                 }
-                2 -> {
+                BottomNavItem.Documents -> {
                     // 文档页面
                     DocumentListContent(
                         viewModel = documentViewModel,
@@ -251,7 +303,7 @@ fun SimpleMainScreen(
                         }
                     )
                 }
-                3 -> {
+                BottomNavItem.BankCards -> {
                     // 银行卡页面
                     BankCardListContent(
                         viewModel = bankCardViewModel,
@@ -267,7 +319,14 @@ fun SimpleMainScreen(
                         }
                     )
                 }
-                4 -> {
+                BottomNavItem.Ledger -> {
+                    // 记账页面
+                    LedgerScreen(
+                        viewModel = ledgerViewModel,
+                        onNavigateToAddEntry = { entryId -> onNavigateToAddLedgerEntry(entryId) }
+                    )
+                }
+                BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
                     SettingsScreen(
                         viewModel = settingsViewModel,
@@ -279,6 +338,7 @@ fun SimpleMainScreen(
                         onImportData = onNavigateToImportData,
                         onNavigateToWebDav = onNavigateToWebDav,
                         onNavigateToAutofill = onNavigateToAutofill,
+                        onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
                         onSecurityAnalysis = onSecurityAnalysis,
                         onClearAllData = onClearAllData,
                         showTopBar = false  // 在标签页中不显示顶栏
@@ -996,6 +1056,9 @@ private fun TotpItemCard(
     )
 }
 
+/**
+ * 笔记列表
+ */
 /**
  * 银行卡列表内容
  */
@@ -1976,15 +2039,54 @@ private fun SelectionModeTopBar(
     )
 }
 
-/**
- * 底部导航项目
- */
+private const val SETTINGS_TAB_KEY = "SETTINGS"
+
 sealed class BottomNavItem(
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val contentTab: BottomNavContentTab?,
+    val icon: ImageVector
 ) {
-    object Passwords : BottomNavItem(Icons.Default.Lock)
-    object Authenticator : BottomNavItem(Icons.Default.Security)
-    object Documents : BottomNavItem(Icons.Default.Description)
-    object BankCards : BottomNavItem(Icons.Default.CreditCard)
-    object Settings : BottomNavItem(Icons.Default.Settings)
+    val key: String = contentTab?.name ?: SETTINGS_TAB_KEY
+
+    object Passwords : BottomNavItem(BottomNavContentTab.PASSWORDS, Icons.Default.Lock)
+    object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
+    object Documents : BottomNavItem(BottomNavContentTab.DOCUMENTS, Icons.Default.Description)
+    object BankCards : BottomNavItem(BottomNavContentTab.BANK_CARDS, Icons.Default.CreditCard)
+    object Ledger : BottomNavItem(BottomNavContentTab.LEDGER, Icons.Default.AccountBalance)
+    object Settings : BottomNavItem(null, Icons.Default.Settings)
+}
+
+private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
+    BottomNavContentTab.PASSWORDS -> BottomNavItem.Passwords
+    BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
+    BottomNavContentTab.DOCUMENTS -> BottomNavItem.Documents
+    BottomNavContentTab.BANK_CARDS -> BottomNavItem.BankCards
+    BottomNavContentTab.LEDGER -> BottomNavItem.Ledger
+}
+
+private fun BottomNavItem.fullLabelRes(): Int = when (this) {
+    BottomNavItem.Passwords -> R.string.nav_passwords
+    BottomNavItem.Authenticator -> R.string.nav_authenticator
+    BottomNavItem.Documents -> R.string.nav_documents
+    BottomNavItem.BankCards -> R.string.nav_bank_cards
+    BottomNavItem.Ledger -> R.string.nav_ledger
+    BottomNavItem.Settings -> R.string.nav_settings
+}
+
+private fun BottomNavItem.shortLabelRes(): Int = when (this) {
+    BottomNavItem.Passwords -> R.string.nav_passwords_short
+    BottomNavItem.Authenticator -> R.string.nav_authenticator_short
+    BottomNavItem.Documents -> R.string.nav_documents_short
+    BottomNavItem.BankCards -> R.string.nav_bank_cards_short
+    BottomNavItem.Ledger -> R.string.nav_ledger_short
+    BottomNavItem.Settings -> R.string.nav_settings_short
+}
+
+private fun indexToDefaultTabKey(index: Int): String = when (index) {
+    0 -> BottomNavContentTab.PASSWORDS.name
+    1 -> BottomNavContentTab.AUTHENTICATOR.name
+    2 -> BottomNavContentTab.DOCUMENTS.name
+    3 -> BottomNavContentTab.BANK_CARDS.name
+    4 -> BottomNavContentTab.LEDGER.name
+    5 -> SETTINGS_TAB_KEY
+    else -> BottomNavContentTab.PASSWORDS.name
 }

@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -17,7 +16,10 @@ import androidx.compose.ui.unit.sp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardType
+import takagi.ru.monica.data.model.formatForDisplay
+import takagi.ru.monica.data.model.isEmpty
 import kotlinx.serialization.json.Json
 
 /**
@@ -46,6 +48,18 @@ fun BankCardCard(
             expiryYear = ""
         )
     }
+    val billingAddress = remember(cardData.billingAddress) {
+        if (cardData.billingAddress.isNotBlank()) {
+            try {
+                Json.decodeFromString<BillingAddress>(cardData.billingAddress)
+            } catch (e: Exception) {
+                BillingAddress()
+            }
+        } else {
+            BillingAddress()
+        }
+    }
+    val hasBillingAddress = remember(billingAddress) { !billingAddress.isEmpty() }
     
     Card(
         onClick = onClick,
@@ -252,6 +266,23 @@ fun BankCardCard(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
+                }
+            }
+
+            if (hasBillingAddress) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.billing_address),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = billingAddress.formatForDisplay(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }

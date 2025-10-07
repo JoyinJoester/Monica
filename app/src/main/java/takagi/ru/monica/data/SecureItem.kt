@@ -6,7 +6,7 @@ import java.util.Date
 
 /**
  * 统一的安全数据项实体
- * 支持多种类型：TOTP验证器、银行卡、证件
+ * 支持多种类型：TOTP验证器、银行卡、证件、笔记
  */
 @Entity(tableName = "secure_items")
 data class SecureItem(
@@ -36,5 +36,6 @@ enum class ItemType {
     PASSWORD,    // 密码
     TOTP,        // 验证器
     BANK_CARD,   // 银行卡
-    DOCUMENT     // 证件
+    DOCUMENT,    // 证件
+    NOTE         // 笔记
 }

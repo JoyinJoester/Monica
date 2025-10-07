@@ -27,7 +27,8 @@ import takagi.ru.monica.util.DataExportImportManager
 @Composable
 fun ImportDataScreen(
     onNavigateBack: () -> Unit,
-    onImport: suspend (Uri) -> Result<Int>  // 只需要 URI
+    onImport: suspend (Uri) -> Result<Int>,  // 普通数据导入
+    onImportAlipay: suspend (Uri) -> Result<Int>  // 支付宝账单导入
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -36,6 +37,7 @@ fun ImportDataScreen(
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isImporting by remember { mutableStateOf(false) }
+    var importType by remember { mutableStateOf("normal") } // "normal" 或 "alipay"
     
     // 文件选择launcher - 使用OpenDocument支持所有文件
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -96,12 +98,45 @@ fun ImportDataScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            "支持导入导出的CSV文件，数据将添加到现有数据中",
+                            "支持应用导出的CSV文件和支付宝交易明细",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // 选择导入类型
+            Text(
+                "选择导入类型",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = importType == "normal",
+                    onClick = { importType = "normal" },
+                    label = { Text("应用数据") },
+                    leadingIcon = if (importType == "normal") {
+                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
+                    } else null,
+                    modifier = Modifier.weight(1f)
+                )
+                FilterChip(
+                    selected = importType == "alipay",
+                    onClick = { importType = "alipay" },
+                    label = { Text("支付宝账单") },
+                    leadingIcon = if (importType == "alipay") {
+                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
+                    } else null,
+                    modifier = Modifier.weight(1f)
+                )
             }
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -168,11 +203,20 @@ fun ImportDataScreen(
                     selectedFileUri?.let { uri ->
                         scope.launch {
                             isImporting = true
-                            val result = onImport(uri)  // 只传递 URI
+                            val result = if (importType == "alipay") {
+                                onImportAlipay(uri)  // 支付宝导入
+                            } else {
+                                onImport(uri)  // 普通导入
+                            }
                             isImporting = false
                             
                             result.onSuccess { count ->
-                                snackbarHostState.showSnackbar("成功导入 $count 条数据")
+                                val message = if (importType == "alipay") {
+                                    "成功导入 $count 条支付宝交易"
+                                } else {
+                                    "成功导入 $count 条数据"
+                                }
+                                snackbarHostState.showSnackbar(message)
                                 onNavigateBack()
                             }.onFailure { error ->
                                 snackbarHostState.showSnackbar(

@@ -31,7 +31,6 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
-            // 使用标准ProGuard而非优化版
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
         debug {
@@ -119,6 +118,13 @@ dependencies {
     
     // WebDAV for cloud backup
     implementation 'com.github.thegrizzlylabs:sardine-android:0.8'
+
+    // Markdown rendering
+    implementation libs.commonmark
+    
+    // Charts for ledger analytics
+    // TODO: Re-enable after resolving Kotlin version compatibility
+    // implementation libs.vico.compose.m3
     
     // Testing
     testImplementation libs.junit

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.utils.SettingsManager
@@ -52,6 +53,18 @@ class SettingsViewModel(
     fun updateScreenshotProtectionEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateScreenshotProtectionEnabled(enabled)
+        }
+    }
+
+    fun updateBottomNavVisibility(tab: BottomNavContentTab, visible: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateBottomNavVisibility(tab, visible)
+        }
+    }
+
+    fun updateBottomNavOrder(order: List<BottomNavContentTab>) {
+        viewModelScope.launch {
+            settingsManager.updateBottomNavOrder(order)
         }
     }
 }

@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -10,17 +11,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardType
-import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.data.model.formatForDisplay
+import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.ui.components.ImagePicker
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
+import takagi.ru.monica.viewmodel.BankCardViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,6 +35,7 @@ fun AddEditBankCardScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var title by remember { mutableStateOf("") }
     var cardNumber by remember { mutableStateOf("") }
     var cardholderName by remember { mutableStateOf("") }
@@ -43,6 +49,9 @@ fun AddEditBankCardScreen(
     var showCardTypeMenu by remember { mutableStateOf(false) }
     var showCardNumber by remember { mutableStateOf(false) }
     var showCvv by remember { mutableStateOf(false) }
+    var hasBillingAddress by remember { mutableStateOf(false) }
+    var billingAddress by remember { mutableStateOf(BillingAddress()) }
+    var showBillingAddressDialog by remember { mutableStateOf(false) }
     
     // 图片路径列表
     var imagePaths by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -74,6 +83,17 @@ fun AddEditBankCardScreen(
                     cvv = data.cvv
                     bankName = data.bankName
                     cardType = data.cardType
+                    if (data.billingAddress.isNotBlank()) {
+                        billingAddress = try {
+                            Json.decodeFromString<BillingAddress>(data.billingAddress)
+                        } catch (e: Exception) {
+                            BillingAddress()
+                        }
+                        hasBillingAddress = !billingAddress.isEmpty()
+                    } else {
+                        billingAddress = BillingAddress()
+                        hasBillingAddress = false
+                    }
                 }
             }
         }
@@ -101,6 +121,11 @@ fun AddEditBankCardScreen(
                     // 保存按钮
                     IconButton(
                         onClick = {
+                            val billingAddressJson = if (hasBillingAddress && !billingAddress.isEmpty()) {
+                                Json.encodeToString(billingAddress)
+                            } else {
+                                ""
+                            }
                             val cardData = BankCardData(
                                 cardNumber = cardNumber,
                                 cardholderName = cardholderName,
@@ -108,7 +133,8 @@ fun AddEditBankCardScreen(
                                 expiryYear = expiryYear,
                                 cvv = cvv,
                                 bankName = bankName,
-                                cardType = cardType
+                                cardType = cardType,
+                                billingAddress = billingAddressJson
                             )
                             
                             val imagePathsJson = Json.encodeToString(imagePaths)
@@ -327,6 +353,85 @@ fun AddEditBankCardScreen(
                     .heightIn(min = 120.dp),
                 maxLines = 5
             )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.billing_address),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    if (hasBillingAddress && !billingAddress.isEmpty()) {
+                        Text(
+                            text = billingAddress.formatForDisplay(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { showBillingAddressDialog = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = stringResource(R.string.edit)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.edit_billing_address))
+                            }
+
+                            TextButton(
+                                onClick = {
+                                    billingAddress = BillingAddress()
+                                    hasBillingAddress = false
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.billing_address_removed),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.delete)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(stringResource(R.string.remove_billing_address))
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.billing_address_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        OutlinedButton(
+                            onClick = { showBillingAddressDialog = true },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.add_billing_address)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.add_billing_address))
+                        }
+                    }
+                }
+            }
             
             // 卡片照片（正面）
             ImagePicker(
@@ -349,7 +454,7 @@ fun AddEditBankCardScreen(
                 label = "银行卡照片（正面）"
             )
             
-            // 卡片照片（反面）
+            // 卡片照片（背面）
             ImagePicker(
                 imageFileName = imagePaths.getOrNull(1),
                 onImageSelected = { fileName ->
@@ -367,34 +472,97 @@ fun AddEditBankCardScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = "银行卡照片（反面，可选）"
+                label = "银行卡照片（背面，可选）"
             )
-            
-            // 提示信息
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
+        }
+    }
+
+    if (showBillingAddressDialog) {
+        var streetAddress by remember { mutableStateOf(billingAddress.streetAddress) }
+        var apartment by remember { mutableStateOf(billingAddress.apartment) }
+        var city by remember { mutableStateOf(billingAddress.city) }
+        var stateProvince by remember { mutableStateOf(billingAddress.stateProvince) }
+        var postalCode by remember { mutableStateOf(billingAddress.postalCode) }
+        var country by remember { mutableStateOf(billingAddress.country) }
+
+        AlertDialog(
+            onDismissRequest = { showBillingAddressDialog = false },
+            title = { Text(stringResource(R.string.billing_address)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = streetAddress,
+                        onValueChange = { streetAddress = it },
+                        label = { Text(stringResource(R.string.street_address)) },
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Text(
-                        text = "所有敏感信息将加密存储在本地设备",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    OutlinedTextField(
+                        value = apartment,
+                        onValueChange = { apartment = it },
+                        label = { Text(stringResource(R.string.apartment)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = city,
+                        onValueChange = { city = it },
+                        label = { Text(stringResource(R.string.city)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = stateProvince,
+                        onValueChange = { stateProvince = it },
+                        label = { Text(stringResource(R.string.state_province)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = postalCode,
+                        onValueChange = { postalCode = it },
+                        label = { Text(stringResource(R.string.postal_code)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = country,
+                        onValueChange = { country = it },
+                        label = { Text(stringResource(R.string.country)) },
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val updatedAddress = BillingAddress(
+                            streetAddress = streetAddress.trim(),
+                            apartment = apartment.trim(),
+                            city = city.trim(),
+                            stateProvince = stateProvince.trim(),
+                            postalCode = postalCode.trim(),
+                            country = country.trim()
+                        )
+                        val hasAddress = !updatedAddress.isEmpty()
+                        billingAddress = updatedAddress
+                        hasBillingAddress = hasAddress
+                        showBillingAddressDialog = false
+                        val message = if (hasAddress) {
+                            R.string.billing_address_saved
+                        } else {
+                            R.string.billing_address_removed
+                        }
+                        Toast.makeText(
+                            context,
+                            context.getString(message),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBillingAddressDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
-        }
+        )
     }
 }
