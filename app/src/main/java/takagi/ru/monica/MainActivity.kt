@@ -1,18 +1,24 @@
 package takagi.ru.monica
 
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import android.widget.TextView
+import android.view.Gravity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import android.content.Intent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -33,7 +39,6 @@ import takagi.ru.monica.ui.screens.ResetPasswordScreen
 import takagi.ru.monica.ui.screens.ForgotPasswordScreen
 import takagi.ru.monica.ui.screens.SecurityQuestionsSetupScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
-import takagi.ru.monica.ui.screens.NoteDetailScreen
 import takagi.ru.monica.ui.screens.BottomNavSettingsScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -46,12 +51,13 @@ import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.data.ThemeMode
-import takagi.ru.monica.util.LauncherManager
 import android.content.Context
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import takagi.ru.monica.util.FileOperationHelper
+import takagi.ru.monica.util.PhotoPickerHelper
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     
     override fun attachBaseContext(newBase: Context?) {
         if (newBase != null) {
@@ -76,11 +82,23 @@ class MainActivity : ComponentActivity() {
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)
         val settingsManager = SettingsManager(this)
-        val ledgerRepository = LedgerRepository(database.ledgerDao())
+        val ledgerRepository = LedgerRepository(database.ledgerDao(), secureItemRepository)
         
         setContent {
             MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database, ledgerRepository)
         }
+    }
+    
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        // 处理文件导出/导入结果
+        FileOperationHelper.handleExportResult(requestCode, resultCode, data)
+        FileOperationHelper.handleImportResult(requestCode, resultCode, data)
+        
+        // 处理照片选择结果
+        if (PhotoPickerHelper.handleCameraResult(requestCode, resultCode, data)) return
+        if (PhotoPickerHelper.handleGalleryResult(requestCode, resultCode, data)) return
     }
 }
 
@@ -93,28 +111,18 @@ fun MonicaApp(
     database: PasswordDatabase,
     ledgerRepository: LedgerRepository
 ) {
-    // 初始化全局Launcher - 应用启动时创建一次,避免在导航时重复创建
-    LauncherManager.galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri -> LauncherManager.handleGalleryResult(uri) }
-    
-    LauncherManager.cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success -> LauncherManager.handleCameraResult(success) }
-    
-    LauncherManager.filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri -> LauncherManager.handleFilePickerResult(uri) }
-    
-    LauncherManager.createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri -> LauncherManager.handleCreateDocumentResult(uri) }
-    
-    LauncherManager.permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { result -> LauncherManager.handlePermissionResult(result) }
-    
+    val context = LocalContext.current
     val navController = rememberNavController()
+    
+    // 创建权限共享 launcher
+    var pendingSupportPermissionCallback by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+    val sharedSupportPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        pendingSupportPermissionCallback?.invoke(granted)
+        pendingSupportPermissionCallback = null
+    }
+    
     val viewModel: PasswordViewModel = viewModel {
         PasswordViewModel(repository, securityManager)
     }
@@ -127,11 +135,8 @@ fun MonicaApp(
     val documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel = viewModel {
         takagi.ru.monica.viewmodel.DocumentViewModel(secureItemRepository)
     }
-    val noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel = viewModel {
-        takagi.ru.monica.viewmodel.NoteViewModel(secureItemRepository)
-    }
     val ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel = viewModel {
-        takagi.ru.monica.viewmodel.LedgerViewModel(ledgerRepository)
+        takagi.ru.monica.viewmodel.LedgerViewModel(ledgerRepository, secureItemRepository)
     }
     val dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel = viewModel {
         takagi.ru.monica.viewmodel.DataExportImportViewModel(secureItemRepository, repository, ledgerRepository, navController.context)
@@ -163,14 +168,17 @@ fun MonicaApp(
             totpViewModel = totpViewModel,
             bankCardViewModel = bankCardViewModel,
             documentViewModel = documentViewModel,
-            noteViewModel = noteViewModel,
             ledgerViewModel = ledgerViewModel,
             dataExportImportViewModel = dataExportImportViewModel,
             settingsViewModel = settingsViewModel,
             securityManager = securityManager,
             repository = repository,
             secureItemRepository = secureItemRepository,
-            ledgerRepository = ledgerRepository
+            ledgerRepository = ledgerRepository,
+            onPermissionRequested = { permission, callback ->
+                pendingSupportPermissionCallback = callback
+                sharedSupportPermissionLauncher.launch(permission)
+            }
         )
         }
     }
@@ -183,14 +191,14 @@ fun MonicaContent(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
-    noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
     ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel,
     dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel,
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
-    ledgerRepository: LedgerRepository
+    ledgerRepository: LedgerRepository,
+    onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
     
@@ -230,7 +238,6 @@ fun MonicaContent(
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
-                noteViewModel = noteViewModel,
                 ledgerViewModel = ledgerViewModel,
                 initialTab = tab,
                 onNavigateToAddPassword = { passwordId ->
@@ -245,14 +252,11 @@ fun MonicaContent(
                 onNavigateToAddDocument = { documentId ->
                     navController.navigate(Screen.AddEditDocument.createRoute(documentId))
                 },
-                onNavigateToAddNote = { noteId ->
-                    navController.navigate(Screen.AddEditNote.createRoute(noteId))
-                },
                 onNavigateToAddLedgerEntry = { entryId ->
                     navController.navigate(Screen.AddEditLedgerEntry.createRoute(entryId))
                 },
-                onNavigateToNoteDetail = { noteId ->
-                    navController.navigate(Screen.NoteDetail.createRoute(noteId))
+                onNavigateToAssetManagement = {
+                    navController.navigate(Screen.AssetManagement.route)
                 },
                 onNavigateToChangePassword = {
                     navController.navigate(Screen.ChangePassword.route)
@@ -422,18 +426,6 @@ fun MonicaContent(
             )
         }
 
-        composable(Screen.AddEditNote.route) { backStackEntry ->
-            val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
-
-            takagi.ru.monica.ui.screens.AddEditNoteScreen(
-                viewModel = noteViewModel,
-                noteId = if (noteId > 0) noteId else null,
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
         composable(Screen.AddEditLedgerEntry.route) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")?.toLongOrNull() ?: -1L
 
@@ -447,25 +439,30 @@ fun MonicaContent(
             )
         }
 
-        composable(
-            route = Screen.NoteDetail.route,
-            arguments = listOf(
-                navArgument("noteId") { type = NavType.LongType }
-            )
-        ) { backStackEntry ->
-            val noteId = backStackEntry.arguments?.getLong("noteId") ?: -1L
-            NoteDetailScreen(
-                noteId = noteId,
-                viewModel = noteViewModel,
+        composable(Screen.AssetManagement.route) {
+            takagi.ru.monica.ui.screens.AssetManagementScreen(
+                viewModel = ledgerViewModel,
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onEditNote = { id ->
-                    navController.navigate(Screen.AddEditNote.createRoute(id))
+                onNavigateToAddAsset = { assetId ->
+                    navController.navigate(Screen.AddEditAsset.createRoute(assetId))
                 }
             )
         }
-        
+
+        composable(Screen.AddEditAsset.route) { backStackEntry ->
+            val assetId = backStackEntry.arguments?.getString("assetId")?.toLongOrNull() ?: -1L
+
+            takagi.ru.monica.ui.screens.AddEditAssetScreen(
+                viewModel = ledgerViewModel,
+                assetId = if (assetId > 0) assetId else null,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
         composable(Screen.QrScanner.route) {
             takagi.ru.monica.ui.screens.QrScannerScreen(
                 onQrCodeScanned = { qrData ->
@@ -692,7 +689,8 @@ fun MonicaContent(
                     navController.navigate(Screen.Main.createRoute(tab = 4)) {
                         popUpTo(Screen.Main.routePattern) { inclusive = true }
                     }
-                }
+                },
+                onRequestPermission = onPermissionRequested
             )
         }
         
@@ -733,6 +731,27 @@ fun MonicaContent(
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
                 }
             )
+        }
+    }
+}
+
+/**
+ * 安全的视图填充函数，添加错误处理和降级方案
+ */
+private fun inflateViewSafely(
+    layoutInflater: LayoutInflater,
+    layoutId: Int,
+    parent: ViewGroup?,
+    attachToRoot: Boolean
+): android.view.View? {
+    try {
+        return layoutInflater.inflate(layoutId, parent, attachToRoot)
+    } catch (e: Exception) {
+        Log.e("MainActivity", "Error inflating layout: $layoutId", e)
+        // 返回一个简单的降级视图
+        return TextView(parent?.context ?: layoutInflater.context).apply {
+            text = "无法加载视图"
+            gravity = Gravity.CENTER
         }
     }
 }

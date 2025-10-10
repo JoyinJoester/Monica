@@ -24,7 +24,7 @@ import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
-import takagi.ru.monica.ui.components.ImagePicker
+import takagi.ru.monica.ui.components.DualPhotoPicker
 import takagi.ru.monica.viewmodel.BankCardViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,6 +36,7 @@ fun AddEditBankCardScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    
     var title by remember { mutableStateOf("") }
     var cardNumber by remember { mutableStateOf("") }
     var cardholderName by remember { mutableStateOf("") }
@@ -53,8 +54,9 @@ fun AddEditBankCardScreen(
     var billingAddress by remember { mutableStateOf(BillingAddress()) }
     var showBillingAddressDialog by remember { mutableStateOf(false) }
     
-    // 图片路径列表
-    var imagePaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    // 图片路径管理
+    var frontImageFileName by remember { mutableStateOf<String?>(null) }
+    var backImageFileName by remember { mutableStateOf<String?>(null) }
     
     // 如果是编辑模式，加载现有数据
     LaunchedEffect(cardId) {
@@ -65,14 +67,18 @@ fun AddEditBankCardScreen(
                 isFavorite = item.isFavorite
                 
                 // 解析图片路径
-                imagePaths = try {
+                try {
                     if (item.imagePaths.isNotBlank()) {
-                        Json.decodeFromString<List<String>>(item.imagePaths)
-                    } else {
-                        emptyList()
+                        val pathsList = Json.decodeFromString<List<String>>(item.imagePaths)
+                        if (pathsList.isNotEmpty() && pathsList[0].isNotBlank()) {
+                            frontImageFileName = pathsList[0]
+                        }
+                        if (pathsList.size > 1 && pathsList[1].isNotBlank()) {
+                            backImageFileName = pathsList[1]
+                        }
                     }
                 } catch (e: Exception) {
-                    emptyList()
+                    // 忽略解析错误
                 }
                 
                 viewModel.parseCardData(item.itemData)?.let { data ->
@@ -137,7 +143,11 @@ fun AddEditBankCardScreen(
                                 billingAddress = billingAddressJson
                             )
                             
-                            val imagePathsJson = Json.encodeToString(imagePaths)
+                            val imagePathsList = listOf(
+                                frontImageFileName ?: "",
+                                backImageFileName ?: ""
+                            )
+                            val imagePathsJson = Json.encodeToString(imagePathsList)
                             
                             if (cardId == null) {
                                 viewModel.addCard(
@@ -433,46 +443,17 @@ fun AddEditBankCardScreen(
                 }
             }
             
-            // 卡片照片（正面）
-            ImagePicker(
-                imageFileName = imagePaths.getOrNull(0),
-                onImageSelected = { fileName ->
-                    imagePaths = if (imagePaths.isEmpty()) {
-                        listOf(fileName)
-                    } else {
-                        listOf(fileName) + imagePaths.drop(1)
-                    }
-                },
-                onImageRemoved = {
-                    imagePaths = if (imagePaths.size > 1) {
-                        imagePaths.drop(1)
-                    } else {
-                        emptyList()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = "银行卡照片（正面）"
-            )
-            
-            // 卡片照片（背面）
-            ImagePicker(
-                imageFileName = imagePaths.getOrNull(1),
-                onImageSelected = { fileName ->
-                    imagePaths = when (imagePaths.size) {
-                        0 -> listOf("", fileName)
-                        1 -> imagePaths + fileName
-                        else -> imagePaths.take(1) + fileName
-                    }
-                },
-                onImageRemoved = {
-                    imagePaths = if (imagePaths.size > 1) {
-                        imagePaths.take(1)
-                    } else {
-                        imagePaths
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = "银行卡照片（背面，可选）"
+            // 双面照片选择器
+            DualPhotoPicker(
+                frontImageFileName = frontImageFileName,
+                backImageFileName = backImageFileName,
+                onFrontImageSelected = { fileName -> frontImageFileName = fileName },
+                onFrontImageRemoved = { frontImageFileName = null },
+                onBackImageSelected = { fileName -> backImageFileName = fileName },
+                onBackImageRemoved = { backImageFileName = null },
+                frontLabel = "银行卡照片（正面）",
+                backLabel = "银行卡照片（背面）",
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

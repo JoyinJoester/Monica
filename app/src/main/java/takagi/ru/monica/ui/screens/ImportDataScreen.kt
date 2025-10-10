@@ -1,8 +1,7 @@
 package takagi.ru.monica.ui.screens
 
+import android.app.Activity
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.util.DataExportImportManager
+import takagi.ru.monica.util.FileOperationHelper
 
 
 /**
@@ -31,6 +31,7 @@ fun ImportDataScreen(
     onImportAlipay: suspend (Uri) -> Result<Int>  // 支付宝账单导入
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     
@@ -39,15 +40,43 @@ fun ImportDataScreen(
     var isImporting by remember { mutableStateOf(false) }
     var importType by remember { mutableStateOf("normal") } // "normal" 或 "alipay"
     
-    // 文件选择launcher - 使用OpenDocument支持所有文件
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            selectedFileUri = it
-            // 尝试获取文件名
-            selectedFileName = it.lastPathSegment ?: "已选择文件"
-        }
+    // 设置文件操作回调
+    LaunchedEffect(Unit) {
+        FileOperationHelper.setCallback(object : FileOperationHelper.FileOperationCallback {
+            override fun onExportFileSelected(uri: Uri?) {
+                // 导入界面不需要处理导出文件选择
+            }
+            
+            override fun onImportFileSelected(uri: Uri?) {
+                uri?.let { safeUri ->
+                    scope.launch {
+                        try {
+                            // 获取持久化权限
+                            try {
+                                context.contentResolver.takePersistableUriPermission(
+                                    safeUri,
+                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                            } catch (e: SecurityException) {
+                                // 某些URI可能不支持持久化权限,忽略这个错误
+                                android.util.Log.w("ImportDataScreen", "无法获取持久化权限", e)
+                            }
+                            
+                            selectedFileUri = safeUri
+                            // 尝试获取文件名
+                            selectedFileName = try {
+                                safeUri.lastPathSegment?.substringAfterLast('/') ?: "已选择文件"
+                            } catch (e: Exception) {
+                                "已选择文件"
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("ImportDataScreen", "文件选择异常", e)
+                            snackbarHostState.showSnackbar("文件选择失败：${e.message ?: "未知错误"}")
+                        }
+                    }
+                }
+            }
+        })
     }
     
     Scaffold(
@@ -145,8 +174,13 @@ fun ImportDataScreen(
             OutlinedCard(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { 
-                    // 支持多种MIME类型：CSV、文本、以及所有文件
-                    filePickerLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/csv", "*/*"))
+                    activity?.let { act ->
+                        FileOperationHelper.importFromCsv(act)
+                    } ?: run {
+                        scope.launch {
+                            snackbarHostState.showSnackbar("无法启动导入操作")
+                        }
+                    }
                 }
             ) {
                 Row(
@@ -203,25 +237,33 @@ fun ImportDataScreen(
                     selectedFileUri?.let { uri ->
                         scope.launch {
                             isImporting = true
-                            val result = if (importType == "alipay") {
-                                onImportAlipay(uri)  // 支付宝导入
-                            } else {
-                                onImport(uri)  // 普通导入
-                            }
-                            isImporting = false
-                            
-                            result.onSuccess { count ->
-                                val message = if (importType == "alipay") {
-                                    "成功导入 $count 条支付宝交易"
+                            try {
+                                val result = if (importType == "alipay") {
+                                    onImportAlipay(uri)  // 支付宝导入
                                 } else {
-                                    "成功导入 $count 条数据"
+                                    onImport(uri)  // 普通导入
                                 }
-                                snackbarHostState.showSnackbar(message)
-                                onNavigateBack()
-                            }.onFailure { error ->
+                                
+                                result.onSuccess { count ->
+                                    val message = if (importType == "alipay") {
+                                        "成功导入 $count 条支付宝交易"
+                                    } else {
+                                        "成功导入 $count 条数据"
+                                    }
+                                    snackbarHostState.showSnackbar(message)
+                                    onNavigateBack()
+                                }.onFailure { error ->
+                                    snackbarHostState.showSnackbar(
+                                        error.message ?: "导入失败，请检查文件格式"
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("ImportDataScreen", "导入异常", e)
                                 snackbarHostState.showSnackbar(
-                                    error.message ?: "导入失败，请检查文件格式"
+                                    "导入失败：${e.message ?: "未知错误"}"
                                 )
+                            } finally {
+                                isImporting = false
                             }
                         }
                     }

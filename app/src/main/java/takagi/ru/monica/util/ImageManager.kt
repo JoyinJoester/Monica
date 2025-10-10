@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.os.UserManager
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,17 +43,32 @@ class ImageManager(private val context: Context) {
     }
     
     private val imageDirectory: File by lazy {
-        File(context.filesDir, IMAGE_DIR).apply {
-            if (!exists()) {
-                mkdirs()
-            }
-        }
+        ensureDirectoriesExist(context.filesDir, IMAGE_DIR)
     }
     
     private val tempPhotoDirectory: File by lazy {
-        File(context.cacheDir, TEMP_IMAGE_DIR).apply {
+        ensureDirectoriesExist(context.cacheDir, TEMP_IMAGE_DIR)
+    }
+    
+    /**
+     * 确保目录存在，在访问前检查用户状态
+     */
+    private fun ensureDirectoriesExist(parentDir: File, childDirName: String): File {
+        // 检查用户是否已解锁
+        val userManager = context.getSystemService(Context.USER_SERVICE) as UserManager
+        if (!userManager.isUserUnlocked) {
+            android.util.Log.w("ImageManager", "User is not unlocked, deferring directory creation")
+        }
+        
+        return File(parentDir, childDirName).apply {
             if (!exists()) {
-                mkdirs()
+                try {
+                    if (!mkdirs()) {
+                        android.util.Log.e("ImageManager", "Failed to create directory: ${this.path}")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ImageManager", "Exception creating directory: ${this.path}", e)
+                }
             }
         }
     }

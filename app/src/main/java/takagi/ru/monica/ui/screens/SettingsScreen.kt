@@ -54,25 +54,9 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     
-    // 从 Context 获取 FragmentActivity - 遍历 ContextWrapper 链
-    val activity = remember {
-        var ctx = context
-        android.util.Log.d("SettingsScreen", "Context type: ${ctx.javaClass.name}")
-        var count = 0
-        while (ctx is ContextWrapper) {
-            count++
-            android.util.Log.d("SettingsScreen", "Level $count: ${ctx.javaClass.name}")
-            if (ctx is FragmentActivity) {
-                android.util.Log.d("SettingsScreen", "Found FragmentActivity at level $count")
-                return@remember ctx
-            }
-            ctx = ctx.baseContext
-        }
-        android.util.Log.e("SettingsScreen", "No FragmentActivity found after $count levels")
-        null
-    }
-    
-    android.util.Log.d("SettingsScreen", "Final activity: $activity")
+    // 直接使用 LocalContext.current as? ComponentActivity 获取 Activity
+    val activity = context as? FragmentActivity
+    android.util.Log.d("SettingsScreen", "Activity: $activity (type: ${context.javaClass.name})")
     
     val settings by viewModel.settings.collectAsState()
     val scrollState = rememberScrollState()
@@ -376,7 +360,7 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Info,
                     title = context.getString(R.string.version),
-                    subtitle = "1.0.2",
+                    subtitle = "1.0.3",
                     onClick = {
                         // 打开 GitHub 仓库链接
                         try {

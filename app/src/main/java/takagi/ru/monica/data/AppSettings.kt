@@ -50,7 +50,7 @@ data class BottomNavVisibility(
     val authenticator: Boolean = true,
     val documents: Boolean = true,
     val bankCards: Boolean = true,
-    val ledger: Boolean = true
+    val ledger: Boolean = false  // 记账功能默认关闭
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
         BottomNavContentTab.PASSWORDS -> passwords
@@ -66,9 +66,9 @@ data class BottomNavVisibility(
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val language: Language = Language.SYSTEM,
-    val biometricEnabled: Boolean = false,
+    val biometricEnabled: Boolean = true, // 生物识别认证默认开启(改为true)
     val autoLockMinutes: Int = 5, // Auto lock after X minutes of inactivity
-    val screenshotProtectionEnabled: Boolean = true, // Prevent screenshots by default
+    val screenshotProtectionEnabled: Boolean = false, // Prevent screenshots by default
     val bottomNavVisibility: BottomNavVisibility = BottomNavVisibility(),
     val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER
 )

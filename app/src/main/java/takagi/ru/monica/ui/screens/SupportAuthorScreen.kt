@@ -21,18 +21,14 @@ import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.content.ContentValues
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import takagi.ru.monica.util.LauncherManager
 import androidx.compose.material.icons.filled.Download
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.rememberPermissionState
-import com.google.accompanist.permissions.isGranted
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import java.io.IOException
 import java.io.OutputStream
 import takagi.ru.monica.R
@@ -41,26 +37,53 @@ import takagi.ru.monica.utils.ScreenshotProtection
 /**
  * 支持作者页面
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SupportAuthorScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onRequestPermission: (String, (Boolean) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var imageBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
-    // 存储权限
-    val storagePermission = rememberPermissionState(
+    val storagePermission = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            android.Manifest.permission.READ_MEDIA_IMAGES
+            Manifest.permission.READ_MEDIA_IMAGES
         } else {
-            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
         }
-    )
+    }
+    var hasStoragePermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, storagePermission) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    fun requestStoragePermission(onGranted: () -> Unit) {
+        onRequestPermission(storagePermission) { granted ->
+            hasStoragePermission = granted
+            if (granted) {
+                onGranted()
+            } else {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.storage_permission_needed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun saveQrImage() {
+        originalBitmap?.let { bitmap ->
+            saveImageToGallery(context, bitmap)
+        }
+    }
     
     // 加载assets中的图片
     LaunchedEffect(Unit) {
+        hasStoragePermission = ContextCompat.checkSelfPermission(context, storagePermission) == PackageManager.PERMISSION_GRANTED
         try {
             val inputStream = context.assets.open("support_author.jpg")
             val bitmap = BitmapFactory.decodeStream(inputStream)
@@ -203,26 +226,10 @@ fun SupportAuthorScreen(
                         // 保存图片按钮
                         Button(
                             onClick = {
-                                if (storagePermission.status.isGranted) {
-                                    originalBitmap?.let { bitmap ->
-                                        saveImageToGallery(context, bitmap)
-                                    }
+                                if (hasStoragePermission) {
+                                    saveQrImage()
                                 } else {
-                                    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        android.Manifest.permission.READ_MEDIA_IMAGES
-                                    } else {
-                                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-                                    }
-                                    LauncherManager.requestPermissions(arrayOf(permission)) { result ->
-                                        val isGranted = result[permission] == true
-                                        if (isGranted) {
-                                            originalBitmap?.let { bitmap ->
-                                                saveImageToGallery(context, bitmap)
-                                            }
-                                        } else {
-                                            Toast.makeText(context, context.getString(R.string.storage_permission_needed), Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
+                                    requestStoragePermission { saveQrImage() }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()

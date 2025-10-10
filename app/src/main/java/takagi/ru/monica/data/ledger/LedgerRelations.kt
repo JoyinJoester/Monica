@@ -11,6 +11,9 @@ data class LedgerEntryWithRelations(
     val category: LedgerCategory?,
     @Relation(parentColumn = "linkedItemId", entityColumn = "id")
     val linkedItem: SecureItem?,
+    // 注释掉这个有问题的关系映射，因为paymentMethod是String类型，而Asset.id是Long类型
+    // @Relation(parentColumn = "paymentMethod", entityColumn = "id")
+    // val asset: Asset?,  // 通过paymentMethod(存储assetId)关联到Asset
     @Relation(
         parentColumn = "id",
         entityColumn = "id",

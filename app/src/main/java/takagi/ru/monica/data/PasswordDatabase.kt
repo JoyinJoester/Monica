@@ -21,9 +21,10 @@ import takagi.ru.monica.data.ledger.LedgerTag
         LedgerEntry::class,
         LedgerCategory::class,
         LedgerTag::class,
-        LedgerEntryTagCrossRef::class
+        LedgerEntryTagCrossRef::class,
+        takagi.ru.monica.data.ledger.Asset::class
     ],
-    version = 7,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -156,6 +157,48 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 创建assets表
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS assets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        assetType TEXT NOT NULL,
+                        balanceInCents INTEGER NOT NULL DEFAULT 0,
+                        currencyCode TEXT NOT NULL DEFAULT 'CNY',
+                        iconKey TEXT NOT NULL DEFAULT 'wallet',
+                        colorHex TEXT NOT NULL DEFAULT '#4CAF50',
+                        linkedBankCardId INTEGER,
+                        isActive INTEGER NOT NULL DEFAULT 1,
+                        sortOrder INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_assets_assetType ON assets(assetType)")
+            }
+        }
+
+        private val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 为linkedBankCardId添加唯一索引
+                // 1. 先删除重复的银行卡资产(保留最早创建的)
+                database.execSQL("""
+                    DELETE FROM assets 
+                    WHERE id NOT IN (
+                        SELECT MIN(id) 
+                        FROM assets 
+                        WHERE linkedBankCardId IS NOT NULL 
+                        GROUP BY linkedBankCardId
+                    ) AND linkedBankCardId IS NOT NULL
+                """.trimIndent())
+                
+                // 2. 创建唯一索引
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_assets_linkedBankCardId ON assets(linkedBankCardId)")
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -163,7 +206,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                     PasswordDatabase::class.java,
                     "password_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .fallbackToDestructiveMigration() // 如果迁移失败,清除数据重建(避免闪退)
                     .build()
                 INSTANCE = instance
                 instance

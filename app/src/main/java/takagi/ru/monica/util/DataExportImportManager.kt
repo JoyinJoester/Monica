@@ -54,7 +54,10 @@ class DataExportImportManager(private val context: Context) {
         outputUri: Uri
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            context.contentResolver.openOutputStream(outputUri)?.use { output ->
+            val outputStream = context.contentResolver.openOutputStream(outputUri)
+                ?: return@withContext Result.failure(Exception("无法创建输出文件，请检查存储权限"))
+            
+            outputStream.use { output ->
                 BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
                     // 写入BOM标记，让Excel能正确识别UTF-8
                     writer.write("\uFEFF")
@@ -65,26 +68,32 @@ class DataExportImportManager(private val context: Context) {
                     
                     // 写入数据行
                     items.forEach { item ->
-                        val row = arrayOf(
-                            item.id.toString(),
-                            item.itemType.name,
-                            escapeCsvField(item.title),
-                            escapeCsvField(item.itemData),
-                            escapeCsvField(item.notes),
-                            item.isFavorite.toString(),
-                            escapeCsvField(item.imagePaths),
-                            item.createdAt.time.toString(),
-                            item.updatedAt.time.toString()
-                        )
-                        writer.write(row.joinToString(CSV_SEPARATOR))
-                        writer.newLine()
+                        try {
+                            val row = arrayOf(
+                                item.id.toString(),
+                                item.itemType.name,
+                                escapeCsvField(item.title),
+                                escapeCsvField(item.itemData),
+                                escapeCsvField(item.notes),
+                                item.isFavorite.toString(),
+                                escapeCsvField(item.imagePaths),
+                                item.createdAt.time.toString(),
+                                item.updatedAt.time.toString()
+                            )
+                            writer.write(row.joinToString(CSV_SEPARATOR))
+                            writer.newLine()
+                        } catch (e: Exception) {
+                            android.util.Log.e("DataExport", "写入数据项失败: ${item.id}", e)
+                            // 继续处理下一项
+                        }
                     }
                 }
-            } ?: return@withContext Result.failure(Exception("无法打开输出流"))
+            }
 
             Result.success("成功导出 ${items.size} 条数据")
         } catch (e: Exception) {
-            Result.failure(e)
+            android.util.Log.e("DataExport", "导出失败", e)
+            Result.failure(Exception("导出失败：${e.message ?: "未知错误"}"))
         }
     }
 
@@ -102,27 +111,42 @@ class DataExportImportManager(private val context: Context) {
             var errorCount = 0
             var csvFormat: CsvFormat = CsvFormat.UNKNOWN
             
-            context.contentResolver.openInputStream(inputUri)?.use { input ->
-                BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("无法读取文件，请检查文件是否存在"))
+            
+            inputStream.use { input ->
+                // 尝试UTF-8，如果失败则尝试GBK
+                val reader = try {
+                    BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+                } catch (e: Exception) {
+                    android.util.Log.w("DataImport", "UTF-8解码失败，尝试GBK", e)
+                    BufferedReader(InputStreamReader(input, Charset.forName("GBK")))
+                }
+                
+                reader.use { 
                     var firstLine = reader.readLine()
+                    if (firstLine == null) {
+                        return@withContext Result.failure(Exception("文件为空"))
+                    }
+                    
                     android.util.Log.d("DataImport", "第一行: $firstLine")
                     
                     // 跳过BOM标记（如果存在）
-                    if (firstLine?.startsWith("\uFEFF") == true) {
+                    if (firstLine.startsWith("\uFEFF")) {
                         firstLine = firstLine.substring(1)
                         android.util.Log.d("DataImport", "跳过BOM后: $firstLine")
                     }
                     
                     // 检测CSV格式
-                    csvFormat = detectCsvFormat(firstLine ?: "")
+                    csvFormat = detectCsvFormat(firstLine)
                     android.util.Log.d("DataImport", "检测到格式: $csvFormat")
                     
                     // 如果第一行是标题，跳过它
                     val isHeader = when (csvFormat) {
-                        CsvFormat.APP_EXPORT -> firstLine?.contains("Type") == true && 
+                        CsvFormat.APP_EXPORT -> firstLine.contains("Type") && 
                                                firstLine.contains("Title") && 
                                                firstLine.contains("Data")
-                        CsvFormat.CHROME_PASSWORD -> firstLine?.contains("name") == true && 
+                        CsvFormat.CHROME_PASSWORD -> firstLine.contains("name") && 
                                                     firstLine.contains("url") && 
                                                     firstLine.contains("username") &&
                                                     firstLine.contains("password")
@@ -131,7 +155,7 @@ class DataExportImportManager(private val context: Context) {
                     
                     android.util.Log.d("DataImport", "是否为标题行: $isHeader")
                     
-                    if (!isHeader && firstLine != null && firstLine.isNotBlank()) {
+                    if (!isHeader && firstLine.isNotBlank()) {
                         // 第一行就是数据，处理它
                         lineCount++
                         try {
@@ -154,11 +178,12 @@ class DataExportImportManager(private val context: Context) {
                     // 读取剩余数据行
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
+                        val currentLine = line ?: continue
                         lineCount++
-                        android.util.Log.d("DataImport", "读取第${lineCount}行: $line")
-                        if (line!!.isNotBlank()) {
+                        android.util.Log.d("DataImport", "读取第${lineCount}行: $currentLine")
+                        if (currentLine.isNotBlank()) {
                             try {
-                                val fields = parseCsvLine(line!!)
+                                val fields = parseCsvLine(currentLine)
                                 android.util.Log.d("DataImport", "第${lineCount}行字段数: ${fields.size}")
                                 val item = createExportItemFromFormat(fields, csvFormat)
                                 if (item != null) {
@@ -176,10 +201,15 @@ class DataExportImportManager(private val context: Context) {
                     }
                     android.util.Log.d("DataImport", "总行数: $lineCount, 成功: ${items.size}, 错误: $errorCount")
                 }
-            } ?: return@withContext Result.failure(Exception("无法读取文件"))
+            }
 
-            Result.success(items)
+            if (items.isEmpty()) {
+                Result.failure(Exception("未能导入任何数据，请检查文件格式"))
+            } else {
+                Result.success(items)
+            }
         } catch (e: Exception) {
+            android.util.Log.e("DataImport", "导入异常", e)
             Result.failure(Exception("导入失败：${e.message ?: "文件格式错误"}"))
         }
     }
@@ -325,29 +355,34 @@ class DataExportImportManager(private val context: Context) {
         var inQuotes = false
         var i = 0
         
-        while (i < line.length) {
-            val char = line[i]
-            
-            when {
-                char == '"' && inQuotes && i + 1 < line.length && line[i + 1] == '"' -> {
-                    // 转义的引号
-                    currentField.append('"')
-                    i++
+        try {
+            while (i < line.length) {
+                val char = line[i]
+                
+                when {
+                    char == '"' && inQuotes && i + 1 < line.length && line[i + 1] == '"' -> {
+                        // 转义的引号
+                        currentField.append('"')
+                        i++
+                    }
+                    char == '"' -> {
+                        inQuotes = !inQuotes
+                    }
+                    char == ',' && !inQuotes -> {
+                        fields.add(currentField.toString().trim())
+                        currentField.clear()
+                    }
+                    else -> {
+                        currentField.append(char)
+                    }
                 }
-                char == '"' -> {
-                    inQuotes = !inQuotes
-                }
-                char == ',' && !inQuotes -> {
-                    fields.add(currentField.toString())
-                    currentField.clear()
-                }
-                else -> {
-                    currentField.append(char)
-                }
+                i++
             }
-            i++
+            fields.add(currentField.toString().trim())
+        } catch (e: Exception) {
+            android.util.Log.e("DataImport", "解析CSV行失败: $line", e)
+            // 返回当前已解析的字段
         }
-        fields.add(currentField.toString())
         
         return fields
     }
@@ -374,42 +409,59 @@ class DataExportImportManager(private val context: Context) {
             var dataStarted = false
             var columnIndices: Map<String, Int>? = null
             
-            context.contentResolver.openInputStream(inputUri)?.use { input ->
-                // 支付宝导出的CSV文件通常是GBK编码
-                BufferedReader(InputStreamReader(input, Charset.forName("GBK"))).use { reader ->
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("无法读取文件，请检查文件是否存在"))
+            
+            inputStream.use { input ->
+                // 支付宝导出的CSV文件通常是GBK编码，尝试GBK，如果失败则尝试UTF-8
+                val reader = try {
+                    BufferedReader(InputStreamReader(input, Charset.forName("GBK")))
+                } catch (e: Exception) {
+                    android.util.Log.w("AlipayImport", "GBK解码失败，尝试UTF-8", e)
+                    BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+                }
+                
+                reader.use { 
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
+                        val currentLine = line ?: continue
                         lineCount++
                         
                         // 查找标题行(包含"交易时间")
-                        if (!dataStarted && line!!.contains("交易时间")) {
+                        if (!dataStarted && currentLine.contains("交易时间")) {
                             // 解析列名获取索引
-                            val headers = parseCsvLine(line!!)
-                            columnIndices = mapOf(
-                                "time" to (headers.indexOfFirst { it.contains("交易时间") }),
-                                "category" to (headers.indexOfFirst { it.contains("交易分类") }),
-                                "counterparty" to (headers.indexOfFirst { it.contains("交易对方") }),
-                                "description" to (headers.indexOfFirst { it.contains("商品说明") }),
-                                "type" to (headers.indexOfFirst { it.contains("收/支") }),
-                                "amount" to (headers.indexOfFirst { it.contains("金额") }),
-                                "paymentMethod" to (headers.indexOfFirst { it.contains("收/付款方式") }),
-                                "status" to (headers.indexOfFirst { it.contains("交易状态") }),
-                                "note" to (headers.indexOfFirst { it.contains("备注") })
-                            )
-                            dataStarted = true
-                            android.util.Log.d("AlipayImport", "找到标题行,列索引: $columnIndices")
+                            try {
+                                val headers = parseCsvLine(currentLine)
+                                columnIndices = mapOf(
+                                    "time" to (headers.indexOfFirst { it.contains("交易时间") }),
+                                    "category" to (headers.indexOfFirst { it.contains("交易分类") }),
+                                    "counterparty" to (headers.indexOfFirst { it.contains("交易对方") }),
+                                    "description" to (headers.indexOfFirst { it.contains("商品说明") }),
+                                    "type" to (headers.indexOfFirst { it.contains("收/支") }),
+                                    "amount" to (headers.indexOfFirst { it.contains("金额") }),
+                                    "paymentMethod" to (headers.indexOfFirst { it.contains("收/付款方式") }),
+                                    "status" to (headers.indexOfFirst { it.contains("交易状态") }),
+                                    "note" to (headers.indexOfFirst { it.contains("备注") })
+                                )
+                                dataStarted = true
+                                android.util.Log.d("AlipayImport", "找到标题行,列索引: $columnIndices")
+                            } catch (e: Exception) {
+                                android.util.Log.e("AlipayImport", "解析标题行失败", e)
+                                return@withContext Result.failure(Exception("文件格式错误：无法识别列标题"))
+                            }
                             continue
                         }
                         
                         // 解析数据行
-                        if (dataStarted && line!!.isNotBlank()) {
-                            val indices = columnIndices // 复制到本地变量避免智能转换问题
+                        if (dataStarted && currentLine.isNotBlank()) {
+                            val indices = columnIndices
                             if (indices != null) {
                                 try {
-                                    val fields = parseCsvLine(line!!)
+                                    val fields = parseCsvLine(currentLine)
                                     
                                     // 检查字段数量是否足够
-                                    if (fields.size > (indices["amount"] ?: 6)) {
+                                    val requiredIndex = indices["amount"] ?: 6
+                                    if (fields.size > requiredIndex && requiredIndex >= 0) {
                                         val item = parseAlipayTransaction(fields, indices)
                                         if (item != null) {
                                             items.add(item)
@@ -423,10 +475,14 @@ class DataExportImportManager(private val context: Context) {
                         }
                     }
                 }
-            } ?: return@withContext Result.failure(Exception("无法读取文件"))
+            }
 
             android.util.Log.d("AlipayImport", "导入完成: 共${items.size}条记录")
-            Result.success(items)
+            if (items.isEmpty()) {
+                Result.failure(Exception("未能导入任何交易记录，请检查文件格式"))
+            } else {
+                Result.success(items)
+            }
         } catch (e: Exception) {
             android.util.Log.e("AlipayImport", "导入失败: ${e.message}", e)
             Result.failure(Exception("导入支付宝账单失败：${e.message ?: "文件格式错误"}"))
@@ -441,17 +497,28 @@ class DataExportImportManager(private val context: Context) {
         columnIndices: Map<String, Int>
     ): AlipayLedgerItem? {
         try {
-            // 提取字段
-            val timeStr = fields.getOrNull(columnIndices["time"] ?: -1)?.trim() ?: return null
-            val typeStr = fields.getOrNull(columnIndices["type"] ?: -1)?.trim() ?: ""
-            val amountStr = fields.getOrNull(columnIndices["amount"] ?: -1)?.trim() ?: return null
-            val description = fields.getOrNull(columnIndices["description"] ?: -1)?.trim() ?: ""
-            val paymentMethodStr = fields.getOrNull(columnIndices["paymentMethod"] ?: -1)?.trim() ?: ""
-            val category = fields.getOrNull(columnIndices["category"] ?: -1)?.trim() ?: ""
-            val status = fields.getOrNull(columnIndices["status"] ?: -1)?.trim() ?: ""
-            val note = fields.getOrNull(columnIndices["note"] ?: -1)?.trim() ?: ""
+            // 安全获取字段的辅助函数
+            fun getField(key: String): String? {
+                val index = columnIndices[key] ?: return null
+                if (index < 0 || index >= fields.size) return null
+                return fields[index].trim()
+            }
             
-            // 跳过失败的交易
+            // 提取字段
+            val timeStr = getField("time") ?: return null
+            val typeStr = getField("type") ?: ""
+            val amountStr = getField("amount") ?: return null
+            val description = getField("description") ?: ""
+            val paymentMethodStr = getField("paymentMethod") ?: ""
+            val category = getField("category") ?: ""
+            val status = getField("status") ?: ""
+            val note = getField("note") ?: ""
+            
+            // 跳过空数据或失败的交易
+            if (timeStr.isBlank() || amountStr.isBlank()) {
+                return null
+            }
+            
             if (status.contains("失败") || status.contains("关闭")) {
                 return null
             }

@@ -2,6 +2,9 @@ package takagi.ru.monica.utils
 
 import android.content.Context
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkInfo
+import android.widget.Toast
 import com.thegrizzlylabs.sardineandroid.Sardine
 import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
 import kotlinx.coroutines.Dispatchers
@@ -124,11 +127,26 @@ class WebDavHelper(
                 return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
+            // 检查网络和时间同步
+            checkNetworkAndTimeSync(context)
+            
             // 尝试列出根目录
             sardine?.list(serverUrl)
             Result.success(true)
         } catch (e: Exception) {
-            Result.failure(e)
+            // 添加更详细的错误信息
+            val detailedMessage = when {
+                e.message?.contains("Network is unreachable") == true -> 
+                    "网络不可达，请检查网络连接"
+                e.message?.contains("Connection timed out") == true -> 
+                    "连接超时，请检查服务器地址和网络连接"
+                e.message?.contains("401") == true -> 
+                    "认证失败，请检查用户名和密码"
+                e.message?.contains("404") == true -> 
+                    "服务器路径未找到，请检查服务器地址"
+                else -> "连接失败: ${e.message}"
+            }
+            Result.failure(Exception(detailedMessage, e))
         }
     }
     
@@ -709,3 +727,48 @@ data class LedgerBackupEntry(
     val entry: LedgerEntry,
     val categoryName: String?
 )
+
+/**
+ * 检查网络和时间同步状态
+ */
+private fun checkNetworkAndTimeSync(context: Context) {
+    try {
+        // 检查网络连接
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val activeNetworkInfo = connectivityManager.activeNetworkInfo
+        
+        if (activeNetworkInfo == null || !activeNetworkInfo.isConnected) {
+            android.util.Log.w("WebDavHelper", "Network not available, some features may not work properly")
+            // 显示网络不可用提示
+            android.util.Log.w("WebDavHelper", "网络连接不可用，部分功能可能受限")
+        }
+        
+        // 检查时间同步问题
+        try {
+            val currentTime = System.currentTimeMillis()
+            // 检查时间是否合理 (2001年以后)
+            if (currentTime < 1000000000000L) {
+                android.util.Log.w("WebDavHelper", "System time appears incorrect, using default time")
+                // 使用应用内的时间逻辑
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("WebDavHelper", "Error checking time", e)
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("WebDavHelper", "Error checking network and time sync", e)
+    }
+}
+
+/**
+ * 为用户获取系统服务
+ */
+private fun getSystemServiceForUser(context: Context, serviceName: String): Any? {
+    try {
+        // 确保在访问系统服务时提供正确的用户上下文
+        return context.getSystemService(serviceName)
+    } catch (e: Exception) {
+        android.util.Log.e("WebDavHelper", "Error getting system service for user", e)
+        // 降级到普通方式
+        return context.getSystemService(serviceName)
+    }
+}

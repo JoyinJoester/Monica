@@ -211,11 +211,15 @@
     <string name="download_success">Image saved to gallery successfully</string>
     <string name="download_failed">Failed to save image</string>
     <string name="camera_permission_needed">Camera permission is required to take photos</string>
+    <string name="error_launch_gallery">Unable to open gallery: %1$s</string>
+    <string name="error_launch_camera">Unable to open camera: %1$s</string>
     
     <!-- Export/Import Data -->
     <string name="export_data_title">Export Data</string>
     <string name="exporting">Exporting...</string>
     <string name="start_export">Start Export</string>
+        <string name="error_export_failed">Export failed</string>
+        <string name="error_launch_export">Unable to open file picker: %1$s</string>
     <string name="import_data_title">Import Data</string>
     <string name="importing">Importing...</string>
     <string name="start_import">Start Import</string>
@@ -655,4 +659,36 @@
     <string name="ledger_payment_wechat">WeChat</string>
     <string name="ledger_payment_alipay">Alipay</string>
     <string name="ledger_payment_unionpay">UnionPay</string>
+    <string name="ledger_delete">Delete</string>
+    <string name="ledger_delete_confirm_title">Delete Entry</string>
+    <string name="ledger_delete_confirm_message">Are you sure you want to delete this entry?</string>
+    <string name="ledger_cancel">Cancel</string>
+    
+    <!-- Asset Management -->
+    <string name="asset_management_title">Asset Management</string>
+    <string name="asset_total">Total Assets</string>
+    <string name="asset_count_unit">assets</string>
+    <string name="asset_empty">No assets yet. Tap + to add one</string>
+    <string name="asset_add">Add Asset</string>
+    <string name="asset_back">Back</string>
+    <string name="asset_type_wechat">WeChat Pay</string>
+    <string name="asset_type_alipay">Alipay</string>
+    <string name="asset_type_unionpay">UnionPay</string>
+    <string name="asset_type_paypal">PayPal</string>
+    <string name="asset_type_bank_card">Bank Card</string>
+    <string name="asset_type_cash">Cash</string>
+    <string name="asset_type_other">Other</string>
+    
+    <!-- Add/Edit Asset -->
+    <string name="asset_edit_title">Edit Asset</string>
+    <string name="asset_add_title">Add Asset</string>
+    <string name="asset_name">Asset Name</string>
+    <string name="asset_type">Asset Type</string>
+    <string name="asset_balance">Current Balance</string>
+    <string name="asset_currency">Currency</string>
+    <string name="asset_save">Save</string>
+    <string name="asset_delete_title">Delete Asset</string>
+    <string name="asset_delete_message">Are you sure you want to delete this asset? All associated ledger entries will also be affected.</string>
+    <string name="asset_select_currency">Select Currency</string>
+    <string name="asset_close">Close</string>
 </resources>

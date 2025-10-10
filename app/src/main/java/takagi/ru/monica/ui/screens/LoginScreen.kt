@@ -48,7 +48,8 @@ fun LoginScreen(
     
     // 获取设置
     val settings = settingsViewModel?.settings?.collectAsState()?.value
-    val biometricEnabled = settings?.biometricEnabled ?: false
+    // 如果设置未初始化,默认启用指纹验证
+    val biometricEnabled = settings?.biometricEnabled ?: true
     
     // 生物识别帮助类
     val biometricHelper = remember { BiometricAuthHelper(context) }

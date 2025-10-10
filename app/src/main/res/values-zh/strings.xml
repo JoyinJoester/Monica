@@ -211,11 +211,15 @@
     <string name="download_success">图片已成功保存到相册</string>
     <string name="download_failed">保存图片失败</string>
     <string name="camera_permission_needed">需要相机权限才能进行拍照</string>
+    <string name="error_launch_gallery">打开相册失败：%1$s</string>
+    <string name="error_launch_camera">打开相机失败：%1$s</string>
     
     <!-- Export/Import Data -->
     <string name="export_data_title">导出数据</string>
     <string name="exporting">导出中...</string>
     <string name="start_export">开始导出</string>
+        <string name="error_export_failed">导出失败</string>
+        <string name="error_launch_export">无法打开文件选择器：%1$s</string>
     <string name="import_data_title">导入数据</string>
     <string name="importing">导入中...</string>
     <string name="start_import">开始导入</string>
@@ -655,4 +659,36 @@
     <string name="ledger_payment_wechat">微信</string>
     <string name="ledger_payment_alipay">支付宝</string>
     <string name="ledger_payment_unionpay">云闪付</string>
+    <string name="ledger_delete">删除</string>
+    <string name="ledger_delete_confirm_title">删除记账</string>
+    <string name="ledger_delete_confirm_message">确定要删除这条记账记录吗?</string>
+    <string name="ledger_cancel">取消</string>
+    
+    <!-- 资产管理 -->
+    <string name="asset_management_title">资产管理</string>
+    <string name="asset_total">总资产</string>
+    <string name="asset_count_unit">个账户</string>
+    <string name="asset_empty">还没有资产账户，点击 + 添加吧</string>
+    <string name="asset_add">添加资产</string>
+    <string name="asset_back">返回</string>
+    <string name="asset_type_wechat">微信支付</string>
+    <string name="asset_type_alipay">支付宝</string>
+    <string name="asset_type_unionpay">云闪付</string>
+    <string name="asset_type_paypal">PayPal</string>
+    <string name="asset_type_bank_card">银行卡</string>
+    <string name="asset_type_cash">现金</string>
+    <string name="asset_type_other">其他</string>
+    
+    <!-- 添加/编辑资产 -->
+    <string name="asset_edit_title">编辑资产</string>
+    <string name="asset_add_title">添加资产</string>
+    <string name="asset_name">资产名称</string>
+    <string name="asset_type">资产类型</string>
+    <string name="asset_balance">当前余额</string>
+    <string name="asset_currency">货币</string>
+    <string name="asset_save">保存</string>
+    <string name="asset_delete_title">删除资产</string>
+    <string name="asset_delete_message">确定要删除这个资产吗?关联的记账条目也会受到影响。</string>
+    <string name="asset_select_currency">选择货币</string>
+    <string name="asset_close">关闭</string>
 </resources>

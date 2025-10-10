@@ -44,7 +44,7 @@ fun AddEditLedgerEntryScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    val bankCards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
+    val assets by viewModel.assets.collectAsState(initial = emptyList())
 
     var amount by remember { mutableStateOf("") }
     var entryType by remember { mutableStateOf(LedgerEntryType.EXPENSE) }
@@ -52,7 +52,7 @@ fun AddEditLedgerEntryScreen(
     var occurredAt by remember { mutableStateOf(Date()) }
     var showNoteField by remember { mutableStateOf(false) }
     var showTimeSelector by remember { mutableStateOf(false) }
-    var paymentMethod by remember { mutableStateOf("") } // wechat/alipay/unionpay 或银行卡ID
+    var selectedAssetId by remember { mutableStateOf<Long?>(null) } // 选中的资产ID
     var showPaymentMethodMenu by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -84,16 +84,21 @@ fun AddEditLedgerEntryScreen(
                         onClick = {
                             // 保存记账条目
                             val amountInCents = (amount.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
-                            if (amountInCents > 0) {
+                            if (amountInCents > 0 && selectedAssetId != null) {
+                                // 获取选中资产的货币代码
+                                val selectedAsset = assets.find { it.id == selectedAssetId }
+                                val currencyCode = selectedAsset?.currencyCode ?: "CNY"
+                                
                                 val entry = LedgerEntry(
                                     id = entryId ?: 0,
                                     title = "", // 不再需要标题
                                     amountInCents = amountInCents,
+                                    currencyCode = currencyCode,
                                     type = entryType,
                                     categoryId = null, // 不再需要分类
                                     occurredAt = occurredAt,
                                     note = note,
-                                    paymentMethod = paymentMethod,
+                                    paymentMethod = selectedAssetId.toString(), // 存储资产ID
                                     createdAt = if (entryId == null) Date() else Date(),
                                     updatedAt = Date()
                                 )
@@ -184,22 +189,13 @@ fun AddEditLedgerEntryScreen(
                 }
             }
 
-            // 支付方式选择
+            // 支付方式选择(资产选择)
             ExposedDropdownMenuBox(
                 expanded = showPaymentMethodMenu,
                 onExpandedChange = { showPaymentMethodMenu = it }
             ) {
                 OutlinedTextField(
-                    value = when (paymentMethod) {
-                        "wechat" -> context.getString(R.string.ledger_payment_wechat)
-                        "alipay" -> context.getString(R.string.ledger_payment_alipay)
-                        "unionpay" -> context.getString(R.string.ledger_payment_unionpay)
-                        "" -> ""
-                        else -> {
-                            // 银行卡ID,查找银行卡名称
-                            bankCards.find { it.id.toString() == paymentMethod }?.title ?: ""
-                        }
-                    },
+                    value = assets.find { it.id == selectedAssetId }?.name ?: "",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(context.getString(R.string.ledger_payment_method)) },
@@ -214,74 +210,25 @@ fun AddEditLedgerEntryScreen(
                     expanded = showPaymentMethodMenu,
                     onDismissRequest = { showPaymentMethodMenu = false }
                 ) {
-                    // 微信(绿色)
-                    DropdownMenuItem(
-                        text = { 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    modifier = Modifier.size(12.dp),
-                                    shape = MaterialTheme.shapes.small,
-                                    color = androidx.compose.ui.graphics.Color(0xFF09BB07) // 微信绿
-                                ) {}
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(context.getString(R.string.ledger_payment_wechat))
-                            }
-                        },
-                        onClick = {
-                            paymentMethod = "wechat"
-                            showPaymentMethodMenu = false
-                        }
-                    )
-                    
-                    // 支付宝(蓝色)
-                    DropdownMenuItem(
-                        text = { 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    modifier = Modifier.size(12.dp),
-                                    shape = MaterialTheme.shapes.small,
-                                    color = androidx.compose.ui.graphics.Color(0xFF1677FF) // 支付宝蓝
-                                ) {}
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(context.getString(R.string.ledger_payment_alipay))
-                            }
-                        },
-                        onClick = {
-                            paymentMethod = "alipay"
-                            showPaymentMethodMenu = false
-                        }
-                    )
-                    
-                    // 云闪付(红色)
-                    DropdownMenuItem(
-                        text = { 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    modifier = Modifier.size(12.dp),
-                                    shape = MaterialTheme.shapes.small,
-                                    color = androidx.compose.ui.graphics.Color(0xFFE4393C) // 云闪付红
-                                ) {}
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(context.getString(R.string.ledger_payment_unionpay))
-                            }
-                        },
-                        onClick = {
-                            paymentMethod = "unionpay"
-                            showPaymentMethodMenu = false
-                        }
-                    )
-                    
-                    // 分隔线
-                    if (bankCards.isNotEmpty()) {
-                        HorizontalDivider()
-                    }
-                    
-                    // 银行卡列表
-                    bankCards.forEach { card ->
+                    // 显示所有资产
+                    assets.forEach { asset ->
                         DropdownMenuItem(
-                            text = { Text(card.title) },
+                            text = { 
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(asset.name)
+                                    Text(
+                                        text = getCurrencySymbol(asset.currencyCode),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
                             onClick = {
-                                paymentMethod = card.id.toString()
+                                selectedAssetId = asset.id
                                 showPaymentMethodMenu = false
                             }
                         )
@@ -472,4 +419,28 @@ fun AddEditLedgerEntryScreen(
 
     // 已移除弹窗方式的分类选择
 
+}
+
+// 获取货币符号
+private fun getCurrencySymbol(currencyCode: String): String {
+    return when (currencyCode) {
+        "CNY" -> "¥"
+        "USD" -> "$"
+        "EUR" -> "€"
+        "GBP" -> "£"
+        "JPY" -> "¥"
+        "KRW" -> "₩"
+        "HKD" -> "HK$"
+        "TWD" -> "NT$"
+        "SGD" -> "S$"
+        "AUD" -> "A$"
+        "CAD" -> "C$"
+        "CHF" -> "CHF"
+        "THB" -> "฿"
+        "MYR" -> "RM"
+        "RUB" -> "₽"
+        "INR" -> "₹"
+        "BRL" -> "R$"
+        else -> currencyCode
+    }
 }

@@ -38,7 +38,9 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
-import takagi.ru.monica.viewmodel.NoteViewModel
+import takagi.ru.monica.viewmodel.TotpViewModel
+import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.LedgerScreen
 import kotlin.math.absoluteValue
@@ -54,15 +56,13 @@ fun SimpleMainScreen(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
-    noteViewModel: NoteViewModel,
     ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
-    onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToAddLedgerEntry: (Long?) -> Unit,
-    onNavigateToNoteDetail: (Long) -> Unit,
+    onNavigateToAssetManagement: () -> Unit,
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
     onNavigateToSupportAuthor: () -> Unit = {},
@@ -323,7 +323,8 @@ fun SimpleMainScreen(
                     // 记账页面
                     LedgerScreen(
                         viewModel = ledgerViewModel,
-                        onNavigateToAddEntry = { entryId -> onNavigateToAddLedgerEntry(entryId) }
+                        onNavigateToAddEntry = { entryId -> onNavigateToAddLedgerEntry(entryId) },
+                        onNavigateToAssetManagement = { onNavigateToAssetManagement() }
                     )
                 }
                 BottomNavItem.Settings -> {

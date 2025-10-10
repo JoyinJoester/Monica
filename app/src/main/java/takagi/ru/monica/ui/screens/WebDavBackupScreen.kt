@@ -197,9 +197,26 @@ fun WebDavBackupScreen(
                                                     error?.let { errorMessage = it }
                                                 }
                                             },
-                                            onFailure = { e ->
+                                            onFailure = { e -> 
                                                 isTesting = false
-                                                errorMessage = context.getString(R.string.webdav_connection_failed, e.message)
+                                                // 提供更友好的错误信息
+                                                val userFriendlyMessage = when {
+                                                    e.message?.contains("网络不可达") == true -> 
+                                                        "网络不可达，请检查网络连接"
+                                                    e.message?.contains("连接超时") == true -> 
+                                                        "连接超时，请检查服务器地址和网络连接"
+                                                    e.message?.contains("认证失败") == true -> 
+                                                        "认证失败，请检查用户名和密码"
+                                                    e.message?.contains("服务器路径未找到") == true -> 
+                                                        "服务器路径未找到，请检查服务器地址"
+                                                    else -> e.message ?: "连接失败"
+                                                }
+                                                errorMessage = userFriendlyMessage
+                                                Toast.makeText(
+                                                    context,
+                                                    "连接失败: $userFriendlyMessage",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
                                             }
                                         )
                                     }
@@ -727,3 +744,5 @@ private suspend fun loadBackups(
         }
     )
 }
+
+

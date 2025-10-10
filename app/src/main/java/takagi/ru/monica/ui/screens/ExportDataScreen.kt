@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.util.DataExportImportManager
-import takagi.ru.monica.util.LauncherManager
+import takagi.ru.monica.util.FileOperationHelper
 
 
 /**
@@ -28,15 +28,52 @@ import takagi.ru.monica.util.LauncherManager
 @Composable
 fun ExportDataScreen(
     onNavigateBack: () -> Unit,
-    onExport: suspend (Uri) -> Result<String>  // 只需要 URI
+    onExport: suspend (Uri) -> Result<String>
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     
     var isExporting by remember { mutableStateOf(false) }
     
     val exportManager = remember { DataExportImportManager(context) }
+    
+    // 设置文件操作回调
+    LaunchedEffect(Unit) {
+        FileOperationHelper.setCallback(object : FileOperationHelper.FileOperationCallback {
+            override fun onExportFileSelected(uri: Uri?) {
+                uri?.let { safeUri ->
+                    scope.launch {
+                        isExporting = true
+                        try {
+                            val result = onExport(safeUri)
+                            isExporting = false
+
+                            result.onSuccess { message ->
+                                snackbarHostState.showSnackbar(message)
+                                onNavigateBack()
+                            }.onFailure { error ->
+                                snackbarHostState.showSnackbar(error.message ?: context.getString(R.string.error_export_failed))
+                            }
+                        } catch (e: Exception) {
+                            isExporting = false
+                            snackbarHostState.showSnackbar(
+                                context.getString(R.string.error_export_failed) + ": ${e.message}"
+                            )
+                        }
+                    }
+                } ?: run {
+                    // 用户取消了导出操作
+                    isExporting = false
+                }
+            }
+            
+            override fun onImportFileSelected(uri: Uri?) {
+                // 导出界面不需要处理导入文件选择
+            }
+        })
+    }
     
     Scaffold(
         topBar = {
@@ -128,21 +165,11 @@ fun ExportDataScreen(
             // 导出按钮
             Button(
                 onClick = {
-                    // 使用全局launcher启动文件选择器
-                    LauncherManager.launchCreateDocument(exportManager.getSuggestedFileName()) { uri ->
-                        uri?.let {
-                            scope.launch {
-                                isExporting = true
-                                val result = onExport(it)
-                                isExporting = false
-                                
-                                result.onSuccess { message ->
-                                    snackbarHostState.showSnackbar(message)
-                                    onNavigateBack()
-                                }.onFailure { error ->
-                                    snackbarHostState.showSnackbar(error.message ?: "导出失败")
-                                }
-                            }
+                    activity?.let { act ->
+                        FileOperationHelper.exportToCsv(act)
+                    } ?: run {
+                        scope.launch {
+                            snackbarHostState.showSnackbar("无法启动导出操作")
                         }
                     }
                 },

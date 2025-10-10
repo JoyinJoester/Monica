@@ -19,7 +19,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.viewmodel.DocumentViewModel
-import takagi.ru.monica.ui.components.ImagePicker
+import takagi.ru.monica.ui.components.DualPhotoPicker
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
@@ -46,8 +46,9 @@ fun AddEditDocumentScreen(
     var showDocumentTypeMenu by remember { mutableStateOf(false) }
     var showDocumentNumber by remember { mutableStateOf(false) }
     
-    // 图片路径列表
-    var imagePaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    // 图片路径管理
+    var frontImageFileName by remember { mutableStateOf<String?>(null) }
+    var backImageFileName by remember { mutableStateOf<String?>(null) }
     
     // 如果是编辑模式，加载现有数据
     LaunchedEffect(documentId) {
@@ -58,14 +59,18 @@ fun AddEditDocumentScreen(
                 isFavorite = item.isFavorite
                 
                 // 解析图片路径
-                imagePaths = try {
+                try {
                     if (item.imagePaths.isNotBlank()) {
-                        Json.decodeFromString<List<String>>(item.imagePaths)
-                    } else {
-                        emptyList()
+                        val pathsList = Json.decodeFromString<List<String>>(item.imagePaths)
+                        if (pathsList.isNotEmpty() && pathsList[0].isNotBlank()) {
+                            frontImageFileName = pathsList[0]
+                        }
+                        if (pathsList.size > 1 && pathsList[1].isNotBlank()) {
+                            backImageFileName = pathsList[1]
+                        }
                     }
                 } catch (e: Exception) {
-                    emptyList()
+                    // 忽略解析错误
                 }
                 
                 viewModel.parseDocumentData(item.itemData)?.let { data ->
@@ -111,7 +116,11 @@ fun AddEditDocumentScreen(
                                 documentType = documentType
                             )
                             
-                            val imagePathsJson = Json.encodeToString(imagePaths)
+                            val imagePathsList = listOf(
+                                frontImageFileName ?: "",
+                                backImageFileName ?: ""
+                            )
+                            val imagePathsJson = Json.encodeToString(imagePathsList)
                             
                             if (documentId == null) {
                                 viewModel.addDocument(
@@ -319,75 +328,30 @@ fun AddEditDocumentScreen(
                 maxLines = 4
             )
             
-            // 证件照片（正面）
-            ImagePicker(
-                imageFileName = imagePaths.getOrNull(0),
-                onImageSelected = { fileName ->
-                    imagePaths = if (imagePaths.isEmpty()) {
-                        listOf(fileName)
-                    } else {
-                        listOf(fileName) + imagePaths.drop(1)
-                    }
-                },
-                onImageRemoved = {
-                    imagePaths = if (imagePaths.size > 1) {
-                        imagePaths.drop(1)
-                    } else {
-                        emptyList()
-                    }
-                },
-                onImageDownloaded = { success ->
-                    Toast.makeText(
-                        context,
-                        if (success) context.getString(R.string.download_success) 
-                        else context.getString(R.string.download_failed),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.document_photo_front, when (documentType) {
-                    DocumentType.ID_CARD -> stringResource(R.string.id_card)
-                    DocumentType.PASSPORT -> stringResource(R.string.passport)
-                    DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                    DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
-                    DocumentType.OTHER -> stringResource(R.string.other_document)
-                })
-            )
-            
-            // 证件照片（背面） - 护照通常不需要背面
+            // 双面照片选择器（护照不需要背面）
             if (documentType != DocumentType.PASSPORT) {
-                ImagePicker(
-                    imageFileName = imagePaths.getOrNull(1),
-                    onImageSelected = { fileName ->
-                        imagePaths = when (imagePaths.size) {
-                            0 -> listOf("", fileName)
-                            1 -> imagePaths + fileName
-                            else -> imagePaths.take(1) + fileName
-                        }
-                    },
-                    onImageRemoved = {
-                        imagePaths = if (imagePaths.size > 1) {
-                            imagePaths.take(1)
-                        } else {
-                            imagePaths
-                        }
-                    },
-                    onImageDownloaded = { success ->
-                        Toast.makeText(
-                            context,
-                            if (success) context.getString(R.string.download_success) 
-                            else context.getString(R.string.download_failed),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = stringResource(R.string.document_photo_back, when (documentType) {
+                DualPhotoPicker(
+                    frontImageFileName = frontImageFileName,
+                    backImageFileName = backImageFileName,
+                    onFrontImageSelected = { fileName -> frontImageFileName = fileName },
+                    onFrontImageRemoved = { frontImageFileName = null },
+                    onBackImageSelected = { fileName -> backImageFileName = fileName },
+                    onBackImageRemoved = { backImageFileName = null },
+                    frontLabel = stringResource(R.string.document_photo_front, when (documentType) {
+                        DocumentType.ID_CARD -> stringResource(R.string.id_card)
+                        DocumentType.PASSPORT -> stringResource(R.string.passport)
+                        DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+                        DocumentType.SOCIAL_SECURITY -> "Social Security Card"
+                        DocumentType.OTHER -> stringResource(R.string.other_document)
+                    }),
+                    backLabel = stringResource(R.string.document_photo_back, when (documentType) {
                         DocumentType.ID_CARD -> stringResource(R.string.id_card)
                         DocumentType.PASSPORT -> stringResource(R.string.passport)
                         DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
                         DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
                         DocumentType.OTHER -> stringResource(R.string.other_document)
-                    })
+                    }),
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }

@@ -22,9 +22,33 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.ledger.LedgerEntryType
 import takagi.ru.monica.data.ledger.LedgerEntryWithRelations
 import takagi.ru.monica.viewmodel.LedgerViewModel
-import java.text.NumberFormat
+import takagi.ru.monica.viewmodel.CurrencyStats
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+// 获取货币符号
+private fun getCurrencySymbol(currencyCode: String): String {
+    return when (currencyCode) {
+        "CNY" -> "¥"
+        "USD" -> "$"
+        "EUR" -> "€"
+        "GBP" -> "£"
+        "JPY" -> "¥"
+        "KRW" -> "₩"
+        "HKD" -> "HK$"
+        "TWD" -> "NT$"
+        "SGD" -> "S$"
+        "AUD" -> "A$"
+        "CAD" -> "C$"
+        "CHF" -> "CHF"
+        "THB" -> "฿"
+        "MYR" -> "RM"
+        "RUB" -> "₽"
+        "INR" -> "₹"
+        "BRL" -> "R$"
+        else -> currencyCode
+    }
+}
 
 /**
  * 记账主界面
@@ -34,11 +58,11 @@ import java.util.Locale
 fun LedgerScreen(
     viewModel: LedgerViewModel,
     onNavigateToAddEntry: (Long?) -> Unit,
+    onNavigateToAssetManagement: () -> Unit,
     onNavigateBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale.getDefault()) }
 
     Scaffold(
         topBar = {
@@ -46,7 +70,7 @@ fun LedgerScreen(
                 title = { Text(context.getString(R.string.ledger_title)) },
                 actions = {
                     IconButton(onClick = { /* TODO: 分类管理 */ }) {
-                        Icon(Icons.Default.Category, contentDescription = "分类")
+                        Icon(Icons.Default.Category, contentDescription = context.getString(R.string.ledger_category))
                     }
                     IconButton(onClick = { /* TODO: 标签管理 */ }) {
                         Icon(Icons.Default.Label, contentDescription = "标签")
@@ -59,7 +83,7 @@ fun LedgerScreen(
                 onClick = { onNavigateToAddEntry(null) },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
-                Icon(Icons.Default.Add, contentDescription = "添加记账")
+                Icon(Icons.Default.Add, contentDescription = context.getString(R.string.ledger_add_entry))
             }
         }
     ) { paddingValues ->
@@ -80,9 +104,8 @@ fun LedgerScreen(
             ) {
                 // 统计卡片
                 SummaryCard(
-                    totalIncome = uiState.totalIncome,
-                    totalExpense = uiState.totalExpense,
-                    currencyFormat = currencyFormat
+                    currencyStats = uiState.currencyStats,
+                    onClick = onNavigateToAssetManagement
                 )
 
                 // 记账列表
@@ -97,8 +120,8 @@ fun LedgerScreen(
                         items(uiState.entries) { entryWithRelations ->
                             LedgerEntryCard(
                                 entryWithRelations = entryWithRelations,
-                                currencyFormat = currencyFormat,
-                                onClick = { onNavigateToAddEntry(entryWithRelations.entry.id) }
+                                onClick = { onNavigateToAddEntry(entryWithRelations.entry.id) },
+                                onDelete = { viewModel.deleteEntry(entryWithRelations.entry) }
                             )
                         }
                     }
@@ -110,17 +133,16 @@ fun LedgerScreen(
 
 @Composable
 private fun SummaryCard(
-    totalIncome: Double,
-    totalExpense: Double,
-    currencyFormat: NumberFormat
+    currencyStats: List<CurrencyStats>,
+    onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val balance = totalIncome - totalExpense
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(16.dp)
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
@@ -134,49 +156,57 @@ private fun SummaryCard(
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             
-            Text(
-                text = currencyFormat.format(balance),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = when {
-                    balance > 0 -> Color(0xFF4CAF50)
-                    balance < 0 -> Color(0xFFF44336)
-                    else -> MaterialTheme.colorScheme.onPrimaryContainer
-                }
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // 显示最多3种货币的统计
+            if (currencyStats.isEmpty()) {
+                Text(
+                    text = getCurrencySymbol("CNY") + "0.00",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else {
+                currencyStats.forEach { stats ->
+                    val currencySymbol = getCurrencySymbol(stats.currencyCode)
+                    val balance = stats.balance
+                    
+                    // 余额显示
                     Text(
-                        text = context.getString(R.string.ledger_income),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        text = currencySymbol + String.format("%.2f", balance),
+                        style = if (currencyStats.size == 1) 
+                            MaterialTheme.typography.headlineMedium 
+                        else 
+                            MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            balance > 0 -> Color(0xFF4CAF50)
+                            balance < 0 -> Color(0xFFF44336)
+                            else -> MaterialTheme.colorScheme.onPrimaryContainer
+                        }
                     )
-                    Text(
-                        text = currencyFormat.format(totalIncome),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFF4CAF50),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = context.getString(R.string.ledger_expense),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = currencyFormat.format(totalExpense),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFFF44336),
-                        fontWeight = FontWeight.Bold
-                    )
+                    
+                    // 收入支出详情
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "${context.getString(R.string.ledger_income)}: $currencySymbol${String.format("%.2f", stats.income)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF4CAF50)
+                        )
+                        Text(
+                            text = "${context.getString(R.string.ledger_expense)}: $currencySymbol${String.format("%.2f", stats.expense)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFF44336)
+                        )
+                    }
+                    
+                    // 如果有多个货币,添加分隔空间
+                    if (currencyStats.size > 1 && stats != currencyStats.last()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                 }
             }
         }
@@ -186,21 +216,22 @@ private fun SummaryCard(
 @Composable
 private fun LedgerEntryCard(
     entryWithRelations: LedgerEntryWithRelations,
-    currencyFormat: NumberFormat,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val context = LocalContext.current
     val entry = entryWithRelations.entry
     val dateFormat = remember { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()) }
     
-    // 获取支付方式显示文本
-    val paymentMethodText = when (entry.paymentMethod) {
-        "wechat" -> context.getString(R.string.ledger_payment_wechat)
-        "alipay" -> context.getString(R.string.ledger_payment_alipay)
-        "unionpay" -> context.getString(R.string.ledger_payment_unionpay)
-        "" -> context.getString(R.string.ledger_entry_type)
-        else -> entry.paymentMethod // 银行卡ID,可以后续优化为显示银行卡名称
-    }
+    // 删除确认对话框状态
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    
+    // 获取记账条目的货币符号
+    val currencySymbol = getCurrencySymbol(entry.currencyCode)
+    
+    // 获取支付方式显示文本(资产名称)
+    // 由于数据库关系映射问题，暂时使用paymentMethod字段直接显示
+    val paymentMethodText = entry.paymentMethod.ifEmpty { context.getString(R.string.ledger_payment_method) }
 
     Card(
         modifier = Modifier
@@ -275,17 +306,59 @@ private fun LedgerEntryCard(
                 }
             }
 
-            Text(
-                text = "${if (entry.type == LedgerEntryType.INCOME) "+" else "-"}${currencyFormat.format(entry.amountInCents / 100.0)}",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = when (entry.type) {
-                    LedgerEntryType.INCOME -> Color(0xFF4CAF50)
-                    LedgerEntryType.EXPENSE -> Color(0xFFF44336)
-                    LedgerEntryType.TRANSFER -> MaterialTheme.colorScheme.onSurface
+            // 金额和删除按钮
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "${if (entry.type == LedgerEntryType.INCOME) "+" else "-"}$currencySymbol${String.format("%.2f", entry.amountInCents / 100.0)}",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = when (entry.type) {
+                        LedgerEntryType.INCOME -> Color(0xFF4CAF50)
+                        LedgerEntryType.EXPENSE -> Color(0xFFF44336)
+                        LedgerEntryType.TRANSFER -> MaterialTheme.colorScheme.onSurface
+                    }
+                )
+                
+                IconButton(
+                    onClick = { showDeleteDialog = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = context.getString(R.string.ledger_delete),
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-            )
+            }
         }
+    }
+    
+    // 删除确认对话框
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text(context.getString(R.string.ledger_delete_confirm_title)) },
+            text = { Text(context.getString(R.string.ledger_delete_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete()
+                        showDeleteDialog = false
+                    }
+                ) {
+                    Text(context.getString(R.string.ledger_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text(context.getString(R.string.ledger_cancel))
+                }
+            }
+        )
     }
 }
 
