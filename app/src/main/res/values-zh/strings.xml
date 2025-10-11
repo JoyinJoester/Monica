@@ -222,7 +222,6 @@
     <string name="import_data_title">导入数据</string>
     <string name="importing">导入中...</string>
     <string name="start_import">开始导入</string>
-    <string name="export_data_description">将您的所有数据导出为CSV文件到本地存储。您可以使用此文件备份或迁移数据。</string>
     <string name="export_data_select_type">选择要导出的数据类型：</string>
     <string name="export_data_type_passwords">密码</string>
     <string name="export_data_type_totp">TOTP验证码</string>
@@ -233,7 +232,6 @@
     <string name="export_data_success">数据导出成功</string>
     <string name="export_data_error">导出失败</string>
     <string name="export_data_warning">CSV文件未加密，请妥善保管导出文件</string>
-    <string name="import_data_description">从CSV备份文件导入数据。请确保文件格式正确。</string>
     <string name="import_data_warning_title">警告</string>
     <string name="import_data_warning_message">导入数据可能会覆盖现有数据。请在导入前确保备份当前数据。</string>
     <string name="import_data_select_file">选择文件</string>
@@ -589,10 +587,10 @@
     
     <!-- Data Management in Settings -->
     <string name="data_management">数据管理</string>
-    <string name="export_passwords">导出密码</string>
-    <string name="export_passwords_description">导出所有数据到CSV文件</string>
-    <string name="import_passwords">导入密码</string>
-    <string name="import_passwords_description">从CSV文件导入数据</string>
+    <string name="export_data">导出数据</string>
+    <string name="export_data_description">导出所有数据到CSV文件</string>
+    <string name="import_data">导入数据</string>
+    <string name="import_data_description">从CSV文件导入数据</string>
     
     <!-- WebDAV Backup -->
     <string name="webdav_backup">WebDAV 备份</string>

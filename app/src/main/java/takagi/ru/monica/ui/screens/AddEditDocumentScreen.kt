@@ -40,6 +40,7 @@ fun AddEditDocumentScreen(
     var issuedDate by remember { mutableStateOf("") }
     var expiryDate by remember { mutableStateOf("") }
     var issuedBy by remember { mutableStateOf("") }
+    var nationality by remember { mutableStateOf("") } // 添加国籍字段
     var documentType by remember { mutableStateOf(DocumentType.ID_CARD) }
     var notes by remember { mutableStateOf("") }
     var isFavorite by remember { mutableStateOf(false) }
@@ -73,12 +74,13 @@ fun AddEditDocumentScreen(
                     // 忽略解析错误
                 }
                 
-                viewModel.parseDocumentData(item.itemData)?.let { data ->
+                viewModel.parseDocumentData(item.itemData)?.let { data -> 
                     documentNumber = data.documentNumber
                     fullName = data.fullName
                     issuedDate = data.issuedDate
                     expiryDate = data.expiryDate
                     issuedBy = data.issuedBy
+                    nationality = data.nationality // 加载国籍信息
                     documentType = data.documentType
                 }
             }
@@ -113,6 +115,7 @@ fun AddEditDocumentScreen(
                                 issuedDate = issuedDate,
                                 expiryDate = expiryDate,
                                 issuedBy = issuedBy,
+                                nationality = nationality, // 保存国籍信息
                                 documentType = documentType
                             )
                             
@@ -316,6 +319,18 @@ fun AddEditDocumentScreen(
                 singleLine = true
             )
             
+            // 国籍（仅护照显示）
+            if (documentType == DocumentType.PASSPORT) {
+                OutlinedTextField(
+                    value = nationality,
+                    onValueChange = { nationality = it },
+                    label = { Text("国籍") },
+                    placeholder = { Text("中国") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+            
             // 备注
             OutlinedTextField(
                 value = notes,
@@ -328,32 +343,30 @@ fun AddEditDocumentScreen(
                 maxLines = 4
             )
             
-            // 双面照片选择器（护照不需要背面）
-            if (documentType != DocumentType.PASSPORT) {
-                DualPhotoPicker(
-                    frontImageFileName = frontImageFileName,
-                    backImageFileName = backImageFileName,
-                    onFrontImageSelected = { fileName -> frontImageFileName = fileName },
-                    onFrontImageRemoved = { frontImageFileName = null },
-                    onBackImageSelected = { fileName -> backImageFileName = fileName },
-                    onBackImageRemoved = { backImageFileName = null },
-                    frontLabel = stringResource(R.string.document_photo_front, when (documentType) {
-                        DocumentType.ID_CARD -> stringResource(R.string.id_card)
-                        DocumentType.PASSPORT -> stringResource(R.string.passport)
-                        DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> "Social Security Card"
-                        DocumentType.OTHER -> stringResource(R.string.other_document)
-                    }),
-                    backLabel = stringResource(R.string.document_photo_back, when (documentType) {
-                        DocumentType.ID_CARD -> stringResource(R.string.id_card)
-                        DocumentType.PASSPORT -> stringResource(R.string.passport)
-                        DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
-                        DocumentType.OTHER -> stringResource(R.string.other_document)
-                    }),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            // 照片选择器（所有证件类型都显示正反面照片选择器）
+            DualPhotoPicker(
+                frontImageFileName = frontImageFileName,
+                backImageFileName = backImageFileName,
+                onFrontImageSelected = { fileName -> frontImageFileName = fileName },
+                onFrontImageRemoved = { frontImageFileName = null },
+                onBackImageSelected = { fileName -> backImageFileName = fileName },
+                onBackImageRemoved = { backImageFileName = null },
+                frontLabel = stringResource(R.string.document_photo_front, when (documentType) {
+                    DocumentType.ID_CARD -> stringResource(R.string.id_card)
+                    DocumentType.PASSPORT -> stringResource(R.string.passport)
+                    DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+                    DocumentType.SOCIAL_SECURITY -> "Social Security Card"
+                    DocumentType.OTHER -> stringResource(R.string.other_document)
+                }),
+                backLabel = stringResource(R.string.document_photo_back, when (documentType) {
+                    DocumentType.ID_CARD -> stringResource(R.string.id_card)
+                    DocumentType.PASSPORT -> stringResource(R.string.passport)
+                    DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+                    DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
+                    DocumentType.OTHER -> stringResource(R.string.other_document)
+                }),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

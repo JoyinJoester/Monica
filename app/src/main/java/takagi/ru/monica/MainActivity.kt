@@ -309,6 +309,9 @@ fun MonicaContent(
                 onNavigateToAddDocument = { documentId ->
                     navController.navigate(Screen.AddEditDocument.createRoute(documentId))
                 },
+                onNavigateToDocumentDetail = { documentId ->  // 添加新的导航参数
+                    navController.navigate(Screen.DocumentDetail.createRoute(documentId))
+                },
                 onNavigateToAddLedgerEntry = { entryId ->
                     navController.navigate(Screen.AddEditLedgerEntry.createRoute(entryId))
                 },
@@ -512,6 +515,23 @@ fun MonicaContent(
             )
         }
 
+        composable(Screen.DocumentDetail.route) { backStackEntry ->
+            val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
+
+            if (documentId > 0) {
+                takagi.ru.monica.ui.screens.DocumentDetailScreen(
+                    viewModel = documentViewModel,
+                    documentId = documentId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onEditDocument = { id ->
+                        navController.navigate(Screen.AddEditDocument.createRoute(id))
+                    }
+                )
+            }
+        }
+
         composable(Screen.AddEditLedgerEntry.route) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")?.toLongOrNull() ?: -1L
 
@@ -645,6 +665,9 @@ fun MonicaContent(
                 },
                 onImportAegis = { uri ->
                     dataExportImportViewModel.importAegisJson(uri)
+                },
+                onImportEncryptedAegis = { uri, password ->
+                    dataExportImportViewModel.importEncryptedAegisJson(uri, password)
                 }
             )
         }

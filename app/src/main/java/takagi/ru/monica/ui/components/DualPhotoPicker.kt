@@ -155,7 +155,7 @@ fun DualPhotoPicker(
             modifier = Modifier.fillMaxWidth()
         )
         
-        // 背面照片
+        // 背面照片（所有证件类型都显示背面照片选择器）
         PhotoCard(
             bitmap = backBitmap,
             label = backLabel,

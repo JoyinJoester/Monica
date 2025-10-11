@@ -277,15 +277,15 @@ fun SettingsScreen(
             ) {
                 SettingsItem(
                     icon = Icons.Default.Download,
-                    title = context.getString(R.string.export_passwords),
-                    subtitle = context.getString(R.string.export_passwords_description),
+                    title = context.getString(R.string.export_data),
+                    subtitle = context.getString(R.string.export_data_description),
                     onClick = onExportData
                 )
                 
                 SettingsItem(
                     icon = Icons.Default.Upload,
-                    title = context.getString(R.string.import_passwords),
-                    subtitle = context.getString(R.string.import_passwords_description),
+                    title = context.getString(R.string.import_data),
+                    subtitle = context.getString(R.string.import_data_description),
                     onClick = onImportData
                 )
                 

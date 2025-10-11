@@ -13,8 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
@@ -31,7 +29,8 @@ fun ImportDataScreen(
     onNavigateBack: () -> Unit,
     onImport: suspend (Uri) -> Result<Int>,  // 普通数据导入
     onImportAlipay: suspend (Uri) -> Result<Int>,  // 支付宝账单导入
-    onImportAegis: suspend (Uri) -> Result<Int>  // Aegis JSON导入
+    onImportAegis: suspend (Uri) -> Result<Int>,  // Aegis JSON导入
+    onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>  // 加密的Aegis JSON导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -42,6 +41,9 @@ fun ImportDataScreen(
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isImporting by remember { mutableStateOf(false) }
     var importType by remember { mutableStateOf("normal") } // "normal", "alipay" 或 "aegis"
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var aegisPassword by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf<String?>(null) }
     
     // 设置文件操作回调
     LaunchedEffect(Unit) {
@@ -267,24 +269,29 @@ fun ImportDataScreen(
                         scope.launch {
                             isImporting = true
                             try {
-                                val result = when (importType) {
-                                    "alipay" -> onImportAlipay(uri)  // 支付宝导入
-                                    "aegis" -> onImportAegis(uri)   // Aegis导入
-                                    else -> onImport(uri)  // 普通导入
-                                }
-                                
-                                result.onSuccess { count ->
-                                    val message = when (importType) {
-                                        "alipay" -> context.getString(R.string.import_data_success_alipay, count)
-                                        "aegis" -> "成功导入 $count 个TOTP验证器"
-                                        else -> context.getString(R.string.import_data_success_normal, count)
+                                // 如果是Aegis导入类型，先检查是否为加密文件
+                                if (importType == "aegis") {
+                                    // 异步检查是否为加密文件
+                                    val isEncryptedResult = DataExportImportManager(context).isEncryptedAegisFile(uri)
+                                    val isEncrypted = isEncryptedResult.getOrDefault(false)
+                                    if (isEncrypted) {
+                                        // 是加密文件，显示密码输入对话框
+                                        isImporting = false
+                                        showPasswordDialog = true
+                                        passwordError = null
+                                        aegisPassword = ""
+                                        return@launch
+                                    } else {
+                                        // 不是加密文件，直接导入
+                                        val result = onImportAegis(uri)
+                                        handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
                                     }
-                                    snackbarHostState.showSnackbar(message)
-                                    onNavigateBack()
-                                }.onFailure { error ->
-                                    snackbarHostState.showSnackbar(
-                                        error.message ?: context.getString(R.string.import_data_error)
-                                    )
+                                } else {
+                                    val result = when (importType) {
+                                        "alipay" -> onImportAlipay(uri)  // 支付宝导入
+                                        else -> onImport(uri)  // 普通导入
+                                    }
+                                    handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("ImportDataScreen", "导入异常", e)
@@ -339,5 +346,120 @@ fun ImportDataScreen(
                 }
             }
         }
+    }
+    
+    // 密码输入对话框
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showPasswordDialog = false
+                passwordError = null
+            },
+            title = { Text("输入解密密码") },
+            text = {
+                Column {
+                    Text(
+                        "此Aegis备份文件已加密，请输入密码以解密",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    OutlinedTextField(
+                        value = aegisPassword,
+                        onValueChange = { 
+                            aegisPassword = it
+                            passwordError = null
+                        },
+                        label = { Text("密码") },
+                        singleLine = true,
+                        isError = passwordError != null,
+                        supportingText = passwordError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (aegisPassword.isBlank()) {
+                            passwordError = "密码不能为空"
+                            return@TextButton
+                        }
+                        
+                        scope.launch {
+                            isImporting = true
+                            showPasswordDialog = false
+                            try {
+                                selectedFileUri?.let { uri ->
+                                    // 使用加密导入回调
+                                    val result = onImportEncryptedAegis(uri, aegisPassword)
+                                    
+                                    result.onSuccess { count ->
+                                        snackbarHostState.showSnackbar("成功导入 $count 个TOTP验证器")
+                                        onNavigateBack()
+                                    }.onFailure { error ->
+                                        val errorMsg = error.message ?: "未知错误"
+                                        if (errorMsg.contains("密码错误") || errorMsg.contains("解密失败")) {
+                                            passwordError = "密码错误，请重试"
+                                            showPasswordDialog = true
+                                        } else {
+                                            snackbarHostState.showSnackbar("导入失败：$errorMsg")
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("ImportDataScreen", "加密导入异常", e)
+                                snackbarHostState.showSnackbar("导入失败：${e.message ?: "未知错误"}")
+                            } finally {
+                                isImporting = false
+                            }
+                        }
+                    },
+                    enabled = !isImporting
+                ) {
+                    if (isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("确定")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showPasswordDialog = false
+                        passwordError = null
+                    },
+                    enabled = !isImporting
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+// 处理导入结果的辅助函数
+private suspend fun handleImportResult(
+    result: Result<Int>,
+    context: android.content.Context,
+    snackbarHostState: SnackbarHostState,
+    importType: String,
+    onNavigateBack: () -> Unit
+) {
+    result.onSuccess { count ->
+        val message = when (importType) {
+            "alipay" -> context.getString(R.string.import_data_success_alipay, count)
+            "aegis" -> "成功导入 $count 个TOTP验证器"
+            else -> context.getString(R.string.import_data_success_normal, count)
+        }
+        snackbarHostState.showSnackbar(message)
+        onNavigateBack()
+    }.onFailure { error ->
+        snackbarHostState.showSnackbar(
+            error.message ?: context.getString(R.string.import_data_error)
+        )
     }
 }

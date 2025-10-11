@@ -222,7 +222,6 @@
     <string name="import_data_title">Import Data</string>
     <string name="importing">Importing...</string>
     <string name="start_import">Start Import</string>
-    <string name="export_data_description">Export all your data as a CSV file to local storage. You can use this file to backup or migrate your data.</string>
     <string name="export_data_select_type">Select data type to export:</string>
     <string name="export_data_type_passwords">Passwords</string>
     <string name="export_data_type_totp">TOTP Codes</string>
@@ -233,7 +232,6 @@
     <string name="export_data_success">Data exported successfully</string>
     <string name="export_data_error">Export failed</string>
     <string name="export_data_warning">CSV file is not encrypted, please keep the exported file safe</string>
-    <string name="import_data_description">Import data from a CSV backup file. Please make sure the file format is correct.</string>
     <string name="import_data_warning_title">Warning</string>
     <string name="import_data_warning_message">Importing data may overwrite existing data. Please make sure to backup your current data before importing.</string>
     <string name="import_data_select_file">Select File</string>
@@ -567,10 +565,10 @@
     
     <!-- Data Management in Settings -->
     <string name="data_management">Data Management</string>
-    <string name="export_passwords">Export Passwords</string>
-    <string name="export_passwords_description">Export all data to CSV file</string>
-    <string name="import_passwords">Import Passwords</string>
-    <string name="import_passwords_description">Import data from CSV file</string>
+    <string name="export_data">Export Data</string>
+    <string name="export_data_description">Export all data to CSV file</string>
+    <string name="import_data">Import Data</string>
+    <string name="import_data_description">Import data from CSV file</string>
     
     <!-- WebDAV Backup -->
     <string name="webdav_backup">WebDAV Backup</string>

@@ -49,6 +49,11 @@ sealed class Screen(val route: String) {
             }
         }
     }
+    object DocumentDetail : Screen("document_detail/{documentId}") {
+        fun createRoute(documentId: Long): String {
+            return "document_detail/$documentId"
+        }
+    }
     object AddEditLedgerEntry : Screen("add_edit_ledger_entry/{entryId}") {
         fun createRoute(entryId: Long? = null): String {
             return if (entryId != null) {

@@ -539,10 +539,6 @@
     
     <!-- Data Management in Settings -->
     <string name="data_management">Quản lý dữ liệu</string>
-    <string name="export_passwords">Xuất mật khẩu</string>
-    <string name="export_passwords_description">Xuất tất cả dữ liệu ra tệp CSV</string>
-    <string name="import_passwords">Nhập mật khẩu</string>
-    <string name="import_passwords_description">Nhập dữ liệu từ tệp CSV</string>
     
     <!-- WebDAV Backup -->
     <string name="webdav_backup">Sao lưu WebDAV</string>

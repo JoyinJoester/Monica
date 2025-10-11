@@ -127,6 +127,9 @@ dependencies {
     // TODO: Re-enable after resolving Kotlin version compatibility
     // implementation libs.vico.compose.m3
     
+    // Scrypt for Aegis decryption
+    implementation libs.scrypt
+    
     // Testing
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit

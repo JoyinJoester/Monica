@@ -23,7 +23,7 @@ import kotlinx.serialization.json.Json
  * 证件卡片组件
  * 显示证件类型、号码（脱敏）等信息
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DocumentCard(
     item: SecureItem,
@@ -48,8 +48,14 @@ fun DocumentCard(
     }
     
     Card(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    // 长按进入编辑模式
+                }
+            ),
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp

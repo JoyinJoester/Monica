@@ -65,6 +65,7 @@ fun SimpleMainScreen(
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
+    onNavigateToDocumentDetail: (Long) -> Unit, // 添加导航到证件详情页面的参数
     onNavigateToAddLedgerEntry: (Long?) -> Unit,
     onNavigateToLedgerEntryDetail: (Long) -> Unit, // 新增：导航到账单详情
     onNavigateToAssetManagement: () -> Unit,
@@ -305,7 +306,8 @@ fun SimpleMainScreen(
                     // 文档页面
                     DocumentListContent(
                         viewModel = documentViewModel,
-                        onDocumentClick = { documentId ->
+                        onDocumentClick = { documentId -> 
+                            // 直接导航到编辑页面而不是详情页面
                             onNavigateToAddDocument(documentId)
                         },
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->

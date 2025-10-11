@@ -267,11 +267,103 @@ class DataExportImportViewModel(
      */
     suspend fun importAegisJson(inputUri: Uri): Result<Int> {
         return try {
-            val result = exportManager.importAegisJson(inputUri)
+            // 首先检查是否为加密文件
+            val isEncryptedResult = exportManager.isEncryptedAegisFile(inputUri)
+            if (isEncryptedResult.getOrDefault(false)) {
+                // 如果是加密文件，返回错误提示
+                Result.failure(Exception("不支持导入加密的Aegis文件，请选择未加密的JSON文件"))
+            } else {
+                // 处理未加密的Aegis文件
+                val result = exportManager.importAegisJson(inputUri)
+                
+                result.fold(
+                    onSuccess = { entries ->
+                        android.util.Log.d("AegisImport", "ViewModel收到 ${entries.size} 条Aegis条目")
+                        var count = 0
+                        var errorCount = 0
+                        var skippedCount = 0
+                        
+                        entries.forEach { aegisEntry ->
+                            try {
+                                // 检查是否已存在相同的条目（基于issuer和name）
+                                val existingItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
+                                val isDuplicate = existingItems.any { item ->
+                                    try {
+                                        val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                                        totpData.issuer == aegisEntry.issuer && totpData.accountName == aegisEntry.name
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                }
+                                
+                                if (isDuplicate) {
+                                    android.util.Log.d("AegisImport", "跳过重复条目: ${aegisEntry.name}")
+                                    skippedCount++
+                                } else {
+                                    // 创建新的TOTP条目
+                                    val totpData = TotpData(
+                                        secret = aegisEntry.secret,
+                                        issuer = aegisEntry.issuer,
+                                        accountName = aegisEntry.name,
+                                        period = aegisEntry.period,
+                                        digits = aegisEntry.digits,
+                                        algorithm = aegisEntry.algorithm
+                                    )
+                                    
+                                    val itemData = Json.encodeToString(totpData)
+                                    val title = if (aegisEntry.issuer.isNotBlank()) {
+                                        "${aegisEntry.issuer}: ${aegisEntry.name}"
+                                    } else {
+                                        aegisEntry.name
+                                    }
+                                    
+                                    val secureItem = SecureItem(
+                                        id = 0,
+                                        itemType = ItemType.TOTP,
+                                        title = title,
+                                        itemData = itemData,
+                                        notes = aegisEntry.note,
+                                        isFavorite = false,
+                                        imagePaths = "",
+                                        createdAt = Date(),
+                                        updatedAt = Date()
+                                    )
+                                    
+                                    secureItemRepository.insertItem(secureItem)
+                                    count++
+                                    android.util.Log.d("AegisImport", "成功插入TOTP条目: $title")
+                                }
+                            } catch (e: Exception) {
+                                errorCount++
+                                android.util.Log.e("AegisImport", "插入数据库失败: ${aegisEntry.name}, 错误: ${e.message}", e)
+                            }
+                        }
+                        
+                        android.util.Log.d("AegisImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
+                        Result.success(count)
+                    },
+                    onFailure = { error ->
+                        android.util.Log.e("AegisImport", "导入失败: ${error.message}", error)
+                        Result.failure(error)
+                    }
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AegisImport", "导入异常: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 导入加密的Aegis JSON文件
+     */
+    suspend fun importEncryptedAegisJson(inputUri: Uri, password: String): Result<Int> {
+        return try {
+            val result = exportManager.importEncryptedAegisJson(inputUri, password)
             
             result.fold(
                 onSuccess = { entries ->
-                    android.util.Log.d("AegisImport", "ViewModel收到 ${entries.size} 条Aegis条目")
+                    android.util.Log.d("EncryptedAegisImport", "ViewModel收到 ${entries.size} 条Aegis条目")
                     var count = 0
                     var errorCount = 0
                     var skippedCount = 0
@@ -290,7 +382,7 @@ class DataExportImportViewModel(
                             }
                             
                             if (isDuplicate) {
-                                android.util.Log.d("AegisImport", "跳过重复条目: ${aegisEntry.name}")
+                                android.util.Log.d("EncryptedAegisImport", "跳过重复条目: ${aegisEntry.name}")
                                 skippedCount++
                             } else {
                                 // 创建新的TOTP条目
@@ -324,24 +416,24 @@ class DataExportImportViewModel(
                                 
                                 secureItemRepository.insertItem(secureItem)
                                 count++
-                                android.util.Log.d("AegisImport", "成功插入TOTP条目: $title")
+                                android.util.Log.d("EncryptedAegisImport", "成功插入TOTP条目: $title")
                             }
                         } catch (e: Exception) {
                             errorCount++
-                            android.util.Log.e("AegisImport", "插入数据库失败: ${aegisEntry.name}, 错误: ${e.message}", e)
+                            android.util.Log.e("EncryptedAegisImport", "插入数据库失败: ${aegisEntry.name}, 错误: ${e.message}", e)
                         }
                     }
                     
-                    android.util.Log.d("AegisImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
+                    android.util.Log.d("EncryptedAegisImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
                     Result.success(count)
                 },
                 onFailure = { error ->
-                    android.util.Log.e("AegisImport", "导入失败: ${error.message}", error)
+                    android.util.Log.e("EncryptedAegisImport", "导入失败: ${error.message}", error)
                     Result.failure(error)
                 }
             )
         } catch (e: Exception) {
-            android.util.Log.e("AegisImport", "导入异常: ${e.message}", e)
+            android.util.Log.e("EncryptedAegisImport", "导入异常: ${e.message}", e)
             Result.failure(e)
         }
     }

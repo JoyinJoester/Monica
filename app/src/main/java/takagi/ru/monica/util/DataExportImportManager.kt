@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonArray
+import takagi.ru.monica.util.AegisDecryptor
 
 /**
  * 数据导入导出管理器
@@ -636,29 +637,228 @@ class DataExportImportManager(private val context: Context) {
                 val root = json.parseToJsonElement(content).jsonObject
                 
                 // 检查是否为加密的vault
-                val db = root["db"]?.jsonPrimitive?.content
-                if (db != null) {
+                val dbField = root["db"]
+                if (dbField != null && dbField is kotlinx.serialization.json.JsonPrimitive) {
                     // 这是一个加密的vault，我们无法解密它
                     return@withContext Result.failure(Exception("无法导入加密的Aegis备份文件。请导出未加密的JSON文件。"))
                 }
                 
                 // 尝试解析未加密的数据库格式
-                val jsonArray = try {
-                    root["db"]?.jsonObject?.get("entries")?.jsonArray
+                val entriesArray = try {
+                    // 首先尝试从db字段中获取entries
+                    val dbObj = dbField?.jsonObject
+                    val dbEntries = if (dbObj != null) {
+                        dbObj["entries"]?.jsonArray
+                    } else {
+                        null
+                    }
+                    dbEntries ?: root["entries"]?.jsonArray
                 } catch (e: Exception) {
-                    null
-                }
-                
-                // 如果上面的方法失败，尝试直接解析根对象中的entries数组
-                val entriesArray = jsonArray ?: try {
-                    root["entries"]?.jsonArray
-                } catch (e: Exception) {
-                    null
+                    // 如果上面的方法失败，尝试直接解析根对象中的entries数组
+                    try {
+                        root["entries"]?.jsonArray
+                    } catch (ex: Exception) {
+                        null
+                    }
                 }
                 
                 if (entriesArray == null) {
                     return@withContext Result.failure(Exception("无效的Aegis JSON格式：未找到entries数组"))
                 }
+                
+                val entries = mutableListOf<AegisEntry>()
+                var parsedCount = 0
+                var errorCount = 0
+                
+                entriesArray.forEach { element ->
+                    try {
+                        // 确保element是JsonObject类型
+                        if (element is kotlinx.serialization.json.JsonObject) {
+                            val entryObj = element
+                            val type = entryObj["type"]?.jsonPrimitive?.content ?: "totp"
+                            
+                            // 只处理TOTP条目
+                            if (type.lowercase() == "totp") {
+                                val uuid = entryObj["uuid"]?.jsonPrimitive?.content ?: java.util.UUID.randomUUID().toString()
+                                val name = entryObj["name"]?.jsonPrimitive?.content ?: ""
+                                val issuer = entryObj["issuer"]?.jsonPrimitive?.content ?: ""
+                                val note = entryObj["note"]?.jsonPrimitive?.content ?: ""
+                                
+                                // 获取info对象
+                                val infoObj = entryObj["info"]?.jsonObject
+                                if (infoObj != null) {
+                                    val secret = infoObj["secret"]?.jsonPrimitive?.content ?: ""
+                                    val algo = infoObj["algo"]?.jsonPrimitive?.content ?: "SHA1"
+                                    val digits = infoObj["digits"]?.jsonPrimitive?.content?.toIntOrNull() ?: 6
+                                    val period = infoObj["period"]?.jsonPrimitive?.content?.toIntOrNull() ?: 30
+                                    
+                                    if (secret.isNotBlank()) {
+                                        val entry = AegisEntry(
+                                            uuid = uuid,
+                                            name = name,
+                                            issuer = issuer,
+                                            note = note,
+                                            secret = secret,
+                                            algorithm = algo,
+                                            digits = digits,
+                                            period = period
+                                        )
+                                        entries.add(entry)
+                                        parsedCount++
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        errorCount++
+                        android.util.Log.e("AegisImport", "解析条目失败", e)
+                    }
+                }
+                
+                android.util.Log.d("AegisImport", "成功解析 $parsedCount 条目，$errorCount 个错误")
+                
+                if (entries.isEmpty()) {
+                    Result.failure(Exception("未能从Aegis文件中导入任何有效的TOTP条目"))
+                } else {
+                    Result.success(entries)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AegisImport", "导入Aegis文件失败", e)
+            Result.failure(Exception("导入Aegis文件失败：${e.message ?: "未知错误"}"))
+        }
+    }
+
+    // Aegis条目数据类
+    data class AegisEntry(
+        val uuid: String,
+        val name: String,
+        val issuer: String,
+        val note: String,
+        val secret: String,
+        val algorithm: String,
+        val digits: Int,
+        val period: Int
+    )
+    
+    /**
+     * 检查文件是否为加密的Aegis文件
+     * @param inputUri 输入文件的URI
+     * @return 如果是加密文件返回true，否则返回false
+     */
+    suspend fun isEncryptedAegisFile(inputUri: Uri): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.success(false)
+        
+            inputStream.use { input ->
+                val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+                val content = reader.readText()
+                
+                val decryptor = AegisDecryptor()
+                Result.success(decryptor.isEncryptedAegisFile(content))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AegisCheck", "检查Aegis文件失败", e)
+            Result.success(false)
+        }
+    }
+    
+    /**
+     * 从加密的Aegis JSON文件导入TOTP数据
+     * @param inputUri 输入文件的URI
+     * @param password 解密密码
+     * @return 导入的数据项列表
+     */
+    suspend fun importEncryptedAegisJson(
+        inputUri: Uri,
+        password: String
+    ): Result<List<AegisEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("无法读取文件，请检查文件是否存在"))
+        
+            inputStream.use { input ->
+                val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+                val content = reader.readText()
+                
+                // 解析JSON
+                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                val root = json.parseToJsonElement(content).jsonObject
+                
+                // 获取header信息
+                val header = root["header"]?.jsonObject
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少header"))
+                
+                // 获取slots信息
+                val slots = header["slots"]?.jsonArray
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少slots"))
+                
+                if (slots.isEmpty()) {
+                    return@withContext Result.failure(Exception("无效的Aegis文件格式：slots为空"))
+                }
+                
+                // 获取第一个slot
+                val slot = slots[0].jsonObject
+                val slotType = slot["type"]?.jsonPrimitive?.content?.toIntOrNull()
+                if (slotType != 1) {
+                    return@withContext Result.failure(Exception("不支持的slot类型: $slotType"))
+                }
+                
+                val salt = slot["salt"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少salt"))
+                
+                val key = slot["key"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少key"))
+                
+                val keyParams = slot["key_params"]?.jsonObject
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少key_params"))
+                
+                val nonce = keyParams["nonce"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少nonce"))
+                
+                val tag = keyParams["tag"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少tag"))
+                
+                // 获取加密的db数据
+                val encryptedDb = root["db"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(Exception("无效的Aegis文件格式：缺少db"))
+                
+                // 解密数据
+                val decryptor = AegisDecryptor()
+                val keyParamsObj = AegisDecryptor.KeyParams(nonce, tag)
+                
+                // 首先解密主密钥
+                val decryptedKey = try {
+                    decryptor.decryptMasterKey(password, salt, keyParamsObj, key)
+                } catch (e: Exception) {
+                    android.util.Log.e("EncryptedAegisImport", "解密主密钥失败", e)
+                    return@withContext Result.failure(Exception("解密主密钥失败：密码错误或文件损坏"))
+                }
+                
+                // 验证解密后的主密钥长度
+                if (decryptedKey.size != 32) {
+                    return@withContext Result.failure(Exception("解密主密钥失败：密钥长度不正确"))
+                }
+                
+                // 然后使用主密钥解密db字段
+                val dbNonce = header["params"]?.jsonObject?.get("nonce")?.jsonPrimitive?.content ?: nonce
+                val dbTag = header["params"]?.jsonObject?.get("tag")?.jsonPrimitive?.content ?: tag
+                val dbKeyParams = AegisDecryptor.KeyParams(dbNonce, dbTag)
+                
+                val decryptedDbData = try {
+                    // 注意：db字段可能是Base64编码的，而不是十六进制字符串
+                    decryptor.decryptWithKeyBase64(decryptedKey, dbKeyParams, encryptedDb)
+                } catch (e: Exception) {
+                    android.util.Log.e("EncryptedAegisImport", "解密db数据失败", e)
+                    return@withContext Result.failure(Exception("解密db数据失败：密码错误或文件损坏"))
+                }
+                
+                // 解析解密后的JSON
+                val decryptedContent = String(decryptedDbData, Charsets.UTF_8)
+                val decryptedRoot = json.parseToJsonElement(decryptedContent).jsonObject
+                val entriesArray = decryptedRoot["entries"]?.jsonArray
+                    ?: return@withContext Result.failure(Exception("无效的解密数据：未找到entries数组"))
                 
                 val entries = mutableListOf<AegisEntry>()
                 var parsedCount = 0
@@ -702,11 +902,11 @@ class DataExportImportManager(private val context: Context) {
                         }
                     } catch (e: Exception) {
                         errorCount++
-                        android.util.Log.e("AegisImport", "解析条目失败", e)
+                        android.util.Log.e("EncryptedAegisImport", "解析条目失败", e)
                     }
                 }
                 
-                android.util.Log.d("AegisImport", "成功解析 $parsedCount 条目，$errorCount 个错误")
+                android.util.Log.d("EncryptedAegisImport", "成功解析 $parsedCount 条目，$errorCount 个错误")
                 
                 if (entries.isEmpty()) {
                     Result.failure(Exception("未能从Aegis文件中导入任何有效的TOTP条目"))
@@ -715,20 +915,8 @@ class DataExportImportManager(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("AegisImport", "导入Aegis文件失败", e)
-            Result.failure(Exception("导入Aegis文件失败：${e.message ?: "未知错误"}"))
+            android.util.Log.e("EncryptedAegisImport", "导入加密Aegis文件失败", e)
+            Result.failure(Exception("导入加密Aegis文件失败：${e.message ?: "未知错误"}"))
         }
     }
-
-    // Aegis条目数据类
-    data class AegisEntry(
-        val uuid: String,
-        val name: String,
-        val issuer: String,
-        val note: String,
-        val secret: String,
-        val algorithm: String,
-        val digits: Int,
-        val period: Int
-    )
 }
