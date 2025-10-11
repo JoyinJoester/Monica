@@ -2,7 +2,9 @@ package takagi.ru.monica.ui.screens
 
 import android.app.Activity
 import android.net.Uri
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -146,7 +148,9 @@ fun ImportDataScreen(
             )
             
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
@@ -156,7 +160,9 @@ fun ImportDataScreen(
                     leadingIcon = if (importType == "normal") {
                         { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
                     } else null,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                 )
                 FilterChip(
                     selected = importType == "alipay",
@@ -165,7 +171,9 @@ fun ImportDataScreen(
                     leadingIcon = if (importType == "alipay") {
                         { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
                     } else null,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                 )
                 FilterChip(
                     selected = importType == "aegis",
@@ -174,7 +182,9 @@ fun ImportDataScreen(
                     leadingIcon = if (importType == "aegis") {
                         { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
                     } else null,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                 )
             }
             
