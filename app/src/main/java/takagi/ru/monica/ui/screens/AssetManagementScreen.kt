@@ -39,6 +39,17 @@ fun AssetManagementScreen(
     val assets by viewModel.assets.collectAsState(initial = emptyList())
     val totalBalance by viewModel.totalBalance.collectAsState(initial = 0L)
     
+    // 在资产管理页面也重新计算资产余额
+    LaunchedEffect(Unit) {
+        viewModel.recalculateAllAssetBalances()
+    }
+    
+    // 添加调试日志
+    android.util.Log.d("AssetManagementScreen", "Assets updated, count: ${assets.size}")
+    assets.forEach { asset ->
+        android.util.Log.d("AssetManagementScreen", "Asset: id=${asset.id}, name=${asset.name}, balance=${asset.balanceInCents}")
+    }
+    
     // 获取多货币资产统计
     val currencyAssetStats = uiState.currencyAssetStats
 
@@ -208,6 +219,9 @@ private fun AssetCard(
 ) {
     val cardColor = parseColor(asset.colorHex).copy(alpha = 0.7f) // 降低亮度
     val contentColor = if (isColorDark(cardColor)) Color.White else Color.Black
+    
+    // 添加调试日志
+    android.util.Log.d("AssetManagementScreen", "AssetCard: id=${asset.id}, name=${asset.name}, balance=${asset.balanceInCents}")
     
     Card(
         modifier = Modifier

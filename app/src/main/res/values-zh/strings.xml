@@ -76,7 +76,6 @@
     
     <!-- Password Generator -->
     <string name="password_generator_title">密码生成器</string>
-    <string name="password_generator">密码生成器</string>
     <string name="length">长度：%d</string>
     <string name="length_value">长度：%d</string>
     <string name="uppercase_letters">大写字母 (A-Z)</string>
@@ -223,6 +222,37 @@
     <string name="import_data_title">导入数据</string>
     <string name="importing">导入中...</string>
     <string name="start_import">开始导入</string>
+    <string name="export_data_description">将您的所有数据导出为CSV文件到本地存储。您可以使用此文件备份或迁移数据。</string>
+    <string name="export_data_select_type">选择要导出的数据类型：</string>
+    <string name="export_data_type_passwords">密码</string>
+    <string name="export_data_type_totp">TOTP验证码</string>
+    <string name="export_data_type_bank_cards">银行卡</string>
+    <string name="export_data_type_documents">证件</string>
+    <string name="export_data_type_all">所有数据</string>
+    <string name="export_data_button">导出</string>
+    <string name="export_data_success">数据导出成功</string>
+    <string name="export_data_error">导出失败</string>
+    <string name="export_data_warning">CSV文件未加密，请妥善保管导出文件</string>
+    <string name="import_data_description">从CSV备份文件导入数据。请确保文件格式正确。</string>
+    <string name="import_data_warning_title">警告</string>
+    <string name="import_data_warning_message">导入数据可能会覆盖现有数据。请在导入前确保备份当前数据。</string>
+    <string name="import_data_select_file">选择文件</string>
+    <string name="import_data_button">导入</string>
+    <string name="import_data_success">数据导入成功</string>
+    <string name="import_data_error">导入失败</string>
+    <string name="import_data_supported_formats">支持应用导出的CSV文件和支付宝交易明细</string>
+    <string name="import_data_select_type">选择导入类型</string>
+    <string name="import_data_type_normal">应用数据</string>
+    <string name="import_data_type_alipay">支付宝账单</string>
+    <string name="import_data_file_selected">已选择文件</string>
+    <string name="import_data_file_hint">点击选择 .csv 文件</string>
+    <string name="import_data_file_hint_csv">点击选择 .csv 文件</string>
+    <string name="import_data_file_hint_csv_alipay">点击选择支付宝 .csv 文件</string>
+    <string name="import_data_file_hint_json">点击选择 .json 文件</string>
+    <string name="import_data_success_normal">成功导入 %d 条数据</string>
+    <string name="import_data_success_alipay">成功导入 %d 条支付宝交易</string>
+    <string name="import_data_error_exception">导入失败：%s</string>
+    <string name="import_data_notice">导入的数据将添加到现有数据中，不会删除当前数据</string>
     
     <!-- Support Author -->
     <string name="support_author_title">支持作者</string>
@@ -263,9 +293,8 @@
     <!-- Settings Screen -->
     <string name="settings_title">设置</string>
     <string name="language">语言</string>
-    <string name="theme">主题</string>
+    <string name="theme">外观</string>  <!-- 将"主题"重命名为"外观" -->
     <string name="security">安全</string>
-    <string name="biometric_authentication">生物识别认证</string>
     <string name="auto_lock">自动锁定</string>
     <string name="auto_lock_summary">闲置后锁定应用</string>
     <string name="about">关于</string>
@@ -295,7 +324,7 @@
     <string name="reset_password_title">重设密码</string>
     <string name="reset_password">重设密码</string>
     <string name="reset_master_password">重设主密码</string>
-        <string name="reset_password_description">请输入当前密码并设置新的纯数字密码（最低6位数字）</string>
+    <string name="reset_password_description">请输入当前密码并设置新的纯数字密码（最低6位数字）</string>
     <string name="reset_password_verified_description">请设置您的新纯数字密码（最低6位数字）</string>
     <string name="current_password">当前密码</string>
     <string name="enter_current_password">输入您的当前密码</string>
@@ -312,12 +341,6 @@
     <string name="password_too_short">密码至少需要6位字符</string>
     
     <!-- Forgot Password -->
-    <string name="forgot_password">忘记密码？</string>
-    <string name="forgot_password_title">重置应用</string>
-    <string name="forgot_password_warning">这将永久删除您保存的所有密码并重置应用程序。此操作无法撤消。</string>
-    <string name="forgot_password_confirm">您确定要重置所有数据吗？</string>
-    <string name="reset_all_data">重置所有数据</string>
-    <string name="data_reset_complete">所有数据已重置。您现在可以设置新的主密码。</string>
     
     <!-- Security Questions -->
     <string name="security_questions">密保问题</string>
@@ -356,6 +379,7 @@
     <string name="nav_bank_cards">银行卡</string>
     <string name="nav_notes">笔记</string>
     <string name="nav_ledger">记账</string>
+    <string name="nav_generator">生成器</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_settings">设置</string>
     <string name="add">添加</string>
     
@@ -366,8 +390,37 @@
     <string name="nav_bank_cards_short">银行</string>
     <string name="nav_notes_short">笔记</string>
     <string name="nav_ledger_short">记账</string>
+    <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_settings_short">设置</string>
-
+    
+    <!-- Generator Screen -->  <!-- 添加生成器页面相关字符串 -->
+    <string name="generator_title">生成器</string>
+    <string name="random_symbol_generator">随机符号生成器</string>
+    <string name="random_symbol_generator_tab">随机符号</string>
+    <string name="password_generator">口令生成器</string>
+    <string name="password_generator_tab">口令</string>
+    <string name="pin_generator">PIN码生成器</string>
+    <string name="pin_generator_tab">PIN</string>
+    <string name="generator_length">长度</string>
+    <string name="generator_include_uppercase">包含大写字母 (A-Z)</string>
+    <string name="generator_include_lowercase">包含小写字母 (a-z)</string>
+    <string name="generator_include_numbers">包含数字 (0-9)</string>
+    <string name="generator_include_symbols">包含符号 (!@#$...)</string>
+    <string name="generator_exclude_similar">排除相似字符 (0,O,l,I)</string>
+    <string name="generator_exclude_ambiguous">排除不明确字符</string>
+    <string name="generator_first_letter_uppercase">首字母大写</string>
+    <string name="generator_include_numbers_in_password">包含数字</string>
+    <string name="generator_custom_separator">自定义分隔符</string>
+    <string name="generator_separator_counts_towards_length">分隔符计入长度</string>
+    <string name="generator_segment_length">分段长度</string>
+    <string name="generator_pin_length">PIN码长度</string>
+    <string name="generator_generate">生成</string>
+    <string name="generator_result">结果</string>
+    <string name="generator_copy">复制</string>
+    <string name="generator_copied">已复制到剪贴板</string>
+    <string name="generator_invalid_length">长度无效</string>
+    <string name="generator_action">生成</string>  <!-- 新增：生成按钮文字 -->
+    
     <!-- Notes -->
     <string name="add_note_title">添加笔记</string>
     <string name="edit_note_title">编辑笔记</string>
@@ -491,27 +544,6 @@
     <string name="security_question_preset_9">您的第一份工作是什么？</string>
     <string name="security_question_preset_10">您最喜欢的电影是什么？</string>
     
-    <!-- Export Data Screen -->
-    <string name="export_data_description">将您的所有数据导出为CSV文件到本地存储。您可以使用此文件备份或迁移数据。</string>
-    <string name="export_data_select_type">选择要导出的数据类型：</string>
-    <string name="export_data_type_passwords">密码</string>
-    <string name="export_data_type_totp">TOTP验证码</string>
-    <string name="export_data_type_bank_cards">银行卡</string>
-    <string name="export_data_type_documents">证件</string>
-    <string name="export_data_type_all">所有数据</string>
-    <string name="export_data_button">导出</string>
-    <string name="export_data_success">数据导出成功</string>
-    <string name="export_data_error">导出失败</string>
-    
-    <!-- Import Data Screen -->
-    <string name="import_data_description">从CSV备份文件导入数据。请确保文件格式正确。</string>
-    <string name="import_data_warning_title">警告</string>
-    <string name="import_data_warning_message">导入数据可能会覆盖现有数据。请在导入前确保备份当前数据。</string>
-    <string name="import_data_select_file">选择文件</string>
-    <string name="import_data_button">导入</string>
-    <string name="import_data_success">数据导入成功</string>
-    <string name="import_data_error">导入失败</string>
-    
     <!-- Support Author Screen (legacy) -->
     <string name="support_author_description">如果您觉得这个应用有帮助，请考虑支持作者。您的支持是我们持续改进的最大动力！</string>
     <string name="support_author_thanks">感谢您！</string>
@@ -527,6 +559,29 @@
     <string name="screenshot_protection">防截屏保护</string>
     <string name="screenshot_protection_enabled">已启用 - 保护敏感信息</string>
     <string name="screenshot_protection_disabled">已禁用 - 允许截屏</string>
+    
+    <!-- Dynamic Color -->
+    <string name="disable_wallpaper_color_extraction">关闭壁纸取色</string>
+    <string name="disable_wallpaper_color_extraction_description">使用系统默认配色方案而非从壁纸提取颜色</string>
+    
+    <!-- Color Scheme -->
+    <string name="color_scheme">配色方案</string>
+    <string name="color_scheme_description">为应用选择一个配色方案</string>
+    <string name="default_color_scheme">默认</string>
+    <string name="deep_blue_teal_scheme">深蓝青绿</string>
+    <string name="deep_blue_red_scheme">深蓝红灰</string>
+    <string name="pink_purple_blue_scheme">粉紫蓝</string>
+    <string name="dark_theme_scheme">深色系</string>
+    <string name="gray_blue_red_scheme">灰蓝红</string>
+    <string name="custom_color_scheme">自定义颜色</string>
+    <string name="custom_color_scheme_description">为应用主题设置您自己的三种颜色</string>
+    <string name="current_colors">当前颜色</string>
+    <string name="primary_color">主要颜色</string>
+    <string name="secondary_color">次要颜色</string>
+    <string name="tertiary_color">第三颜色</string>
+    <string name="apply_custom_colors">应用自定义颜色</string>
+    <string name="select_color">选择颜色</string>
+    <string name="select_from_preset_colors">从预设颜色中选择</string>
     
     <!-- Support Author -->
     <string name="support_author">支持作者</string>
@@ -606,6 +661,12 @@
     <string name="enter_master_password_to_confirm">请输入主密码确认</string>
     <string name="clearing_data">正在清空数据…</string>
     <string name="password_incorrect">密码错误</string>
+    <string name="select_data_types_to_clear">选择要清除的数据类型:</string>
+    <string name="data_type_passwords">密码</string>
+    <string name="data_type_totp">验证器</string>
+    <string name="data_type_ledger">账单</string>
+    <string name="data_type_documents">证件</string>
+    <string name="data_type_bank_cards">银行卡</string>
     
     <!-- Security Analysis -->
     <string name="security_analysis">安全分析</string>
@@ -639,32 +700,41 @@
     <string name="twofa_directory_attribution">参考：2FA Directory</string>
     
     <!-- Ledger / Accounting -->
-    <string name="ledger_title">记账本</string>
+    <string name="ledger_title">记账</string>
     <string name="ledger_balance">余额</string>
     <string name="ledger_income">收入</string>
     <string name="ledger_expense">支出</string>
     <string name="ledger_transfer">转账</string>
-    <string name="ledger_add_entry">添加记账</string>
-    <string name="ledger_edit_entry">编辑记账</string>
+    <string name="ledger_add_entry">添加记录</string>
+    <string name="ledger_edit_entry">编辑记录</string>
     <string name="ledger_entry_type">类型</string>
     <string name="ledger_amount">金额</string>
     <string name="ledger_category">分类</string>
     <string name="ledger_category_none">无分类</string>
-    <string name="ledger_no_category_available">当前类型暂无可用分类</string>
+    <string name="ledger_no_category_available">此类型无可用分类</string>
     <string name="ledger_time">时间</string>
     <string name="ledger_note">备注</string>
     <string name="ledger_select_category">选择分类</string>
-    <string name="ledger_empty">还没有记账条目，点击 + 添加一条吧</string>
+    <string name="ledger_empty">暂无记录，点击+添加</string>
     <string name="ledger_payment_method">支付方式</string>
     <string name="ledger_payment_wechat">微信</string>
     <string name="ledger_payment_alipay">支付宝</string>
-    <string name="ledger_payment_unionpay">云闪付</string>
+    <string name="ledger_payment_unionpay">银联</string>
     <string name="ledger_delete">删除</string>
-    <string name="ledger_delete_confirm_title">删除记账</string>
-    <string name="ledger_delete_confirm_message">确定要删除这条记账记录吗?</string>
+    <string name="ledger_delete_confirm_title">删除记录</string>
+    <string name="ledger_delete_confirm_message">确定要删除这条记录吗？</string>
     <string name="ledger_cancel">取消</string>
-    
-    <!-- 资产管理 -->
+    <string name="ledger_view_switch">视图切换</string>
+    <string name="ledger_view_daily">日视图</string>
+    <string name="ledger_view_weekly">周视图</string>
+    <string name="ledger_view_monthly">月视图</string>
+    <string name="ledger_view_yearly">年视图</string>
+    <string name="ledger_view_all">全部数据</string>
+
+    <!-- Ledger Entry Detail -->
+    <string name="ledger_entry_detail">账单详情</string>
+
+    <!-- Asset Management -->
     <string name="asset_management_title">资产管理</string>
     <string name="asset_total">总资产</string>
     <string name="asset_count_unit">个账户</string>
@@ -679,7 +749,7 @@
     <string name="asset_type_cash">现金</string>
     <string name="asset_type_other">其他</string>
     
-    <!-- 添加/编辑资产 -->
+    <!-- Adding/Editing Asset -->
     <string name="asset_edit_title">编辑资产</string>
     <string name="asset_add_title">添加资产</string>
     <string name="asset_name">资产名称</string>
@@ -691,4 +761,5 @@
     <string name="asset_delete_message">确定要删除这个资产吗?关联的记账条目也会受到影响。</string>
     <string name="asset_select_currency">选择货币</string>
     <string name="asset_close">关闭</string>
+    
 </resources>

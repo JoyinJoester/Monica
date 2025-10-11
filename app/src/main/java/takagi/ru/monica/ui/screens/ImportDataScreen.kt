@@ -28,7 +28,8 @@ import takagi.ru.monica.util.FileOperationHelper
 fun ImportDataScreen(
     onNavigateBack: () -> Unit,
     onImport: suspend (Uri) -> Result<Int>,  // 普通数据导入
-    onImportAlipay: suspend (Uri) -> Result<Int>  // 支付宝账单导入
+    onImportAlipay: suspend (Uri) -> Result<Int>,  // 支付宝账单导入
+    onImportAegis: suspend (Uri) -> Result<Int>  // Aegis JSON导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -38,7 +39,7 @@ fun ImportDataScreen(
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isImporting by remember { mutableStateOf(false) }
-    var importType by remember { mutableStateOf("normal") } // "normal" 或 "alipay"
+    var importType by remember { mutableStateOf("normal") } // "normal", "alipay" 或 "aegis"
     
     // 设置文件操作回调
     LaunchedEffect(Unit) {
@@ -122,12 +123,12 @@ fun ImportDataScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            "从CSV文件导入数据",
+                            stringResource(R.string.import_data_description),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            "支持应用导出的CSV文件和支付宝交易明细",
+                            stringResource(R.string.import_data_supported_formats),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -139,7 +140,7 @@ fun ImportDataScreen(
             
             // 选择导入类型
             Text(
-                "选择导入类型",
+                stringResource(R.string.import_data_select_type),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -151,7 +152,7 @@ fun ImportDataScreen(
                 FilterChip(
                     selected = importType == "normal",
                     onClick = { importType = "normal" },
-                    label = { Text("应用数据") },
+                    label = { Text(stringResource(R.string.import_data_type_normal)) },
                     leadingIcon = if (importType == "normal") {
                         { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
                     } else null,
@@ -160,8 +161,17 @@ fun ImportDataScreen(
                 FilterChip(
                     selected = importType == "alipay",
                     onClick = { importType = "alipay" },
-                    label = { Text("支付宝账单") },
+                    label = { Text(stringResource(R.string.import_data_type_alipay)) },
                     leadingIcon = if (importType == "alipay") {
+                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
+                    } else null,
+                    modifier = Modifier.weight(1f)
+                )
+                FilterChip(
+                    selected = importType == "aegis",
+                    onClick = { importType = "aegis" },
+                    label = { Text("Aegis") },
+                    leadingIcon = if (importType == "aegis") {
                         { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
                     } else null,
                     modifier = Modifier.weight(1f)
@@ -175,10 +185,14 @@ fun ImportDataScreen(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { 
                     activity?.let { act ->
-                        FileOperationHelper.importFromCsv(act)
+                        // 根据导入类型选择不同的文件过滤器
+                        when (importType) {
+                            "aegis" -> FileOperationHelper.importFromJson(act)
+                            else -> FileOperationHelper.importFromCsv(act) // normal 和 alipay 都使用 CSV
+                        }
                     } ?: run {
                         scope.launch {
-                            snackbarHostState.showSnackbar("无法启动导入操作")
+                            snackbarHostState.showSnackbar(context.getString(R.string.error_launch_export, "无法启动导出操作"))
                         }
                     }
                 }
@@ -200,7 +214,7 @@ fun ImportDataScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            if (selectedFileUri != null) "已选择文件" else "选择备份文件",
+                            if (selectedFileUri != null) stringResource(R.string.import_data_file_selected) else stringResource(R.string.import_data_select_file),
                             style = MaterialTheme.typography.bodyLarge,
                             color = if (selectedFileUri != null) 
                                 MaterialTheme.colorScheme.primary 
@@ -214,8 +228,13 @@ fun ImportDataScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else {
+                            // 显示当前导入类型支持的文件格式
                             Text(
-                                "点击选择 .csv 文件",
+                                when (importType) {
+                                    "aegis" -> stringResource(R.string.import_data_file_hint_json)
+                                    "alipay" -> stringResource(R.string.import_data_file_hint_csv_alipay)
+                                    else -> stringResource(R.string.import_data_file_hint_csv)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -238,29 +257,29 @@ fun ImportDataScreen(
                         scope.launch {
                             isImporting = true
                             try {
-                                val result = if (importType == "alipay") {
-                                    onImportAlipay(uri)  // 支付宝导入
-                                } else {
-                                    onImport(uri)  // 普通导入
+                                val result = when (importType) {
+                                    "alipay" -> onImportAlipay(uri)  // 支付宝导入
+                                    "aegis" -> onImportAegis(uri)   // Aegis导入
+                                    else -> onImport(uri)  // 普通导入
                                 }
                                 
                                 result.onSuccess { count ->
-                                    val message = if (importType == "alipay") {
-                                        "成功导入 $count 条支付宝交易"
-                                    } else {
-                                        "成功导入 $count 条数据"
+                                    val message = when (importType) {
+                                        "alipay" -> context.getString(R.string.import_data_success_alipay, count)
+                                        "aegis" -> "成功导入 $count 个TOTP验证器"
+                                        else -> context.getString(R.string.import_data_success_normal, count)
                                     }
                                     snackbarHostState.showSnackbar(message)
                                     onNavigateBack()
                                 }.onFailure { error ->
                                     snackbarHostState.showSnackbar(
-                                        error.message ?: "导入失败，请检查文件格式"
+                                        error.message ?: context.getString(R.string.import_data_error)
                                     )
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("ImportDataScreen", "导入异常", e)
                                 snackbarHostState.showSnackbar(
-                                    "导入失败：${e.message ?: "未知错误"}"
+                                    context.getString(R.string.import_data_error_exception, e.message ?: "未知错误")
                                 )
                             } finally {
                                 isImporting = false
@@ -303,7 +322,7 @@ fun ImportDataScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "导入的数据将添加到现有数据中，不会删除当前数据",
+                        stringResource(R.string.import_data_notice),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -118,12 +118,12 @@ fun ExportDataScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            "数据将导出为CSV文件",
+                            stringResource(R.string.export_data_description),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            "CSV文件可以用Excel或其他表格软件打开",
+                            stringResource(R.string.export_data_select_type),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -133,16 +133,16 @@ fun ExportDataScreen(
             
             // 导出说明
             Text(
-                text = "导出内容包括：",
+                text = stringResource(R.string.export_data_select_type),
                 style = MaterialTheme.typography.titleMedium
             )
             
             Column(modifier = Modifier.padding(start = 16.dp)) {
                 listOf(
-                    "所有密码数据",
-                    "TOTP双因素认证器",
-                    "银行卡信息",
-                    "证件数据"
+                    stringResource(R.string.export_data_type_passwords),
+                    stringResource(R.string.export_data_type_totp),
+                    stringResource(R.string.export_data_type_bank_cards),
+                    stringResource(R.string.export_data_type_documents)
                 ).forEach { item ->
                     Row(
                         modifier = Modifier.padding(vertical = 4.dp),
@@ -169,7 +169,7 @@ fun ExportDataScreen(
                         FileOperationHelper.exportToCsv(act)
                     } ?: run {
                         scope.launch {
-                            snackbarHostState.showSnackbar("无法启动导出操作")
+                            snackbarHostState.showSnackbar(context.getString(R.string.error_launch_export, "无法启动导出操作"))
                         }
                     }
                 },
@@ -208,7 +208,7 @@ fun ExportDataScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "CSV文件未加密，请妥善保管导出文件",
+                        stringResource(R.string.export_data_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

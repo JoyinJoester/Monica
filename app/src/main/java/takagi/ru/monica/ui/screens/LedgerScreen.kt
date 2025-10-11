@@ -19,12 +19,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.ledger.LedgerEntry
 import takagi.ru.monica.data.ledger.LedgerEntryType
 import takagi.ru.monica.data.ledger.LedgerEntryWithRelations
+import takagi.ru.monica.data.ledger.Asset
 import takagi.ru.monica.viewmodel.LedgerViewModel
+import takagi.ru.monica.viewmodel.LedgerViewType
 import takagi.ru.monica.viewmodel.CurrencyStats
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.Calendar
+import java.util.Date
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 // 获取货币符号
 private fun getCurrencySymbol(currencyCode: String): String {
@@ -59,74 +72,69 @@ fun LedgerScreen(
     viewModel: LedgerViewModel,
     onNavigateToAddEntry: (Long?) -> Unit,
     onNavigateToAssetManagement: () -> Unit,
-    onNavigateBack: () -> Unit = {}
+    onNavigateToEntryDetail: (Long) -> Unit // 新增参数
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val assets by viewModel.assets.collectAsState(initial = emptyList()) // 获取资产列表
+
+    // 初始化默认资产
+    LaunchedEffect(Unit) {
+        viewModel.initializeDefaultAssets()
+        // 重新计算所有资产余额以包含现有账单
+        viewModel.recalculateAllAssetBalances()
+    }
+
+    // 同步银行卡到资产管理
+    LaunchedEffect(Unit) {
+        viewModel.syncBankCardsToAssets()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(context.getString(R.string.ledger_title)) },
                 actions = {
-                    IconButton(onClick = { /* TODO: 分类管理 */ }) {
-                        Icon(Icons.Default.Category, contentDescription = context.getString(R.string.ledger_category))
+                    // 视图切换按钮
+                    IconButton(onClick = { viewModel.switchViewType(uiState.viewType.getNext()) }) {
+                        Icon(Icons.Default.ViewWeek, contentDescription = context.getString(R.string.ledger_view_switch))
                     }
-                    IconButton(onClick = { /* TODO: 标签管理 */ }) {
-                        Icon(Icons.Default.Label, contentDescription = "标签")
+                    
+                    // 资产管理按钮
+                    IconButton(onClick = onNavigateToAssetManagement) {
+                        Icon(Icons.Default.AccountBalanceWallet, contentDescription = "资产管理")
                     }
                 }
             )
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { onNavigateToAddEntry(null) },
-                containerColor = MaterialTheme.colorScheme.primary
+                onClick = { onNavigateToAddEntry(null) }
             ) {
                 Icon(Icons.Default.Add, contentDescription = context.getString(R.string.ledger_add_entry))
             }
         }
     ) { paddingValues ->
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                // 统计卡片
-                SummaryCard(
-                    currencyStats = uiState.currencyStats,
-                    onClick = onNavigateToAssetManagement
-                )
-
-                // 记账列表
-                if (uiState.entries.isEmpty()) {
-                    EmptyLedgerState()
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(uiState.entries) { entryWithRelations ->
-                            LedgerEntryCard(
-                                entryWithRelations = entryWithRelations,
-                                onClick = { onNavigateToAddEntry(entryWithRelations.entry.id) },
-                                onDelete = { viewModel.deleteEntry(entryWithRelations.entry) }
-                            )
-                        }
-                    }
-                }
-            }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // 汇总卡片
+            SummaryCard(
+                currencyStats = uiState.currencyStats,
+                onClick = onNavigateToAssetManagement
+            )
+            
+            // 记账条目列表
+            LedgerEntryList(
+                entries = uiState.entries,
+                viewType = uiState.viewType,
+                onNavigateToAddEntry = onNavigateToAddEntry,
+                onNavigateToEntryDetail = onNavigateToEntryDetail, // 传递新参数
+                onDeleteEntry = { viewModel.deleteEntry(it) },
+                assets = assets // 传递资产列表
+            )
         }
     }
 }
@@ -217,7 +225,8 @@ private fun SummaryCard(
 private fun LedgerEntryCard(
     entryWithRelations: LedgerEntryWithRelations,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    assets: List<Asset> // 添加资产列表参数
 ) {
     val context = LocalContext.current
     val entry = entryWithRelations.entry
@@ -230,8 +239,7 @@ private fun LedgerEntryCard(
     val currencySymbol = getCurrencySymbol(entry.currencyCode)
     
     // 获取支付方式显示文本(资产名称)
-    // 由于数据库关系映射问题，暂时使用paymentMethod字段直接显示
-    val paymentMethodText = entry.paymentMethod.ifEmpty { context.getString(R.string.ledger_payment_method) }
+    val paymentMethodText = getPaymentMethodDisplayName(entry.paymentMethod, assets, context)
 
     Card(
         modifier = Modifier
@@ -287,22 +295,22 @@ private fun LedgerEntryCard(
                         fontWeight = FontWeight.Medium
                     )
                     
-                    // 第二行显示备注和时间
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (entry.note.isNotBlank()) {
-                            Text(
-                                text = entry.note,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1
-                            )
-                        }
+                    // 备注信息（如果存在）
+                    if (entry.note.isNotBlank()) {
                         Text(
-                            text = dateFormat.format(entry.occurredAt),
+                            text = entry.note,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
                         )
                     }
+                    
+                    // 时间信息单独一行显示
+                    Text(
+                        text = dateFormat.format(entry.occurredAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -363,6 +371,461 @@ private fun LedgerEntryCard(
 }
 
 @Composable
+private fun LedgerEntryList(
+    entries: List<LedgerEntryWithRelations>,
+    viewType: LedgerViewType,
+    onNavigateToAddEntry: (Long?) -> Unit,
+    onNavigateToEntryDetail: (Long) -> Unit, // 新增参数
+    onDeleteEntry: (LedgerEntry) -> Unit,
+    assets: List<Asset> // 添加资产列表参数
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        when (viewType) {
+            LedgerViewType.DAILY -> {
+                // 按日分组显示
+                val groupedByDay = entries.groupBy { getDayKey(it.entry.occurredAt) }
+                groupedByDay.forEach { (dayKey, dayEntries) ->
+                    // 显示日期分隔线和当日汇总
+                    item {
+                        DailySummaryHeader(
+                            date = dayKey,
+                            entries = dayEntries
+                        )
+                    }
+                    
+                    // 显示该日的记账条目
+                    items(dayEntries) { entryWithRelations ->
+                        LedgerEntryCard(
+                            entryWithRelations = entryWithRelations,
+                            onClick = { onNavigateToEntryDetail(entryWithRelations.entry.id) }, // 修改为详情界面
+                            onDelete = { onDeleteEntry(entryWithRelations.entry) },
+                            assets = assets // 传递资产列表
+                        )
+                    }
+                }
+            }
+            
+            LedgerViewType.WEEKLY -> {
+                // 按周分组显示
+                val groupedByWeek = entries.groupBy { getWeekKey(it.entry.occurredAt) }
+                groupedByWeek.forEach { (weekKey, weekEntries) ->
+                    item {
+                        WeeklySummaryHeader(
+                            week = weekKey,
+                            entries = weekEntries
+                        )
+                    }
+                    
+                    items(weekEntries) { entryWithRelations ->
+                        LedgerEntryCard(
+                            entryWithRelations = entryWithRelations,
+                            onClick = { onNavigateToEntryDetail(entryWithRelations.entry.id) }, // 修改为详情界面
+                            onDelete = { onDeleteEntry(entryWithRelations.entry) },
+                            assets = assets // 传递资产列表
+                        )
+                    }
+                }
+            }
+            
+            LedgerViewType.MONTHLY -> {
+                // 按月分组显示
+                val groupedByMonth = entries.groupBy { getMonthKey(it.entry.occurredAt) }
+                groupedByMonth.forEach { (monthKey, monthEntries) ->
+                    item {
+                        MonthlySummaryHeader(
+                            month = monthKey,
+                            entries = monthEntries
+                        )
+                    }
+                    
+                    items(monthEntries) { entryWithRelations ->
+                        LedgerEntryCard(
+                            entryWithRelations = entryWithRelations,
+                            onClick = { onNavigateToEntryDetail(entryWithRelations.entry.id) }, // 修改为详情界面
+                            onDelete = { onDeleteEntry(entryWithRelations.entry) },
+                            assets = assets // 传递资产列表
+                        )
+                    }
+                }
+            }
+            
+            LedgerViewType.YEARLY -> {
+                // 按年分组显示
+                val groupedByYear = entries.groupBy { getYearKey(it.entry.occurredAt) }
+                groupedByYear.forEach { (yearKey, yearEntries) ->
+                    item {
+                        YearlySummaryHeader(
+                            year = yearKey,
+                            entries = yearEntries
+                        )
+                    }
+                    
+                    items(yearEntries) { entryWithRelations ->
+                        LedgerEntryCard(
+                            entryWithRelations = entryWithRelations,
+                            onClick = { onNavigateToEntryDetail(entryWithRelations.entry.id) }, // 修改为详情界面
+                            onDelete = { onDeleteEntry(entryWithRelations.entry) },
+                            assets = assets // 传递资产列表
+                        )
+                    }
+                }
+            }
+            
+            LedgerViewType.ALL -> {
+                // 显示所有条目，不进行分组
+                items(entries) { entryWithRelations ->
+                    LedgerEntryCard(
+                        entryWithRelations = entryWithRelations,
+                        onClick = { onNavigateToEntryDetail(entryWithRelations.entry.id) }, // 修改为详情界面
+                        onDelete = { onDeleteEntry(entryWithRelations.entry) },
+                        assets = assets // 传递资产列表
+                    )
+                }
+            }
+        }
+    }
+}
+
+// 获取日期键（用于日视图分组）
+private fun getDayKey(date: Date): String {
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    return dateFormat.format(date)
+}
+
+// 获取周键（用于周视图分组）
+private fun getWeekKey(date: Date): String {
+    val calendar = Calendar.getInstance()
+    calendar.time = date
+    val year = calendar.get(Calendar.YEAR)
+    val week = calendar.get(Calendar.WEEK_OF_YEAR)
+    return "$year-W$week"
+}
+
+// 获取月键（用于月视图分组）
+private fun getMonthKey(date: Date): String {
+    val dateFormat = SimpleDateFormat("yyyy-MM", Locale.getDefault())
+    return dateFormat.format(date)
+}
+
+// 获取年键（用于年视图分组）
+private fun getYearKey(date: Date): String {
+    val dateFormat = SimpleDateFormat("yyyy", Locale.getDefault())
+    return dateFormat.format(date)
+}
+
+// 日视图的汇总头部
+@Composable
+private fun DailySummaryHeader(date: String, entries: List<LedgerEntryWithRelations>) {
+    val context = LocalContext.current
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val displayFormat = SimpleDateFormat("MM月dd日", Locale.getDefault())
+    
+    val displayDate = try {
+        displayFormat.format(dateFormat.parse(date)!!)
+    } catch (e: Exception) {
+        date
+    }
+    
+    // 计算当日收入和支出汇总（按货币分组）
+    val incomeByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.INCOME }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+        
+    val expenseByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.EXPENSE }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // 日期标题
+        Text(
+            text = displayDate,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        
+        // 收入汇总（最多3种货币）
+        if (incomeByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            incomeByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_income)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF4CAF50)
+                )
+            }
+        }
+        
+        // 支出汇总（最多3种货币）
+        if (expenseByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            expenseByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_expense)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFF44336)
+                )
+            }
+        }
+        
+        // 分割线
+        Divider(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+// 周视图的汇总头部
+@Composable
+private fun WeeklySummaryHeader(week: String, entries: List<LedgerEntryWithRelations>) {
+    val context = LocalContext.current
+    
+    // 计算当周收入和支出汇总（按货币分组）
+    val incomeByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.INCOME }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+        
+    val expenseByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.EXPENSE }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // 周标题
+        Text(
+            text = week,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        
+        // 收入汇总（最多3种货币）
+        if (incomeByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            incomeByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_income)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF4CAF50)
+                )
+            }
+        }
+        
+        // 支出汇总（最多3种货币）
+        if (expenseByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            expenseByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_expense)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFF44336)
+                )
+            }
+        }
+        
+        // 分割线
+        Divider(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+// 月视图的汇总头部
+@Composable
+private fun MonthlySummaryHeader(month: String, entries: List<LedgerEntryWithRelations>) {
+    val context = LocalContext.current
+    
+    // 计算当月收入和支出汇总（按货币分组）
+    val incomeByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.INCOME }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+        
+    val expenseByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.EXPENSE }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // 月标题
+        Text(
+            text = month,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        
+        // 收入汇总（最多3种货币）
+        if (incomeByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            incomeByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_income)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF4CAF50)
+                )
+            }
+        }
+        
+        // 支出汇总（最多3种货币）
+        if (expenseByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            expenseByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_expense)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFF44336)
+                )
+            }
+        }
+        
+        // 分割线
+        Divider(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+// 年视图的汇总头部
+@Composable
+private fun YearlySummaryHeader(year: String, entries: List<LedgerEntryWithRelations>) {
+    val context = LocalContext.current
+    
+    // 计算当年收入和支出汇总（按货币分组）
+    val incomeByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.INCOME }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+        
+    val expenseByCurrency = entries
+        .filter { it.entry.type == LedgerEntryType.EXPENSE }
+        .groupBy { it.entry.currencyCode }
+        .mapValues { (_, entries) ->
+            entries.sumOf { it.entry.amountInCents } / 100.0
+        }
+        .toList()
+        .sortedByDescending { it.second } // 按金额降序
+        .take(3) // 最多显示3种货币
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // 年标题
+        Text(
+            text = year,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        
+        // 收入汇总（最多3种货币）
+        if (incomeByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            incomeByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_income)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF4CAF50)
+                )
+            }
+        }
+        
+        // 支出汇总（最多3种货币）
+        if (expenseByCurrency.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            expenseByCurrency.forEach { (currencyCode, amount) ->
+                val currencySymbol = getCurrencySymbol(currencyCode)
+                Text(
+                    text = "${context.getString(R.string.ledger_expense)}: $currencySymbol${String.format("%.2f", amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFF44336)
+                )
+            }
+        }
+        
+        // 分割线
+        Divider(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+@Composable
 private fun EmptyLedgerState() {
     val context = LocalContext.current
     
@@ -386,5 +849,41 @@ private fun EmptyLedgerState() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+// 获取支付方式的显示名称
+fun getPaymentMethodDisplayName(paymentMethod: String, assets: List<Asset>, context: android.content.Context): String {
+    if (paymentMethod.isEmpty()) {
+        return context.getString(R.string.ledger_payment_method)
+    }
+    
+    // 尝试将paymentMethod解析为资产ID
+    val assetId = paymentMethod.toLongOrNull()
+    if (assetId != null) {
+        // 根据资产ID查找资产名称
+        val asset = assets.find { it.id == assetId }
+        if (asset != null) {
+            return asset.name
+        }
+    }
+    
+    // 根据支付方式类型返回对应的本地化名称
+    return when {
+        paymentMethod.equals("wechat", ignoreCase = true) || 
+        paymentMethod.equals("微信", ignoreCase = true) -> 
+            context.getString(R.string.ledger_payment_wechat)
+        paymentMethod.equals("alipay", ignoreCase = true) || 
+        paymentMethod.equals("支付宝", ignoreCase = true) -> 
+            context.getString(R.string.ledger_payment_alipay)
+        paymentMethod.equals("unionpay", ignoreCase = true) || 
+        paymentMethod.equals("云闪付", ignoreCase = true) -> 
+            context.getString(R.string.ledger_payment_unionpay)
+        paymentMethod.equals("paypal", ignoreCase = true) -> 
+            "PayPal"
+        paymentMethod.equals("cash", ignoreCase = true) || 
+        paymentMethod.equals("现金", ignoreCase = true) -> 
+            context.getString(R.string.asset_type_cash)
+        else -> paymentMethod.ifEmpty { context.getString(R.string.ledger_payment_method) }
     }
 }

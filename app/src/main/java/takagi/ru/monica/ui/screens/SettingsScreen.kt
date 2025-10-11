@@ -45,10 +45,11 @@ fun SettingsScreen(
     onSupportAuthor: () -> Unit,
     onExportData: () -> Unit = {},
     onImportData: () -> Unit = {},
-    onClearAllData: () -> Unit = {},
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _ -> },
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
+    onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
@@ -154,41 +155,6 @@ fun SettingsScreen(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
-            }
-            
-            // Theme Settings
-            SettingsSection(
-                title = context.getString(R.string.theme)
-            ) {
-                SettingsItem(
-                    icon = Icons.Default.Palette,
-                    title = context.getString(R.string.theme),
-                    subtitle = getThemeDisplayName(settings.themeMode, context),
-                    onClick = { showThemeDialog = true }
-                )
-            }
-            
-            // Language Settings
-            SettingsSection(
-                title = context.getString(R.string.language)
-            ) {
-                SettingsItem(
-                    icon = Icons.Default.Language,
-                    title = context.getString(R.string.language),
-                    subtitle = getLanguageDisplayName(settings.language, context),
-                    onClick = { showLanguageDialog = true }
-                )
-            }
-
-            SettingsSection(
-                title = context.getString(R.string.bottom_nav_settings)
-            ) {
-                SettingsItem(
-                    icon = Icons.Default.ViewWeek,
-                    title = context.getString(R.string.bottom_nav_settings),
-                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
-                    onClick = onNavigateToBottomNavSettings
-                )
             }
             
             // Security Settings
@@ -346,6 +312,53 @@ fun SettingsScreen(
                 )
             }
             
+            // Appearance Settings (原Theme Settings)
+            SettingsSection(
+                title = context.getString(R.string.theme)  // 现在显示为"外观"
+            ) {
+                SettingsItem(
+                    icon = Icons.Default.Palette,
+                    title = context.getString(R.string.theme),
+                    subtitle = getThemeDisplayName(settings.themeMode, context),
+                    onClick = { showThemeDialog = true }
+                )
+                
+                SettingsItem(
+                    icon = Icons.Default.Colorize,
+                    title = context.getString(R.string.color_scheme),
+                    subtitle = getColorSchemeDisplayName(settings.colorScheme, context),
+                    onClick = { onNavigateToColorScheme() }
+                )
+                
+                // 移入的设置项：
+                // 1. 语言设置
+                SettingsItem(
+                    icon = Icons.Default.Language,
+                    title = context.getString(R.string.language),
+                    subtitle = getLanguageDisplayName(settings.language, context),
+                    onClick = { showLanguageDialog = true }
+                )
+                
+                // 2. 底部导航栏设置
+                SettingsItem(
+                    icon = Icons.Default.ViewWeek,
+                    title = context.getString(R.string.bottom_nav_settings),
+                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
+                    onClick = onNavigateToBottomNavSettings
+                )
+                
+                // 3. 关闭壁纸取色设置
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.Colorize,
+                    title = context.getString(R.string.disable_wallpaper_color_extraction),
+                    subtitle = context.getString(R.string.disable_wallpaper_color_extraction_description),
+                    checked = !settings.dynamicColorEnabled,
+                    onCheckedChange = { enabled ->
+                        viewModel.updateDynamicColorEnabled(!enabled)
+                    }
+                )
+            }
+            
             // About Settings
             SettingsSection(
                 title = context.getString(R.string.about)
@@ -360,7 +373,7 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Info,
                     title = context.getString(R.string.version),
-                    subtitle = "1.0.3",
+                    subtitle = "1.0.5",
                     onClick = {
                         // 打开 GitHub 仓库链接
                         try {
@@ -411,8 +424,14 @@ fun SettingsScreen(
         )
     }
     
-    // Clear All Data Confirmation Dialog with Password
+    // Clear All Data Confirmation Dialog with Password and Options
     if (showClearDataDialog) {
+        var clearPasswords by remember { mutableStateOf(true) }
+        var clearTotp by remember { mutableStateOf(true) }
+        var clearLedger by remember { mutableStateOf(true) }
+        var clearDocuments by remember { mutableStateOf(true) }
+        var clearBankCards by remember { mutableStateOf(true) }
+        
         AlertDialog(
             onDismissRequest = { 
                 showClearDataDialog = false
@@ -435,6 +454,45 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // 数据类型选择复选框
+                    Text(
+                        context.getString(R.string.select_data_types_to_clear),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    CheckboxRow(
+                        checked = clearPasswords,
+                        onCheckedChange = { clearPasswords = it },
+                        label = context.getString(R.string.data_type_passwords)
+                    )
+                    
+                    CheckboxRow(
+                        checked = clearTotp,
+                        onCheckedChange = { clearTotp = it },
+                        label = context.getString(R.string.data_type_totp)
+                    )
+                    
+                    CheckboxRow(
+                        checked = clearLedger,
+                        onCheckedChange = { clearLedger = it },
+                        label = context.getString(R.string.data_type_ledger)
+                    )
+                    
+                    CheckboxRow(
+                        checked = clearDocuments,
+                        onCheckedChange = { clearDocuments = it },
+                        label = context.getString(R.string.data_type_documents)
+                    )
+                    
+                    CheckboxRow(
+                        checked = clearBankCards,
+                        onCheckedChange = { clearBankCards = it },
+                        label = context.getString(R.string.data_type_bank_cards)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
                         value = clearDataPasswordInput,
                         onValueChange = { clearDataPasswordInput = it },
@@ -456,7 +514,13 @@ fun SettingsScreen(
                                 android.util.Log.d("SettingsScreen", "Password verified, calling onClearAllData")
                                 showClearDataDialog = false
                                 clearDataPasswordInput = ""
-                                onClearAllData()
+                                onClearAllData(
+                                    clearPasswords,
+                                    clearTotp,
+                                    clearLedger,
+                                    clearDocuments,
+                                    clearBankCards
+                                )
                                 android.widget.Toast.makeText(
                                     context,
                                     context.getString(R.string.clearing_data),
@@ -638,6 +702,33 @@ fun SettingsItemWithSwitch(
     }
 }
 
+/**
+ * 带复选框的行组件
+ */
+@Composable
+fun CheckboxRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    label: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
 @Composable
 private fun BottomNavConfigRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -730,6 +821,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.DOCUMENTS -> Icons.Default.Description
     BottomNavContentTab.BANK_CARDS -> Icons.Default.CreditCard
     BottomNavContentTab.LEDGER -> Icons.Default.AccountBalance
+    BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome  // 添加生成器图标
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
@@ -738,6 +830,7 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.DOCUMENTS -> R.string.nav_documents
     BottomNavContentTab.BANK_CARDS -> R.string.nav_bank_cards
     BottomNavContentTab.LEDGER -> R.string.nav_ledger
+    BottomNavContentTab.GENERATOR -> R.string.nav_generator  // 添加生成器标签
 }
 
 @Composable
@@ -882,6 +975,18 @@ private fun getAutoLockDisplayName(minutes: Int, context: android.content.Contex
         30 -> context.getString(R.string.auto_lock_30_minutes)
         -1 -> context.getString(R.string.auto_lock_never)
         else -> "$minutes ${context.getString(R.string.auto_lock_5_minutes).substringAfter("5")}"
+    }
+}
+
+private fun getColorSchemeDisplayName(colorScheme: takagi.ru.monica.data.ColorScheme, context: android.content.Context): String {
+    return when (colorScheme) {
+        takagi.ru.monica.data.ColorScheme.DEFAULT -> context.getString(R.string.default_color_scheme)
+        takagi.ru.monica.data.ColorScheme.DEEP_BLUE_TEAL -> context.getString(R.string.deep_blue_teal_scheme)
+        takagi.ru.monica.data.ColorScheme.DEEP_BLUE_RED -> context.getString(R.string.deep_blue_red_scheme)
+        takagi.ru.monica.data.ColorScheme.PINK_PURPLE_BLUE -> context.getString(R.string.pink_purple_blue_scheme)
+        takagi.ru.monica.data.ColorScheme.DARK_THEME -> context.getString(R.string.dark_theme_scheme)
+        takagi.ru.monica.data.ColorScheme.GRAY_BLUE_RED -> context.getString(R.string.gray_blue_red_scheme)
+        takagi.ru.monica.data.ColorScheme.CUSTOM -> context.getString(R.string.custom_color_scheme)
     }
 }
 

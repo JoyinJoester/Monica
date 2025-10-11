@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
@@ -41,8 +42,10 @@ import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
+import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.LedgerScreen
+import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import kotlin.math.absoluteValue
 
 /**
@@ -57,11 +60,13 @@ fun SimpleMainScreen(
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
     ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel,
+    generatorViewModel: GeneratorViewModel = viewModel(), // 添加GeneratorViewModel
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToAddLedgerEntry: (Long?) -> Unit,
+    onNavigateToLedgerEntryDetail: (Long) -> Unit, // 新增：导航到账单详情
     onNavigateToAssetManagement: () -> Unit,
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
@@ -71,8 +76,9 @@ fun SimpleMainScreen(
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
+    onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
-    onClearAllData: () -> Unit = {},
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
     val defaultTabKey = remember(initialTab) { indexToDefaultTabKey(initialTab) }
@@ -176,6 +182,10 @@ fun SimpleMainScreen(
                 currentTab == BottomNavItem.Ledger -> {
                     // 不显示顶部栏，避免重复
                 }
+                // 生成器页面不需要顶栏
+                currentTab == BottomNavItem.Generator -> {
+                    // 不显示顶部栏
+                }
                 // 正常顶栏
                 else -> {
                     TopAppBar(
@@ -239,6 +249,10 @@ fun SimpleMainScreen(
 
                 BottomNavItem.Ledger -> {
                     // 记账页面由 LedgerScreen 自身提供 FAB
+                }
+
+                BottomNavItem.Generator -> {
+                    // 生成器页面不需要 FAB
                 }
 
                 BottomNavItem.Settings -> {}
@@ -324,7 +338,15 @@ fun SimpleMainScreen(
                     LedgerScreen(
                         viewModel = ledgerViewModel,
                         onNavigateToAddEntry = { entryId -> onNavigateToAddLedgerEntry(entryId) },
-                        onNavigateToAssetManagement = { onNavigateToAssetManagement() }
+                        onNavigateToAssetManagement = { onNavigateToAssetManagement() },
+                        onNavigateToEntryDetail = { entryId -> onNavigateToLedgerEntryDetail(entryId) } // 新增
+                    )
+                }
+                BottomNavItem.Generator -> {
+                    // 生成器页面
+                    GeneratorScreen(
+                        onNavigateBack = {}, // 在主屏幕中不需要返回
+                        viewModel = generatorViewModel // 传递ViewModel
                     )
                 }
                 BottomNavItem.Settings -> {
@@ -340,6 +362,7 @@ fun SimpleMainScreen(
                         onNavigateToWebDav = onNavigateToWebDav,
                         onNavigateToAutofill = onNavigateToAutofill,
                         onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
+                        onNavigateToColorScheme = onNavigateToColorScheme,
                         onSecurityAnalysis = onSecurityAnalysis,
                         onClearAllData = onClearAllData,
                         showTopBar = false  // 在标签页中不显示顶栏
@@ -2053,6 +2076,7 @@ sealed class BottomNavItem(
     object Documents : BottomNavItem(BottomNavContentTab.DOCUMENTS, Icons.Default.Description)
     object BankCards : BottomNavItem(BottomNavContentTab.BANK_CARDS, Icons.Default.CreditCard)
     object Ledger : BottomNavItem(BottomNavContentTab.LEDGER, Icons.Default.AccountBalance)
+    object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)  // 添加生成器导航项
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
 
@@ -2062,6 +2086,7 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.DOCUMENTS -> BottomNavItem.Documents
     BottomNavContentTab.BANK_CARDS -> BottomNavItem.BankCards
     BottomNavContentTab.LEDGER -> BottomNavItem.Ledger
+    BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
@@ -2070,6 +2095,7 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.Documents -> R.string.nav_documents
     BottomNavItem.BankCards -> R.string.nav_bank_cards
     BottomNavItem.Ledger -> R.string.nav_ledger
+    BottomNavItem.Generator -> R.string.nav_generator  // 添加生成器标签资源
     BottomNavItem.Settings -> R.string.nav_settings
 }
 
@@ -2079,6 +2105,7 @@ private fun BottomNavItem.shortLabelRes(): Int = when (this) {
     BottomNavItem.Documents -> R.string.nav_documents_short
     BottomNavItem.BankCards -> R.string.nav_bank_cards_short
     BottomNavItem.Ledger -> R.string.nav_ledger_short
+    BottomNavItem.Generator -> R.string.nav_generator_short  // 添加生成器短标签资源
     BottomNavItem.Settings -> R.string.nav_settings_short
 }
 

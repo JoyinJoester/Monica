@@ -118,6 +118,10 @@ class LedgerViewModel(
         return statsByCurrency
     }
 
+    suspend fun getEntryById(id: Long): LedgerEntryWithRelations? {
+        return repository.getEntryById(id)
+    }
+
     fun saveEntry(entry: LedgerEntry) {
         viewModelScope.launch {
             repository.upsertEntry(entry)
@@ -169,10 +173,27 @@ class LedgerViewModel(
         }
     }
 
+    fun initializeDefaultAssets() {
+        viewModelScope.launch {
+            repository.initializeDefaultAssets()
+        }
+    }
+
     fun syncBankCardsToAssets() {
         viewModelScope.launch {
             repository.syncBankCardsToAssets()
         }
+    }
+
+    fun recalculateAllAssetBalances() {
+        viewModelScope.launch {
+            repository.recalculateAllAssetBalances()
+        }
+    }
+
+    // 切换视图类型
+    fun switchViewType(viewType: LedgerViewType) {
+        _uiState.value = _uiState.value.copy(viewType = viewType)
     }
 
     private data class Summary(val income: Double, val expense: Double)
@@ -202,5 +223,25 @@ data class LedgerUiState(
     val totalExpense: Double = 0.0,
     val categories: List<LedgerCategory> = emptyList(),
     val currencyStats: List<CurrencyStats> = emptyList(), // 多货币统计(按交易数量排序,最多3个)
-    val currencyAssetStats: List<CurrencyAssetStats> = emptyList() // 资产的多货币统计(最多3个)
+    val currencyAssetStats: List<CurrencyAssetStats> = emptyList(), // 资产的多货币统计(最多3个)
+    val viewType: LedgerViewType = LedgerViewType.DAILY // 添加视图类型，默认为日视图
 )
+
+// 记账视图类型枚举
+enum class LedgerViewType {
+    DAILY,    // 日视图
+    WEEKLY,   // 周视图
+    MONTHLY,  // 月视图
+    YEARLY,   // 年视图
+    ALL;       // 全部数据视图
+    
+    fun getNext(): LedgerViewType {
+        return when (this) {
+            DAILY -> WEEKLY
+            WEEKLY -> MONTHLY
+            MONTHLY -> YEARLY
+            YEARLY -> ALL
+            ALL -> DAILY
+        }
+    }
+}

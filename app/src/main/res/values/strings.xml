@@ -76,7 +76,6 @@
     
     <!-- Password Generator -->
     <string name="password_generator_title">Password Generator</string>
-    <string name="password_generator">Password Generator</string>
     <string name="length">Length: %d</string>
     <string name="length_value">Length: %d</string>
     <string name="uppercase_letters">Uppercase (A-Z)</string>
@@ -223,6 +222,37 @@
     <string name="import_data_title">Import Data</string>
     <string name="importing">Importing...</string>
     <string name="start_import">Start Import</string>
+    <string name="export_data_description">Export all your data as a CSV file to local storage. You can use this file to backup or migrate your data.</string>
+    <string name="export_data_select_type">Select data type to export:</string>
+    <string name="export_data_type_passwords">Passwords</string>
+    <string name="export_data_type_totp">TOTP Codes</string>
+    <string name="export_data_type_bank_cards">Bank Cards</string>
+    <string name="export_data_type_documents">Documents</string>
+    <string name="export_data_type_all">All Data</string>
+    <string name="export_data_button">Export</string>
+    <string name="export_data_success">Data exported successfully</string>
+    <string name="export_data_error">Export failed</string>
+    <string name="export_data_warning">CSV file is not encrypted, please keep the exported file safe</string>
+    <string name="import_data_description">Import data from a CSV backup file. Please make sure the file format is correct.</string>
+    <string name="import_data_warning_title">Warning</string>
+    <string name="import_data_warning_message">Importing data may overwrite existing data. Please make sure to backup your current data before importing.</string>
+    <string name="import_data_select_file">Select File</string>
+    <string name="import_data_button">Import</string>
+    <string name="import_data_success">Data imported successfully</string>
+    <string name="import_data_error">Import failed</string>
+    <string name="import_data_supported_formats">Supports CSV files exported by the app and Alipay transaction details</string>
+    <string name="import_data_select_type">Select import type</string>
+    <string name="import_data_type_normal">App Data</string>
+    <string name="import_data_type_alipay">Alipay Bill</string>
+    <string name="import_data_file_selected">File selected</string>
+    <string name="import_data_file_hint">Click to select .csv file</string>
+    <string name="import_data_file_hint_csv">Click to select .csv file</string>
+    <string name="import_data_file_hint_csv_alipay">Click to select Alipay .csv file</string>
+    <string name="import_data_file_hint_json">Click to select .json file</string>
+    <string name="import_data_success_normal">Successfully imported %d data entries</string>
+    <string name="import_data_success_alipay">Successfully imported %d Alipay transactions</string>
+    <string name="import_data_error_exception">Import failed: %s</string>
+    <string name="import_data_notice">Imported data will be added to existing data, current data will not be deleted</string>
     
     <!-- Support Author -->
     <string name="support_author_title">Support Author</string>
@@ -263,9 +293,8 @@
     <!-- Settings Screen -->
     <string name="settings_title">Settings</string>
     <string name="language">Language</string>
-    <string name="theme">Theme</string>
+    <string name="theme">Appearance</string>
     <string name="security">Security</string>
-    <string name="biometric_authentication">Biometric Authentication</string>
     <string name="auto_lock">Auto Lock</string>
     <string name="auto_lock_summary">Lock app after inactivity</string>
     <string name="about">About</string>
@@ -295,7 +324,7 @@
     <string name="reset_password_title">Reset Password</string>
     <string name="reset_password">Reset Password</string>
     <string name="reset_master_password">Reset Master Password</string>
-        <string name="reset_password_description">Please enter your current password and set a new numeric password (minimum 6 digits)</string>
+    <string name="reset_password_description">Please enter your current password and set a new numeric password (minimum 6 digits)</string>
     <string name="reset_password_verified_description">Please set your new numeric password (minimum 6 digits)</string>
     <string name="current_password">Current Password</string>
     <string name="enter_current_password">Enter your current password</string>
@@ -356,6 +385,7 @@
     <string name="nav_bank_cards">Bank Cards</string>
     <string name="nav_notes">Notes</string>
     <string name="nav_ledger">Ledger</string>
+    <string name="nav_generator">Generator</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_settings">Settings</string>
     <string name="add">Add</string>
     
@@ -366,6 +396,7 @@
     <string name="nav_bank_cards_short">Card</string>
     <string name="nav_notes_short">Note</string>
     <string name="nav_ledger_short">Ledger</string>
+    <string name="nav_generator_short">Gen</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_settings_short">Set</string>
 
     <!-- Notes -->
@@ -491,27 +522,6 @@
     <string name="security_question_preset_9">What was your first job?</string>
     <string name="security_question_preset_10">What is your favorite movie?</string>
     
-    <!-- Export Data Screen -->
-    <string name="export_data_description">Export all your data as a CSV file to local storage. You can use this file to backup or migrate your data.</string>
-    <string name="export_data_select_type">Select data type to export:</string>
-    <string name="export_data_type_passwords">Passwords</string>
-    <string name="export_data_type_totp">TOTP Codes</string>
-    <string name="export_data_type_bank_cards">Bank Cards</string>
-    <string name="export_data_type_documents">Documents</string>
-    <string name="export_data_type_all">All Data</string>
-    <string name="export_data_button">Export</string>
-    <string name="export_data_success">Data exported successfully</string>
-    <string name="export_data_error">Export failed</string>
-    
-    <!-- Import Data Screen -->
-    <string name="import_data_description">Import data from a CSV backup file. Please make sure the file format is correct.</string>
-    <string name="import_data_warning_title">Warning</string>
-    <string name="import_data_warning_message">Importing data may overwrite existing data. Please make sure to backup your current data before importing.</string>
-    <string name="import_data_select_file">Select File</string>
-    <string name="import_data_button">Import</string>
-    <string name="import_data_success">Data imported successfully</string>
-    <string name="import_data_error">Import failed</string>
-    
     <!-- Support Author Screen (legacy) -->
     <string name="support_author_description">If you find this app helpful, please consider supporting the author. Your support is the biggest motivation for us to keep improving!</string>
     <string name="support_author_thanks">Thank You!</string>
@@ -527,6 +537,29 @@
     <string name="screenshot_protection">Screenshot Protection</string>
     <string name="screenshot_protection_enabled">Enabled - Protecting sensitive information</string>
     <string name="screenshot_protection_disabled">Disabled - Screenshots allowed</string>
+    
+    <!-- Dynamic Color -->
+    <string name="disable_wallpaper_color_extraction">Disable Wallpaper Color Extraction</string>
+    <string name="disable_wallpaper_color_extraction_description">Use system default color scheme instead of extracting colors from wallpaper</string>
+    
+    <!-- Color Scheme -->
+    <string name="color_scheme">Color Scheme</string>
+    <string name="color_scheme_description">Select a color scheme for the app</string>
+    <string name="default_color_scheme">Default</string>
+    <string name="deep_blue_teal_scheme">Deep Blue Teal</string>
+    <string name="deep_blue_red_scheme">Deep Blue Red Grey</string>
+    <string name="pink_purple_blue_scheme">Pink Purple Blue</string>
+    <string name="dark_theme_scheme">Dark Theme</string>
+    <string name="gray_blue_red_scheme">Gray Blue Red</string>
+    <string name="custom_color_scheme">Custom Colors</string>
+    <string name="custom_color_scheme_description">Set your own three colors for the app theme</string>
+    <string name="current_colors">Current Colors</string>
+    <string name="primary_color">Primary</string>
+    <string name="secondary_color">Secondary</string>
+    <string name="tertiary_color">Tertiary</string>
+    <string name="apply_custom_colors">Apply Custom Colors</string>
+    <string name="select_color">Select Color</string>
+    <string name="select_from_preset_colors">Select from preset colors</string>
     
     <!-- Support Author -->
     <string name="support_author">Support Author</string>
@@ -606,6 +639,12 @@
     <string name="enter_master_password_to_confirm">Please enter your master password to confirm</string>
     <string name="clearing_data">Clearing data…</string>
     <string name="password_incorrect">Password incorrect</string>
+    <string name="select_data_types_to_clear">Select data types to clear:</string>
+    <string name="data_type_passwords">Passwords</string>
+    <string name="data_type_totp">Authenticators</string>
+    <string name="data_type_ledger">Ledger</string>
+    <string name="data_type_documents">Documents</string>
+    <string name="data_type_bank_cards">Bank Cards</string>
     
     <!-- Security Analysis -->
     <string name="security_analysis">Security Analysis</string>
@@ -663,7 +702,16 @@
     <string name="ledger_delete_confirm_title">Delete Entry</string>
     <string name="ledger_delete_confirm_message">Are you sure you want to delete this entry?</string>
     <string name="ledger_cancel">Cancel</string>
-    
+    <string name="ledger_view_switch">View Switch</string>
+    <string name="ledger_view_daily">Daily View</string>
+    <string name="ledger_view_weekly">Weekly View</string>
+    <string name="ledger_view_monthly">Monthly View</string>
+    <string name="ledger_view_yearly">Yearly View</string>
+    <string name="ledger_view_all">All Data</string>
+
+    <!-- Ledger Entry Detail -->
+    <string name="ledger_entry_detail">Entry Detail</string>
+
     <!-- Asset Management -->
     <string name="asset_management_title">Asset Management</string>
     <string name="asset_total">Total Assets</string>
@@ -691,4 +739,33 @@
     <string name="asset_delete_message">Are you sure you want to delete this asset? All associated ledger entries will also be affected.</string>
     <string name="asset_select_currency">Select Currency</string>
     <string name="asset_close">Close</string>
+    
+    <!-- Generator Screen -->  <!-- 添加生成器页面相关字符串 -->
+    <string name="generator_title">Generator</string>
+    <string name="random_symbol_generator">Random Symbol Generator</string>
+    <string name="random_symbol_generator_tab">Random Symbols</string>
+    <string name="password_generator">Password Generator</string>
+    <string name="password_generator_tab">Password</string>
+    <string name="pin_generator">PIN Generator</string>
+    <string name="pin_generator_tab">PIN</string>
+    <string name="generator_length">Length</string>
+    <string name="generator_include_uppercase">Include Uppercase (A-Z)</string>
+    <string name="generator_include_lowercase">Include Lowercase (a-z)</string>
+    <string name="generator_include_numbers">Include Numbers (0-9)</string>
+    <string name="generator_include_symbols">Include Symbols (!@#$...)</string>
+    <string name="generator_exclude_similar">Exclude Similar Characters (0,O,l,I)</string>
+    <string name="generator_exclude_ambiguous">Exclude Ambiguous Characters</string>
+    <string name="generator_first_letter_uppercase">First Letter Uppercase</string>
+    <string name="generator_include_numbers_in_password">Include Numbers</string>
+    <string name="generator_custom_separator">Custom Separator</string>
+    <string name="generator_separator_counts_towards_length">Separator Counts Towards Length</string>
+    <string name="generator_segment_length">Segment Length</string>
+    <string name="generator_pin_length">PIN Length</string>
+    <string name="generator_generate">Generate</string>
+    <string name="generator_result">Result</string>
+    <string name="generator_copy">Copy</string>
+    <string name="generator_copied">Copied to clipboard</string>
+    <string name="generator_invalid_length">Invalid length</string>
+    <string name="generator_action">Generate</string>  <!-- 新增：生成按钮文字 -->
+    
 </resources>

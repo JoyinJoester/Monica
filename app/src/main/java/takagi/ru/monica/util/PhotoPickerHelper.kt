@@ -12,6 +12,13 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import android.content.pm.PackageManager
+import android.content.ComponentName
+import android.content.pm.ResolveInfo
+import android.Manifest
+import android.content.DialogInterface
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import android.widget.Toast
 
 /**
  * 照片选择助手类
@@ -20,6 +27,7 @@ import android.content.pm.PackageManager
 object PhotoPickerHelper {
     const val REQUEST_CODE_CAMERA = 2001
     const val REQUEST_CODE_GALLERY = 2002
+    const val PERMISSION_REQUEST_CAMERA = 2003
     
     // 当前标签，用于区分正面和背面
     var currentTag: String = ""
@@ -33,9 +41,8 @@ object PhotoPickerHelper {
     // 当前回调实例
     private var currentCallback: PhotoPickerCallback? = null
     private var context: Context? = null
-    
-    // 临时照片文件
-    private var tempPhotoFile: File? = null
+    private var pendingActivity: Activity? = null
+    private var pendingAction: (() -> Unit)? = null
     
     /**
      * 设置回调
@@ -46,29 +53,44 @@ object PhotoPickerHelper {
     }
     
     /**
-     * 检查是否有相机应用
-     * @param activity 调用的Activity
-     * @return 是否有相机应用
+     * 检查并请求相机权限
      */
-    private fun hasCameraApp(activity: Activity): Boolean {
-        return try {
-            // 方法1: 使用resolveActivity检查
-            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            val resolveInfo = activity.packageManager.resolveActivity(intent, 0)
-            
-            // 方法2: 检查系统功能
-            val hasSystemFeature = activity.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
-            
-            // 方法3: 查询所有可以处理拍照Intent的应用
-            val activities = activity.packageManager.queryIntentActivities(intent, 0)
-            val hasActivities = activities.isNotEmpty()
-            
-            // 如果任一方法返回true，则认为有相机应用
-            resolveInfo != null || hasSystemFeature || hasActivities
-        } catch (e: Exception) {
-            // 出现异常时，默认认为有相机应用，让系统去处理
-            true
+    private fun checkCameraPermission(activity: Activity, onPermissionGranted: () -> Unit) {
+        val cameraPermission = Manifest.permission.CAMERA
+        if (ContextCompat.checkSelfPermission(activity, cameraPermission) == PackageManager.PERMISSION_GRANTED) {
+            // 权限已授予，直接执行操作
+            onPermissionGranted()
+        } else {
+            // 请求权限
+            pendingActivity = activity
+            pendingAction = onPermissionGranted
+            ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(cameraPermission),
+                PERMISSION_REQUEST_CAMERA
+            )
         }
+    }
+    
+    /**
+     * 处理权限请求结果
+     */
+    fun handlePermissionResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray): Boolean {
+        if (requestCode == PERMISSION_REQUEST_CAMERA) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // 权限被授予，执行待处理的操作
+                pendingAction?.invoke()
+                pendingAction = null
+                pendingActivity = null
+            } else {
+                // 权限被拒绝
+                currentCallback?.onError("相机权限被拒绝，无法使用拍照功能")
+                pendingAction = null
+                pendingActivity = null
+            }
+            return true
+        }
+        return false
     }
     
     /**
@@ -76,45 +98,41 @@ object PhotoPickerHelper {
      * @param activity 调用的Activity
      */
     fun takePhoto(activity: Activity) {
-        try {
-            // 保存context引用
-            this.context = activity
-            
-            // 创建临时文件
-            val photoFile = createTempPhotoFile(activity)
-            tempPhotoFile = photoFile
-            
-            // 创建URI
-            val photoURI = FileProvider.getUriForFile(
-                activity,
-                "${activity.packageName}.fileprovider",
-                photoFile
-            )
-            
-            // 授予相机应用对URI的临时权限
-            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
-                putExtra(MediaStore.EXTRA_OUTPUT, photoURI)
-                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            
-            // 使用更可靠的检测方法
-            if (hasCameraApp(activity)) {
+        checkCameraPermission(activity) {
+            try {
+                // 保存context引用
+                this.context = activity
+                
+                // 创建临时文件
+                val photoFile = createTempPhotoFile(activity)
+                tempPhotoFile = photoFile
+                
+                // 创建URI
+                val photoURI = FileProvider.getUriForFile(
+                    activity,
+                    "${activity.packageName}.fileprovider",
+                    photoFile
+                )
+                
+                // 创建拍照Intent
+                val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                    putExtra(MediaStore.EXTRA_OUTPUT, photoURI)
+                    addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                }
+                
+                // 直接启动相机，不进行复杂的检查
                 try {
                     activity.startActivityForResult(intent, REQUEST_CODE_CAMERA)
                 } catch (e: Exception) {
-                    // 即使检测到有相机应用，启动时仍可能出错，这时使用图库作为备选
-                    currentCallback?.onError("启动相机失败: ${e.message}，将使用图库选择")
-                    pickFromGallery(activity)
+                    // 如果启动相机失败，给出明确的错误提示，但不自动切换到图库
+                    currentCallback?.onError("启动相机失败: ${e.message}")
                 }
-            } else {
-                // 如果没有相机应用，使用图库作为替代方案
-                currentCallback?.onError("设备上没有检测到相机应用，将使用图库选择")
-                pickFromGallery(activity)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                currentCallback?.onError("启动相机失败: ${e.message}")
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            currentCallback?.onError("启动相机失败: ${e.message}")
         }
     }
     
@@ -127,22 +145,62 @@ object PhotoPickerHelper {
             // 保存context引用
             this.context = activity
             
-            val intent = Intent(Intent.ACTION_PICK).apply {
-                type = "image/*"
+            // 尝试多种Intent方式来启动图库
+            val intents = listOf(
+                // 标准方式
+                Intent(Intent.ACTION_PICK).apply { type = "image/*" },
+                // 替代方式1
+                Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" },
+                // 替代方式2
+                Intent(Intent.ACTION_OPEN_DOCUMENT).apply { 
+                    type = "image/*" 
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                },
+                // 特定图库应用
+                Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+            )
+            
+            // 尝试找到可以处理的Intent
+            var success = false
+            for (intent in intents) {
+                try {
+                    // 使用queryIntentActivities检查是否有应用可以处理
+                    val activities = activity.packageManager.queryIntentActivities(intent, 0)
+                    if (activities.isNotEmpty()) {
+                        // 尝试使用特定的图库应用
+                        if (intent.data != null) {
+                            // 对于特定URI的Intent，直接启动
+                            activity.startActivityForResult(intent, REQUEST_CODE_GALLERY)
+                            success = true
+                            break
+                        } else {
+                            // 对于其他Intent，尝试找到最佳的处理应用
+                            val resolveInfoList: List<ResolveInfo> = activity.packageManager.queryIntentActivities(intent, 0)
+                            if (resolveInfoList.isNotEmpty()) {
+                                // 选择第一个可用的应用
+                                val resolveInfo = resolveInfoList.first()
+                                intent.component = ComponentName(
+                                    resolveInfo.activityInfo.packageName,
+                                    resolveInfo.activityInfo.name
+                                )
+                                activity.startActivityForResult(intent, REQUEST_CODE_GALLERY)
+                                success = true
+                                break
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 忽略单个Intent的异常，继续尝试下一个
+                    continue
+                }
             }
             
-            // 检查是否有应用可以处理这个Intent
-            if (intent.resolveActivity(activity.packageManager) != null) {
-                activity.startActivityForResult(intent, REQUEST_CODE_GALLERY)
-            } else {
-                // 尝试使用其他Intent action
-                val alternativeIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                    type = "image/*"
-                }
-                
-                if (alternativeIntent.resolveActivity(activity.packageManager) != null) {
-                    activity.startActivityForResult(alternativeIntent, REQUEST_CODE_GALLERY)
-                } else {
+            if (!success) {
+                // 如果所有方式都失败，尝试使用系统默认的图库应用
+                try {
+                    val defaultIntent = Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                    activity.startActivityForResult(defaultIntent, REQUEST_CODE_GALLERY)
+                } catch (e: Exception) {
                     currentCallback?.onError("设备上没有可用的图库应用")
                 }
             }
@@ -180,9 +238,9 @@ object PhotoPickerHelper {
                     if (file.exists() && file.length() > 0) {
                         currentCallback?.onPhotoSelected(file.absolutePath)
                     } else {
-                        // 尝试等待一段时间再检查（相机可能还在写入文件）
+                        // 等待一段时间再检查（相机可能还在写入文件）
                         try {
-                            Thread.sleep(500) // 等待500毫秒
+                            Thread.sleep(1000) // 等待1秒
                         } catch (e: InterruptedException) {
                             // 忽略中断异常
                         }
@@ -190,11 +248,40 @@ object PhotoPickerHelper {
                         if (file.exists() && file.length() > 0) {
                             currentCallback?.onPhotoSelected(file.absolutePath)
                         } else {
-                            currentCallback?.onError("照片文件为空或不存在")
+                            // 尝试从Intent中获取数据（某些相机应用会返回数据在Intent中）
+                            val bitmap = data?.extras?.get("data") as? Bitmap
+                            if (bitmap != null) {
+                                // 将Bitmap保存到文件
+                                try {
+                                    val outputStream = FileOutputStream(file)
+                                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                                    outputStream.close()
+                                    currentCallback?.onPhotoSelected(file.absolutePath)
+                                } catch (e: Exception) {
+                                    currentCallback?.onError("从Intent获取图片数据失败: ${e.message}")
+                                }
+                            } else {
+                                currentCallback?.onError("照片文件为空或不存在")
+                            }
                         }
                     }
                 } ?: run {
-                    currentCallback?.onError("临时照片文件不存在")
+                    // 如果没有临时文件，尝试从Intent中获取数据
+                    val bitmap = data?.extras?.get("data") as? Bitmap
+                    if (bitmap != null) {
+                        // 创建新文件并保存Bitmap
+                        try {
+                            val photoFile = createTempPhotoFile(context!!)
+                            val outputStream = FileOutputStream(photoFile)
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                            outputStream.close()
+                            currentCallback?.onPhotoSelected(photoFile.absolutePath)
+                        } catch (e: Exception) {
+                            currentCallback?.onError("从Intent获取图片数据失败: ${e.message}")
+                        }
+                    } else {
+                        currentCallback?.onError("临时照片文件不存在")
+                    }
                 }
             } else {
                 currentCallback?.onPhotoSelected(null)
@@ -271,4 +358,7 @@ object PhotoPickerHelper {
             null
         }
     }
+    
+    // 临时照片文件
+    private var tempPhotoFile: File? = null
 }

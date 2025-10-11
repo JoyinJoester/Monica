@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
+import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.utils.SettingsManager
@@ -29,6 +30,12 @@ class SettingsViewModel(
     fun updateThemeMode(themeMode: ThemeMode) {
         viewModelScope.launch {
             settingsManager.updateThemeMode(themeMode)
+        }
+    }
+
+    fun updateColorScheme(colorScheme: ColorScheme) {
+        viewModelScope.launch {
+            settingsManager.updateColorScheme(colorScheme)
         }
     }
     
@@ -56,6 +63,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateDynamicColorEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateDynamicColorEnabled(enabled)
+        }
+    }
+
     fun updateBottomNavVisibility(tab: BottomNavContentTab, visible: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBottomNavVisibility(tab, visible)
@@ -65,6 +78,12 @@ class SettingsViewModel(
     fun updateBottomNavOrder(order: List<BottomNavContentTab>) {
         viewModelScope.launch {
             settingsManager.updateBottomNavOrder(order)
+        }
+    }
+
+    fun updateCustomColors(primary: Long, secondary: Long, tertiary: Long) {
+        viewModelScope.launch {
+            settingsManager.updateCustomColors(primary, secondary, tertiary)
         }
     }
 }

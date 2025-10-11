@@ -62,6 +62,28 @@ fun AddEditLedgerEntryScreen(
     
 
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+    
+    // 加载现有数据（如果是编辑模式）
+    LaunchedEffect(entryId) {
+        if (entryId != null && entryId > 0) {
+            viewModel.getEntryById(entryId)?.let { entryWithRelations ->
+                val entry = entryWithRelations.entry
+                // 填充现有数据
+                amount = String.format("%.2f", entry.amountInCents / 100.0)
+                entryType = entry.type
+                note = entry.note
+                occurredAt = entry.occurredAt
+                // 设置选中的资产ID
+                entry.paymentMethod.toLongOrNull()?.let { assetId ->
+                    selectedAssetId = assetId
+                }
+                // 如果有备注，展开备注字段
+                if (note.isNotBlank()) {
+                    showNoteField = true
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -103,6 +125,10 @@ fun AddEditLedgerEntryScreen(
                                     updatedAt = Date()
                                 )
                                 viewModel.saveEntry(entry)
+                                
+                                // 添加调试日志
+                                android.util.Log.d("AddEditLedgerEntryScreen", "Saved entry with paymentMethod: ${selectedAssetId.toString()}")
+                                
                                 onNavigateBack()
                             }
                         }

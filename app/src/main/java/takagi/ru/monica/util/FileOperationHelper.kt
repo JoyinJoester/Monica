@@ -49,7 +49,7 @@ object FileOperationHelper {
     }
     
     /**
-     * 从CSV文件导入数据
+     * 从CSV文件导入数据（普通数据和支付宝账单）
      * @param activity 调用的Activity
      */
     fun importFromCsv(activity: Activity) {
@@ -61,6 +61,24 @@ object FileOperationHelper {
                 "text/comma-separated-values", 
                 "text/plain", 
                 "application/csv"
+            ))
+        }
+        
+        activity.startActivityForResult(intent, REQUEST_CODE_IMPORT)
+    }
+    
+    /**
+     * 从JSON文件导入数据（Aegis数据）
+     * @param activity 调用的Activity
+     */
+    fun importFromJson(activity: Activity) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                "application/json",
+                "text/json",
+                "text/plain"
             ))
         }
         

@@ -13,8 +13,8 @@ android {
         applicationId "takagi.ru.monica"
         minSdk 29
         targetSdk 34
-        versionCode 4
-        versionName "1.0.3"
+        versionCode 5
+        versionName "1.0.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -61,6 +61,7 @@ android {
 dependencies {
     // Core Android libraries
     implementation libs.androidx.core.ktx
+    implementation libs.androidx.core.splashscreen  // 添加splashscreen依赖
     implementation libs.androidx.lifecycle.runtime.ktx
     implementation libs.androidx.activity.compose
     

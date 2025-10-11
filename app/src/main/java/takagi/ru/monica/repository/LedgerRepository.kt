@@ -83,6 +83,23 @@ class LedgerRepository(
         return entryId
     }
 
+    suspend fun getEntryById(id: Long): LedgerEntryWithRelations? {
+        return ledgerDao.getEntryById(id)
+    }
+
+    /**
+     * 检查是否存在重复的账本条目
+     */
+    suspend fun isDuplicateEntry(entry: LedgerEntry): Boolean {
+        val count = ledgerDao.countDuplicateEntry(
+            entry.title,
+            entry.amountInCents,
+            entry.type,
+            entry.occurredAt.time  // 将Date转换为时间戳
+        )
+        return count > 0
+    }
+
     suspend fun deleteEntry(entry: LedgerEntry) {
         // 删除时恢复资产余额
         updateAssetBalanceForEntry(entry, revert = true)
@@ -120,6 +137,7 @@ class LedgerRepository(
     }
 
     suspend fun updateAssetBalance(assetId: Long, amountInCents: Long) {
+        android.util.Log.d("LedgerRepository", "updateAssetBalance: assetId=$assetId, amountInCents=$amountInCents")
         ledgerDao.updateAssetBalance(assetId, amountInCents)
     }
 
@@ -135,6 +153,7 @@ class LedgerRepository(
         }
         
         val existingAssets = ledgerDao.observeAssets().first()
+        android.util.Log.d("LedgerRepository", "initializeDefaultAssets: existingAssets.size=${existingAssets.size}")
         if (existingAssets.isEmpty()) {
             val defaultAssets = listOf(
                 Asset(
@@ -166,10 +185,40 @@ class LedgerRepository(
                     sortOrder = 3
                 )
             )
-            defaultAssets.forEach { asset ->
-                ledgerDao.insertAsset(asset)
+            defaultAssets.forEach { asset -> 
+                val id = ledgerDao.insertAsset(asset)
+                android.util.Log.d("LedgerRepository", "initializeDefaultAssets: inserted asset ${asset.name} with id=$id")
             }
         }
+    }
+
+    /**
+     * 为所有现有账单重新计算资产余额
+     * 这个方法应该在应用启动时或资产初始化后调用一次
+     */
+    suspend fun recalculateAllAssetBalances() {
+        android.util.Log.d("LedgerRepository", "recalculateAllAssetBalances: Starting recalculation")
+        
+        // 获取所有账单条目
+        val allEntries = observeEntries().first()
+        android.util.Log.d("LedgerRepository", "recalculateAllAssetBalances: Found ${allEntries.size} entries")
+        
+        // 获取所有资产
+        val allAssets = observeAssets().first()
+        android.util.Log.d("LedgerRepository", "recalculateAllAssetBalances: Found ${allAssets.size} assets")
+        
+        // 重置所有资产余额为0
+        allAssets.forEach { asset ->
+            ledgerDao.updateAssetBalance(asset.id, -asset.balanceInCents)
+            android.util.Log.d("LedgerRepository", "recalculateAllAssetBalances: Reset asset ${asset.id} balance to 0")
+        }
+        
+        // 重新计算每个账单条目对资产余额的影响
+        allEntries.forEach { entryWithRelations ->
+            updateAssetBalanceForEntry(entryWithRelations.entry, revert = false)
+        }
+        
+        android.util.Log.d("LedgerRepository", "recalculateAllAssetBalances: Completed recalculation")
     }
 
     /**
@@ -178,11 +227,21 @@ class LedgerRepository(
      * @param revert 是否恢复余额（删除或编辑前恢复）
      */
     private suspend fun updateAssetBalanceForEntry(entry: LedgerEntry, revert: Boolean) {
-        val paymentMethod = entry.paymentMethod ?: return
+        // 检查支付方式是否为空
+        if (entry.paymentMethod.isEmpty()) {
+            android.util.Log.w("LedgerRepository", "updateAssetBalanceForEntry: paymentMethod is empty for entry.id=${entry.id}")
+            return
+        }
+        
+        val paymentMethod = entry.paymentMethod
         
         // 根据支付方式查找对应的资产
         val asset = when {
-            // 尝试作为资产类型查找
+            // 尝试作为资产ID查找（这是在添加/编辑记账条目时存储的方式）
+            paymentMethod.toLongOrNull() != null -> {
+                ledgerDao.getAssetById(paymentMethod.toLong())
+            }
+            // 尝试作为资产类型名称查找（这是兼容旧数据的方式）
             paymentMethod.equals("wechat", ignoreCase = true) || 
             paymentMethod.equals("微信", ignoreCase = true) -> 
                 ledgerDao.getAssetByType(AssetType.WECHAT)
@@ -197,11 +256,16 @@ class LedgerRepository(
             paymentMethod.equals("cash", ignoreCase = true) || 
             paymentMethod.equals("现金", ignoreCase = true) -> 
                 ledgerDao.getAssetByType(AssetType.CASH)
-            // 尝试作为银行卡ID查找
-            paymentMethod.toLongOrNull() != null -> 
-                ledgerDao.getAssetByBankCardId(paymentMethod.toLong())
             else -> null
-        } ?: return
+        }
+        
+        // 添加调试日志
+        android.util.Log.d("LedgerRepository", "updateAssetBalanceForEntry: entry.id=${entry.id}, paymentMethod=$paymentMethod, asset=${asset?.id}, revert=$revert")
+        
+        if (asset == null) {
+            android.util.Log.w("LedgerRepository", "updateAssetBalanceForEntry: Could not find asset for paymentMethod=$paymentMethod")
+            return
+        }
 
         // 计算余额变化量
         val delta = when (entry.type) {
@@ -210,8 +274,11 @@ class LedgerRepository(
             LedgerEntryType.TRANSFER -> 0L // 转账暂不处理资产余额
         }
 
+        android.util.Log.d("LedgerRepository", "updateAssetBalanceForEntry: delta=$delta, asset.id=${asset.id}")
+        
         if (delta != 0L) {
             ledgerDao.updateAssetBalance(asset.id, delta)
+            android.util.Log.d("LedgerRepository", "updateAssetBalanceForEntry: Updated asset ${asset.id} balance by $delta")
         }
     }
 
@@ -278,5 +345,12 @@ class LedgerRepository(
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+    
+    /**
+     * 获取资产的当前余额
+     */
+    suspend fun getAssetBalance(assetId: Long): Long? {
+        return ledgerDao.getAssetBalance(assetId)
     }
 }

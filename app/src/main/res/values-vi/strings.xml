@@ -198,6 +198,34 @@
     <string name="import_data_title">Nhập dữ liệu</string>
     <string name="importing">Đang nhập...</string>
     <string name="start_import">Bắt đầu nhập</string>
+    <string name="export_data_description">Xuất tất cả dữ liệu của bạn dưới dạng file CSV vào bộ nhớ cục bộ. Bạn có thể sử dụng file này để sao lưu hoặc chuyển đổi dữ liệu của mình.</string>
+    <string name="export_data_select_type">Chọn loại dữ liệu để xuất:</string>
+    <string name="export_data_type_passwords">Mật khẩu</string>
+    <string name="export_data_type_totp">Mã TOTP</string>
+    <string name="export_data_type_bank_cards">Thẻ ngân hàng</string>
+    <string name="export_data_type_documents">Giấy tờ</string>
+    <string name="export_data_type_all">Tất cả dữ liệu</string>
+    <string name="export_data_button">Xuất</string>
+    <string name="export_data_success">Xuất dữ liệu thành công</string>
+    <string name="export_data_error">Xuất thất bại</string>
+    <string name="export_data_warning">File CSV không được mã hóa, vui lòng giữ an toàn file đã xuất</string>
+    <string name="import_data_description">Nhập dữ liệu từ file sao lưu CSV. Vui lòng đảm bảo định dạng file đúng.</string>
+    <string name="import_data_warning_title">Cảnh báo</string>
+    <string name="import_data_warning_message">Nhập dữ liệu có thể ghi đè dữ liệu hiện có. Vui lòng đảm bảo sao lưu dữ liệu hiện tại trước khi nhập.</string>
+    <string name="import_data_select_file">Chọn file</string>
+    <string name="import_data_button">Nhập</string>
+    <string name="import_data_success">Nhập dữ liệu thành công</string>
+    <string name="import_data_error">Nhập thất bại</string>
+    <string name="import_data_supported_formats">Hỗ trợ file CSV được xuất bởi ứng dụng và chi tiết giao dịch Alipay</string>
+    <string name="import_data_select_type">Chọn loại nhập</string>
+    <string name="import_data_type_normal">Dữ liệu ứng dụng</string>
+    <string name="import_data_type_alipay">Hóa đơn Alipay</string>
+    <string name="import_data_file_selected">Đã chọn file</string>
+    <string name="import_data_file_hint">Nhấn để chọn file .csv</string>
+    <string name="import_data_success_normal">Đã nhập thành công %d mục dữ liệu</string>
+    <string name="import_data_success_alipay">Đã nhập thành công %d giao dịch Alipay</string>
+    <string name="import_data_error_exception">Nhập thất bại: %s</string>
+    <string name="import_data_notice">Dữ liệu nhập sẽ được thêm vào dữ liệu hiện có, dữ liệu hiện tại sẽ không bị xóa</string>
     
     <!-- Support Author -->
     <string name="support_author_title">Ủng hộ tác giả</string>
@@ -440,27 +468,6 @@
     <string name="security_question_preset_9">Công việc đầu tiên của bạn là gì?</string>
     <string name="security_question_preset_10">Bộ phim yêu thích của bạn là gì?</string>
     
-    <!-- Export Data Screen -->
-    <string name="export_data_description">Xuất tất cả dữ liệu của bạn dưới dạng file CSV vào bộ nhớ cục bộ. Bạn có thể sử dụng file này để sao lưu hoặc chuyển đổi dữ liệu của mình.</string>
-    <string name="export_data_select_type">Chọn loại dữ liệu để xuất:</string>
-    <string name="export_data_type_passwords">Mật khẩu</string>
-    <string name="export_data_type_totp">Mã TOTP</string>
-    <string name="export_data_type_bank_cards">Thẻ ngân hàng</string>
-    <string name="export_data_type_documents">Giấy tờ</string>
-    <string name="export_data_type_all">Tất cả dữ liệu</string>
-    <string name="export_data_button">Xuất</string>
-    <string name="export_data_success">Xuất dữ liệu thành công</string>
-    <string name="export_data_error">Xuất thất bại</string>
-    
-    <!-- Import Data Screen -->
-    <string name="import_data_description">Nhập dữ liệu từ file sao lưu CSV. Vui lòng đảm bảo định dạng file đúng.</string>
-    <string name="import_data_warning_title">Cảnh báo</string>
-    <string name="import_data_warning_message">Nhập dữ liệu có thể ghi đè dữ liệu hiện có. Vui lòng đảm bảo sao lưu dữ liệu hiện tại trước khi nhập.</string>
-    <string name="import_data_select_file">Chọn file</string>
-    <string name="import_data_button">Nhập</string>
-    <string name="import_data_success">Nhập dữ liệu thành công</string>
-    <string name="import_data_error">Nhập thất bại</string>
-    
     <!-- Support Author Screen (legacy) -->
     <string name="support_author_description">Nếu bạn thấy ứng dụng này hữu ích, vui lòng xem xét ủng hộ tác giả. Sự ủng hộ của bạn là động lực lớn nhất để chúng tôi tiếp tục cải thiện!</string>
     <string name="support_author_thanks">Cảm ơn bạn!</string>
@@ -526,6 +533,64 @@
     <string name="autofill_cancel">Hủy</string>
     <string name="autofill_never_for_site">Không bao giờ lưu cho trang web này</string>
     <string name="autofill_saved_via">Đã lưu qua tự động điền</string>
+    
+    <!-- Ledger -->
+    <string name="ledger_title">Sổ kế toán</string>
+    <string name="ledger_add_entry">Thêm mục nhập</string>
+    <string name="ledger_view_all">Tất cả dữ liệu</string>
+
+    <!-- Ledger Entry Detail -->
+    <string name="ledger_entry_detail">Chi tiết mục nhập</string>
+
+    <!-- Asset Management -->
+    <string name="asset_management_title">Quản lý tài sản</string>
+    <string name="asset_add_asset">Thêm tài sản</string>
+    <string name="asset_edit_asset">Sửa tài sản</string>
+    <string name="asset_name">Tên tài sản</string>
+    <string name="asset_name_example">Ví dụ: Tiền mặt</string>
+    <string name="asset_type">Loại tài sản</string>
+    <string name="asset_type_cash">Tiền mặt</string>
+    <string name="asset_type_bank_account">Tài khoản ngân hàng</string>
+    <string name="asset_type_crypto_wallet">Ví tiền điện tử</string>
+    <string name="asset_type_investment">Đầu tư</string>
+    <string name="asset_type_other">Khác</string>
+    <string name="asset_balance">Số dư</string>
+    <string name="asset_balance_example">Ví dụ: 1000000</string>
+    <string name="asset_currency">Tiền tệ</string>
+    <string name="asset_currency_example">Ví dụ: VND</string>
+    <string name="asset_notes">Ghi chú</string>
+    <string name="asset_notes_placeholder">Thêm ghi chú...</string>
+    <string name="asset_no_assets_title">Chưa có tài sản</string>
+    <string name="asset_no_assets_description">Nhấn nút + ở góc dưới bên phải để thêm tài sản đầu tiên</string>
+    <string name="asset_delete_asset_title">Xóa tài sản</string>
+    <string name="asset_delete_asset_message">Bạn có chắc chắn muốn xóa \"%s\"? Hành động này không thể hoàn tác.</string>
+    <string name="asset_search_assets">Tìm kiếm tài sản</string>
+    <string name="asset_clear_search">Xóa tìm kiếm</string>
+    <string name="asset_copy_asset_name">Sao chép tên tài sản</string>
+    <string name="asset_copy_asset_balance">Sao chép số dư</string>
+    <string name="asset_copy_asset_currency">Sao chép tiền tệ</string>
+    <string name="asset_copy_asset_notes">Sao chép ghi chú</string>
+    <string name="asset_copy">Sao chép</string>
+    <string name="asset_bottom_nav_settings">Thanh điều hướng dưới</string>
+    <string name="asset_bottom_nav_toggle_subtitle">Hiển thị hoặc ẩn tài sản này trên thanh điều hướng dưới</string>
+    <string name="asset_bottom_nav_reorder_hint">Dùng các mũi tên để sắp xếp tab. Mục Cài đặt luôn ở cuối.</string>
+    <string name="asset_bottom_nav_move_up">Di chuyển tab lên trên</string>
+    <string name="asset_bottom_nav_move_down">Di chuyển tab xuống dưới</string>
+    
+    <!-- Clear All Data -->
+    <string name="clear_all_data">Xóa tất cả dữ liệu</string>
+    <string name="clear_all_data_subtitle">Xóa tất cả mật khẩu, xác thực, thẻ ngân hàng và tài liệu</string>
+    <string name="clear_all_data_confirm">Xác nhận xóa tất cả dữ liệu?</string>
+    <string name="clear_all_data_warning">Thao tác này sẽ xóa vĩnh viễn tất cả mật khẩu, xác thực, thẻ ngân hàng và tài liệu, và không thể khôi phục được.\n\nKhuyến nghị xuất bản sao lưu trước khi xóa!</string>
+    <string name="enter_master_password_to_confirm">Vui lòng nhập mật khẩu chính để xác nhận</string>
+    <string name="clearing_data">Đang xóa dữ liệu…</string>
+    <string name="password_incorrect">Mật khẩu không đúng</string>
+    <string name="select_data_types_to_clear">Chọn loại dữ liệu cần xóa:</string>
+    <string name="data_type_passwords">Mật khẩu</string>
+    <string name="data_type_totp">Xác thực</string>
+    <string name="data_type_ledger">Sổ kế toán</string>
+    <string name="data_type_documents">Tài liệu</string>
+    <string name="data_type_bank_cards">Thẻ ngân hàng</string>
 </resources>
 
 

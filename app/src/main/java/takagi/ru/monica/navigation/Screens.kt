@@ -58,6 +58,12 @@ sealed class Screen(val route: String) {
             }
         }
     }
+    
+    object LedgerEntryDetail : Screen("ledger_entry_detail/{entryId}") {
+        fun createRoute(entryId: Long): String {
+            return "ledger_entry_detail/$entryId"
+        }
+    }
     object AssetManagement : Screen("asset_management")
     object AddEditAsset : Screen("add_edit_asset/{assetId}") {
         fun createRoute(assetId: Long? = null): String {
@@ -87,4 +93,7 @@ sealed class Screen(val route: String) {
     object AutofillSettings : Screen("autofill_settings")
     object SecurityAnalysis : Screen("security_analysis")
     object BottomNavSettings : Screen("bottom_nav_settings")
+    object ColorSchemeSelection : Screen("color_scheme_selection")
+    object CustomColorSettings : Screen("custom_color_settings")
+    object Generator : Screen("generator")  // 添加生成器页面路由
 }

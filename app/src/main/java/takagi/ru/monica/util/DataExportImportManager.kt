@@ -10,6 +10,11 @@ import java.io.BufferedWriter
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.nio.charset.Charset
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
 
 /**
  * 数据导入导出管理器
@@ -408,6 +413,9 @@ class DataExportImportManager(private val context: Context) {
             var lineCount = 0
             var dataStarted = false
             var columnIndices: Map<String, Int>? = null
+            var skippedLines = 0
+            var parsedLines = 0
+            var duplicateLines = 0  // 新增：记录重复条目数
             
             val inputStream = context.contentResolver.openInputStream(inputUri)
                 ?: return@withContext Result.failure(Exception("无法读取文件，请检查文件是否存在"))
@@ -465,19 +473,38 @@ class DataExportImportManager(private val context: Context) {
                                         val item = parseAlipayTransaction(fields, indices)
                                         if (item != null) {
                                             items.add(item)
-                                            android.util.Log.d("AlipayImport", "成功解析第${lineCount}行")
+                                            parsedLines++
+                                            if (parsedLines <= 10 || parsedLines % 50 == 0) {  // 记录前10条和每50条
+                                                android.util.Log.d("AlipayImport", "成功解析第${lineCount}行: ${item.title}")
+                                            }
+                                        } else {
+                                            skippedLines++
+                                            if (skippedLines <= 10 || skippedLines % 50 == 0) {  // 记录前10条跳过和每50条
+                                                android.util.Log.d("AlipayImport", "跳过第${lineCount}行: $currentLine")
+                                            }
+                                        }
+                                    } else {
+                                        skippedLines++
+                                        if (skippedLines <= 10 || skippedLines % 50 == 0) {
+                                            android.util.Log.d("AlipayImport", "字段不足跳过第${lineCount}行，字段数: ${fields.size}")
                                         }
                                     }
                                 } catch (e: Exception) {
+                                    skippedLines++
                                     android.util.Log.e("AlipayImport", "解析第${lineCount}行失败: ${e.message}", e)
                                 }
                             }
+                        }
+                        
+                        // 每处理100行记录一次进度
+                        if (lineCount % 100 == 0) {
+                            android.util.Log.d("AlipayImport", "已处理${lineCount}行, 解析${parsedLines}条, 跳过${skippedLines}条")
                         }
                     }
                 }
             }
 
-            android.util.Log.d("AlipayImport", "导入完成: 共${items.size}条记录")
+            android.util.Log.d("AlipayImport", "导入完成: 总行数=" + lineCount + ", 解析=" + items.size + "条记录, 跳过=" + skippedLines + "条, 重复=" + duplicateLines + "条")
             if (items.isEmpty()) {
                 Result.failure(Exception("未能导入任何交易记录，请检查文件格式"))
             } else {
@@ -586,5 +613,122 @@ class DataExportImportManager(private val context: Context) {
         val occurredAt: java.util.Date,
         val note: String,
         val paymentMethod: String
+    )
+
+    /**
+     * 从Aegis JSON文件导入TOTP数据
+     * @param inputUri 输入文件的URI
+     * @return 导入的数据项列表
+     */
+    suspend fun importAegisJson(
+        inputUri: Uri
+    ): Result<List<AegisEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("无法读取文件，请检查文件是否存在"))
+        
+            inputStream.use { input ->
+                val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+                val content = reader.readText()
+                
+                // 解析JSON
+                val json = Json { ignoreUnknownKeys = true }
+                val root = json.parseToJsonElement(content).jsonObject
+                
+                // 检查是否为加密的vault
+                val db = root["db"]?.jsonPrimitive?.content
+                if (db != null) {
+                    // 这是一个加密的vault，我们无法解密它
+                    return@withContext Result.failure(Exception("无法导入加密的Aegis备份文件。请导出未加密的JSON文件。"))
+                }
+                
+                // 尝试解析未加密的数据库格式
+                val jsonArray = try {
+                    root["db"]?.jsonObject?.get("entries")?.jsonArray
+                } catch (e: Exception) {
+                    null
+                }
+                
+                // 如果上面的方法失败，尝试直接解析根对象中的entries数组
+                val entriesArray = jsonArray ?: try {
+                    root["entries"]?.jsonArray
+                } catch (e: Exception) {
+                    null
+                }
+                
+                if (entriesArray == null) {
+                    return@withContext Result.failure(Exception("无效的Aegis JSON格式：未找到entries数组"))
+                }
+                
+                val entries = mutableListOf<AegisEntry>()
+                var parsedCount = 0
+                var errorCount = 0
+                
+                entriesArray.forEach { element ->
+                    try {
+                        val entryObj = element.jsonObject
+                        val type = entryObj["type"]?.jsonPrimitive?.content ?: "totp"
+                        
+                        // 只处理TOTP条目
+                        if (type.lowercase() == "totp") {
+                            val uuid = entryObj["uuid"]?.jsonPrimitive?.content ?: java.util.UUID.randomUUID().toString()
+                            val name = entryObj["name"]?.jsonPrimitive?.content ?: ""
+                            val issuer = entryObj["issuer"]?.jsonPrimitive?.content ?: ""
+                            val note = entryObj["note"]?.jsonPrimitive?.content ?: ""
+                            
+                            // 获取info对象
+                            val infoObj = entryObj["info"]?.jsonObject
+                            if (infoObj != null) {
+                                val secret = infoObj["secret"]?.jsonPrimitive?.content ?: ""
+                                val algo = infoObj["algo"]?.jsonPrimitive?.content ?: "SHA1"
+                                val digits = infoObj["digits"]?.jsonPrimitive?.content?.toIntOrNull() ?: 6
+                                val period = infoObj["period"]?.jsonPrimitive?.content?.toIntOrNull() ?: 30
+                                
+                                if (secret.isNotBlank()) {
+                                    val entry = AegisEntry(
+                                        uuid = uuid,
+                                        name = name,
+                                        issuer = issuer,
+                                        note = note,
+                                        secret = secret,
+                                        algorithm = algo,
+                                        digits = digits,
+                                        period = period
+                                    )
+                                    entries.add(entry)
+                                    parsedCount++
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        errorCount++
+                        android.util.Log.e("AegisImport", "解析条目失败", e)
+                    }
+                }
+                
+                android.util.Log.d("AegisImport", "成功解析 $parsedCount 条目，$errorCount 个错误")
+                
+                if (entries.isEmpty()) {
+                    Result.failure(Exception("未能从Aegis文件中导入任何有效的TOTP条目"))
+                } else {
+                    Result.success(entries)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AegisImport", "导入Aegis文件失败", e)
+            Result.failure(Exception("导入Aegis文件失败：${e.message ?: "未知错误"}"))
+        }
+    }
+
+    // Aegis条目数据类
+    data class AegisEntry(
+        val uuid: String,
+        val name: String,
+        val issuer: String,
+        val note: String,
+        val secret: String,
+        val algorithm: String,
+        val digits: Int,
+        val period: Int
     )
 }

@@ -330,6 +330,7 @@ private fun PhotoCard(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(stringResource(R.string.camera))
                 }
+
             }
         }
     }

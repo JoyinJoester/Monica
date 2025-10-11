@@ -32,6 +32,12 @@ interface LedgerDao {
     @Query("DELETE FROM ledger_entries WHERE id = :id")
     suspend fun deleteEntryById(id: Long)
 
+    /**
+     * 检查是否存在相同标题、金额、类型和发生时间的条目
+     */
+    @Query("SELECT COUNT(*) FROM ledger_entries WHERE title = :title AND amountInCents = :amountInCents AND type = :type AND occurredAt = :occurredAt")
+    suspend fun countDuplicateEntry(title: String, amountInCents: Long, type: LedgerEntryType, occurredAt: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategory(category: LedgerCategory): Long
 
@@ -111,4 +117,8 @@ interface LedgerDao {
         ) AND linkedBankCardId IS NOT NULL
     """)
     suspend fun deleteDuplicateBankCardAssets()
+    
+    // 添加查询资产余额的方法
+    @Query("SELECT balanceInCents FROM assets WHERE id = :id")
+    suspend fun getAssetBalance(id: Long): Long?
 }
