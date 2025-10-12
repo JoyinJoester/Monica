@@ -195,16 +195,104 @@ class SecurityManager(private val context: Context) {
     }
     
     /**
-     * Simple encryption for password fields (additional layer)
+     * AES encryption for sensitive data (additional layer)
      */
     fun encryptData(data: String): String {
-        // In a real app, you might want to use additional encryption here
-        // For now, we rely on Room's built-in encryption and secure storage
-        return data
+        return try {
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            val keyGenerator = javax.crypto.KeyGenerator.getInstance("AES")
+            keyGenerator.init(256)
+            
+            // Use the master key for encryption
+            val secretKey = javax.crypto.spec.SecretKeySpec(
+                masterKey.toString().toByteArray().sliceArray(0..31), 
+                "AES"
+            )
+            
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
+            val encryptedBytes = cipher.doFinal(data.toByteArray())
+            
+            // Combine IV and encrypted data
+            val combined = iv + encryptedBytes
+            android.util.Base64.encodeToString(combined, android.util.Base64.DEFAULT)
+        } catch (e: Exception) {
+            android.util.Log.e("SecurityManager", "Encryption failed", e)
+            // Fallback to original data if encryption fails
+            data
+        }
     }
     
     fun decryptData(encryptedData: String): String {
-        // Corresponding decryption
-        return encryptedData
+        return try {
+            val combined = android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
+            
+            // Extract IV and encrypted data
+            val iv = combined.sliceArray(0..11) // GCM IV is 12 bytes
+            val encrypted = combined.sliceArray(12 until combined.size)
+            
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            val secretKey = javax.crypto.spec.SecretKeySpec(
+                masterKey.toString().toByteArray().sliceArray(0..31), 
+                "AES"
+            )
+            
+            val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+            
+            val decryptedBytes = cipher.doFinal(encrypted)
+            String(decryptedBytes)
+        } catch (e: Exception) {
+            android.util.Log.e("SecurityManager", "Decryption failed", e)
+            // Fallback to original data if decryption fails
+            encryptedData
+        }
+    }
+    
+    /**
+     * Generate secure random password
+     */
+    fun generateSecurePassword(length: Int = 16, includeSymbols: Boolean = true): String {
+        val lowercase = "abcdefghijklmnopqrstuvwxyz"
+        val uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        val numbers = "0123456789"
+        val symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+        
+        val charset = lowercase + uppercase + numbers + if (includeSymbols) symbols else ""
+        val random = SecureRandom()
+        
+        return (1..length)
+            .map { charset[random.nextInt(charset.length)] }
+            .joinToString("")
+    }
+    
+    /**
+     * Validate password strength
+     */
+    fun validatePasswordStrength(password: String): PasswordStrength {
+        val length = password.length
+        val hasLowercase = password.any { it.isLowerCase() }
+        val hasUppercase = password.any { it.isUpperCase() }
+        val hasDigit = password.any { it.isDigit() }
+        val hasSymbol = password.any { !it.isLetterOrDigit() }
+        
+        val score = listOf(
+            length >= 8,
+            length >= 12,
+            hasLowercase,
+            hasUppercase,
+            hasDigit,
+            hasSymbol
+        ).count { it }
+        
+        return when {
+            score <= 2 -> PasswordStrength.WEAK
+            score <= 4 -> PasswordStrength.MEDIUM
+            else -> PasswordStrength.STRONG
+        }
+    }
+    
+    enum class PasswordStrength {
+        WEAK, MEDIUM, STRONG
     }
 }

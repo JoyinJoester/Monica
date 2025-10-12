@@ -12,7 +12,7 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>>
     
-    @Query("SELECT * FROM password_entries WHERE title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' OR appName LIKE '%' || :query || '%' OR appPackageName LIKE '%' || :query || '%' ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>>
     
     @Query("SELECT * FROM password_entries WHERE id = :id")

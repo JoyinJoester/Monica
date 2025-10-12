@@ -24,7 +24,7 @@ import takagi.ru.monica.data.ledger.LedgerTag
         LedgerEntryTagCrossRef::class,
         takagi.ru.monica.data.ledger.Asset::class
     ],
-    version = 9,
+    version = 11,  // Phase 7: 10 → 11
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -199,6 +199,36 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 为password_entries表添加应用包名和应用名称字段（用于自动填充）
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN appPackageName TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN appName TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        // Phase 7: Migration 10 → 11 - 扩展数据模型
+        private val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 添加个人信息字段
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN phone TEXT NOT NULL DEFAULT ''")
+                
+                // 添加地址信息字段
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN addressLine TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN city TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN state TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN zipCode TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN country TEXT NOT NULL DEFAULT ''")
+                
+                // 添加支付信息字段 (加密存储)
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN creditCardNumber TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN creditCardHolder TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN creditCardExpiry TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN creditCardCVV TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -206,7 +236,18 @@ abstract class PasswordDatabase : RoomDatabase() {
                     PasswordDatabase::class.java,
                     "password_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(
+                        MIGRATION_1_2, 
+                        MIGRATION_2_3, 
+                        MIGRATION_3_4, 
+                        MIGRATION_4_5, 
+                        MIGRATION_5_6, 
+                        MIGRATION_6_7, 
+                        MIGRATION_7_8, 
+                        MIGRATION_8_9, 
+                        MIGRATION_9_10,
+                        MIGRATION_10_11  // Phase 7: 新增迁移
+                    )
                     .fallbackToDestructiveMigration() // 如果迁移失败,清除数据重建(避免闪退)
                     .build()
                 INSTANCE = instance

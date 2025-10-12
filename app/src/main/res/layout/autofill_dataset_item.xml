@@ -7,10 +7,11 @@
     android:gravity="center_vertical">
     
     <ImageView
-        android:id="@+id/icon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:src="@drawable/ic_launcher_foreground"
+        android:id="@+id/icon_app"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:src="@drawable/ic_key"
+        android:scaleType="centerCrop"
         android:contentDescription="@string/app_name" />
     
     <LinearLayout

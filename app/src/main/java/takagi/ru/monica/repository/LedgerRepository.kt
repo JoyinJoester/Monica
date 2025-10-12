@@ -124,10 +124,15 @@ class LedgerRepository(
     suspend fun getAssetById(id: Long): Asset? = ledgerDao.getAssetById(id)
 
     suspend fun upsertAsset(asset: Asset): Long {
+        android.util.Log.d("LedgerRepository", "upsertAsset called: id=${asset.id}, balance=${asset.balanceInCents}, name=${asset.name}")
         return if (asset.id == 0L) {
-            ledgerDao.insertAsset(asset)
+            val newId = ledgerDao.insertAsset(asset)
+            android.util.Log.d("LedgerRepository", "Inserted new asset with id=$newId")
+            newId
         } else {
+            android.util.Log.d("LedgerRepository", "Updating existing asset with id=${asset.id}")
             ledgerDao.updateAsset(asset)
+            android.util.Log.d("LedgerRepository", "Asset updated successfully")
             asset.id
         }
     }

@@ -81,8 +81,9 @@ fun LedgerScreen(
     // 初始化默认资产
     LaunchedEffect(Unit) {
         viewModel.initializeDefaultAssets()
-        // 重新计算所有资产余额以包含现有账单
-        viewModel.recalculateAllAssetBalances()
+        // 移除自动重新计算，避免覆盖用户手动设置的余额
+        // 只在添加/删除账单时自动更新资产余额
+        // viewModel.recalculateAllAssetBalances()
     }
 
     // 同步银行卡到资产管理
@@ -146,46 +147,80 @@ private fun SummaryCard(
 ) {
     val context = LocalContext.current
 
-    Card(
+    ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
+        colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = 6.dp
         )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(20.dp)
         ) {
-            Text(
-                text = context.getString(R.string.ledger_balance),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountBalance,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = context.getString(R.string.ledger_balance),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                IconButton(onClick = onClick) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "查看详情",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
             // 显示最多3种货币的统计
             if (currencyStats.isEmpty()) {
                 Text(
                     text = getCurrencySymbol("CNY") + "0.00",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "点击开始记账",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                 )
             } else {
                 currencyStats.forEach { stats ->
                     val currencySymbol = getCurrencySymbol(stats.currencyCode)
                     val balance = stats.balance
                     
-                    // 余额显示
+                    // 余额显示 - 更大更突出
                     Text(
                         text = currencySymbol + String.format("%.2f", balance),
                         style = if (currencyStats.size == 1) 
-                            MaterialTheme.typography.headlineMedium 
+                            MaterialTheme.typography.displayMedium 
                         else 
-                            MaterialTheme.typography.headlineSmall,
+                            MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold,
                         color = when {
                             balance > 0 -> Color(0xFF4CAF50)
@@ -194,26 +229,93 @@ private fun SummaryCard(
                         }
                     )
                     
-                    // 收入支出详情
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // 收入支出详情 - 使用卡片包裹
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = "${context.getString(R.string.ledger_income)}: $currencySymbol${String.format("%.2f", stats.income)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF4CAF50)
-                        )
-                        Text(
-                            text = "${context.getString(R.string.ledger_expense)}: $currencySymbol${String.format("%.2f", stats.expense)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFF44336)
-                        )
+                        // 收入卡片
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.TrendingUp,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4CAF50),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = context.getString(R.string.ledger_income),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "$currencySymbol${String.format("%.2f", stats.income)}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
+                        }
+                        
+                        // 支出卡片
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF44336).copy(alpha = 0.15f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.TrendingDown,
+                                        contentDescription = null,
+                                        tint = Color(0xFFF44336),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = context.getString(R.string.ledger_expense),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = Color(0xFFC62828)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "$currencySymbol${String.format("%.2f", stats.expense)}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFC62828)
+                                )
+                            }
+                        }
                     }
                     
-                    // 如果有多个货币,添加分隔空间
+                    // 如果有多个货币,添加分隔线
                     if (currencyStats.size > 1 && stats != currencyStats.last()) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
@@ -241,10 +343,14 @@ private fun LedgerEntryCard(
     // 获取支付方式显示文本(资产名称)
     val paymentMethodText = getPaymentMethodDisplayName(entry.paymentMethod, assets, context)
 
-    Card(
+    ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 6.dp
+        )
     ) {
         Row(
             modifier = Modifier
@@ -256,61 +362,81 @@ private fun LedgerEntryCard(
             Row(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 类型图标
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            when (entry.type) {
-                                LedgerEntryType.INCOME -> Color(0xFF4CAF50).copy(alpha = 0.2f)
-                                LedgerEntryType.EXPENSE -> Color(0xFFF44336).copy(alpha = 0.2f)
-                                LedgerEntryType.TRANSFER -> Color(0xFF2196F3).copy(alpha = 0.2f)
-                            }
-                        ),
-                    contentAlignment = Alignment.Center
+                // 类型图标 - 使用 Surface 提升质感
+                Surface(
+                    modifier = Modifier.size(48.dp),
+                    shape = CircleShape,
+                    color = when (entry.type) {
+                        LedgerEntryType.INCOME -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        LedgerEntryType.EXPENSE -> Color(0xFFF44336).copy(alpha = 0.15f)
+                        LedgerEntryType.TRANSFER -> Color(0xFF2196F3).copy(alpha = 0.15f)
+                    },
+                    tonalElevation = 2.dp
                 ) {
-                    Icon(
-                        imageVector = when (entry.type) {
-                            LedgerEntryType.INCOME -> Icons.Default.TrendingUp
-                            LedgerEntryType.EXPENSE -> Icons.Default.TrendingDown
-                            LedgerEntryType.TRANSFER -> Icons.Default.SwapHoriz
-                        },
-                        contentDescription = null,
-                        tint = when (entry.type) {
-                            LedgerEntryType.INCOME -> Color(0xFF4CAF50)
-                            LedgerEntryType.EXPENSE -> Color(0xFFF44336)
-                            LedgerEntryType.TRANSFER -> Color(0xFF2196F3)
-                        }
-                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = when (entry.type) {
+                                LedgerEntryType.INCOME -> Icons.Default.TrendingUp
+                                LedgerEntryType.EXPENSE -> Icons.Default.TrendingDown
+                                LedgerEntryType.TRANSFER -> Icons.Default.SwapHoriz
+                            },
+                            contentDescription = null,
+                            tint = when (entry.type) {
+                                LedgerEntryType.INCOME -> Color(0xFF2E7D32)
+                                LedgerEntryType.EXPENSE -> Color(0xFFC62828)
+                                LedgerEntryType.TRANSFER -> Color(0xFF1565C0)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
 
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
                     // 标题位置显示支付方式
                     Text(
                         text = paymentMethodText,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                    
+                    Spacer(modifier = Modifier.height(2.dp))
                     
                     // 备注信息（如果存在）
                     if (entry.note.isNotBlank()) {
                         Text(
                             text = entry.note,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                     }
                     
                     // 时间信息单独一行显示
-                    Text(
-                        text = dateFormat.format(entry.occurredAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = dateFormat.format(entry.occurredAt),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 

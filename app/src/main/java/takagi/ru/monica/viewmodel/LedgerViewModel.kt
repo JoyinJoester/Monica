@@ -160,8 +160,10 @@ class LedgerViewModel(
     }
 
     fun saveAsset(asset: Asset) {
+        android.util.Log.d("LedgerViewModel", "saveAsset called: id=${asset.id}, balance=${asset.balanceInCents}")
         viewModelScope.launch {
-            repository.upsertAsset(asset)
+            val resultId = repository.upsertAsset(asset)
+            android.util.Log.d("LedgerViewModel", "Asset saved with id=$resultId")
         }
     }
 

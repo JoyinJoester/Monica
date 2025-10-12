@@ -38,7 +38,9 @@ fun TotpCodeCard(
     onDelete: (() -> Unit)? = null,
     onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    onMoveDown: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false
 ) {
     // 解析TOTP数据
     val totpData = try {
@@ -73,7 +75,14 @@ fun TotpCodeCard(
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
-        )
+        ),
+        colors = if (isSelected) {
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        } else {
+            CardDefaults.cardColors()
+        }
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -84,6 +93,15 @@ fun TotpCodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 添加复选框（选择模式）
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,

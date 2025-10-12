@@ -1,7 +1,7 @@
 package takagi.ru.monica.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -32,7 +32,9 @@ fun DocumentCard(
     onDelete: (() -> Unit)? = null,
     onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    onMoveDown: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false
 ) {
     // 解析证件数据
     val documentData = try {
@@ -48,30 +50,31 @@ fun DocumentCard(
     }
     
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = {
-                    // 长按进入编辑模式
-                }
-            ),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
         ),
-        colors = CardDefaults.cardColors(
-            containerColor = when (documentData.documentType) {
-                DocumentType.ID_CARD -> MaterialTheme.colorScheme.primaryContainer
-                DocumentType.PASSPORT -> MaterialTheme.colorScheme.secondaryContainer
-                DocumentType.DRIVER_LICENSE -> MaterialTheme.colorScheme.tertiaryContainer
-                DocumentType.SOCIAL_SECURITY -> MaterialTheme.colorScheme.surfaceVariant
-                DocumentType.OTHER -> MaterialTheme.colorScheme.surfaceVariant
-            }
-        )
+        colors = if (isSelected) {
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        } else {
+            CardDefaults.cardColors(
+                containerColor = when (documentData.documentType) {
+                    DocumentType.ID_CARD -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    DocumentType.PASSPORT -> MaterialTheme.colorScheme.secondaryContainer
+                    DocumentType.DRIVER_LICENSE -> MaterialTheme.colorScheme.tertiaryContainer
+                    DocumentType.SOCIAL_SECURITY -> MaterialTheme.colorScheme.surfaceVariant
+                    DocumentType.OTHER -> MaterialTheme.colorScheme.surfaceVariant
+                }
+            )
+        }
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .clickable { onClick() } // 将 clickable 移到 Column 上
+                .padding(16.dp)
         ) {
             // 标题和菜单
             Row(
@@ -79,6 +82,15 @@ fun DocumentCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 添加复选框（选择模式）
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,

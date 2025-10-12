@@ -45,15 +45,20 @@ fun AddEditAssetScreen(
     var showTypeMenu by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCurrencyDialog by remember { mutableStateOf(false) }
+    var existingAsset by remember { mutableStateOf<Asset?>(null) } // 保存现有资产的完整数据
 
     // 加载现有资产数据
     LaunchedEffect(assetId) {
         if (assetId != null && assetId > 0) {
             viewModel.getAssetById(assetId)?.let { asset ->
+                existingAsset = asset // 保存完整的资产对象
                 name = asset.name
                 assetType = asset.assetType
                 balance = (asset.balanceInCents / 100.0).toString()
                 currencyCode = asset.currencyCode
+                
+                // 添加调试日志
+                android.util.Log.d("AddEditAssetScreen", "Loaded asset: id=${asset.id}, name=${asset.name}, balance=${asset.balanceInCents}, balanceDisplay=$balance")
             }
         }
     }
@@ -104,17 +109,37 @@ fun AddEditAssetScreen(
                                 AssetType.CASH -> "#FF9800"
                                 AssetType.OTHER -> "#4CAF50"
                             }
-                            val asset = Asset(
-                                id = assetId ?: 0,
-                                name = displayName,
-                                assetType = assetType,
-                                balanceInCents = balanceInCents,
-                                currencyCode = currencyCode,
-                                iconKey = iconKey,
-                                colorHex = color,
-                                createdAt = Date(),
-                                updatedAt = Date()
-                            )
+                            
+                            // 添加调试日志
+                            android.util.Log.d("AddEditAssetScreen", "Saving asset: balance=$balance, balanceInCents=$balanceInCents")
+                            
+                            val asset = if (existingAsset != null) {
+                                // 编辑现有资产，保留 createdAt 和其他字段
+                                existingAsset!!.copy(
+                                    name = displayName,
+                                    assetType = assetType,
+                                    balanceInCents = balanceInCents,
+                                    currencyCode = currencyCode,
+                                    iconKey = iconKey,
+                                    colorHex = color,
+                                    updatedAt = Date()
+                                )
+                            } else {
+                                // 创建新资产
+                                Asset(
+                                    id = 0,
+                                    name = displayName,
+                                    assetType = assetType,
+                                    balanceInCents = balanceInCents,
+                                    currencyCode = currencyCode,
+                                    iconKey = iconKey,
+                                    colorHex = color,
+                                    createdAt = Date(),
+                                    updatedAt = Date()
+                                )
+                            }
+                            
+                            android.util.Log.d("AddEditAssetScreen", "Asset to save: id=${asset.id}, balance=${asset.balanceInCents}")
                             viewModel.saveAsset(asset)
                             onNavigateBack()
                         },

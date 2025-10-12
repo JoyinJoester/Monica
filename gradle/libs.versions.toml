@@ -23,6 +23,11 @@ permissions = "0.32.0"
 commonmark = "0.22.0"
 splashscreen = "1.0.1"  # 添加splashscreen版本
 scrypt = "1.4.0"
+fragment = "1.6.2"  # Fragment for BottomSheetDialogFragment
+material = "1.11.0"  # Google Material Components
+autofill = "1.2.0-beta01"  # Autofill framework for InlinePresentation
+slice = "1.1.0-alpha02"  # Slice for inline UI
+playServicesAuth = "21.0.0"  # Google Play Services Auth for SMS Retriever API
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -89,6 +94,18 @@ commonmark = { group = "org.commonmark", name = "commonmark", version.ref = "com
 
 # Scrypt for Aegis decryption
 scrypt = { group = "com.lambdaworks", name = "scrypt", version.ref = "scrypt" }
+
+# Fragment and Material Components for BottomSheet
+androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+
+# Autofill and Slice for InlinePresentation
+androidx-autofill = { group = "androidx.autofill", name = "autofill", version.ref = "autofill" }
+androidx-slice-core = { group = "androidx.slice", name = "slice-core", version.ref = "slice" }
+androidx-slice-builders = { group = "androidx.slice", name = "slice-builders", version.ref = "slice" }
+
+# Google Play Services for SMS Retriever API
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

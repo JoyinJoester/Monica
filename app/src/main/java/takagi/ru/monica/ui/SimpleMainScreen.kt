@@ -30,13 +30,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
+import android.widget.Toast
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
+import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
@@ -46,6 +51,8 @@ import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.LedgerScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
+import takagi.ru.monica.ui.gestures.SwipeActions
+import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
 
 /**
@@ -65,7 +72,8 @@ fun SimpleMainScreen(
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
-    onNavigateToDocumentDetail: (Long) -> Unit, // 添加导航到证件详情页面的参数
+    @Suppress("UNUSED_PARAMETER")
+    onNavigateToDocumentDetail: (Long) -> Unit, // 保留以保持API兼容性，但当前未使用
     onNavigateToAddLedgerEntry: (Long?) -> Unit,
     onNavigateToLedgerEntryDetail: (Long) -> Unit, // 新增：导航到账单详情
     onNavigateToAssetManagement: () -> Unit,
@@ -113,6 +121,7 @@ fun SimpleMainScreen(
     var onExitBankCardSelection by remember { mutableStateOf({}) }
     var onSelectAllBankCards by remember { mutableStateOf({}) }
     var onDeleteSelectedBankCards by remember { mutableStateOf({}) }
+    var onFavoriteBankCards by remember { mutableStateOf({}) }  // 添加收藏回调
 
     val appSettings by settingsViewModel.settings.collectAsState()
     val bottomNavVisibility = appSettings.bottomNavVisibility
@@ -176,7 +185,8 @@ fun SimpleMainScreen(
                         selectedCount = selectedBankCardCount,
                         onExit = { onExitBankCardSelection() },
                         onSelectAll = { onSelectAllBankCards() },
-                        onDelete = { onDeleteSelectedBankCards() }
+                        onDelete = { onDeleteSelectedBankCards() },
+                        onFavorite = { onFavoriteBankCards() }  // 添加收藏按钮
                     )
                 }
                 // 记账页面由 LedgerScreen 提供顶栏
@@ -326,12 +336,13 @@ fun SimpleMainScreen(
                         onCardClick = { cardId ->
                             onNavigateToAddBankCard(cardId)
                         },
-                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
                             isBankCardSelectionMode = isSelectionMode
                             selectedBankCardCount = count
                             onExitBankCardSelection = onExit
                             onSelectAllBankCards = onSelectAll
                             onDeleteSelectedBankCards = onDelete
+                            onFavoriteBankCards = onFavorite  // 添加收藏回调
                         }
                     )
                 }
@@ -398,17 +409,33 @@ private fun PasswordListContent(
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedPasswords by remember { mutableStateOf(setOf<Long>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    
+    // 详情对话框状态
+    var showDetailDialog by remember { mutableStateOf(false) }
+    var selectedPasswordForDetail by remember { mutableStateOf<takagi.ru.monica.data.PasswordEntry?>(null) }
     var passwordInput by remember { mutableStateOf("") }
     var showPasswordVerify by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
+    // 添加触觉反馈
+    val haptic = rememberHapticFeedback()
+    
+    // 添加单项删除对话框状态
+    var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.PasswordEntry?>(null) }
+    var singleItemPasswordInput by remember { mutableStateOf("") }
+    var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
+    
+    // 添加已删除项ID集合（用于在验证前隐藏项）
+    var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
+    
     // 堆叠展开状态 - 记录哪些网站的卡片组已展开
     var expandedWebsites by remember { mutableStateOf(setOf<String>()) }
     
-    // 按网站分组密码,并按优先级排序
-    val groupedPasswords = remember(passwordEntries) {
+    // 按网站分组密码,并按优先级排序，过滤掉已删除的项
+    val groupedPasswords = remember(passwordEntries, deletedItemIds) {
         passwordEntries
+            .filter { it.id !in deletedItemIds }  // 过滤已删除的项
             .groupBy { it.website.ifBlank { "未分类" } }
             .mapValues { (_, entries) -> entries.sortedBy { it.sortOrder } }
             .toList()
@@ -537,11 +564,36 @@ private fun PasswordListContent(
                                 expandedWebsites + website
                             }
                         },
-                        onPasswordClick = onPasswordClick,
-                        onLongClick = {
+                        onPasswordClick = { password ->
+                            if (isSelectionMode) {
+                                // 选择模式：切换选择状态
+                                selectedPasswords = if (selectedPasswords.contains(password.id)) {
+                                    selectedPasswords - password.id
+                                } else {
+                                    selectedPasswords + password.id
+                                }
+                            } else {
+                                // 普通模式：显示详情对话框
+                                selectedPasswordForDetail = password
+                                showDetailDialog = true
+                            }
+                        },
+                        onSwipeLeft = { password ->
+                            // 左滑删除
+                            haptic.performWarning()
+                            itemToDelete = password
+                            deletedItemIds = deletedItemIds + password.id
+                        },
+                        onSwipeRight = { password ->
+                            // 右滑选择
+                            haptic.performSuccess()
                             if (!isSelectionMode) {
                                 isSelectionMode = true
-                                selectedPasswords = setOf(passwords.first().id)
+                            }
+                            selectedPasswords = if (selectedPasswords.contains(password.id)) {
+                                selectedPasswords - password.id
+                            } else {
+                                selectedPasswords + password.id
                             }
                         },
                         onToggleFavorite = { password ->
@@ -710,8 +762,100 @@ private fun PasswordListContent(
             }
         }
     }
+    
+    // 密码详情对话框
+    if (showDetailDialog && selectedPasswordForDetail != null) {
+        takagi.ru.monica.ui.components.PasswordDetailDialog(
+            passwordEntry = selectedPasswordForDetail!!,
+            onDismiss = {
+                showDetailDialog = false
+                selectedPasswordForDetail = null
+            },
+            onEdit = {
+                showDetailDialog = false
+                onPasswordClick(selectedPasswordForDetail!!)
+                selectedPasswordForDetail = null
+            },
+            onDelete = {
+                coroutineScope.launch {
+                    viewModel.deletePasswordEntry(selectedPasswordForDetail!!)
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.deleted_items, 1),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    showDetailDialog = false
+                    selectedPasswordForDetail = null
+                }
+            }
+        )
+    }
+    
+    // 单项删除确认对话框(支持指纹和密码验证)
+    itemToDelete?.let { item ->
+        DeleteConfirmDialog(
+            itemTitle = item.title,
+            itemType = "密码",
+            onDismiss = {
+                // 取消删除，恢复卡片显示
+                deletedItemIds = deletedItemIds - item.id
+                itemToDelete = null
+            },
+            onConfirmWithPassword = { password ->
+                singleItemPasswordInput = password
+                showSingleItemPasswordVerify = true
+            },
+            onConfirmWithBiometric = {
+                // 指纹验证成功，直接删除
+                coroutineScope.launch {
+                    viewModel.deletePasswordEntry(item)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.deleted),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    itemToDelete = null
+                }
+            }
+        )
+    }
+    
+    // 单项删除密码验证
+    if (showSingleItemPasswordVerify && itemToDelete != null) {
+        LaunchedEffect(Unit) {
+            val securityManager = takagi.ru.monica.security.SecurityManager(context)
+            if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
+                // 密码正确，执行真实删除
+                viewModel.deletePasswordEntry(itemToDelete!!)
+                
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.deleted),
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                // 清理状态（保持在 deletedItemIds 中，因为已真实删除）
+                itemToDelete = null
+                singleItemPasswordInput = ""
+                showSingleItemPasswordVerify = false
+            } else {
+                // 密码错误，恢复卡片显示
+                deletedItemIds = deletedItemIds - itemToDelete!!.id
+                
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.current_password_incorrect),
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                // 重置状态
+                itemToDelete = null
+                singleItemPasswordInput = ""
+                showSingleItemPasswordVerify = false
+            }
+        }
+    }
 }
-
 /**
  * TOTP列表内容
  */
@@ -730,6 +874,7 @@ private fun TotpListContent(
 ) {
     val totpItems by viewModel.totpItems.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val haptic = rememberHapticFeedback()
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -745,6 +890,14 @@ private fun TotpListContent(
     var singleItemPasswordInput by remember { mutableStateOf("") }
     var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
     
+    // 待删除项ID集合（用于隐藏即将删除的项）
+    var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
+    
+    // 过滤掉待删除的项
+    val filteredTotpItems = remember(totpItems, deletedItemIds) {
+        totpItems.filter { it.id !in deletedItemIds }
+    }
+    
     // 定义回调函数
     val exitSelection = {
         isSelectionMode = false
@@ -752,10 +905,10 @@ private fun TotpListContent(
     }
     
     val selectAll = {
-        selectedItems = if (selectedItems.size == totpItems.size) {
+        selectedItems = if (selectedItems.size == filteredTotpItems.size) {
             setOf()
         } else {
-            totpItems.map { it.id }.toSet()
+            filteredTotpItems.map { it.id }.toSet()
         }
     }
     
@@ -801,7 +954,7 @@ private fun TotpListContent(
         }
 
         // TOTP列表
-        if (totpItems.isEmpty()) {
+        if (filteredTotpItems.isEmpty()) {
             // 空状态
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -837,124 +990,144 @@ private fun TotpListContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(
-                    items = totpItems,
+                    items = filteredTotpItems,
                     key = { it.id }
                 ) { item ->
-                    val index = totpItems.indexOf(item)
-                    TotpItemCard(
-                        item = item,
-                        onClick = { onTotpClick(item.id) },
-                        onDelete = {
+                    val index = filteredTotpItems.indexOf(item)
+                    
+                    // 用 SwipeActions 包裹 TOTP 卡片
+                    takagi.ru.monica.ui.gestures.SwipeActions(
+                        onSwipeLeft = {
+                            // 左滑删除
+                            haptic.performWarning()
                             itemToDelete = item
+                            deletedItemIds = deletedItemIds + item.id
                         },
-                        onToggleFavorite = { id, isFavorite ->
-                            viewModel.toggleFavorite(id, isFavorite)
+                        onSwipeRight = {
+                            // 右滑选择
+                            haptic.performSuccess()
+                            if (!isSelectionMode) {
+                                isSelectionMode = true
+                            }
+                            selectedItems = if (selectedItems.contains(item.id)) {
+                                selectedItems - item.id
+                            } else {
+                                selectedItems + item.id
+                            }
                         },
-                        onMoveUp = if (index > 0) {
-                            {
-                                // 交换当前项和上一项的sortOrder
-                                val currentItem = totpItems[index]
-                                val previousItem = totpItems[index - 1]
-                                viewModel.updateSortOrders(listOf(
-                                    currentItem.id to (index - 1),
-                                    previousItem.id to index
-                                ))
-                            }
-                        } else null,
-                        onMoveDown = if (index < totpItems.size - 1) {
-                            {
-                                // 交换当前项和下一项的sortOrder
-                                val currentItem = totpItems[index]
-                                val nextItem = totpItems[index + 1]
-                                viewModel.updateSortOrders(listOf(
-                                    currentItem.id to (index + 1),
-                                    nextItem.id to index
-                                ))
-                            }
-                        } else null
-                    )
+                        enabled = true // 多选模式下也可以滑动
+                    ) {
+                        TotpItemCard(
+                            item = item,
+                            onClick = {
+                                if (isSelectionMode) {
+                                    selectedItems = if (selectedItems.contains(item.id)) {
+                                        selectedItems - item.id
+                                    } else {
+                                        selectedItems + item.id
+                                    }
+                                } else {
+                                    onTotpClick(item.id)
+                                }
+                            },
+                            onDelete = {
+                                haptic.performWarning()
+                                itemToDelete = item
+                                deletedItemIds = deletedItemIds + item.id
+                            },
+                            onToggleFavorite = { id, isFavorite ->
+                                viewModel.toggleFavorite(id, isFavorite)
+                            },
+                            onMoveUp = if (index > 0) {
+                                {
+                                    // 交换当前项和上一项的sortOrder
+                                    val currentItem = filteredTotpItems[index]
+                                    val previousItem = filteredTotpItems[index - 1]
+                                    viewModel.updateSortOrders(listOf(
+                                        currentItem.id to (index - 1),
+                                        previousItem.id to index
+                                    ))
+                                }
+                            } else null,
+                            onMoveDown = if (index < filteredTotpItems.size - 1) {
+                                {
+                                    // 交换当前项和下一项的sortOrder
+                                    val currentItem = filteredTotpItems[index]
+                                    val nextItem = filteredTotpItems[index + 1]
+                                    viewModel.updateSortOrders(listOf(
+                                        currentItem.id to (index + 1),
+                                        nextItem.id to index
+                                    ))
+                                }
+                            } else null,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = selectedItems.contains(item.id)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
     }
     
-    // 单项删除确认对话框(带密码验证)
+    // 单项删除确认对话框(支持指纹和密码验证)
     itemToDelete?.let { item ->
-        AlertDialog(
-            onDismissRequest = { 
+        DeleteConfirmDialog(
+            itemTitle = item.title,
+            itemType = "验证器",
+            onDismiss = {
+                // 取消删除，恢复卡片显示
+                deletedItemIds = deletedItemIds - item.id
                 itemToDelete = null
-                singleItemPasswordInput = ""
             },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+            onConfirmWithPassword = { password ->
+                singleItemPasswordInput = password
+                showSingleItemPasswordVerify = true
             },
-            title = { Text(stringResource(R.string.delete_authenticator_title)) },
-            text = { 
-                Column {
-                    Text(stringResource(R.string.delete_authenticator_message, item.title))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    androidx.compose.material3.OutlinedTextField(
-                        value = singleItemPasswordInput,
-                        onValueChange = { singleItemPasswordInput = it },
-                        label = { Text(stringResource(R.string.enter_master_password_confirm)) },
-                        singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showSingleItemPasswordVerify = true
-                    },
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    enabled = singleItemPasswordInput.isNotEmpty()
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { 
-                    itemToDelete = null
-                    singleItemPasswordInput = ""
-                }) {
-                    Text(stringResource(R.string.cancel))
-                }
+            onConfirmWithBiometric = {
+                // 指纹验证成功，直接删除
+                onDeleteTotp(item)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.deleted),
+                    Toast.LENGTH_SHORT
+                ).show()
+                itemToDelete = null
             }
         )
     }
     
     // 单项删除密码验证
     if (showSingleItemPasswordVerify && itemToDelete != null) {
-        androidx.compose.runtime.LaunchedEffect(Unit) {
+        LaunchedEffect(Unit) {
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
             if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
-                // 删除单项
+                // 密码正确，删除 TOTP
                 onDeleteTotp(itemToDelete!!)
                 
-                android.widget.Toast.makeText(
+                Toast.makeText(
                     context,
                     context.getString(R.string.deleted),
-                    android.widget.Toast.LENGTH_SHORT
+                    Toast.LENGTH_SHORT
                 ).show()
                 
+                // 清理状态（保持在 deletedItemIds 中，因为已真实删除）
                 itemToDelete = null
                 singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
             } else {
-                android.widget.Toast.makeText(
+                // 密码错误，恢复卡片显示
+                deletedItemIds = deletedItemIds - itemToDelete!!.id
+                
+                Toast.makeText(
                     context,
                     context.getString(R.string.current_password_incorrect),
-                    android.widget.Toast.LENGTH_SHORT
+                    Toast.LENGTH_SHORT
                 ).show()
+                
+                // 重置状态
+                itemToDelete = null
+                singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
             }
         }
@@ -1061,7 +1234,9 @@ private fun TotpItemCard(
     onDelete: () -> Unit,
     onToggleFavorite: (Long, Boolean) -> Unit,
     onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    onMoveDown: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     
@@ -1078,7 +1253,9 @@ private fun TotpItemCard(
         onDelete = onDelete,
         onToggleFavorite = onToggleFavorite,
         onMoveUp = onMoveUp,
-        onMoveDown = onMoveDown
+        onMoveDown = onMoveDown,
+        isSelectionMode = isSelectionMode,
+        isSelected = isSelected
     )
 }
 
@@ -1092,7 +1269,7 @@ private fun TotpItemCard(
 private fun BankCardListContent(
     viewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     onCardClick: (Long) -> Unit,
-    onSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit) -> Unit
+    onSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit  // 添加第6个参数：收藏
 ) {
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<Long>()) }
@@ -1104,10 +1281,21 @@ private fun BankCardListContent(
     
     val cards by viewModel.allCards.collectAsState(initial = emptyList())
     
+    // 添加触觉反馈
+    val haptic = rememberHapticFeedback()
+    
     // 添加单项删除对话框状态
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
     var singleItemPasswordInput by remember { mutableStateOf("") }
     var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
+    
+    // 添加已删除项ID集合（用于在验证前隐藏项）
+    var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
+    
+    // 过滤掉已删除的项
+    val visibleCards = remember(cards, deletedItemIds) {
+        cards.filter { it.id !in deletedItemIds }
+    }
     
     // 通知父组件选择模式状态变化
     LaunchedEffect(isSelectionMode, selectedItems.size) {
@@ -1116,10 +1304,12 @@ private fun BankCardListContent(
                 true,
                 selectedItems.size,
                 {
+                    // 退出选择模式
                     isSelectionMode = false
                     selectedItems = emptySet()
                 },
                 {
+                    // 全选/取消全选
                     selectedItems = if (selectedItems.size == cards.size) {
                         emptySet()
                     } else {
@@ -1127,11 +1317,27 @@ private fun BankCardListContent(
                     }
                 },
                 {
+                    // 批量删除
                     showPasswordDialog = true
+                },
+                {
+                    // 批量收藏
+                    scope.launch {
+                        selectedItems.forEach { id ->
+                            viewModel.toggleFavorite(id)
+                        }
+                        android.widget.Toast.makeText(
+                            context,
+                            "已更新 ${selectedItems.size} 张卡片的收藏状态",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        isSelectionMode = false
+                        selectedItems = emptySet()
+                    }
                 }
             )
         } else {
-            onSelectionModeChange(false, 0, {}, {}, {})
+            onSelectionModeChange(false, 0, {}, {}, {}, {})
         }
     }
     
@@ -1225,122 +1431,135 @@ private fun BankCardListContent(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
-                items = cards,
+                items = visibleCards,  // 使用过滤后的列表
                 key = { it.id }
             ) { card ->
-                val index = cards.indexOf(card)
-                BankCardItemCard(
-                    item = card,
-                    onClick = { onCardClick(card.id) },
-                    onDelete = {
+                val index = visibleCards.indexOf(card)
+                
+                takagi.ru.monica.ui.gestures.SwipeActions(
+                    onSwipeLeft = {
+                        // 左滑删除
+                        haptic.performWarning()
                         itemToDelete = card
+                        deletedItemIds = deletedItemIds + card.id
                     },
-                    onToggleFavorite = { id, isFavorite ->
-                        viewModel.toggleFavorite(id)
+                    onSwipeRight = {
+                        // 右滑选择
+                        haptic.performSuccess()
+                        if (!isSelectionMode) {
+                            isSelectionMode = true
+                        }
+                        selectedItems = if (selectedItems.contains(card.id)) {
+                            selectedItems - card.id
+                        } else {
+                            selectedItems + card.id
+                        }
                     },
-                    onMoveUp = if (index > 0) {
-                        {
-                            // 交换当前项和上一项的sortOrder
-                            val currentItem = cards[index]
-                            val previousItem = cards[index - 1]
-                            viewModel.updateSortOrders(listOf(
-                                currentItem.id to (index - 1),
-                                previousItem.id to index
-                            ))
-                        }
-                    } else null,
-                    onMoveDown = if (index < cards.size - 1) {
-                        {
-                            // 交换当前项和下一项的sortOrder
-                            val currentItem = cards[index]
-                            val nextItem = cards[index + 1]
-                            viewModel.updateSortOrders(listOf(
-                                currentItem.id to (index + 1),
-                                nextItem.id to index
-                            ))
-                        }
-                    } else null
-                )
-            }
-        }
-    }
-    
-    // 单项删除确认对话框(带密码验证)
-    itemToDelete?.let { item ->
-        AlertDialog(
-            onDismissRequest = { 
-                itemToDelete = null
-                singleItemPasswordInput = ""
-            },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text(stringResource(R.string.delete_bank_card_title)) },
-            text = { 
-                Column {
-                    Text(stringResource(R.string.delete_bank_card_message, item.title))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    androidx.compose.material3.OutlinedTextField(
-                        value = singleItemPasswordInput,
-                        onValueChange = { singleItemPasswordInput = it },
-                        label = { Text(stringResource(R.string.enter_master_password_confirm)) },
-                        singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
+                    enabled = true
+                ) {
+                    BankCardItemCard(
+                        item = card,
+                        onClick = { 
+                            if (isSelectionMode) {
+                                // 选择模式下点击切换选择状态
+                                selectedItems = if (selectedItems.contains(card.id)) {
+                                    selectedItems - card.id
+                                } else {
+                                    selectedItems + card.id
+                                }
+                            } else {
+                                // 普通模式下打开详情
+                                onCardClick(card.id)
+                            }
+                        },
+                        onDelete = {
+                            itemToDelete = card
+                        },
+                        onToggleFavorite = { id, _ ->
+                            viewModel.toggleFavorite(id)
+                        },
+                        onMoveUp = if (index > 0 && !isSelectionMode) {
+                            {
+                                val currentItem = visibleCards[index]
+                                val previousItem = visibleCards[index - 1]
+                                viewModel.updateSortOrders(listOf(
+                                    currentItem.id to (index - 1),
+                                    previousItem.id to index
+                                ))
+                            }
+                        } else null,
+                        onMoveDown = if (index < visibleCards.size - 1 && !isSelectionMode) {
+                            {
+                                val currentItem = visibleCards[index]
+                                val nextItem = visibleCards[index + 1]
+                                viewModel.updateSortOrders(listOf(
+                                    currentItem.id to (index + 1),
+                                    nextItem.id to index
+                                ))
+                            }
+                        } else null
                     )
                 }
+            }
+        }
+    }    // 单项删除确认对话框(支持指纹和密码验证)
+    itemToDelete?.let { item ->
+        DeleteConfirmDialog(
+            itemTitle = item.title,
+            itemType = "银行卡",
+            onDismiss = {
+                // 取消删除，恢复卡片显示
+                deletedItemIds = deletedItemIds - item.id
+                itemToDelete = null
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showSingleItemPasswordVerify = true
-                    },
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    enabled = singleItemPasswordInput.isNotEmpty()
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
+            onConfirmWithPassword = { password ->
+                singleItemPasswordInput = password
+                showSingleItemPasswordVerify = true
             },
-            dismissButton = {
-                TextButton(onClick = { 
-                    itemToDelete = null
-                    singleItemPasswordInput = ""
-                }) {
-                    Text(stringResource(R.string.cancel))
-                }
+            onConfirmWithBiometric = {
+                // 指纹验证成功，直接删除
+                viewModel.deleteCard(item.id)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.deleted),
+                    Toast.LENGTH_SHORT
+                ).show()
+                itemToDelete = null
             }
         )
     }
     
     // 单项删除密码验证
     if (showSingleItemPasswordVerify && itemToDelete != null) {
-        androidx.compose.runtime.LaunchedEffect(Unit) {
+        LaunchedEffect(Unit) {
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
             if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
-                // 删除单项
+                // 密码正确，执行真实删除
                 viewModel.deleteCard(itemToDelete!!.id)
                 
-                android.widget.Toast.makeText(
+                Toast.makeText(
                     context,
                     context.getString(R.string.deleted),
-                    android.widget.Toast.LENGTH_SHORT
+                    Toast.LENGTH_SHORT
                 ).show()
                 
+                // 清理状态（保持在 deletedItemIds 中，因为已真实删除）
                 itemToDelete = null
                 singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
             } else {
-                android.widget.Toast.makeText(
+                // 密码错误，恢复卡片显示
+                deletedItemIds = deletedItemIds - itemToDelete!!.id
+                
+                Toast.makeText(
                     context,
                     context.getString(R.string.current_password_incorrect),
-                    android.widget.Toast.LENGTH_SHORT
+                    Toast.LENGTH_SHORT
                 ).show()
+                
+                // 重置状态
+                itemToDelete = null
+                singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
             }
         }
@@ -1382,6 +1601,7 @@ private fun DocumentListContent(
     var showPasswordDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val haptic = rememberHapticFeedback()
     
     val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
     
@@ -1389,6 +1609,14 @@ private fun DocumentListContent(
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
     var singleItemPasswordInput by remember { mutableStateOf("") }
     var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
+    
+    // 待删除项ID集合（用于隐藏即将删除的项）
+    var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
+    
+    // 过滤掉待删除的项
+    val filteredDocuments = remember(documents, deletedItemIds) {
+        documents.filter { it.id !in deletedItemIds }
+    }
     
     // 通知父组件选择模式状态变化
     LaunchedEffect(isSelectionMode, selectedItems.size) {
@@ -1401,10 +1629,10 @@ private fun DocumentListContent(
                     selectedItems = emptySet()
                 },
                 {
-                    selectedItems = if (selectedItems.size == documents.size) {
+                    selectedItems = if (selectedItems.size == filteredDocuments.size) {
                         emptySet()
                     } else {
-                        documents.map { it.id }.toSet()
+                        filteredDocuments.map { it.id }.toSet()
                     }
                 },
                 {
@@ -1488,7 +1716,7 @@ private fun DocumentListContent(
         )
     }
     
-    if (documents.isEmpty()) {
+    if (filteredDocuments.isEmpty()) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -1506,122 +1734,142 @@ private fun DocumentListContent(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
-                items = documents,
+                items = filteredDocuments,
                 key = { it.id }
             ) { document ->
-                val index = documents.indexOf(document)
-                DocumentItemCard(
-                    item = document,
-                    onClick = { onDocumentClick(document.id) },
-                    onDelete = {
+                val index = filteredDocuments.indexOf(document)
+                
+                // 用 SwipeActions 包裹文档卡片
+                takagi.ru.monica.ui.gestures.SwipeActions(
+                    onSwipeLeft = {
+                        // 左滑删除
+                        haptic.performWarning()
                         itemToDelete = document
+                        deletedItemIds = deletedItemIds + document.id
                     },
-                    onToggleFavorite = { id, isFavorite ->
-                        viewModel.toggleFavorite(id)
+                    onSwipeRight = {
+                        // 右滑选择
+                        haptic.performSuccess()
+                        if (!isSelectionMode) {
+                            isSelectionMode = true
+                        }
+                        selectedItems = if (selectedItems.contains(document.id)) {
+                            selectedItems - document.id
+                        } else {
+                            selectedItems + document.id
+                        }
                     },
-                    onMoveUp = if (index > 0) {
-                        {
-                            // 交换当前项和上一项的sortOrder
-                            val currentItem = documents[index]
-                            val previousItem = documents[index - 1]
-                            viewModel.updateSortOrders(listOf(
-                                currentItem.id to (index - 1),
-                                previousItem.id to index
-                            ))
-                        }
-                    } else null,
-                    onMoveDown = if (index < documents.size - 1) {
-                        {
-                            // 交换当前项和下一项的sortOrder
-                            val currentItem = documents[index]
-                            val nextItem = documents[index + 1]
-                            viewModel.updateSortOrders(listOf(
-                                currentItem.id to (index + 1),
-                                nextItem.id to index
-                            ))
-                        }
-                    } else null
-                )
+                    enabled = true // 多选模式下也可以滑动
+                ) {
+                    DocumentItemCard(
+                        item = document,
+                        onClick = {
+                            if (isSelectionMode) {
+                                selectedItems = if (selectedItems.contains(document.id)) {
+                                    selectedItems - document.id
+                                } else {
+                                    selectedItems + document.id
+                                }
+                            } else {
+                                onDocumentClick(document.id)
+                            }
+                        },
+                        onDelete = {
+                            haptic.performWarning()
+                            itemToDelete = document
+                            deletedItemIds = deletedItemIds + document.id
+                        },
+                        onToggleFavorite = { id, _ -> // isFavorite 参数未使用，因为直接调用 toggleFavorite
+                            viewModel.toggleFavorite(id)
+                        },
+                        onMoveUp = if (index > 0) {
+                            {
+                                // 交换当前项和上一项的sortOrder
+                                val currentItem = filteredDocuments[index]
+                                val previousItem = filteredDocuments[index - 1]
+                                viewModel.updateSortOrders(listOf(
+                                    currentItem.id to (index - 1),
+                                    previousItem.id to index
+                                ))
+                            }
+                        } else null,
+                        onMoveDown = if (index < filteredDocuments.size - 1) {
+                            {
+                                // 交换当前项和下一项的sortOrder
+                                val currentItem = filteredDocuments[index]
+                                val nextItem = filteredDocuments[index + 1]
+                                viewModel.updateSortOrders(listOf(
+                                    currentItem.id to (index + 1),
+                                    nextItem.id to index
+                                ))
+                            }
+                        } else null,
+                        isSelectionMode = isSelectionMode,
+                        isSelected = selectedItems.contains(document.id)
+                    )
+                }
             }
         }
     }
     
-    // 单项删除确认对话框(带密码验证)
+    // 单项删除确认对话框(支持指纹和密码验证)
     itemToDelete?.let { item ->
-        AlertDialog(
-            onDismissRequest = { 
+        DeleteConfirmDialog(
+            itemTitle = item.title,
+            itemType = "证件",
+            onDismiss = {
+                // 取消删除，恢复卡片显示
+                deletedItemIds = deletedItemIds - item.id
                 itemToDelete = null
-                singleItemPasswordInput = ""
             },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+            onConfirmWithPassword = { password ->
+                singleItemPasswordInput = password
+                showSingleItemPasswordVerify = true
             },
-            title = { Text(stringResource(R.string.delete_document_title)) },
-            text = { 
-                Column {
-                    Text(stringResource(R.string.delete_document_message, item.title))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    androidx.compose.material3.OutlinedTextField(
-                        value = singleItemPasswordInput,
-                        onValueChange = { singleItemPasswordInput = it },
-                        label = { Text(stringResource(R.string.enter_master_password_confirm)) },
-                        singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showSingleItemPasswordVerify = true
-                    },
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    enabled = singleItemPasswordInput.isNotEmpty()
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { 
-                    itemToDelete = null
-                    singleItemPasswordInput = ""
-                }) {
-                    Text(stringResource(R.string.cancel))
-                }
+            onConfirmWithBiometric = {
+                // 指纹验证成功，直接删除
+                viewModel.deleteDocument(item.id)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.deleted),
+                    Toast.LENGTH_SHORT
+                ).show()
+                itemToDelete = null
             }
         )
     }
     
     // 单项删除密码验证
     if (showSingleItemPasswordVerify && itemToDelete != null) {
-        androidx.compose.runtime.LaunchedEffect(Unit) {
+        LaunchedEffect(Unit) {
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
             if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
-                // 删除单项
+                // 密码正确，删除文档
                 viewModel.deleteDocument(itemToDelete!!.id)
                 
-                android.widget.Toast.makeText(
+                Toast.makeText(
                     context,
                     context.getString(R.string.deleted),
-                    android.widget.Toast.LENGTH_SHORT
+                    Toast.LENGTH_SHORT
                 ).show()
                 
+                // 清理状态（保持在 deletedItemIds 中，因为已真实删除）
                 itemToDelete = null
                 singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
             } else {
-                android.widget.Toast.makeText(
+                // 密码错误，恢复卡片显示
+                deletedItemIds = deletedItemIds - itemToDelete!!.id
+                
+                Toast.makeText(
                     context,
                     context.getString(R.string.current_password_incorrect),
-                    android.widget.Toast.LENGTH_SHORT
+                    Toast.LENGTH_SHORT
                 ).show()
+                
+                // 重置状态
+                itemToDelete = null
+                singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
             }
         }
@@ -1630,16 +1878,30 @@ private fun DocumentListContent(
 
 /**
  * 堆叠密码卡片组
+ * 
+ * @param website 网站分组键（用于分组，内部从 passwords 获取实际值）
+ * @param passwords 该组的密码条目列表
+ * @param isExpanded 是否展开显示所有卡片
+ * @param onToggleExpand 展开/收起切换回调
+ * @param onPasswordClick 密码卡片点击回调
+ * @param onLongClick 长按回调
+ * @param onToggleFavorite 收藏切换回调
+ * @param onToggleGroupFavorite 整组收藏切换回调
+ * @param onToggleGroupCover 封面切换回调
+ * @param isSelectionMode 是否处于选择模式
+ * @param selectedPasswords 已选中的密码ID集合
+ * @param onToggleSelection 选择切换回调
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StackedPasswordGroup(
-    website: String,
+    @Suppress("UNUSED_PARAMETER") website: String, // 用于分组键，实际值从 passwords 获取
     passwords: List<takagi.ru.monica.data.PasswordEntry>,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
-    onLongClick: () -> Unit,
+    onSwipeLeft: (takagi.ru.monica.data.PasswordEntry) -> Unit,
+    onSwipeRight: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onToggleFavorite: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onToggleGroupFavorite: () -> Unit,
     onToggleGroupCover: (takagi.ru.monica.data.PasswordEntry) -> Unit,
@@ -1660,42 +1922,65 @@ private fun StackedPasswordGroup(
         }
     ) {
         if (!isExpanded && passwords.size > 1) {
-            // 堆叠视图 - 显示堆叠效果
-            Box {
-                // 底层卡片阴影效果
-                for (i in (passwords.size - 1).coerceAtMost(2) downTo 1) {
+            // 堆叠视图 - 显示优化的堆叠效果
+            Box(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // 底层卡片阴影效果 - 最多显示3层
+                val stackCount = passwords.size.coerceAtMost(3)
+                for (i in (stackCount - 1) downTo 1) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = (i * 4).dp, end = (i * 4).dp, top = (i * 2).dp)
-                            .alpha(0.3f),
+                            .padding(
+                                start = (i * 6).dp,
+                                end = (i * 6).dp,
+                                top = (i * 3).dp
+                            )
+                            .alpha(0.6f - (i * 0.15f)), // 渐变透明度
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = (i * 2).dp
+                        ),
                         colors = androidx.compose.material3.CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Box(modifier = Modifier.height(60.dp))
+                        Box(modifier = Modifier.height(72.dp)) // 稍微增加高度
                     }
                 }
                 
-                // 顶层卡片 - 可点击展开
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = onToggleExpand,
-                            onLongClick = onLongClick
-                        ),
-                    colors = if (selectedPasswords.contains(passwords.first().id)) {
-                        androidx.compose.material3.CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    } else {
-                        androidx.compose.material3.CardDefaults.cardColors()
-                    }
+                // 顶层卡片 - 可点击展开，支持滑动操作
+                takagi.ru.monica.ui.gestures.SwipeActions(
+                    onSwipeLeft = {
+                        // 左滑删除（删除整个分组的第一个，触发删除逻辑）
+                        onSwipeLeft(passwords.first())
+                    },
+                    onSwipeRight = {
+                        // 右滑选择（选择整个分组的第一个，触发选择模式）
+                        onSwipeRight(passwords.first())
+                    },
+                    enabled = true // 多选模式下也可以滑动
                 ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = 4.dp,
+                            pressedElevation = 8.dp
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = if (selectedPasswords.contains(passwords.first().id)) {
+                            androidx.compose.material3.CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        } else {
+                            androidx.compose.material3.CardDefaults.cardColors()
+                        }
+                    ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable { onToggleExpand() } // 将 clickable 移到 Row 上
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1716,121 +2001,184 @@ private fun StackedPasswordGroup(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    // 堆叠数量徽章
+                                    // 堆叠数量徽章 - 优化样式
                                     Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shadowElevation = 2.dp
                                     ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Layers,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            Text(
+                                                text = "${passwords.size}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+                                    
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "${passwords.size}",
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            text = passwords.first().title,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (passwords.first().website.isNotBlank()) {
+                                            Text(
+                                                text = passwords.first().website,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 收藏标记（非选择模式）
+                                    if (!isSelectionMode && isGroupFavorited) {
+                                        Icon(
+                                            Icons.Default.Favorite,
+                                            contentDescription = "已收藏",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                     
-                                    Text(
-                                        text = passwords.first().title,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                
-                                // 整组收藏按钮 - 改为心形图标
-                                if (!isSelectionMode) {
-                                    IconButton(
-                                        onClick = { onToggleGroupFavorite() },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
+                                    // 展开指示器
+                                    if (!isSelectionMode) {
                                         Icon(
-                                            if (isGroupFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                            contentDescription = if (isGroupFavorited) "取消收藏整组" else "收藏整组",
-                                            tint = if (isGroupFavorited) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            },
+                                            Icons.Default.ExpandMore,
+                                            contentDescription = "展开",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    } else if (isGroupFavorited) {
+                                        // 选择模式下只显示收藏图标
+                                        Icon(
+                                            Icons.Default.Favorite,
+                                            contentDescription = "已收藏",
+                                            tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
-                                } else if (isGroupFavorited) {
-                                    // 选择模式下只显示收藏图标
-                                    Icon(
-                                        Icons.Default.Favorite,
-                                        contentDescription = "已收藏",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
                                 }
-                            }
-                            
-                            if (passwords.first().website.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = passwords.first().website,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
                         }
                     }
                 }
+                } // SwipeActions 闭合
             }
         } else {
             // 展开视图或单个密码 - 显示所有卡片
             passwords.forEachIndexed { index, password ->
-                Row {
-                    // 展开状态下显示左侧装饰条
+                val isSingleCard = passwords.size == 1
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // 展开状态下显示左侧装饰条 - 优化设计
                     if (isExpanded && passwords.size > 1) {
                         Box(
                             modifier = Modifier
-                                .width(4.dp)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                                .width(3.dp)
+                                .height(64.dp) // 固定高度，更整洁
+                                .background(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(2.dp)
+                                )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                     }
                     
-                    PasswordEntryCard(
-                        entry = password,
-                        onClick = {
-                            if (isSelectionMode) {
-                                onToggleSelection(password.id)
-                            } else {
-                                onPasswordClick(password)
-                            }
+                    // 用 SwipeActions 包裹每个密码卡片
+                    takagi.ru.monica.ui.gestures.SwipeActions(
+                        onSwipeLeft = {
+                            // 左滑删除
+                            onSwipeLeft(password)
                         },
-                        onLongClick = onLongClick,
-                        onToggleFavorite = { onToggleFavorite(password) },
-                        onToggleGroupCover = if (passwords.size > 1) {
-                            { onToggleGroupCover(password) }
-                        } else null,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = selectedPasswords.contains(password.id),
-                        canSetGroupCover = passwords.size > 1 && (!hasGroupCover || password.isGroupCover)
-                    )
+                        onSwipeRight = {
+                            // 右滑选择
+                            onSwipeRight(password)
+                        },
+                        enabled = true // 多选模式下也可以滑动
+                    ) {
+                        PasswordEntryCard(
+                            entry = password,
+                            onClick = {
+                                if (isSelectionMode) {
+                                    onToggleSelection(password.id)
+                                } else {
+                                    onPasswordClick(password)
+                                }
+                            },
+                            onLongClick = {}, // 移除长按功能
+                            onToggleFavorite = { onToggleFavorite(password) },
+                            onToggleGroupCover = if (passwords.size > 1) {
+                                { onToggleGroupCover(password) }
+                            } else null,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = selectedPasswords.contains(password.id),
+                            canSetGroupCover = passwords.size > 1 && (!hasGroupCover || password.isGroupCover),
+                            isInExpandedGroup = isExpanded && passwords.size > 1,
+                            isSingleCard = isSingleCard
+                        )
+                    }
                 }
                 
                 if (index < passwords.size - 1 && (isExpanded || passwords.size == 1)) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
             }
             
-            // 收起按钮
+            // 收起按钮 - 优化样式
             if (isExpanded && passwords.size > 1) {
-                TextButton(
-                    onClick = onToggleExpand,
-                    modifier = Modifier.fillMaxWidth()
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    onClick = onToggleExpand
                 ) {
-                    Icon(
-                        Icons.Default.ExpandLess,
-                        contentDescription = "收起"
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("收起")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.ExpandLess,
+                            contentDescription = "收起",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "收起 ${passwords.size} 个密码",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -1844,7 +2192,9 @@ private fun DocumentItemCard(
     onDelete: (() -> Unit)? = null,
     onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    onMoveDown: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false
 ) {
     takagi.ru.monica.ui.components.DocumentCard(
         item = item,
@@ -1852,7 +2202,9 @@ private fun DocumentItemCard(
         onDelete = onDelete,
         onToggleFavorite = onToggleFavorite,
         onMoveUp = onMoveUp,
-        onMoveDown = onMoveDown
+        onMoveDown = onMoveDown,
+        isSelectionMode = isSelectionMode,
+        isSelected = isSelected
     )
 }
 
@@ -1869,27 +2221,45 @@ private fun PasswordEntryCard(
     onToggleGroupCover: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
-    canSetGroupCover: Boolean = false
+    canSetGroupCover: Boolean = false,
+    isInExpandedGroup: Boolean = false,
+    isSingleCard: Boolean = false
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
+        modifier = Modifier.fillMaxWidth(),
         colors = if (isSelected) {
             androidx.compose.material3.CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
         } else {
             androidx.compose.material3.CardDefaults.cardColors()
+        },
+        elevation = if (isSingleCard) {
+            // 单卡片：更突出的阴影
+            androidx.compose.material3.CardDefaults.cardElevation(
+                defaultElevation = 3.dp,
+                pressedElevation = 6.dp
+            )
+        } else if (isInExpandedGroup) {
+            androidx.compose.material3.CardDefaults.cardElevation(
+                defaultElevation = 2.dp
+            )
+        } else {
+            androidx.compose.material3.CardDefaults.cardElevation()
+        },
+        shape = if (isSingleCard) {
+            RoundedCornerShape(16.dp) // 单卡片：更圆润
+        } else {
+            RoundedCornerShape(12.dp)
         }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .clickable { onClick() } // 将 clickable 移到 Row 上
+                .padding(
+                    if (isSingleCard) 20.dp else 16.dp // 单卡片：更大的padding
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 复选框
@@ -1898,24 +2268,38 @@ private fun PasswordEntryCard(
                     checked = isSelected,
                     onCheckedChange = null
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
             }
             
             Column(
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(
+                    if (isSingleCard) 8.dp else 6.dp // 单卡片：更大的间距
+                )
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // 标题 - 优化样式
                     Text(
                         text = entry.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f)
+                        style = if (isSingleCard) {
+                            MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     
-                    // 图标区域
+                    // 图标区域 - 优化布局
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1975,26 +2359,203 @@ private fun PasswordEntryCard(
                     }
                 }
                 
+                // 网站信息 - 优化显示
                 if (entry.website.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = entry.website,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(
+                            if (isSingleCard) 8.dp else 6.dp
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Language,
+                            contentDescription = null,
+                            modifier = Modifier.size(if (isSingleCard) 18.dp else 16.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                        )
+                        Text(
+                            text = entry.website,
+                            style = if (isSingleCard) {
+                                MaterialTheme.typography.bodyLarge
+                            } else {
+                                MaterialTheme.typography.bodyMedium
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 
+                // 用户名信息 - 优化显示
                 if (entry.username.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = entry.username,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(
+                            if (isSingleCard) 8.dp else 6.dp
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(if (isSingleCard) 18.dp else 16.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                        )
+                        Text(
+                            text = entry.username,
+                            style = if (isSingleCard) {
+                                MaterialTheme.typography.bodyLarge
+                            } else {
+                                MaterialTheme.typography.bodyMedium
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                
+                // 新字段预览 - 优化显示样式
+                val additionalInfo = buildAdditionalInfoPreview(entry)
+                if (additionalInfo.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(if (isSingleCard) 10.dp else 8.dp),
+                        color = if (isSingleCard) {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = if (isSingleCard) 14.dp else 12.dp,
+                                    vertical = if (isSingleCard) 10.dp else 8.dp
+                                ),
+                            horizontalArrangement = Arrangement.spacedBy(
+                                if (isSingleCard) 20.dp else 16.dp
+                            ),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            additionalInfo.take(2).forEach { info ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(
+                                        if (isSingleCard) 6.dp else 4.dp
+                                    ),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                ) {
+                                    Icon(
+                                        info.icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(if (isSingleCard) 16.dp else 14.dp),
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                    )
+                                    Text(
+                                        text = info.text,
+                                        style = if (isSingleCard) {
+                                            MaterialTheme.typography.labelMedium
+                                        } else {
+                                            MaterialTheme.typography.labelSmall
+                                        },
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * 附加信息预览数据类
+ * 
+ * 用于在密码卡片上显示额外的预览信息。
+ * 
+ * @param icon Material Icon 图标
+ * @param text 显示文本（已格式化或掩码处理）
+ */
+private data class AdditionalInfoItem(
+    val icon: ImageVector,
+    val text: String
+)
+
+/**
+ * 构建附加信息预览列表
+ * 
+ * 根据优先级从密码条目中提取最重要的附加信息用于卡片预览。
+ * 
+ * ## 优先级顺序
+ * 1. � **关联应用** (appName) - 显示应用图标和名称
+ * 2. �📧 **邮箱** (email) - 最常用的登录凭证
+ * 3. 📱 **手机号** (phone) - 账户绑定信息，自动格式化显示
+ * 4. 💳 **信用卡号** (creditCard) - 支付信息，掩码显示仅后4位
+ * 5. 📍 **城市** (city) - 地址信息代表
+ * 
+ * ## 显示规则
+ * - 最多返回 **2项** 预览信息，避免卡片拥挤
+ * - 使用 FieldValidation 工具类进行格式化和掩码处理
+ * - 空字段自动跳过
+ * 
+ * ## 示例输出
+ * ```
+ * � 微信  �📧 user@example.com
+ * 📱 +86 138 0013 8000  💳 •••• •••• •••• 1234
+ * ```
+ * 
+ * @param entry 密码条目
+ * @return 附加信息列表，最多2项
+ */
+private fun buildAdditionalInfoPreview(entry: takagi.ru.monica.data.PasswordEntry): List<AdditionalInfoItem> {
+    val items = mutableListOf<AdditionalInfoItem>()
+    
+    // 1. 关联应用（最高优先级）
+    if (entry.appName.isNotBlank()) {
+        items.add(AdditionalInfoItem(
+            icon = Icons.Default.Apps,
+            text = entry.appName
+        ))
+    }
+    
+    // 2. 邮箱
+    if (entry.email.isNotBlank() && items.size < 2) {
+        items.add(AdditionalInfoItem(
+            icon = Icons.Default.Email,
+            text = entry.email
+        ))
+    }
+    
+    // 3. 手机号
+    if (entry.phone.isNotBlank() && items.size < 2) {
+        items.add(AdditionalInfoItem(
+            icon = Icons.Default.Phone,
+            text = takagi.ru.monica.utils.FieldValidation.formatPhone(entry.phone)
+        ))
+    }
+    
+    // 4. 信用卡号（掩码显示）
+    if (entry.creditCardNumber.isNotBlank() && items.size < 2) {
+        items.add(AdditionalInfoItem(
+            icon = Icons.Default.CreditCard,
+            text = takagi.ru.monica.utils.FieldValidation.maskCreditCard(entry.creditCardNumber)
+        ))
+    }
+    
+    // 5. 城市信息（如果还有空间）
+    if (entry.city.isNotBlank() && items.size < 2) {
+        items.add(AdditionalInfoItem(
+            icon = Icons.Default.LocationOn,
+            text = entry.city
+        ))
+    }
+    
+    return items
 }
 
 /**
@@ -2011,52 +2572,71 @@ private fun SelectionModeTopBar(
 ) {
     TopAppBar(
         title = { 
-            Text(stringResource(R.string.selected_items, selectedCount))
+            // 使用 Row 确保文本不会被截断
+            Row(
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.selected_items, selectedCount),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         },
         navigationIcon = {
             IconButton(onClick = onExit) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.exit_selection_mode))
+                Icon(
+                    Icons.Default.Close, 
+                    contentDescription = stringResource(R.string.exit_selection_mode)
+                )
             }
         },
         actions = {
-            // 全选/取消全选
-            IconButton(onClick = onSelectAll) {
-                Icon(
-                    Icons.Outlined.CheckCircle,
-                    contentDescription = stringResource(R.string.select_all)
-                )
-            }
-            
-            // 批量收藏按钮 (仅密码列表显示)
-            if (onFavorite != null) {
+            // 使用 Row 确保图标按钮不会被挤压
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 全选/取消全选
+                IconButton(onClick = onSelectAll) {
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        contentDescription = stringResource(R.string.select_all)
+                    )
+                }
+                
+                // 批量收藏按钮 (仅部分列表显示)
+                if (onFavorite != null) {
+                    IconButton(
+                        onClick = onFavorite,
+                        enabled = selectedCount > 0
+                    ) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = stringResource(R.string.batch_favorite),
+                            tint = if (selectedCount > 0) 
+                                MaterialTheme.colorScheme.primary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
+                }
+                
+                // 批量删除按钮
                 IconButton(
-                    onClick = onFavorite,
+                    onClick = onDelete,
                     enabled = selectedCount > 0
                 ) {
                     Icon(
-                        Icons.Default.Favorite,
-                        contentDescription = stringResource(R.string.batch_favorite),
+                        Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.batch_delete),
                         tint = if (selectedCount > 0) 
-                            MaterialTheme.colorScheme.primary 
+                            MaterialTheme.colorScheme.error 
                         else 
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                     )
                 }
-            }
-            
-            // 批量删除按钮
-            IconButton(
-                onClick = onDelete,
-                enabled = selectedCount > 0
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = stringResource(R.string.batch_delete),
-                    tint = if (selectedCount > 0) 
-                        MaterialTheme.colorScheme.error 
-                    else 
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -2119,4 +2699,132 @@ private fun indexToDefaultTabKey(index: Int): String = when (index) {
     4 -> BottomNavContentTab.LEDGER.name
     5 -> SETTINGS_TAB_KEY
     else -> BottomNavContentTab.PASSWORDS.name
+}
+
+/**
+ * 支持指纹验证的删除确认对话框
+ * 
+ * @param itemTitle 要删除的项目标题
+ * @param itemType 项目类型描述（如"密码"、"验证器"、"证件"）
+ * @param onDismiss 取消删除的回调
+ * @param onConfirmWithPassword 使用密码确认删除的回调
+ * @param onConfirmWithBiometric 使用指纹确认删除的回调
+ */
+@Composable
+private fun DeleteConfirmDialog(
+    itemTitle: String,
+    itemType: String = "项目",
+    onDismiss: () -> Unit,
+    onConfirmWithPassword: (String) -> Unit,
+    onConfirmWithBiometric: () -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    var passwordInput by remember { mutableStateOf("") }
+    val biometricHelper = remember { BiometricHelper(context) }
+    val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = { Text("删除$itemType") },
+        text = {
+            Column {
+                Text("确定要删除$itemType \"$itemTitle\" 吗？")
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // 密码输入框
+                OutlinedTextField(
+                    value = passwordInput,
+                    onValueChange = { passwordInput = it },
+                    label = { Text(stringResource(R.string.enter_master_password_confirm)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                // 指纹验证提示
+                if (isBiometricAvailable) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "或使用指纹验证",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 指纹验证按钮
+                if (isBiometricAvailable && activity != null) {
+                    IconButton(
+                        onClick = {
+                            biometricHelper.authenticate(
+                                activity = activity,
+                                title = "验证身份",
+                                subtitle = "确认删除$itemType",
+                                description = "使用生物识别快速确认删除操作",
+                                onSuccess = {
+                                    onConfirmWithBiometric()
+                                },
+                                onError = { error ->
+                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                                },
+                                onFailed = {
+                                    // 用户取消，不做任何操作
+                                }
+                            )
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            contentDescription = "使用指纹验证",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                
+                // 密码验证按钮
+                TextButton(
+                    onClick = {
+                        if (passwordInput.isNotEmpty()) {
+                            onConfirmWithPassword(passwordInput)
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    enabled = passwordInput.isNotEmpty()
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }

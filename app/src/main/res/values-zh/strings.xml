@@ -8,6 +8,11 @@
     <string name="delete">删除</string>
     <string name="edit">编辑</string>
     <string name="search">搜索</string>
+    
+    <!-- Swipe Actions -->
+    <string name="swipe_action_select">选择</string>
+    <string name="swipe_action_delete">删除</string>
+    
     <string name="settings">设置</string>
     <string name="back">返回</string>
     <string name="close">关闭</string>
@@ -15,6 +20,7 @@
     <string name="yes">是</string>
     <string name="no">否</string>
     <string name="share">分享</string>
+    <string name="no_results">未找到结果</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">设置您的主密码</string>
@@ -650,6 +656,13 @@
     <string name="autofill_cancel">取消</string>
     <string name="autofill_never_for_site">从不为此网站保存</string>
     <string name="autofill_saved_via">通过自动填充保存</string>
+    <string name="linked_app">关联应用</string>
+    <string name="select_app">选择应用</string>
+    <string name="app_package_name">应用包名</string>
+    <string name="no_app_selected">未选择应用</string>
+    <string name="search_apps">搜索应用…</string>
+    <string name="clear_app_selection">清除</string>
+    <string name="app_icon">应用图标</string>
     
     <!-- Clear All Data -->
     <string name="clear_all_data">清空所有数据</string>
@@ -759,5 +772,9 @@
     <string name="asset_delete_message">确定要删除这个资产吗?关联的记账条目也会受到影响。</string>
     <string name="asset_select_currency">选择货币</string>
     <string name="asset_close">关闭</string>
+    
+    <!-- Phase 8: 生物识别自动填充 -->
+    <string name="biometric_auth_failed">生物识别认证失败，请重试。</string>
+    <string name="biometric_auth_error">认证错误: %s</string>
     
 </resources>

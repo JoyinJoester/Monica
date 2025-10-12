@@ -39,10 +39,11 @@ fun AssetManagementScreen(
     val assets by viewModel.assets.collectAsState(initial = emptyList())
     val totalBalance by viewModel.totalBalance.collectAsState(initial = 0L)
     
-    // 在资产管理页面也重新计算资产余额
-    LaunchedEffect(Unit) {
-        viewModel.recalculateAllAssetBalances()
-    }
+    // 移除自动重新计算资产余额
+    // 用户手动设置的余额不应该被覆盖
+    // LaunchedEffect(Unit) {
+    //     viewModel.recalculateAllAssetBalances()
+    // }
     
     // 添加调试日志
     android.util.Log.d("AssetManagementScreen", "Assets updated, count: ${assets.size}")

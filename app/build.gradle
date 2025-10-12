@@ -95,6 +95,18 @@ dependencies {
     // Material Icons Extended
     implementation libs.androidx.material.icons.extended
     
+    // Fragment and Material Components (for BottomSheet)
+    implementation libs.androidx.fragment.ktx
+    implementation libs.material
+    
+    // Autofill and Slice (for InlinePresentation)
+    implementation libs.androidx.autofill
+    implementation libs.androidx.slice.core
+    implementation libs.androidx.slice.builders
+    
+    // Google Play Services Auth (for SMS Retriever API - OTP auto-read)
+    implementation libs.play.services.auth
+    
     // DataStore
     implementation libs.androidx.datastore.preferences
     

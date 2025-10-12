@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,11 +29,16 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.utils.PasswordGenerator
+import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.PasswordStrengthIndicator
+import takagi.ru.monica.ui.icons.MonicaIcons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +60,35 @@ fun AddEditPasswordScreen(
     var isFavorite by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     var showPasswordGenerator by remember { mutableStateOf(false) }
+    var appPackageName by remember { mutableStateOf("") }
+    var appName by remember { mutableStateOf("") }
+    
+    // Phase 8: 计算密码强度
+    val passwordStrength = remember(password) {
+        if (password.isNotEmpty()) {
+            PasswordStrengthAnalyzer.calculateStrength(password)
+        } else {
+            null
+        }
+    }
+    
+    // Phase 7: 新增字段状态
+    var email by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var addressLine by remember { mutableStateOf("") }
+    var city by remember { mutableStateOf("") }
+    var state by remember { mutableStateOf("") }
+    var zipCode by remember { mutableStateOf("") }
+    var country by remember { mutableStateOf("") }
+    var creditCardNumber by remember { mutableStateOf("") }
+    var creditCardHolder by remember { mutableStateOf("") }
+    var creditCardExpiry by remember { mutableStateOf("") }
+    var creditCardCVV by remember { mutableStateOf("") }
+    
+    // 折叠面板状态
+    var personalInfoExpanded by remember { mutableStateOf(false) }
+    var addressInfoExpanded by remember { mutableStateOf(false) }
+    var paymentInfoExpanded by remember { mutableStateOf(false) }
     
     val isEditing = passwordId != null
     
@@ -68,6 +103,20 @@ fun AddEditPasswordScreen(
                     password = entry.password
                     notes = entry.notes
                     isFavorite = entry.isFavorite
+                    appPackageName = entry.appPackageName
+                    appName = entry.appName
+                    // Phase 7: 加载新字段
+                    email = entry.email
+                    phone = entry.phone
+                    addressLine = entry.addressLine
+                    city = entry.city
+                    state = entry.state
+                    zipCode = entry.zipCode
+                    country = entry.country
+                    creditCardNumber = entry.creditCardNumber
+                    creditCardHolder = entry.creditCardHolder
+                    creditCardExpiry = entry.creditCardExpiry
+                    creditCardCVV = entry.creditCardCVV
                 }
             }
         }
@@ -79,7 +128,7 @@ fun AddEditPasswordScreen(
                 title = { Text(stringResource(if (isEditing) R.string.edit_password_title else R.string.add_password_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
@@ -102,7 +151,21 @@ fun AddEditPasswordScreen(
                                     username = username,
                                     password = password,
                                     notes = notes,
-                                    isFavorite = isFavorite
+                                    isFavorite = isFavorite,
+                                    appPackageName = appPackageName,
+                                    appName = appName,
+                                    // Phase 7: 保存新字段
+                                    email = email,
+                                    phone = phone,
+                                    addressLine = addressLine,
+                                    city = city,
+                                    state = state,
+                                    zipCode = zipCode,
+                                    country = country,
+                                    creditCardNumber = creditCardNumber,
+                                    creditCardHolder = creditCardHolder,
+                                    creditCardExpiry = creditCardExpiry,
+                                    creditCardCVV = creditCardCVV
                                 )
                                 
                                 if (isEditing) {
@@ -201,31 +264,13 @@ fun AddEditPasswordScreen(
                 singleLine = true
             )
             
-            // Password Strength Indicator
-            if (password.isNotEmpty()) {
-                val strength = passwordGenerator.calculatePasswordStrength(password)
-                val strengthColor = when {
-                    strength >= 80 -> MaterialTheme.colorScheme.primary
-                    strength >= 60 -> MaterialTheme.colorScheme.secondary
-                    strength >= 40 -> MaterialTheme.colorScheme.tertiary
-                    else -> MaterialTheme.colorScheme.error
-                }
-                
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    LinearProgressIndicator(
-                        progress = strength / 100f,
-                        modifier = Modifier.weight(1f),
-                        color = strengthColor
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = passwordGenerator.getPasswordStrengthDescription(strength),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = strengthColor
-                    )
-                }
+            // Phase 8: 密码强度分析指示器
+            if (passwordStrength != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                PasswordStrengthIndicator(
+                    strength = passwordStrength,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             
             // Notes Field
@@ -242,6 +287,483 @@ fun AddEditPasswordScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 maxLines = 5
             )
+            
+            // 应用选择器 (用于自动填充匹配)
+            AppSelectorField(
+                selectedPackageName = appPackageName,
+                selectedAppName = appName,
+                onAppSelected = { packageName, name ->
+                    appPackageName = packageName
+                    appName = name
+                }
+            )
+            
+            // Phase 7: 个人信息折叠面板
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 标题栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { personalInfoExpanded = !personalInfoExpanded }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "个人信息",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            if (personalInfoExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+                    
+                    // 展开内容
+                    if (personalInfoExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // 邮箱
+                            OutlinedTextField(
+                                value = email,
+                                onValueChange = { email = it },
+                                label = { Text("邮箱") },
+                                placeholder = { Text("user@example.com") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.General.email, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Email,
+                                    imeAction = ImeAction.Next
+                                ),
+                                singleLine = true,
+                                isError = email.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidEmail(email),
+                                supportingText = {
+                                    if (email.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidEmail(email)) {
+                                        Text(
+                                            takagi.ru.monica.utils.FieldValidation.getEmailError(email) ?: "",
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            )
+                            
+                            // 手机号
+                            OutlinedTextField(
+                                value = phone,
+                                onValueChange = { 
+                                    // 只允许输入数字
+                                    if (it.all { char -> char.isDigit() } && it.length <= 11) {
+                                        phone = it
+                                    }
+                                },
+                                label = { Text("手机号") },
+                                placeholder = { Text("13800000000") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.General.phone, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Phone,
+                                    imeAction = ImeAction.Done
+                                ),
+                                singleLine = true,
+                                isError = phone.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidPhone(phone),
+                                supportingText = {
+                                    if (phone.isNotEmpty()) {
+                                        if (!takagi.ru.monica.utils.FieldValidation.isValidPhone(phone)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getPhoneError(phone) ?: "",
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        } else {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.formatPhone(phone),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // Phase 7: 地址信息折叠面板
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 标题栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { addressInfoExpanded = !addressInfoExpanded }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Home,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "地址信息",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            if (addressInfoExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+                    
+                    // 展开内容
+                    if (addressInfoExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // 详细地址
+                            OutlinedTextField(
+                                value = addressLine,
+                                onValueChange = { addressLine = it },
+                                label = { Text("详细地址") },
+                                placeholder = { Text("街道、门牌号等") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Home, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                singleLine = true
+                            )
+                            
+                            // 城市和省份（两列布局）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = city,
+                                    onValueChange = { city = it },
+                                    label = { Text("城市") },
+                                    placeholder = { Text("北京") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.LocationCity, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    singleLine = true
+                                )
+                                
+                                OutlinedTextField(
+                                    value = state,
+                                    onValueChange = { state = it },
+                                    label = { Text("省份") },
+                                    placeholder = { Text("北京市") },
+                                    leadingIcon = {
+                                        Icon(MonicaIcons.General.location, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    singleLine = true
+                                )
+                            }
+                            
+                            // 邮编和国家（两列布局）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = zipCode,
+                                    onValueChange = { 
+                                        // 只允许输入数字
+                                        if (it.all { char -> char.isDigit() } && it.length <= 6) {
+                                            zipCode = it
+                                        }
+                                    },
+                                    label = { Text("邮编") },
+                                    placeholder = { Text("100000") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Markunread, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    singleLine = true,
+                                    isError = zipCode.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidZipCode(zipCode),
+                                    supportingText = {
+                                        if (zipCode.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidZipCode(zipCode)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getZipCodeError(zipCode) ?: "",
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                )
+                                
+                                OutlinedTextField(
+                                    value = country,
+                                    onValueChange = { country = it },
+                                    label = { Text("国家") },
+                                    placeholder = { Text("中国") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Public, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                    singleLine = true
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Phase 7: 支付信息折叠面板
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 标题栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { paymentInfoExpanded = !paymentInfoExpanded }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.CreditCard,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "支付信息",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            if (paymentInfoExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+                    
+                    // 展开内容
+                    if (paymentInfoExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // 信用卡号
+                            OutlinedTextField(
+                                value = creditCardNumber,
+                                onValueChange = { 
+                                    // 只允许输入数字
+                                    if (it.all { char -> char.isDigit() } && it.length <= 19) {
+                                        creditCardNumber = it
+                                    }
+                                },
+                                label = { Text("信用卡号") },
+                                placeholder = { Text("1234 5678 9012 3456") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.Data.creditCard, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                singleLine = true,
+                                visualTransformation = if (creditCardNumber.isNotEmpty()) {
+                                    VisualTransformation { text ->
+                                        TransformedText(
+                                            AnnotatedString(takagi.ru.monica.utils.FieldValidation.formatCreditCard(text.text)),
+                                            OffsetMapping.Identity
+                                        )
+                                    }
+                                } else {
+                                    VisualTransformation.None
+                                },
+                                isError = creditCardNumber.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidCreditCard(creditCardNumber),
+                                supportingText = {
+                                    if (creditCardNumber.isNotEmpty()) {
+                                        if (!takagi.ru.monica.utils.FieldValidation.isValidCreditCard(creditCardNumber)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getCreditCardError(creditCardNumber) ?: "",
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        } else {
+                                            Text(
+                                                "✓ 卡号有效",
+                                                color = Color(0xFF4CAF50)
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                            
+                            // 持卡人姓名
+                            OutlinedTextField(
+                                value = creditCardHolder,
+                                onValueChange = { creditCardHolder = it },
+                                label = { Text("持卡人姓名") },
+                                placeholder = { Text("ZHANG SAN") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.General.person, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                singleLine = true
+                            )
+                            
+                            // 有效期和CVV（两列布局）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = creditCardExpiry,
+                                    onValueChange = { 
+                                        // 格式化为 MM/YY
+                                        val digits = it.filter { char -> char.isDigit() }
+                                        creditCardExpiry = when {
+                                            digits.length <= 2 -> digits
+                                            digits.length <= 4 -> "${digits.substring(0, 2)}/${digits.substring(2)}"
+                                            else -> "${digits.substring(0, 2)}/${digits.substring(2, 4)}"
+                                        }
+                                    },
+                                    label = { Text("有效期") },
+                                    placeholder = { Text("MM/YY") },
+                                    leadingIcon = {
+                                        Icon(MonicaIcons.General.calendar, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    singleLine = true,
+                                    isError = creditCardExpiry.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidExpiry(creditCardExpiry),
+                                    supportingText = {
+                                        if (creditCardExpiry.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidExpiry(creditCardExpiry)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getExpiryError(creditCardExpiry) ?: "",
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                )
+                                
+                                OutlinedTextField(
+                                    value = creditCardCVV,
+                                    onValueChange = { 
+                                        // 只允许输入数字，3-4位
+                                        if (it.all { char -> char.isDigit() } && it.length <= 4) {
+                                            creditCardCVV = it
+                                        }
+                                    },
+                                    label = { Text("CVV") },
+                                    placeholder = { Text("123") },
+                                    leadingIcon = {
+                                        Icon(MonicaIcons.Security.lock, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    isError = creditCardCVV.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidCVV(creditCardCVV),
+                                    supportingText = {
+                                        if (creditCardCVV.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidCVV(creditCardCVV)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getCVVError(creditCardCVV) ?: "",
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            // 安全提示
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                )
+                                Text(
+                                    "信用卡信息将加密存储",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             
             // 复制按钮区域（仅编辑模式显示）
             if (isEditing && (username.isNotEmpty() || password.isNotEmpty())) {

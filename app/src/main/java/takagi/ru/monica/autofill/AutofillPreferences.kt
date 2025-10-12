@@ -26,6 +26,9 @@ class AutofillPreferences(private val context: Context) {
         private val KEY_REQUEST_SAVE_DATA = booleanPreferencesKey("request_save_data")
         private val KEY_AUTO_SAVE_APP_INFO = booleanPreferencesKey("auto_save_app_info")
         private val KEY_AUTO_SAVE_WEBSITE_INFO = booleanPreferencesKey("auto_save_website_info")
+        
+        // Phase 8: 生物识别快速填充配置
+        private val KEY_BIOMETRIC_QUICK_FILL_ENABLED = booleanPreferencesKey("biometric_quick_fill_enabled")
     }
     
     /**
@@ -121,6 +124,20 @@ class AutofillPreferences(private val context: Context) {
     suspend fun setAutoSaveWebsiteInfoEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_AUTO_SAVE_WEBSITE_INFO] = enabled
+        }
+    }
+    
+    /**
+     * Phase 8: 是否启用生物识别快速填充
+     * 启用后，用户选择密码时需要生物识别验证才能自动填充
+     */
+    val isBiometricQuickFillEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_BIOMETRIC_QUICK_FILL_ENABLED] ?: false
+    }
+    
+    suspend fun setBiometricQuickFillEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BIOMETRIC_QUICK_FILL_ENABLED] = enabled
         }
     }
 }

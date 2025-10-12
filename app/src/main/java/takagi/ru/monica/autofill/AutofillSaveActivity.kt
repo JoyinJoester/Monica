@@ -91,11 +91,34 @@ class AutofillSaveActivity : ComponentActivity() {
     ) {
         lifecycleScope.launch {
             try {
+                // 获取包名
+                val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
+                
+                // 获取应用名称
+                val appName = try {
+                    if (packageName.isNotBlank()) {
+                        val appInfo = packageManager.getApplicationInfo(packageName, 0)
+                        packageManager.getApplicationLabel(appInfo).toString()
+                    } else {
+                        ""
+                    }
+                } catch (e: Exception) {
+                    ""
+                }
+                
                 // 检查是否已存在相同的密码
                 val existingPasswords = passwordRepository.getAllPasswordEntries().first()
                 val existing = existingPasswords.firstOrNull { entry ->
-                    entry.website.equals(website, ignoreCase = true) && 
-                    entry.username.equals(username, ignoreCase = true)
+                    // 优先匹配包名
+                    if (packageName.isNotBlank() && entry.appPackageName == packageName && 
+                        entry.username.equals(username, ignoreCase = true)) {
+                        true
+                    }
+                    // 其次匹配website
+                    else {
+                        entry.website.equals(website, ignoreCase = true) && 
+                        entry.username.equals(username, ignoreCase = true)
+                    }
                 }
                 
                 if (existing != null) {
@@ -103,17 +126,21 @@ class AutofillSaveActivity : ComponentActivity() {
                     val updated = existing.copy(
                         password = password,
                         notes = notes,
+                        appPackageName = packageName.ifBlank { existing.appPackageName },
+                        appName = appName.ifBlank { existing.appName },
                         updatedAt = Date()
                     )
                     passwordRepository.updatePasswordEntry(updated)
                 } else {
                     // 创建新密码条目
                     val newEntry = PasswordEntry(
-                        title = title.ifBlank { website },
+                        title = title.ifBlank { appName.ifBlank { website } },
                         username = username,
                         password = password,
                         website = website,
                         notes = notes,
+                        appPackageName = packageName,
+                        appName = appName,
                         createdAt = Date(),
                         updatedAt = Date()
                     )
@@ -142,9 +169,27 @@ fun SavePasswordDialog(
     onCancel: () -> Unit,
     onNeverForThisSite: () -> Unit
 ) {
+    val context = LocalContext.current
     val defaultNotes = stringResource(R.string.autofill_saved_via)
     
-    var title by remember { mutableStateOf(website.takeIf { it.isNotBlank() } ?: packageName) }
+    // 获取应用名称
+    val appName = remember(packageName) {
+        try {
+            if (packageName.isNotBlank()) {
+                val appInfo = context.packageManager.getApplicationInfo(packageName, 0)
+                context.packageManager.getApplicationLabel(appInfo).toString()
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+    
+    // 优先使用应用名称，其次使用website
+    val defaultTitle = appName.ifBlank { website.takeIf { it.isNotBlank() } ?: packageName }
+    
+    var title by remember { mutableStateOf(defaultTitle) }
     var editedUsername by remember { mutableStateOf(username) }
     var editedPassword by remember { mutableStateOf(password) }
     var editedWebsite by remember { mutableStateOf(website) }
