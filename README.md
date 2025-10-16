@@ -288,6 +288,8 @@ It helps others discover this project and motivates me to keep improving it.
 
 ---
 
+---
+
 ## 🙏 Acknowledgments
 
 - **Material Design 3**: For the beautiful design system
@@ -296,6 +298,7 @@ It helps others discover this project and motivates me to keep improving it.
 - **Open Source Community**: For inspiration and support
 
 ---
+
 
 <div align="center">
 
