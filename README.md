@@ -250,6 +250,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```
 
 
+
+
 ## 💖 Support the Author
 
 If you find Monica useful, please consider supporting the development:
@@ -262,6 +264,7 @@ If you find Monica useful, please consider supporting the development:
 
 </div>
 
+
 Your support helps me:
 - 🚀 Develop new features
 - 🐛 Fix bugs faster
@@ -271,6 +274,7 @@ Your support helps me:
 
 ---
 
+
 ## 📞 Contact & Support
 
 - **GitHub Issues**: [Report bugs or request features](https://github.com/JoyinJoester/Monica/issues)
@@ -278,6 +282,7 @@ Your support helps me:
 - **GitHub**: [@JoyinJoester](https://github.com/JoyinJoester)
 
 ---
+
 
 ## ⭐ Star History
 
@@ -287,7 +292,6 @@ It helps others discover this project and motivates me to keep improving it.
 
 ---
 
----
 
 ## 🙏 Acknowledgments
 
