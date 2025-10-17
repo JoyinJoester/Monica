@@ -547,51 +547,88 @@ private fun ManualInputDialog(
 /**
  * 加载已安装的应用列表
  * 
- * 优化版本：
- * - 性能优化：减少包管理器调用，使用并行处理
+ * 优化版本（与 AppListScreen 逻辑一致）：
+ * - 只加载有启动器图标的应用（用户可见的应用）
+ * - 自动去重（同一应用的多个入口只保留第一个）
+ * - 性能优化：限制最大数量，防止内存溢出
  * - 内存优化：仅加载可见的应用图标
- * - 纯黑名单机制：显示所有应用，只隐藏黑名单中的系统组件
  */
 private suspend fun loadInstalledApps(context: Context): List<AppInfo> = withContext(Dispatchers.IO) {
     val packageManager = context.packageManager
-
-    // 获取所有已安装的应用包
-    val packages = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+    val appList = mutableListOf<AppInfo>()
+    val maxApps = 500 // 限制最多500个应用（与 AppListScreen 保持一致）
     
-    // 预编译黑名单规则为Set，加速查找
-    val blacklistPatterns = getBlacklistPatterns()
-    val exactMatches = blacklistPatterns.filter { !it.endsWith('.') }.toSet()
-    val prefixMatches = blacklistPatterns.filter { it.endsWith('.') }.map { it.dropLast(1) }
-
-    packages
-        .asSequence() // 使用序列提升性能
-        .filter { app ->
-            // 优化后的黑名单过滤：先精确匹配，再前缀匹配
-            val pkgName = app.packageName
-            pkgName !in exactMatches && prefixMatches.none { pkgName.startsWith(it) }
+    try {
+        android.util.Log.d("AppSelector", "开始加载应用列表...")
+        
+        // 创建Intent，查询所有有启动器图标的应用（与 AppListScreen 逻辑一致）
+        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN, null).apply {
+            addCategory(android.content.Intent.CATEGORY_LAUNCHER)
         }
-        .mapNotNull { app ->
+        
+        // 查询所有匹配的Activity
+        val startTime = System.currentTimeMillis()
+        val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
+        val queryTime = System.currentTimeMillis() - startTime
+        
+        android.util.Log.d("AppSelector", "查询到 ${resolveInfoList.size} 个应用入口，耗时 ${queryTime}ms")
+        
+        // 使用 Set 去重（同一个包名只保留第一个入口）
+        val seenPackages = mutableSetOf<String>()
+        val limitedList = resolveInfoList.take(maxApps)
+        
+        for ((index, resolveInfo) in limitedList.withIndex()) {
             try {
-                val appName = packageManager.getApplicationLabel(app).toString()
+                val activityInfo = resolveInfo.activityInfo
+                val packageName = activityInfo.packageName
                 
-                // 图标延迟加载：仅在需要时获取
-                AppInfo(
-                    packageName = app.packageName,
-                    appName = appName,
-                    icon = try {
-                        // 只加载图标，不在此处转换Bitmap（节省内存）
-                        packageManager.getApplicationIcon(app.packageName)
-                    } catch (e: Exception) {
-                        null // 如果无法获取图标，则使用null，后续会显示默认图标
-                    }
-                )
+                // 跳过重复的包名（只保留第一个入口）
+                if (seenPackages.contains(packageName)) {
+                    android.util.Log.d("AppSelector", "跳过重复应用: $packageName")
+                    continue
+                }
+                seenPackages.add(packageName)
+                
+                val appName = activityInfo.loadLabel(packageManager).toString()
+                
+                // 安全加载图标（可能失败）
+                val icon = try {
+                    activityInfo.loadIcon(packageManager)
+                } catch (e: Exception) {
+                    android.util.Log.w("AppSelector", "无法加载图标: $packageName", e)
+                    packageManager.defaultActivityIcon // 使用默认图标
+                }
+                
+                appList.add(AppInfo(packageName, appName, icon))
+                
+                // 每100个输出一次日志
+                if ((index + 1) % 100 == 0) {
+                    android.util.Log.d("AppSelector", "已加载 ${index + 1} 个应用...")
+                }
+                
             } catch (e: Exception) {
-                android.util.Log.w("AppSelector", "无法加载应用信息: ${app.packageName}", e)
-                null // 忽略无法读取的应用
+                android.util.Log.w("AppSelector", "跳过无效应用: ${e.message}")
+                // 继续处理下一个
             }
         }
-        .sortedBy { it.appName.lowercase(java.util.Locale.getDefault()) } // 按名称排序，使用明确的Locale
-        .toList() // 转换回列表
+        
+        // 按应用名称排序
+        appList.sortBy { it.appName.lowercase(java.util.Locale.getDefault()) }
+        
+        val totalTime = System.currentTimeMillis() - startTime
+        android.util.Log.d("AppSelector", "应用列表加载完成：${appList.size} 个应用，总耗时 ${totalTime}ms")
+        
+    } catch (e: OutOfMemoryError) {
+        android.util.Log.e("AppSelector", "内存不足！", e)
+        appList.clear()
+        System.gc() // 建议 GC 回收
+        throw Exception("内存不足，应用过多")
+    } catch (e: Exception) {
+        android.util.Log.e("AppSelector", "加载应用列表时出错", e)
+        throw e
+    }
+    
+    return@withContext appList
 }
 
 /**

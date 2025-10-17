@@ -32,6 +32,10 @@ import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2
 import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.ParsedStructure
 import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.ParsedItem
 import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.FieldHint
+import takagi.ru.monica.autofill.di.AutofillDI
+import takagi.ru.monica.autofill.core.AutofillLogger
+import takagi.ru.monica.autofill.data.AutofillContext
+import takagi.ru.monica.autofill.data.PasswordMatch
 
 /**
  * Monica 自动填充服务 (增强版)
@@ -55,6 +59,11 @@ class MonicaAutofillService : AutofillService() {
     // ✨ 增强的字段解析器（支持15+种语言）
     private val enhancedParserV2 = EnhancedAutofillStructureParserV2()
     
+    // 🚀 新架构：自动填充引擎
+    private val autofillEngine by lazy {
+        AutofillDI.provideEngine(applicationContext)
+    }
+    
     // SMS Retriever Helper for OTP auto-read
     private var smsRetrieverHelper: SmsRetrieverHelper? = null
     
@@ -65,6 +74,8 @@ class MonicaAutofillService : AutofillService() {
         super.onCreate()
         
         try {
+            AutofillLogger.i("SERVICE", "MonicaAutofillService onCreate() - Initializing...")
+            
             // 初始化 Repository
             val database = PasswordDatabase.getDatabase(applicationContext)
             passwordRepository = PasswordRepository(database.passwordEntryDao())
@@ -76,14 +87,21 @@ class MonicaAutofillService : AutofillService() {
             // 初始化SMS Retriever Helper
             smsRetrieverHelper = SmsRetrieverHelper(applicationContext)
             
+            // 🚀 预初始化自动填充引擎
+            autofillEngine
+            
+            AutofillLogger.i("SERVICE", "Service created successfully")
             android.util.Log.d("MonicaAutofill", "Service created successfully")
         } catch (e: Exception) {
+            AutofillLogger.e("SERVICE", "Error initializing service", e)
             android.util.Log.e("MonicaAutofill", "Error initializing service", e)
         }
     }
     
     override fun onDestroy() {
         super.onDestroy()
+        AutofillLogger.i("SERVICE", "MonicaAutofillService onDestroy() - Cleaning up...")
+        
         serviceScope.cancel()
         appInfoCache.clear()
         
@@ -91,6 +109,7 @@ class MonicaAutofillService : AutofillService() {
         smsRetrieverHelper?.stopSmsRetriever()
         smsRetrieverHelper = null
         
+        AutofillLogger.i("SERVICE", "Service destroyed")
         android.util.Log.d("MonicaAutofill", "Service destroyed")
     }
     
@@ -103,6 +122,7 @@ class MonicaAutofillService : AutofillService() {
         cancellationSignal: CancellationSignal,
         callback: FillCallback
     ) {
+        AutofillLogger.i("REQUEST", "onFillRequest called - Processing autofill request")
         android.util.Log.d("MonicaAutofill", "onFillRequest called")
         
         serviceScope.launch {
@@ -113,13 +133,16 @@ class MonicaAutofillService : AutofillService() {
                 }
                 
                 if (result != null) {
+                    AutofillLogger.i("REQUEST", "Fill request completed successfully")
                     callback.onSuccess(result)
                 } else {
+                    AutofillLogger.w("REQUEST", "Fill request timed out after 5000ms")
                     android.util.Log.w("MonicaAutofill", "Fill request timed out")
                     callback.onSuccess(null)
                 }
                 
             } catch (e: Exception) {
+                AutofillLogger.e("REQUEST", "Error in onFillRequest: ${e.message}", e)
                 android.util.Log.e("MonicaAutofill", "Error in onFillRequest", e)
                 callback.onFailure(e.message ?: "Unknown error")
             }
@@ -133,15 +156,19 @@ class MonicaAutofillService : AutofillService() {
         request: FillRequest,
         cancellationSignal: CancellationSignal
     ): FillResponse? {
+        AutofillLogger.d("PARSING", "Starting fill request processing")
+        
         // 检查是否启用自动填充
         val isEnabled = autofillPreferences.isAutofillEnabled.first()
         if (!isEnabled) {
+            AutofillLogger.w("REQUEST", "Autofill disabled in preferences")
             android.util.Log.d("MonicaAutofill", "Autofill disabled")
             return null
         }
         
         // 检查取消信号
         if (cancellationSignal.isCanceled) {
+            AutofillLogger.w("REQUEST", "Request cancelled by system")
             android.util.Log.d("MonicaAutofill", "Request cancelled")
             return null
         }
@@ -154,23 +181,31 @@ class MonicaAutofillService : AutofillService() {
         }
         
         if (inlineRequest != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            AutofillLogger.d("REQUEST", "Inline suggestions supported, max: ${inlineRequest.maxSuggestionCount}")
             android.util.Log.d("MonicaAutofill", "Inline suggestions supported, max suggestions: ${inlineRequest.maxSuggestionCount}")
         }
         
         // 解析填充上下文
         val context = request.fillContexts.lastOrNull()
         if (context == null) {
+            AutofillLogger.w("PARSING", "No fill context available")
             android.util.Log.d("MonicaAutofill", "No fill context")
             return null
         }
         
         val structure = context.structure
         
-        // ✨ 使用增强的字段解析器 V2（占位符实现）
-        val respectAutofillOff = true // 默认尊重 autofill="off" 属性
+        // ✨ 使用增强的字段解析器 V2
+        val respectAutofillOff = true
         val parsedStructure = enhancedParserV2.parse(structure, respectAutofillOff)
         
         // 📊 记录增强解析结果
+        AutofillLogger.d("PARSING", "Application: ${parsedStructure.applicationId}, WebView: ${parsedStructure.webView}")
+        if (parsedStructure.webView) {
+            AutofillLogger.d("PARSING", "WebDomain: ${parsedStructure.webDomain}, WebScheme: ${parsedStructure.webScheme}")
+        }
+        AutofillLogger.d("PARSING", "Total fields found: ${parsedStructure.items.size}")
+        
         android.util.Log.d("MonicaAutofill", "=== Enhanced Parser V2 Results (Placeholder) ===")
         android.util.Log.d("MonicaAutofill", "Application: ${parsedStructure.applicationId}")
         android.util.Log.d("MonicaAutofill", "WebView: ${parsedStructure.webView}")
@@ -181,10 +216,11 @@ class MonicaAutofillService : AutofillService() {
         android.util.Log.d("MonicaAutofill", "Total fields found: ${parsedStructure.items.size}")
         
         parsedStructure.items.forEach { item ->
+            AutofillLogger.d("PARSING", "Field: ${item.hint} (accuracy: ${item.accuracy}, focused: ${item.isFocused})")
             android.util.Log.d("MonicaAutofill", "  ✓ ${item.hint} (accuracy: ${item.accuracy}, focused: ${item.isFocused})")
         }
         
-        // 保留传统解析器作为后备和兼容性
+        // 保留传统解析器作为后备
         val enhancedParser = EnhancedAutofillFieldParser(structure)
         val enhancedCollection = enhancedParser.parse()
         
@@ -200,6 +236,7 @@ class MonicaAutofillService : AutofillService() {
         }
         
         if (!hasUsernameOrEmail && !hasPassword) {
+            AutofillLogger.w("PARSING", "No credential fields found")
             android.util.Log.d("MonicaAutofill", "No credential fields found in enhanced parser")
             // 后备检查
             if (!fieldCollection.hasCredentialFields() && !enhancedCollection.hasCredentialFields()) {
@@ -208,23 +245,56 @@ class MonicaAutofillService : AutofillService() {
             }
         }
         
-        // 获取标识符（优先使用 webDomain，然后是 packageName）
+        // 获取标识符
         val packageName = parsedStructure.applicationId ?: structure.activityComponent.packageName
         val webDomain = parsedStructure.webDomain ?: parser.extractWebDomain()
         val identifier = webDomain ?: packageName
         
+        AutofillLogger.d("MATCHING", "Package: $packageName, WebDomain: $webDomain, Identifier: $identifier")
         android.util.Log.d("MonicaAutofill", "Identifier: $identifier (package: $packageName, web: $webDomain)")
         
-        // 查找匹配的密码
-        val matchedPasswords = findMatchingPasswords(packageName, identifier)
+        // 🚀 使用新引擎进行匹配（如果启用）
+        val useNewEngine = autofillPreferences.useEnhancedMatching.first() ?: true
         
+        val matchedPasswords = if (useNewEngine) {
+            AutofillLogger.i("MATCHING", "Using new autofill engine for matching")
+            try {
+                // 构建 AutofillContext
+                val autofillContext = AutofillContext(
+                    packageName = packageName,
+                    domain = webDomain,
+                    webUrl = parsedStructure.webDomain,
+                    isWebView = parsedStructure.webView,
+                    detectedFields = parsedStructure.items.map { it.hint.name }
+                )
+                
+                // 调用新引擎
+                val result = autofillEngine.processRequest(autofillContext)
+                
+                if (result.isSuccess) {
+                    AutofillLogger.i("MATCHING", "New engine found ${result.matches.size} matches in ${result.processingTimeMs}ms")
+                    result.matches.map { match: PasswordMatch -> match.entry }
+                } else {
+                    AutofillLogger.w("MATCHING", "New engine failed: ${result.error}, falling back to legacy")
+                    findMatchingPasswords(packageName, identifier)
+                }
+            } catch (e: Exception) {
+                AutofillLogger.e("MATCHING", "New engine error, falling back to legacy", e)
+                findMatchingPasswords(packageName, identifier)
+            }
+        } else {
+            AutofillLogger.d("MATCHING", "Using legacy matching algorithm")
+            findMatchingPasswords(packageName, identifier)
+        }
+        
+        AutofillLogger.i("MATCHING", "Found ${matchedPasswords.size} matched passwords")
         android.util.Log.d("MonicaAutofill", "Found ${matchedPasswords.size} matched passwords")
         
         if (matchedPasswords.isEmpty()) {
             return null
         }
         
-        // 🚀 构建填充响应（优先使用增强的 ParsedStructure）
+        // 构建填充响应
         return buildFillResponseEnhanced(
             passwords = matchedPasswords, 
             parsedStructure = parsedStructure,
@@ -1018,6 +1088,7 @@ class MonicaAutofillService : AutofillService() {
      * 当用户提交表单时调用，可以保存新的密码或更新现有密码
      */
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
+        AutofillLogger.i("REQUEST", "onSaveRequest called - User submitted a form")
         android.util.Log.d("MonicaAutofill", "onSaveRequest called")
         
         serviceScope.launch {
@@ -1027,13 +1098,16 @@ class MonicaAutofillService : AutofillService() {
                 }
                 
                 if (result == true) {
+                    AutofillLogger.i("REQUEST", "Save request completed successfully")
                     callback.onSuccess()
                 } else {
+                    AutofillLogger.w("REQUEST", "Save request failed or timed out")
                     android.util.Log.w("MonicaAutofill", "Save request failed or timed out")
                     callback.onSuccess() // 即使失败也返回成功，避免系统重试
                 }
                 
             } catch (e: Exception) {
+                AutofillLogger.e("REQUEST", "Error in onSaveRequest: ${e.message}", e)
                 android.util.Log.e("MonicaAutofill", "Error in onSaveRequest", e)
                 callback.onFailure(e.message ?: "保存失败")
             }
@@ -1103,11 +1177,13 @@ class MonicaAutofillService : AutofillService() {
     
     override fun onConnected() {
         super.onConnected()
+        AutofillLogger.i("SERVICE", "Autofill service connected to system")
         android.util.Log.d("MonicaAutofill", "Service connected")
     }
     
     override fun onDisconnected() {
         super.onDisconnected()
+        AutofillLogger.i("SERVICE", "Autofill service disconnected from system")
         android.util.Log.d("MonicaAutofill", "Service disconnected")
     }
     

@@ -76,5 +76,4 @@ sealed class Screen(val route: String) {
     object ColorSchemeSelection : Screen("color_scheme_selection")
     object CustomColorSettings : Screen("custom_color_settings")
     object Generator : Screen("generator")  // 添加生成器页面路由
-    object AppList : Screen("app_list")  // 应用列表页面
 }

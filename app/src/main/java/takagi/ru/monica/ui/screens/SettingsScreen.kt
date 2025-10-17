@@ -51,7 +51,6 @@ fun SettingsScreen(
     onNavigateToBottomNavSettings: () -> Unit = {},
     onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
-    onNavigateToAppList: () -> Unit = {},
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
     val context = LocalContext.current
@@ -310,18 +309,6 @@ fun SettingsScreen(
                     subtitle = context.getString(R.string.clear_all_data_subtitle),
                     onClick = { showClearDataDialog = true },
                     iconTint = MaterialTheme.colorScheme.error
-                )
-            }
-            
-            // 工具 Settings
-            SettingsSection(
-                title = "工具"
-            ) {
-                SettingsItem(
-                    icon = Icons.Default.Apps,
-                    title = "应用列表",
-                    subtitle = "查看和管理已安装的应用",
-                    onClick = onNavigateToAppList
                 )
             }
             

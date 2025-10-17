@@ -29,6 +29,9 @@ class AutofillPreferences(private val context: Context) {
         
         // Phase 8: 生物识别快速填充配置
         private val KEY_BIOMETRIC_QUICK_FILL_ENABLED = booleanPreferencesKey("biometric_quick_fill_enabled")
+        
+        // 新架构：使用增强匹配引擎
+        private val KEY_USE_ENHANCED_MATCHING = booleanPreferencesKey("use_enhanced_matching")
     }
     
     /**
@@ -138,6 +141,20 @@ class AutofillPreferences(private val context: Context) {
     suspend fun setBiometricQuickFillEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_BIOMETRIC_QUICK_FILL_ENABLED] = enabled
+        }
+    }
+    
+    /**
+     * 是否使用增强匹配引擎（新架构）
+     * 默认启用
+     */
+    val useEnhancedMatching: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_USE_ENHANCED_MATCHING] ?: true
+    }
+    
+    suspend fun setUseEnhancedMatching(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_USE_ENHANCED_MATCHING] = enabled
         }
     }
 }
