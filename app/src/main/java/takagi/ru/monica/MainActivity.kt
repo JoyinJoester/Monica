@@ -329,6 +329,9 @@ fun MonicaContent(
                 onSecurityAnalysis = {
                     navController.navigate(Screen.SecurityAnalysis.route)
                 },
+                onNavigateToAppList = {
+                    navController.navigate(Screen.AppList.route)
+                },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
                     // 清空所有数据
                     android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards")
@@ -811,6 +814,15 @@ fun MonicaContent(
         // 添加生成器页面的导航支持
         composable(Screen.Generator.route) {
             takagi.ru.monica.ui.screens.GeneratorScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        
+        // 应用列表页面
+        composable(Screen.AppList.route) {
+            takagi.ru.monica.ui.screens.AppListScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }

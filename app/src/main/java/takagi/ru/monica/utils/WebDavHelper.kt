@@ -57,9 +57,10 @@ class WebDavHelper(
         serverUrl = url.trimEnd('/')
         username = user
         password = pass
-        sardine = OkHttpSardine().apply {
-            setCredentials(username, password)
-        }
+        // 创建新的 Sardine 实例并立即设置凭证
+        sardine = OkHttpSardine()
+        sardine?.setCredentials(username, password)
+        android.util.Log.d("WebDavHelper", "Configured WebDAV: url=$serverUrl, user=$username")
         // 自动保存配置
         saveConfig()
     }
@@ -90,9 +91,10 @@ class WebDavHelper(
             serverUrl = url
             username = user
             password = pass
-            sardine = OkHttpSardine().apply {
-                setCredentials(username, password)
-            }
+            // 重新创建 sardine 实例并设置凭证
+            sardine = OkHttpSardine()
+            sardine?.setCredentials(username, password)
+            android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username")
         }
     }
     
@@ -127,21 +129,96 @@ class WebDavHelper(
             // 检查网络和时间同步
             checkNetworkAndTimeSync(context)
             
-            // 尝试列出根目录
-            sardine?.list(serverUrl)
-            Result.success(true)
+            android.util.Log.d("WebDavHelper", "Testing connection to: $serverUrl")
+            android.util.Log.d("WebDavHelper", "Username: $username")
+            
+            // 尝试多种方法测试连接,从最简单到最复杂
+            var connectionOk = false
+            var lastError: Exception? = null
+            
+            // 方法1: 使用 exists() - HEAD 请求
+            try {
+                val exists = sardine?.exists(serverUrl) ?: false
+                android.util.Log.d("WebDavHelper", "Method 1 (exists): path exists = $exists")
+                connectionOk = true
+                
+                // 如果路径不存在,尝试创建
+                if (!exists) {
+                    try {
+                        sardine?.createDirectory(serverUrl)
+                        android.util.Log.d("WebDavHelper", "Directory created successfully")
+                    } catch (createError: Exception) {
+                        android.util.Log.w("WebDavHelper", "Could not create directory (may already exist): ${createError.message}")
+                    }
+                }
+            } catch (e1: Exception) {
+                android.util.Log.w("WebDavHelper", "Method 1 (exists) failed: ${e1.message}")
+                lastError = e1
+                
+                // 方法2: 尝试 list() - PROPFIND 请求
+                try {
+                    val resources = sardine?.list(serverUrl)
+                    android.util.Log.d("WebDavHelper", "Method 2 (list): found ${resources?.size ?: 0} resources")
+                    connectionOk = true
+                    lastError = null
+                } catch (e2: Exception) {
+                    android.util.Log.w("WebDavHelper", "Method 2 (list) failed: ${e2.message}")
+                    lastError = e2
+                    
+                    // 方法3: 尝试上传一个测试文件
+                    try {
+                        val testFileName = ".monica_test"
+                        val testUrl = "$serverUrl/$testFileName".replace("//", "/")
+                            .replace(":/", "://")
+                        val testData = "test".toByteArray()
+                        
+                        sardine?.put(testUrl, testData, "text/plain")
+                        android.util.Log.d("WebDavHelper", "Method 3 (put): test file uploaded")
+                        
+                        // 尝试删除测试文件
+                        try {
+                            sardine?.delete(testUrl)
+                            android.util.Log.d("WebDavHelper", "Test file deleted")
+                        } catch (delError: Exception) {
+                            android.util.Log.w("WebDavHelper", "Could not delete test file: ${delError.message}")
+                        }
+                        
+                        connectionOk = true
+                        lastError = null
+                    } catch (e3: Exception) {
+                        android.util.Log.w("WebDavHelper", "Method 3 (put) failed: ${e3.message}")
+                        lastError = e3
+                    }
+                }
+            }
+            
+            if (connectionOk) {
+                android.util.Log.d("WebDavHelper", "Connection test SUCCESSFUL")
+                return@withContext Result.success(true)
+            } else {
+                throw lastError ?: Exception("All connection methods failed")
+            }
+            
         } catch (e: Exception) {
+            android.util.Log.e("WebDavHelper", "Connection test FAILED", e)
+            android.util.Log.e("WebDavHelper", "Error type: ${e.javaClass.name}")
+            android.util.Log.e("WebDavHelper", "Error message: ${e.message}")
+            
             // 添加更详细的错误信息
             val detailedMessage = when {
                 e.message?.contains("Network is unreachable") == true -> 
                     "网络不可达，请检查网络连接"
                 e.message?.contains("Connection timed out") == true -> 
                     "连接超时，请检查服务器地址和网络连接"
-                e.message?.contains("401") == true -> 
-                    "认证失败，请检查用户名和密码"
+                e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true -> 
+                    "认证失败(401)，请检查用户名和密码"
                 e.message?.contains("404") == true -> 
-                    "服务器路径未找到，请检查服务器地址"
-                else -> "连接失败: ${e.message}"
+                    "路径未找到(404)，请检查服务器地址"
+                e.message?.contains("403") == true -> 
+                    "访问被拒绝(403)，请检查权限设置"
+                e.message?.contains("405") == true || e.message?.contains("Method Not Allowed") == true -> 
+                    "服务器限制了某些操作方法(405)，但这不影响备份功能。请直接尝试创建备份。"
+                else -> "连接测试失败: ${e.message}。如果账号密码正确，可以忽略此错误直接创建备份。"
             }
             Result.failure(Exception(detailedMessage, e))
         }
