@@ -36,6 +36,8 @@ import takagi.ru.monica.autofill.di.AutofillDI
 import takagi.ru.monica.autofill.core.AutofillLogger
 import takagi.ru.monica.autofill.data.AutofillContext
 import takagi.ru.monica.autofill.data.PasswordMatch
+import takagi.ru.monica.utils.DeviceUtils
+import takagi.ru.monica.utils.PermissionGuide
 
 /**
  * Monica 自动填充服务 (增强版)
@@ -75,6 +77,11 @@ class MonicaAutofillService : AutofillService() {
         
         try {
             AutofillLogger.i("SERVICE", "MonicaAutofillService onCreate() - Initializing...")
+            
+            // 🎯 记录设备信息（用于品牌适配诊断）
+            val deviceSummary = DeviceUtils.getDeviceSummary()
+            AutofillLogger.i("SERVICE", "Device Summary:\n$deviceSummary")
+            android.util.Log.d("MonicaAutofill", "Device Summary:\n$deviceSummary")
             
             // 初始化 Repository
             val database = PasswordDatabase.getDatabase(applicationContext)
@@ -123,12 +130,19 @@ class MonicaAutofillService : AutofillService() {
         callback: FillCallback
     ) {
         AutofillLogger.i("REQUEST", "onFillRequest called - Processing autofill request")
-        android.util.Log.d("MonicaAutofill", "onFillRequest called")
+        android.util.Log.d("MonicaAutofill", "========================================")
+        android.util.Log.d("MonicaAutofill", "=========  FILL REQUEST START  =========")
+        android.util.Log.d("MonicaAutofill", "========================================")
+        android.util.Log.d("MonicaAutofill", "Request flags: ${request.flags}")
+        android.util.Log.d("MonicaAutofill", "Fill contexts count: ${request.fillContexts.size}")
         
         serviceScope.launch {
             try {
-                // 设置超时以避免长时间阻塞
-                val result = withTimeoutOrNull(5000) {
+                // 🎯 根据设备品牌设置动态超时时间
+                val recommendedTimeout = DeviceUtils.getRecommendedAutofillTimeout()
+                AutofillLogger.i("REQUEST", "Using device-specific timeout: ${recommendedTimeout}ms (Brand: ${DeviceUtils.getManufacturer()})")
+                
+                val result = withTimeoutOrNull(recommendedTimeout) {
                     processFillRequest(request, cancellationSignal)
                 }
                 
@@ -136,9 +150,21 @@ class MonicaAutofillService : AutofillService() {
                     AutofillLogger.i("REQUEST", "Fill request completed successfully")
                     callback.onSuccess(result)
                 } else {
-                    AutofillLogger.w("REQUEST", "Fill request timed out after 5000ms")
-                    android.util.Log.w("MonicaAutofill", "Fill request timed out")
-                    callback.onSuccess(null)
+                    // 🔄 国产ROM支持重试机制
+                    if (DeviceUtils.getRecommendedRetryCount() > 1) {
+                        AutofillLogger.w("REQUEST", "First attempt timed out, retrying...")
+                        android.util.Log.w("MonicaAutofill", "Fill request timed out, retrying for Chinese ROM...")
+                        
+                        val retryResult = withTimeoutOrNull(recommendedTimeout) {
+                            processFillRequest(request, cancellationSignal)
+                        }
+                        
+                        callback.onSuccess(retryResult)
+                    } else {
+                        AutofillLogger.w("REQUEST", "Fill request timed out after ${recommendedTimeout}ms")
+                        android.util.Log.w("MonicaAutofill", "Fill request timed out")
+                        callback.onSuccess(null)
+                    }
                 }
                 
             } catch (e: Exception) {
@@ -173,10 +199,15 @@ class MonicaAutofillService : AutofillService() {
             return null
         }
         
-        // 检查是否支持内联建议 (Android 11+)
-        val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        // 🎯 检查设备是否支持内联建议（考虑ROM兼容性）
+        val deviceSupportsInline = DeviceUtils.supportsInlineSuggestions()
+        val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && deviceSupportsInline) {
             request.inlineSuggestionsRequest
         } else {
+            if (!deviceSupportsInline) {
+                AutofillLogger.i("REQUEST", "Inline suggestions disabled for ${DeviceUtils.getROMType()} (compatibility)")
+                android.util.Log.d("MonicaAutofill", "Inline suggestions not supported on this ROM: ${DeviceUtils.getROMType()}")
+            }
             null
         }
         
@@ -708,6 +739,8 @@ class MonicaAutofillService : AutofillService() {
             }
             
             // ✨ 智能填充：根据 ParsedStructure 中的字段类型填充数据
+            // 关键修复：跟踪是否至少填充了一个字段
+            var hasFilledAnyField = false
             
             // 1. 填充用户名字段（选择准确度最高的一个）
             val bestUsernameItem = usernameItems.maxByOrNull { it.accuracy.score }
@@ -729,6 +762,7 @@ class MonicaAutofillService : AutofillService() {
                         presentation as RemoteViews
                     )
                 }
+                hasFilledAnyField = true
                 android.util.Log.d("MonicaAutofill", "✓ Username filled (accuracy: ${item.accuracy})")
             }
             
@@ -758,6 +792,7 @@ class MonicaAutofillService : AutofillService() {
                             presentation as RemoteViews
                         )
                     }
+                    hasFilledAnyField = true
                     android.util.Log.d("MonicaAutofill", "✓ Email filled (accuracy: ${bestEmailItem.accuracy})")
                 }
             }
@@ -780,6 +815,7 @@ class MonicaAutofillService : AutofillService() {
                         presentation as RemoteViews
                     )
                 }
+                hasFilledAnyField = true
                 android.util.Log.d("MonicaAutofill", "✓ Phone filled (accuracy: ${bestPhoneItem.accuracy})")
             }
             
@@ -801,6 +837,7 @@ class MonicaAutofillService : AutofillService() {
                         presentation as RemoteViews
                     )
                 }
+                hasFilledAnyField = true
                 android.util.Log.d("MonicaAutofill", "✓ Password filled (accuracy: ${item.accuracy})")
             }
             
@@ -880,11 +917,25 @@ class MonicaAutofillService : AutofillService() {
                         AutofillValue.forText(password.creditCardHolder),
                         presentation as RemoteViews
                     )
+                    hasFilledAnyField = true
                     android.util.Log.d("MonicaAutofill", "✓ Name field filled")
                 }
             }
             
-            responseBuilder.addDataset(datasetBuilder.build())
+            // ⚠️ 关键修复：只有在至少填充了一个字段时才添加 Dataset
+            // 这防止了 Android 系统抛出 "at least one value must be set" 异常
+            if (hasFilledAnyField) {
+                try {
+                    val dataset = datasetBuilder.build()
+                    responseBuilder.addDataset(dataset)
+                    android.util.Log.d("MonicaAutofill", "✅ Dataset #$index added successfully for: ${password.title}")
+                } catch (e: Exception) {
+                    android.util.Log.e("MonicaAutofill", "❌ Failed to build dataset for: ${password.title}", e)
+                    AutofillLogger.e("DATASET", "Failed to build dataset: ${e.message}", e)
+                }
+            } else {
+                android.util.Log.w("MonicaAutofill", "⚠️ Skipping dataset for '${password.title}' - no fields filled")
+            }
         }
         
         // 添加保存信息（如果启用）
@@ -907,9 +958,13 @@ class MonicaAutofillService : AutofillService() {
                 saveInfoBuilder.setDescription("保存到 Monica 密码管理器")
                 
                 responseBuilder.setSaveInfo(saveInfoBuilder.build())
+                android.util.Log.d("MonicaAutofill", "💾 SaveInfo configured for ${saveFieldIds.size} fields")
             }
         }
         
+        android.util.Log.d("MonicaAutofill", "========================================")
+        android.util.Log.d("MonicaAutofill", "✅ FillResponse built successfully")
+        android.util.Log.d("MonicaAutofill", "========================================")
         return responseBuilder.build()
     }
     
@@ -1093,7 +1148,10 @@ class MonicaAutofillService : AutofillService() {
         
         serviceScope.launch {
             try {
-                val result = withTimeoutOrNull(3000) {
+                // 🎯 使用品牌特定的超时时间（保存请求通常更快）
+                val saveTimeout = (DeviceUtils.getRecommendedAutofillTimeout() * 0.6).toLong()
+                
+                val result = withTimeoutOrNull(saveTimeout) {
                     processSaveRequest(request)
                 }
                 

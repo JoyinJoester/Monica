@@ -621,6 +621,8 @@
     <!-- Autofill -->
     <string name="autofill">Autofill</string>
     <string name="autofill_subtitle">Auto-fill passwords for apps and websites</string>
+    <string name="autofill_service_description">Automatically fill passwords and forms in apps and websites</string>
+    <string name="autofill_service_summary">Monica Password Manager provides secure autofill for your passwords</string>
     <string name="autofill_save_password">Save Password</string>
     <string name="autofill_save_to_monica">Save this password to Monica</string>
     <string name="autofill_title">Title</string>
