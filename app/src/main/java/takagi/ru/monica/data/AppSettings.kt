@@ -20,7 +20,6 @@ enum class BottomNavContentTab {
     AUTHENTICATOR,
     DOCUMENTS,
     BANK_CARDS,
-    LEDGER,
     GENERATOR;
 
     companion object {
@@ -28,8 +27,7 @@ enum class BottomNavContentTab {
             PASSWORDS,
             AUTHENTICATOR,
             DOCUMENTS,
-            BANK_CARDS,
-            LEDGER
+            BANK_CARDS
         )
 
         fun sanitizeOrder(order: List<BottomNavContentTab>): List<BottomNavContentTab> {
@@ -55,7 +53,6 @@ data class BottomNavVisibility(
     val authenticator: Boolean = true,
     val documents: Boolean = true,
     val bankCards: Boolean = false,  // 银行卡功能默认关闭
-    val ledger: Boolean = false,     // 记账功能默认关闭
     val generator: Boolean = false   // 生成器功能默认关闭
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
@@ -63,11 +60,10 @@ data class BottomNavVisibility(
         BottomNavContentTab.AUTHENTICATOR -> authenticator
         BottomNavContentTab.DOCUMENTS -> documents
         BottomNavContentTab.BANK_CARDS -> bankCards
-        BottomNavContentTab.LEDGER -> ledger
         BottomNavContentTab.GENERATOR -> generator
     }
 
-    fun visibleCount(): Int = listOf(passwords, authenticator, documents, bankCards, ledger, generator).count { it }
+    fun visibleCount(): Int = listOf(passwords, authenticator, documents, bankCards, generator).count { it }
 }
 
 data class AppSettings(

@@ -49,7 +49,6 @@ import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
-import takagi.ru.monica.ui.screens.LedgerScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
@@ -66,7 +65,6 @@ fun SimpleMainScreen(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
-    ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel,
     generatorViewModel: GeneratorViewModel = viewModel(), // 添加GeneratorViewModel
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
@@ -74,9 +72,6 @@ fun SimpleMainScreen(
     onNavigateToAddDocument: (Long?) -> Unit,
     @Suppress("UNUSED_PARAMETER")
     onNavigateToDocumentDetail: (Long) -> Unit, // 保留以保持API兼容性，但当前未使用
-    onNavigateToAddLedgerEntry: (Long?) -> Unit,
-    onNavigateToLedgerEntryDetail: (Long) -> Unit, // 新增：导航到账单详情
-    onNavigateToAssetManagement: () -> Unit,
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
     onNavigateToSupportAuthor: () -> Unit = {},
@@ -87,7 +82,7 @@ fun SimpleMainScreen(
     onNavigateToBottomNavSettings: () -> Unit = {},
     onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
-    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
     val defaultTabKey = remember(initialTab) { indexToDefaultTabKey(initialTab) }
@@ -189,10 +184,6 @@ fun SimpleMainScreen(
                         onFavorite = { onFavoriteBankCards() }  // 添加收藏按钮
                     )
                 }
-                // 记账页面由 LedgerScreen 提供顶栏
-                currentTab == BottomNavItem.Ledger -> {
-                    // 不显示顶部栏，避免重复
-                }
                 // 生成器页面不需要顶栏
                 currentTab == BottomNavItem.Generator -> {
                     // 不显示顶部栏
@@ -256,10 +247,6 @@ fun SimpleMainScreen(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
                     }
-                }
-
-                BottomNavItem.Ledger -> {
-                    // 记账页面由 LedgerScreen 自身提供 FAB
                 }
 
                 BottomNavItem.Generator -> {
@@ -344,15 +331,6 @@ fun SimpleMainScreen(
                             onDeleteSelectedBankCards = onDelete
                             onFavoriteBankCards = onFavorite  // 添加收藏回调
                         }
-                    )
-                }
-                BottomNavItem.Ledger -> {
-                    // 记账页面
-                    LedgerScreen(
-                        viewModel = ledgerViewModel,
-                        onNavigateToAddEntry = { entryId -> onNavigateToAddLedgerEntry(entryId) },
-                        onNavigateToAssetManagement = { onNavigateToAssetManagement() },
-                        onNavigateToEntryDetail = { entryId -> onNavigateToLedgerEntryDetail(entryId) } // 新增
                     )
                 }
                 BottomNavItem.Generator -> {
@@ -2657,7 +2635,6 @@ sealed class BottomNavItem(
     object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
     object Documents : BottomNavItem(BottomNavContentTab.DOCUMENTS, Icons.Default.Description)
     object BankCards : BottomNavItem(BottomNavContentTab.BANK_CARDS, Icons.Default.CreditCard)
-    object Ledger : BottomNavItem(BottomNavContentTab.LEDGER, Icons.Default.AccountBalance)
     object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)  // 添加生成器导航项
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
@@ -2667,7 +2644,6 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
     BottomNavContentTab.DOCUMENTS -> BottomNavItem.Documents
     BottomNavContentTab.BANK_CARDS -> BottomNavItem.BankCards
-    BottomNavContentTab.LEDGER -> BottomNavItem.Ledger
     BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
 }
 
@@ -2676,7 +2652,6 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.Authenticator -> R.string.nav_authenticator
     BottomNavItem.Documents -> R.string.nav_documents
     BottomNavItem.BankCards -> R.string.nav_bank_cards
-    BottomNavItem.Ledger -> R.string.nav_ledger
     BottomNavItem.Generator -> R.string.nav_generator  // 添加生成器标签资源
     BottomNavItem.Settings -> R.string.nav_settings
 }
@@ -2686,7 +2661,6 @@ private fun BottomNavItem.shortLabelRes(): Int = when (this) {
     BottomNavItem.Authenticator -> R.string.nav_authenticator_short
     BottomNavItem.Documents -> R.string.nav_documents_short
     BottomNavItem.BankCards -> R.string.nav_bank_cards_short
-    BottomNavItem.Ledger -> R.string.nav_ledger_short
     BottomNavItem.Generator -> R.string.nav_generator_short  // 添加生成器短标签资源
     BottomNavItem.Settings -> R.string.nav_settings_short
 }
@@ -2696,7 +2670,7 @@ private fun indexToDefaultTabKey(index: Int): String = when (index) {
     1 -> BottomNavContentTab.AUTHENTICATOR.name
     2 -> BottomNavContentTab.DOCUMENTS.name
     3 -> BottomNavContentTab.BANK_CARDS.name
-    4 -> BottomNavContentTab.LEDGER.name
+    4 -> BottomNavContentTab.GENERATOR.name
     5 -> SETTINGS_TAB_KEY
     else -> BottomNavContentTab.PASSWORDS.name
 }

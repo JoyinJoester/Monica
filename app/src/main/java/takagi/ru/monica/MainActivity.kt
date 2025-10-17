@@ -50,7 +50,6 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.navigation.Screen
-import takagi.ru.monica.repository.LedgerRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
@@ -59,7 +58,6 @@ import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
-import takagi.ru.monica.ui.screens.AssetManagementScreen
 import takagi.ru.monica.ui.screens.AutofillSettingsScreen
 import takagi.ru.monica.ui.screens.BottomNavSettingsScreen
 import takagi.ru.monica.ui.screens.ChangePasswordScreen
@@ -79,7 +77,6 @@ import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
-import takagi.ru.monica.viewmodel.LedgerViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SecurityAnalysisViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -122,10 +119,9 @@ class MainActivity : FragmentActivity() {
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)
         val settingsManager = SettingsManager(this)
-        val ledgerRepository = LedgerRepository(database.ledgerDao(), secureItemRepository)
 
         setContent {
-            MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database, ledgerRepository)
+            MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database)
         }
     }
 
@@ -159,8 +155,7 @@ fun MonicaApp(
     secureItemRepository: takagi.ru.monica.repository.SecureItemRepository,
     securityManager: SecurityManager,
     settingsManager: SettingsManager,
-    database: PasswordDatabase,
-    ledgerRepository: LedgerRepository
+    database: PasswordDatabase
 ) {
     val context = LocalContext.current
     val navController = rememberNavController()
@@ -186,11 +181,8 @@ fun MonicaApp(
     val documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel = viewModel {
         takagi.ru.monica.viewmodel.DocumentViewModel(secureItemRepository)
     }
-    val ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel = viewModel {
-        takagi.ru.monica.viewmodel.LedgerViewModel(ledgerRepository, secureItemRepository)
-    }
     val dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel = viewModel {
-        takagi.ru.monica.viewmodel.DataExportImportViewModel(secureItemRepository, repository, ledgerRepository, navController.context)
+        takagi.ru.monica.viewmodel.DataExportImportViewModel(secureItemRepository, repository, navController.context)
     }
     val settingsViewModel: SettingsViewModel = viewModel {
         SettingsViewModel(settingsManager)
@@ -226,13 +218,11 @@ fun MonicaApp(
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
-                ledgerViewModel = ledgerViewModel,
                 dataExportImportViewModel = dataExportImportViewModel,
                 settingsViewModel = settingsViewModel,
                 securityManager = securityManager,
                 repository = repository,
                 secureItemRepository = secureItemRepository,
-                ledgerRepository = ledgerRepository,
                 onPermissionRequested = { permission, callback ->
                     pendingSupportPermissionCallback = callback
                     sharedSupportPermissionLauncher.launch(permission)
@@ -249,13 +239,11 @@ fun MonicaContent(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
-    ledgerViewModel: takagi.ru.monica.viewmodel.LedgerViewModel,
     dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel,
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
-    ledgerRepository: LedgerRepository,
     onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
@@ -296,7 +284,6 @@ fun MonicaContent(
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
-                ledgerViewModel = ledgerViewModel,
                 onNavigateToAddPassword = { passwordId ->
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
                 },
@@ -311,15 +298,6 @@ fun MonicaContent(
                 },
                 onNavigateToDocumentDetail = { documentId ->  // 添加新的导航参数
                     navController.navigate(Screen.DocumentDetail.createRoute(documentId))
-                },
-                onNavigateToAddLedgerEntry = { entryId ->
-                    navController.navigate(Screen.AddEditLedgerEntry.createRoute(entryId))
-                },
-                onNavigateToLedgerEntryDetail = { entryId ->  // 新增参数
-                    navController.navigate(Screen.LedgerEntryDetail.createRoute(entryId))
-                },
-                onNavigateToAssetManagement = {
-                    navController.navigate(Screen.AssetManagement.route)
                 },
                 onNavigateToChangePassword = {
                     navController.navigate(Screen.ChangePassword.route)
@@ -351,9 +329,9 @@ fun MonicaContent(
                 onSecurityAnalysis = {
                     navController.navigate(Screen.SecurityAnalysis.route)
                 },
-                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearLedger: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
+                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
                     // 清空所有数据
-                    android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, ledger=$clearLedger, documents=$clearDocuments, bankCards=$clearBankCards")
+                    android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards")
                     scope.launch {
                         try {
                             // 根据选项清空PasswordEntry表
@@ -377,15 +355,6 @@ fun MonicaContent(
                                     if (shouldDelete) {
                                         secureItemRepository.deleteItem(item)
                                     }
-                                }
-                            }
-                            
-                            // 根据选项清空账本数据
-                            if (clearLedger) {
-                                // 获取所有账本条目并删除
-                                val entries = ledgerRepository.observeEntries().first()
-                                entries.forEach { entryWithRelations ->
-                                    ledgerRepository.deleteEntry(entryWithRelations.entry)
                                 }
                             }
                             
@@ -532,94 +501,6 @@ fun MonicaContent(
             }
         }
 
-        composable(Screen.AddEditLedgerEntry.route) { backStackEntry ->
-            val entryId = backStackEntry.arguments?.getString("entryId")?.toLongOrNull() ?: -1L
-
-            takagi.ru.monica.ui.screens.AddEditLedgerEntryScreen(
-                viewModel = ledgerViewModel,
-                bankCardViewModel = bankCardViewModel,
-                entryId = if (entryId > 0) entryId else null,
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
-        composable(Screen.LedgerEntryDetail.route) { backStackEntry ->
-            val entryId = backStackEntry.arguments?.getString("entryId")?.toLongOrNull() ?: -1L
-
-            // 获取账单条目详情
-            var entryWithRelations by remember { mutableStateOf<takagi.ru.monica.data.ledger.LedgerEntryWithRelations?>(null) }
-            var isLoading by remember { mutableStateOf(true) }
-
-            LaunchedEffect(entryId) {
-                if (entryId > 0) {
-                    try {
-                        // 从数据库获取账单条目详情
-                        entryWithRelations = ledgerRepository.getEntryById(entryId)
-                        isLoading = false
-                    } catch (e: Exception) {
-                        android.util.Log.e("LedgerEntryDetail", "Failed to load entry", e)
-                        isLoading = false
-                    }
-                } else {
-                    isLoading = false
-                }
-            }
-
-            if (isLoading) {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.CircularProgressIndicator()
-                }
-            } else if (entryWithRelations != null) {
-                takagi.ru.monica.ui.screens.LedgerEntryDetailScreen(
-                    entryWithRelations = entryWithRelations!!,
-                    viewModel = ledgerViewModel,
-                    onNavigateToEdit = { id ->
-                        navController.navigate(Screen.AddEditLedgerEntry.createRoute(id))
-                    },
-                    onNavigateBack = {
-                        navController.popBackStack()
-                    }
-                )
-            } else {
-                // 错误状态或未找到条目
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Text("无法加载账单详情")
-                }
-            }
-        }
-
-        composable(Screen.AssetManagement.route) {
-            takagi.ru.monica.ui.screens.AssetManagementScreen(
-                viewModel = ledgerViewModel,
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onNavigateToAddAsset = { assetId ->
-                    navController.navigate(Screen.AddEditAsset.createRoute(assetId))
-                }
-            )
-        }
-
-        composable(Screen.AddEditAsset.route) { backStackEntry ->
-            val assetId = backStackEntry.arguments?.getString("assetId")?.toLongOrNull() ?: -1L
-
-            takagi.ru.monica.ui.screens.AddEditAssetScreen(
-                viewModel = ledgerViewModel,
-                assetId = if (assetId > 0) assetId else null,
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
         composable(Screen.QrScanner.route) {
             takagi.ru.monica.ui.screens.QrScannerScreen(
                 onQrCodeScanned = { qrData ->
@@ -659,9 +540,6 @@ fun MonicaContent(
                 },
                 onImport = { uri ->
                     dataExportImportViewModel.importData(uri)
-                },
-                onImportAlipay = { uri ->
-                    dataExportImportViewModel.importAlipayLedgerData(uri)
                 },
                 onImportAegis = { uri ->
                     dataExportImportViewModel.importAegisJson(uri)
@@ -728,9 +606,9 @@ fun MonicaContent(
                 onNavigateToBottomNavSettings = {
                     navController.navigate(Screen.BottomNavSettings.route)
                 },
-                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearLedger: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
+                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
                     // 清空所有数据
-                    android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, ledger=$clearLedger, documents=$clearDocuments, bankCards=$clearBankCards")
+                    android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards")
                     scope.launch {
                         try {
                             // 根据选项清空PasswordEntry表
@@ -754,15 +632,6 @@ fun MonicaContent(
                                     if (shouldDelete) {
                                         secureItemRepository.deleteItem(item)
                                     }
-                                }
-                            }
-                            
-                            // 根据选项清空账本数据
-                            if (clearLedger) {
-                                // 获取所有账本条目并删除
-                                val entries = ledgerRepository.observeEntries().first()
-                                entries.forEach { entryWithRelations ->
-                                    ledgerRepository.deleteEntry(entryWithRelations.entry)
                                 }
                             }
                             
@@ -884,7 +753,6 @@ fun MonicaContent(
             WebDavBackupScreen(
                 passwordRepository = repository,
                 secureItemRepository = secureItemRepository,
-                ledgerRepository = ledgerRepository,
                 onNavigateBack = {
                     navController.popBackStack()
                 }

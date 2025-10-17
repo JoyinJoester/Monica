@@ -28,7 +28,6 @@ import takagi.ru.monica.util.FileOperationHelper
 fun ImportDataScreen(
     onNavigateBack: () -> Unit,
     onImport: suspend (Uri) -> Result<Int>,  // 普通数据导入
-    onImportAlipay: suspend (Uri) -> Result<Int>,  // 支付宝账单导入
     onImportAegis: suspend (Uri) -> Result<Int>,  // Aegis JSON导入
     onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>  // 加密的Aegis JSON导入
 ) {
@@ -40,7 +39,7 @@ fun ImportDataScreen(
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isImporting by remember { mutableStateOf(false) }
-    var importType by remember { mutableStateOf("normal") } // "normal", "alipay" 或 "aegis"
+    var importType by remember { mutableStateOf("normal") } // "normal" 或 "aegis"
     var showPasswordDialog by remember { mutableStateOf(false) }
     var aegisPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
@@ -167,17 +166,6 @@ fun ImportDataScreen(
                         .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                 )
                 FilterChip(
-                    selected = importType == "alipay",
-                    onClick = { importType = "alipay" },
-                    label = { Text(stringResource(R.string.import_data_type_alipay)) },
-                    leadingIcon = if (importType == "alipay") {
-                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-                    } else null,
-                    modifier = Modifier
-                        .weight(1f)
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                )
-                FilterChip(
                     selected = importType == "aegis",
                     onClick = { importType = "aegis" },
                     label = { Text("Aegis") },
@@ -200,7 +188,7 @@ fun ImportDataScreen(
                         // 根据导入类型选择不同的文件过滤器
                         when (importType) {
                             "aegis" -> FileOperationHelper.importFromJson(act)
-                            else -> FileOperationHelper.importFromCsv(act) // normal 和 alipay 都使用 CSV
+                            else -> FileOperationHelper.importFromCsv(act) // normal 类型使用 CSV
                         }
                     } ?: run {
                         scope.launch {
@@ -244,7 +232,6 @@ fun ImportDataScreen(
                             Text(
                                 when (importType) {
                                     "aegis" -> stringResource(R.string.import_data_file_hint_json)
-                                    "alipay" -> stringResource(R.string.import_data_file_hint_csv_alipay)
                                     else -> stringResource(R.string.import_data_file_hint_csv)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -287,10 +274,8 @@ fun ImportDataScreen(
                                         handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
                                     }
                                 } else {
-                                    val result = when (importType) {
-                                        "alipay" -> onImportAlipay(uri)  // 支付宝导入
-                                        else -> onImport(uri)  // 普通导入
-                                    }
+                                    // 普通导入
+                                    val result = onImport(uri)
                                     handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
                                 }
                             } catch (e: Exception) {
@@ -451,7 +436,6 @@ private suspend fun handleImportResult(
 ) {
     result.onSuccess { count ->
         val message = when (importType) {
-            "alipay" -> context.getString(R.string.import_data_success_alipay, count)
             "aegis" -> "成功导入 $count 个TOTP验证器"
             else -> context.getString(R.string.import_data_success_normal, count)
         }

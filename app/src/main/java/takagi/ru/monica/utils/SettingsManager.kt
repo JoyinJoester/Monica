@@ -75,7 +75,6 @@ class SettingsManager(private val context: Context) {
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
                 documents = preferences[SHOW_DOCUMENTS_TAB_KEY] ?: true,
                 bankCards = preferences[SHOW_BANK_CARDS_TAB_KEY] ?: false,  // 银行卡功能默认关闭
-                ledger = preferences[SHOW_LEDGER_TAB_KEY] ?: false,         // 记账功能默认关闭
                 generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false    // 生成器功能默认关闭
             ),
             bottomNavOrder = sanitizedOrder
@@ -131,7 +130,6 @@ class SettingsManager(private val context: Context) {
                 BottomNavContentTab.AUTHENTICATOR -> preferences[SHOW_AUTHENTICATOR_TAB_KEY] = visible
                 BottomNavContentTab.DOCUMENTS -> preferences[SHOW_DOCUMENTS_TAB_KEY] = visible
                 BottomNavContentTab.BANK_CARDS -> preferences[SHOW_BANK_CARDS_TAB_KEY] = visible
-                BottomNavContentTab.LEDGER -> preferences[SHOW_LEDGER_TAB_KEY] = visible
                 BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible  // 添加生成器分支
             }
         }

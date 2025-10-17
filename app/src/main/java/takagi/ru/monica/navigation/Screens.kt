@@ -54,31 +54,6 @@ sealed class Screen(val route: String) {
             return "document_detail/$documentId"
         }
     }
-    object AddEditLedgerEntry : Screen("add_edit_ledger_entry/{entryId}") {
-        fun createRoute(entryId: Long? = null): String {
-            return if (entryId != null) {
-                "add_edit_ledger_entry/$entryId"
-            } else {
-                "add_edit_ledger_entry/-1"
-            }
-        }
-    }
-    
-    object LedgerEntryDetail : Screen("ledger_entry_detail/{entryId}") {
-        fun createRoute(entryId: Long): String {
-            return "ledger_entry_detail/$entryId"
-        }
-    }
-    object AssetManagement : Screen("asset_management")
-    object AddEditAsset : Screen("add_edit_asset/{assetId}") {
-        fun createRoute(assetId: Long? = null): String {
-            return if (assetId != null) {
-                "add_edit_asset/$assetId"
-            } else {
-                "add_edit_asset/-1"
-            }
-        }
-    }
     object QrScanner : Screen("qr_scanner")
     object Settings : Screen("settings")
     object ResetPassword : Screen("reset_password?skipCurrentPassword={skipCurrentPassword}") {

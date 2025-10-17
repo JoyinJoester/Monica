@@ -22,8 +22,6 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
-import takagi.ru.monica.repository.LedgerRepository
-import takagi.ru.monica.data.ledger.LedgerCategory
 import takagi.ru.monica.utils.BackupFile
 import takagi.ru.monica.utils.BackupContent
 import takagi.ru.monica.utils.WebDavHelper
@@ -36,7 +34,6 @@ import kotlinx.coroutines.flow.first
 fun WebDavBackupScreen(
     passwordRepository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
-    ledgerRepository: LedgerRepository,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -298,16 +295,14 @@ fun WebDavBackupScreen(
                                 val allPasswords = passwordRepository.getAllPasswordEntries().first()
                                 // 获取所有其他数据(TOTP、银行卡、证件)
                                 val allSecureItems = secureItemRepository.getAllItems().first()
-                                // 获取所有账本数据
-                                val allLedgerEntries = ledgerRepository.observeEntries().first()
                                 
                                 // 创建并上传备份
-                                val result = webDavHelper.createAndUploadBackup(allPasswords, allSecureItems, allLedgerEntries)
+                                val result = webDavHelper.createAndUploadBackup(allPasswords, allSecureItems)
                                 
                                 if (result.isSuccess) {
                                     Toast.makeText(
                                         context,
-                                        "备份成功: ${result.getOrNull()}\n已备份 ${allPasswords.size} 个密码、${allSecureItems.size} 个其他数据和 ${allLedgerEntries.size} 条账本记录",
+                                        "备份成功: ${result.getOrNull()}\n已备份 ${allPasswords.size} 个密码、${allSecureItems.size} 个其他数据",
                                         Toast.LENGTH_LONG
                                     ).show()
                                     
@@ -402,7 +397,6 @@ fun WebDavBackupScreen(
                                     webDavHelper = webDavHelper,
                                     passwordRepository = passwordRepository,
                                     secureItemRepository = secureItemRepository,
-                                    ledgerRepository = ledgerRepository,
                                     onDeleted = {
                                         backupList = backupList - backup
                                     },
@@ -429,7 +423,6 @@ private fun BackupItem(
     webDavHelper: WebDavHelper,
     passwordRepository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
-    ledgerRepository: LedgerRepository,
     onDeleted: () -> Unit,
     onRestoreSuccess: () -> Unit
 ) {
@@ -524,10 +517,9 @@ private fun BackupItem(
                                 val result = webDavHelper.downloadAndRestoreBackup(backup)
                                 
                                 if (result.isSuccess) {
-                                    val content = result.getOrNull() ?: BackupContent(emptyList(), emptyList(), emptyList())
+                                    val content = result.getOrNull() ?: BackupContent(emptyList(), emptyList())
                                     val passwords = content.passwords
                                     val secureItems = content.secureItems
-                                    val ledgerBackups = content.ledgerEntries
                                     
                                     // 导入密码数据到数据库(带去重)
                                     var passwordCount = 0
@@ -582,71 +574,16 @@ private fun BackupItem(
                                             android.util.Log.e("WebDavBackup", "Failed to import secure item: ${e.message}")
                                         }
                                     }
-
-                                    // 导入账本数据
-                                    var ledgerCount = 0
-                                    var ledgerSkipped = 0
-                                    if (ledgerBackups.isNotEmpty()) {
-                                        val existingCategories = ledgerRepository.observeCategories().first().toMutableList()
-                                        val existingLedgerEntries = ledgerRepository.observeEntries().first().map { it.entry }.toMutableList()
-                                        val categoryCache = mutableMapOf<Pair<String, takagi.ru.monica.data.ledger.LedgerEntryType>, LedgerCategory>()
-                                        ledgerBackups.forEach { backupEntry ->
-                                            try {
-                                                val ledgerEntry = backupEntry.entry
-                                                val duplicate = existingLedgerEntries.any {
-                                                    it.title == ledgerEntry.title &&
-                                                        it.amountInCents == ledgerEntry.amountInCents &&
-                                                        it.type == ledgerEntry.type &&
-                                                        it.occurredAt.time == ledgerEntry.occurredAt.time &&
-                                                        it.paymentMethod == ledgerEntry.paymentMethod &&
-                                                        it.note == ledgerEntry.note
-                                                }
-                                                if (duplicate) {
-                                                    ledgerSkipped++
-                                                } else {
-                                                    val categoryName = backupEntry.categoryName
-                                                    var categoryId: Long? = null
-                                                    if (!categoryName.isNullOrBlank()) {
-                                                        val key = categoryName to ledgerEntry.type
-                                                        var category = categoryCache[key]
-                                                        if (category == null) {
-                                                            category = existingCategories.firstOrNull {
-                                                                it.name == categoryName && (it.type == null || it.type == ledgerEntry.type)
-                                                            }
-                                                        }
-                                                        if (category == null) {
-                                                            val newCategory = LedgerCategory(name = categoryName, type = ledgerEntry.type)
-                                                            val newId = ledgerRepository.upsertCategory(newCategory)
-                                                            category = newCategory.copy(id = newId)
-                                                            existingCategories.add(category)
-                                                        }
-                                                        categoryCache[key] = category
-                                                        categoryId = category.id
-                                                    }
-                                                    val newEntry = ledgerEntry.copy(id = 0, categoryId = categoryId)
-                                                    val newId = ledgerRepository.upsertEntry(newEntry)
-                                                    existingLedgerEntries.add(newEntry.copy(id = newId))
-                                                    ledgerCount++
-                                                }
-                                            } catch (e: Exception) {
-                                                android.util.Log.e("WebDavBackup", "Failed to import ledger entry: ${e.message}")
-                                            }
-                                        }
-                                    }
                                     
                                     isRestoring = false
                                     val summaryParts = mutableListOf<String>()
                                     summaryParts += "$passwordCount 个密码"
                                     summaryParts += "$secureItemCount 个其他数据"
-                                    if (ledgerBackups.isNotEmpty()) {
-                                        summaryParts += "$ledgerCount 条账本记录"
-                                    }
                                     val message = buildString {
                                         append("恢复成功! 导入了 ${summaryParts.joinToString("、")}")
                                         val skippedParts = mutableListOf<String>()
                                         if (passwordSkipped > 0) skippedParts += "$passwordSkipped 个重复密码"
                                         if (secureItemSkipped > 0) skippedParts += "$secureItemSkipped 个重复数据"
-                                        if (ledgerSkipped > 0) skippedParts += "$ledgerSkipped 条重复账本记录"
                                         if (skippedParts.isNotEmpty()) {
                                             append("\n跳过 ${skippedParts.joinToString("、")}")
                                         }

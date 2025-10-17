@@ -5,11 +5,6 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import takagi.ru.monica.data.ledger.LedgerCategory
-import takagi.ru.monica.data.ledger.LedgerDao
-import takagi.ru.monica.data.ledger.LedgerEntry
-import takagi.ru.monica.data.ledger.LedgerEntryTagCrossRef
-import takagi.ru.monica.data.ledger.LedgerTag
 
 /**
  * Room database for storing password entries and secure items
@@ -17,14 +12,9 @@ import takagi.ru.monica.data.ledger.LedgerTag
 @Database(
     entities = [
         PasswordEntry::class,
-        SecureItem::class,
-        LedgerEntry::class,
-        LedgerCategory::class,
-        LedgerTag::class,
-        LedgerEntryTagCrossRef::class,
-        takagi.ru.monica.data.ledger.Asset::class
+        SecureItem::class
     ],
-    version = 11,  // Phase 7: 10 → 11
+    version = 12,  // 删除记账功能后升级到 12
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,7 +22,6 @@ abstract class PasswordDatabase : RoomDatabase() {
     
     abstract fun passwordEntryDao(): PasswordEntryDao
     abstract fun secureItemDao(): SecureItemDao
-    abstract fun ledgerDao(): LedgerDao
     
     companion object {
         @Volatile
@@ -229,6 +218,18 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 11 → 12 - 删除记账功能相关表
+        private val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 删除所有记账相关的表
+                database.execSQL("DROP TABLE IF EXISTS ledger_entries")
+                database.execSQL("DROP TABLE IF EXISTS ledger_categories")
+                database.execSQL("DROP TABLE IF EXISTS ledger_tags")
+                database.execSQL("DROP TABLE IF EXISTS ledger_entry_tag_cross_ref")
+                database.execSQL("DROP TABLE IF EXISTS assets")
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -246,7 +247,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_7_8, 
                         MIGRATION_8_9, 
                         MIGRATION_9_10,
-                        MIGRATION_10_11  // Phase 7: 新增迁移
+                        MIGRATION_10_11,
+                        MIGRATION_11_12  // 删除记账功能
                     )
                     .fallbackToDestructiveMigration() // 如果迁移失败,清除数据重建(避免闪退)
                     .build()

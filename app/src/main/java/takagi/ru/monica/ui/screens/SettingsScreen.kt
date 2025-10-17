@@ -45,7 +45,7 @@ fun SettingsScreen(
     onSupportAuthor: () -> Unit,
     onExportData: () -> Unit = {},
     onImportData: () -> Unit = {},
-    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _ -> },
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _ -> },
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
@@ -428,7 +428,6 @@ fun SettingsScreen(
     if (showClearDataDialog) {
         var clearPasswords by remember { mutableStateOf(true) }
         var clearTotp by remember { mutableStateOf(true) }
-        var clearLedger by remember { mutableStateOf(true) }
         var clearDocuments by remember { mutableStateOf(true) }
         var clearBankCards by remember { mutableStateOf(true) }
         
@@ -475,12 +474,6 @@ fun SettingsScreen(
                     )
                     
                     CheckboxRow(
-                        checked = clearLedger,
-                        onCheckedChange = { clearLedger = it },
-                        label = context.getString(R.string.data_type_ledger)
-                    )
-                    
-                    CheckboxRow(
                         checked = clearDocuments,
                         onCheckedChange = { clearDocuments = it },
                         label = context.getString(R.string.data_type_documents)
@@ -517,7 +510,6 @@ fun SettingsScreen(
                                 onClearAllData(
                                     clearPasswords,
                                     clearTotp,
-                                    clearLedger,
                                     clearDocuments,
                                     clearBankCards
                                 )
@@ -820,7 +812,6 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.AUTHENTICATOR -> Icons.Default.Security
     BottomNavContentTab.DOCUMENTS -> Icons.Default.Description
     BottomNavContentTab.BANK_CARDS -> Icons.Default.CreditCard
-    BottomNavContentTab.LEDGER -> Icons.Default.AccountBalance
     BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome  // 添加生成器图标
 }
 
@@ -829,7 +820,6 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.AUTHENTICATOR -> R.string.nav_authenticator
     BottomNavContentTab.DOCUMENTS -> R.string.nav_documents
     BottomNavContentTab.BANK_CARDS -> R.string.nav_bank_cards
-    BottomNavContentTab.LEDGER -> R.string.nav_ledger
     BottomNavContentTab.GENERATOR -> R.string.nav_generator  // 添加生成器标签
 }
 
