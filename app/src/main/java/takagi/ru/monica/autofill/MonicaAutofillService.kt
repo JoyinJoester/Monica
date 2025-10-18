@@ -105,6 +105,82 @@ class MonicaAutofillService : AutofillService() {
         }
     }
     
+    /**
+     * 🔧 从结构中提取域名（Chrome专用）
+     */
+    private fun extractDomainFromStructure(structure: AssistStructure): String? {
+        for (i in 0 until structure.windowNodeCount) {
+            val windowNode = structure.getWindowNodeAt(i)
+            val domain = extractDomainFromNode(windowNode.rootViewNode)
+            if (domain != null) {
+                android.util.Log.d("MonicaAutofill", "✓ Extracted domain from structure: $domain")
+                return domain
+            }
+        }
+        return null
+    }
+    
+    /**
+     * 🔧 递归提取域名
+     */
+    private fun extractDomainFromNode(node: AssistStructure.ViewNode): String? {
+        // 检查 webDomain 属性
+        node.webDomain?.let { 
+            android.util.Log.d("MonicaAutofill", "✓ Found webDomain: $it")
+            return it 
+        }
+        
+        // 检查节点文本（可能是地址栏URL）
+        node.text?.toString()?.let { text ->
+            if (text.contains("://") || text.matches(Regex(".*\\.(com|org|net|edu|gov|cn|io|app).*"))) {
+                val domain = extractDomainFromUrl(text)
+                if (domain != null) {
+                    android.util.Log.d("MonicaAutofill", "✓ Extracted from text: $domain")
+                    return domain
+                }
+            }
+        }
+        
+        // 检查 hint 文本
+        node.hint?.let { hint ->
+            if (hint.contains(".")) {
+                val domain = extractDomainFromUrl(hint)
+                if (domain != null) return domain
+            }
+        }
+        
+        // 递归子节点
+        for (i in 0 until node.childCount) {
+            node.getChildAt(i)?.let { child ->
+                val domain = extractDomainFromNode(child)
+                if (domain != null) return domain
+            }
+        }
+        
+        return null
+    }
+    
+    /**
+     * 🔧 从URL字符串提取域名
+     */
+    private fun extractDomainFromUrl(url: String): String? {
+        return try {
+            // 处理完整 URL
+            if (url.contains("://")) {
+                val urlPattern = Regex("https?://([^/:?#\\s]+)")
+                val match = urlPattern.find(url)
+                match?.groupValues?.get(1)
+            } else {
+                // 处理纯域名
+                val domainPattern = Regex("([a-zA-Z0-9-]+\\.[a-zA-Z]{2,})")
+                val match = domainPattern.find(url)
+                match?.groupValues?.get(1)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         AutofillLogger.i("SERVICE", "MonicaAutofillService onDestroy() - Cleaning up...")
@@ -276,9 +352,16 @@ class MonicaAutofillService : AutofillService() {
             }
         }
         
-        // 获取标识符
+        // 获取标识符 - 修复Chrome浏览器域名提取
         val packageName = parsedStructure.applicationId ?: structure.activityComponent.packageName
-        val webDomain = parsedStructure.webDomain ?: parser.extractWebDomain()
+        
+        // 🔧 Chrome特殊处理：从节点中提取域名
+        var webDomain = parsedStructure.webDomain ?: parser.extractWebDomain()
+        if (webDomain == null && (packageName == "com.android.chrome" || packageName.contains("browser"))) {
+            // 尝试从结构中所有节点提取域名
+            webDomain = extractDomainFromStructure(structure)
+        }
+        
         val identifier = webDomain ?: packageName
         
         AutofillLogger.d("MATCHING", "Package: $packageName, WebDomain: $webDomain, Identifier: $identifier")
@@ -337,11 +420,14 @@ class MonicaAutofillService : AutofillService() {
     }
     
     /**
-     * 查找匹配的密码条目
+     * 查找匹配的密码条目 - 修复Chrome域名匹配
      */
     private suspend fun findMatchingPasswords(packageName: String, identifier: String): List<PasswordEntry> {
         val matchStrategy = autofillPreferences.domainMatchStrategy.first()
         val allPasswords = passwordRepository.getAllPasswordEntries().first()
+        
+        android.util.Log.d("MonicaAutofill", "🔍 Matching: packageName=$packageName, identifier=$identifier")
+        android.util.Log.d("MonicaAutofill", "📦 Total passwords in database: ${allPasswords.size}")
         
         // 智能匹配算法：优先级排序
         val exactMatches = mutableListOf<PasswordEntry>()
@@ -349,22 +435,29 @@ class MonicaAutofillService : AutofillService() {
         val fuzzyMatches = mutableListOf<PasswordEntry>()
         
         allPasswords.forEach { password ->
+            android.util.Log.d("MonicaAutofill", "  - Checking: ${password.title} (website=${password.website}, package=${password.appPackageName})")
+            
             when {
                 // 最高优先级：精确包名匹配
                 password.appPackageName.isNotBlank() && password.appPackageName == packageName -> {
                     exactMatches.add(password)
+                    android.util.Log.d("MonicaAutofill", "    ✓ EXACT package match")
                 }
                 // 中等优先级：域名匹配
                 password.website.isNotBlank() && 
                 DomainMatcher.matches(password.website, identifier, matchStrategy) -> {
                     domainMatches.add(password)
+                    android.util.Log.d("MonicaAutofill", "    ✓ DOMAIN match (${password.website} ~ $identifier)")
                 }
                 // 低优先级：模糊匹配（标题包含应用名）
                 password.title.contains(getAppName(packageName), ignoreCase = true) -> {
                     fuzzyMatches.add(password)
+                    android.util.Log.d("MonicaAutofill", "    ✓ FUZZY match")
                 }
             }
         }
+        
+        android.util.Log.d("MonicaAutofill", "📊 Match results: exact=${exactMatches.size}, domain=${domainMatches.size}, fuzzy=${fuzzyMatches.size}")
         
         // 按优先级返回，限制数量以提高性能
         val result = (exactMatches + domainMatches + fuzzyMatches).take(10)
@@ -1505,6 +1598,22 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
         // 检查webDomain
         node.webDomain?.let { return it }
         
+        // 🔧 检查节点的文本内容，可能包含URL
+        node.text?.toString()?.let { text ->
+            if (text.contains("://") || text.contains(".com") || text.contains(".org")) {
+                val domain = extractDomainFromUrl(text)
+                if (domain != null) return domain
+            }
+        }
+        
+        // 🔧 检查contentDescription
+        node.contentDescription?.toString()?.let { desc ->
+            if (desc.contains("://") || desc.contains(".com")) {
+                val domain = extractDomainFromUrl(desc)
+                if (domain != null) return domain
+            }
+        }
+        
         // 递归检查子节点
         for (i in 0 until node.childCount) {
             val domain = extractWebDomainFromNode(node.getChildAt(i))
@@ -1514,6 +1623,16 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
         }
         
         return null
+    }
+    
+    private fun extractDomainFromUrl(url: String): String? {
+        return try {
+            val urlPattern = Regex("https?://([^/\\s]+)")
+            val match = urlPattern.find(url)
+            match?.groupValues?.get(1)
+        } catch (e: Exception) {
+            null
+        }
     }
 }
 

@@ -278,19 +278,27 @@ class EnhancedAutofillStructureParserV2 {
         for (i in 0 until structure.windowNodeCount) {
             val windowNode = structure.getWindowNodeAt(i)
             val rootNode = windowNode.rootViewNode
+
+            val info = WebViewInfo()
             
             traverseNode(
                 node = rootNode,
                 items = items,
                 respectAutofillOff = respectAutofillOff,
-                webViewInfo = WebViewInfo().also { info ->
-                    if (info.isWebView) {
-                        isWebView = true
-                        webScheme = info.webScheme
-                        webDomain = info.webDomain
-                    }
-                }
+                webViewInfo = info
             )
+
+            if (info.isWebView) {
+                isWebView = true
+            }
+
+            if (info.webDomain != null) {
+                webDomain = info.webDomain
+            }
+
+            if (info.webScheme != null) {
+                webScheme = info.webScheme
+            }
         }
         
         // 按准确度排序
@@ -328,18 +336,24 @@ class EnhancedAutofillStructureParserV2 {
     ) {
         // 检查是否是 WebView
         val currentWebViewNodeId = if (node.className == "android.webkit.WebView") {
+            webViewInfo.isWebView = true
             node.id
         } else {
             parentWebViewNodeId
         }
-        
+
         if (currentWebViewNodeId != null) {
             webViewInfo.isWebView = true
-            
-            // 尝试提取 WebView 的 URL
-            node.webDomain?.let { domain ->
+        }
+
+        // 尝试提取 WebView 或浏览器提供的域名信息
+        node.webDomain?.let { domain ->
+            if (webViewInfo.webDomain == null) {
                 webViewInfo.webDomain = domain
-                webViewInfo.webScheme = node.webScheme ?: "https"
+            }
+            val scheme = node.webScheme ?: "https"
+            if (webViewInfo.webScheme == null) {
+                webViewInfo.webScheme = scheme
             }
         }
         

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
@@ -1873,7 +1874,7 @@ private fun DocumentListContent(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StackedPasswordGroup(
-    @Suppress("UNUSED_PARAMETER") website: String, // 用于分组键，实际值从 passwords 获取
+    @Suppress("UNUSED_PARAMETER") website: String,
     passwords: List<takagi.ru.monica.data.PasswordEntry>,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
@@ -1887,275 +1888,450 @@ private fun StackedPasswordGroup(
     selectedPasswords: Set<Long>,
     onToggleSelection: (Long) -> Unit
 ) {
-    // 检查整组是否全部收藏
     val isGroupFavorited = passwords.all { it.isFavorite }
-    // 检查是否有封面卡片
     val hasGroupCover = passwords.any { it.isGroupCover }
     
-    Column(
-        modifier = if (isExpanded && passwords.size > 1) {
-            Modifier.padding(start = 4.dp) // 为边框留出空间
-        } else {
-            Modifier
-        }
+    // 🎨 动画状态
+    val expandProgress by animateFloatAsState(
+        targetValue = if (isExpanded && passwords.size > 1) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "expand_animation"
+    )
+    
+    val containerAlpha by animateFloatAsState(
+        targetValue = if (isExpanded && passwords.size > 1) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "container_alpha"
+    )
+    
+    // 🎯 下滑手势状态
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
+    val haptic = rememberHapticFeedback()
+    
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isExpanded && passwords.size > 1) {
+                    Modifier.pointerInput(Unit) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { 
+                                haptic.performLongPress()
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                // 只允许向下滑动
+                                if (dragAmount.y > 0) {
+                                    swipeOffset = (swipeOffset + dragAmount.y).coerceAtMost(150f)
+                                }
+                            },
+                            onDragEnd = {
+                                // 如果下滑超过阈值，收起卡片组
+                                if (swipeOffset > 80f) {
+                                    haptic.performSuccess()
+                                    onToggleExpand()
+                                }
+                                swipeOffset = 0f
+                            },
+                            onDragCancel = {
+                                swipeOffset = 0f
+                            }
+                        )
+                    }
+                } else Modifier
+            )
     ) {
         if (!isExpanded && passwords.size > 1) {
-            // 堆叠视图 - 显示优化的堆叠效果
+            // 📚 堆叠视图 - 层级式布局
             Box(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // 底层卡片阴影效果 - 最多显示3层
+                // 底层卡片阴影 - 3层堆叠效果
                 val stackCount = passwords.size.coerceAtMost(3)
                 for (i in (stackCount - 1) downTo 1) {
+                    val offsetDp = (i * 4).dp
+                    val scaleFactor = 1f - (i * 0.02f)
+                    
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(
-                                start = (i * 6).dp,
-                                end = (i * 6).dp,
-                                top = (i * 3).dp
-                            )
-                            .alpha(0.6f - (i * 0.15f)), // 渐变透明度
-                        elevation = CardDefaults.cardElevation(
-                            defaultElevation = (i * 2).dp
-                        ),
-                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            .padding(start = offsetDp, end = offsetDp, top = offsetDp)
+                            .graphicsLayer {
+                                scaleX = scaleFactor
+                                scaleY = scaleFactor
+                                alpha = 0.7f - (i * 0.2f)
+                            },
+                        elevation = CardDefaults.cardElevation(defaultElevation = (i * 1.5).dp),
+                        colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(14.dp)
                     ) {
-                        Box(modifier = Modifier.height(72.dp)) // 稍微增加高度
+                        Box(modifier = Modifier.height(76.dp))
                     }
                 }
                 
-                // 顶层卡片 - 可点击展开，支持滑动操作
+                // 顶层主卡片
                 takagi.ru.monica.ui.gestures.SwipeActions(
-                    onSwipeLeft = {
-                        // 左滑删除（删除整个分组的第一个，触发删除逻辑）
-                        onSwipeLeft(passwords.first())
-                    },
-                    onSwipeRight = {
-                        // 右滑选择（选择整个分组的第一个，触发选择模式）
-                        onSwipeRight(passwords.first())
-                    },
-                    enabled = true // 多选模式下也可以滑动
+                    onSwipeLeft = { onSwipeLeft(passwords.first()) },
+                    onSwipeRight = { onSwipeRight(passwords.first()) },
+                    enabled = true
                 ) {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                shadowElevation = 6f
+                            },
                         elevation = CardDefaults.cardElevation(
-                            defaultElevation = 4.dp,
-                            pressedElevation = 8.dp
+                            defaultElevation = 6.dp,
+                            pressedElevation = 10.dp
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = if (selectedPasswords.contains(passwords.first().id)) {
-                            androidx.compose.material3.CardDefaults.cardColors(
+                            CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.primaryContainer
                             )
                         } else {
-                            androidx.compose.material3.CardDefaults.cardColors()
+                            CardDefaults.cardColors()
                         }
                     ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onToggleExpand() } // 将 clickable 移到 Row 上
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // 复选框
-                        if (isSelectionMode) {
-                            androidx.compose.material3.Checkbox(
-                                checked = selectedPasswords.contains(passwords.first().id),
-                                onCheckedChange = null
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleExpand() }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isSelectionMode) {
+                                androidx.compose.material3.Checkbox(
+                                    checked = selectedPasswords.contains(passwords.first().id),
+                                    onCheckedChange = null
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                            }
+                            
+                            Column(modifier = Modifier.weight(1f)) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // 堆叠数量徽章 - 优化样式
-                                    Surface(
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                        shadowElevation = 2.dp
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                        // 🏷️ 数量徽章
+                                        Surface(
+                                            shape = RoundedCornerShape(18.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shadowElevation = 2.dp
                                         ) {
-                                            Icon(
-                                                Icons.Default.Layers,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(14.dp),
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                            Text(
-                                                text = "${passwords.size}",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Layers,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                                Text(
+                                                    text = "${passwords.size}",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                            }
                                         }
-                                    }
-                                    
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = passwords.first().title,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        if (passwords.first().website.isNotBlank()) {
+                                        
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = passwords.first().website,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                text = passwords.first().title,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                            if (passwords.first().website.isNotBlank()) {
+                                                Text(
+                                                    text = passwords.first().website,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                                
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // 收藏标记（非选择模式）
-                                    if (!isSelectionMode && isGroupFavorited) {
-                                        Icon(
-                                            Icons.Default.Favorite,
-                                            contentDescription = "已收藏",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
                                     
-                                    // 展开指示器
-                                    if (!isSelectionMode) {
-                                        Icon(
-                                            Icons.Default.ExpandMore,
-                                            contentDescription = "展开",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    } else if (isGroupFavorited) {
-                                        // 选择模式下只显示收藏图标
-                                        Icon(
-                                            Icons.Default.Favorite,
-                                            contentDescription = "已收藏",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (!isSelectionMode && isGroupFavorited) {
+                                            Icon(
+                                                Icons.Default.Favorite,
+                                                contentDescription = "已收藏",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        
+                                        if (!isSelectionMode) {
+                                            Icon(
+                                                Icons.Default.ExpandMore,
+                                                contentDescription = "展开",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        } else if (isGroupFavorited) {
+                                            Icon(
+                                                Icons.Default.Favorite,
+                                                contentDescription = "已收藏",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-                } // SwipeActions 闭合
             }
         } else {
-            // 展开视图或单个密码 - 显示所有卡片
-            passwords.forEachIndexed { index, password ->
-                val isSingleCard = passwords.size == 1
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // 展开状态下显示左侧装饰条 - 优化设计
-                    if (isExpanded && passwords.size > 1) {
-                        Box(
-                            modifier = Modifier
-                                .width(3.dp)
-                                .height(64.dp) // 固定高度，更整洁
-                                .background(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shape = RoundedCornerShape(2.dp)
-                                )
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
+            // 🎭 展开视图 - 优化布局
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        translationY = swipeOffset * 0.5f
                     }
-                    
-                    // 用 SwipeActions 包裹每个密码卡片
-                    takagi.ru.monica.ui.gestures.SwipeActions(
-                        onSwipeLeft = {
-                            // 左滑删除
-                            onSwipeLeft(password)
-                        },
-                        onSwipeRight = {
-                            // 右滑选择
-                            onSwipeRight(password)
-                        },
-                        enabled = true // 多选模式下也可以滑动
-                    ) {
-                        PasswordEntryCard(
-                            entry = password,
-                            onClick = {
-                                if (isSelectionMode) {
-                                    onToggleSelection(password.id)
-                                } else {
-                                    onPasswordClick(password)
-                                }
-                            },
-                            onLongClick = {}, // 移除长按功能
-                            onToggleFavorite = { onToggleFavorite(password) },
-                            onToggleGroupCover = if (passwords.size > 1) {
-                                { onToggleGroupCover(password) }
-                            } else null,
-                            isSelectionMode = isSelectionMode,
-                            isSelected = selectedPasswords.contains(password.id),
-                            canSetGroupCover = passwords.size > 1 && (!hasGroupCover || password.isGroupCover),
-                            isInExpandedGroup = isExpanded && passwords.size > 1,
-                            isSingleCard = isSingleCard
-                        )
-                    }
-                }
-                
-                if (index < passwords.size - 1 && (isExpanded || passwords.size == 1)) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-            }
-            
-            // 收起按钮 - 优化样式
-            if (isExpanded && passwords.size > 1) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    onClick = onToggleExpand
-                ) {
-                    Row(
+            ) {
+                if (isExpanded && passwords.size > 1) {
+                    // 📌 1. 顶部小标题卡片（圆角上边缘 + 尖角下边缘）
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                            .alpha(containerAlpha),
+                        shape = RoundedCornerShape(
+                            topStart = 14.dp,
+                            topEnd = 14.dp,
+                            bottomStart = 0.dp,
+                            bottomEnd = 0.dp
+                        ),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),  // 与主容器背景色一致
+                        shadowElevation = 2.dp
                     ) {
-                        Icon(
-                            Icons.Default.ExpandLess,
-                            contentDescription = "收起",
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "收起 ${passwords.size} 个密码",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 左侧：密码数量按钮
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                onClick = { /* 可选：点击效果 */ }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Layers,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.passwords_count, passwords.size),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                            
+                            // 右侧：收起按钮
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                onClick = onToggleExpand
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ExpandLess,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.collapse),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 📦 2. 主容器卡片（从尖角延伸，包含所有密码卡片）
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(containerAlpha),
+                        shape = RoundedCornerShape(
+                            topStart = 0.dp,
+                            topEnd = 0.dp,
+                            bottomStart = 16.dp,
+                            bottomEnd = 16.dp
+                        ),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        shadowElevation = 4.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            // 🎴 所有密码子卡片（并列显示）
+                            passwords.forEachIndexed { index, password ->
+                                val cardAlpha by animateFloatAsState(
+                                    targetValue = 1f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow
+                                    ),
+                                    label = "card_${index}_alpha"
+                                )
+                                
+                                val cardOffset by animateDpAsState(
+                                    targetValue = 0.dp,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    ),
+                                    label = "card_${index}_offset"
+                                )
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .graphicsLayer {
+                                            alpha = cardAlpha
+                                            translationY = cardOffset.toPx()
+                                        }
+                                ) {
+                                    takagi.ru.monica.ui.gestures.SwipeActions(
+                                        onSwipeLeft = { onSwipeLeft(password) },
+                                        onSwipeRight = { onSwipeRight(password) },
+                                        enabled = true
+                                    ) {
+                                        PasswordEntryCard(
+                                            entry = password,
+                                            onClick = {
+                                                if (isSelectionMode) {
+                                                    onToggleSelection(password.id)
+                                                } else {
+                                                    onPasswordClick(password)
+                                                }
+                                            },
+                                            onLongClick = {},
+                                            onToggleFavorite = { onToggleFavorite(password) },
+                                            onToggleGroupCover = if (passwords.size > 1) {
+                                                { onToggleGroupCover(password) }
+                                            } else null,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = selectedPasswords.contains(password.id),
+                                            canSetGroupCover = passwords.size > 1 && (!hasGroupCover || password.isGroupCover),
+                                            isInExpandedGroup = isExpanded && passwords.size > 1,
+                                            isSingleCard = false
+                                        )
+                                    }
+                                }
+                                
+                                if (index < passwords.size - 1) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+                            }
+                            
+                            // 📌 底部收起按钮
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                                onClick = onToggleExpand
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.ExpandLess,
+                                        contentDescription = stringResource(R.string.collapse),
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.collapse_group, passwords.size),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // 单个密码直接显示
+                    passwords.forEach { password ->
+                        takagi.ru.monica.ui.gestures.SwipeActions(
+                            onSwipeLeft = { onSwipeLeft(password) },
+                            onSwipeRight = { onSwipeRight(password) },
+                            enabled = true
+                        ) {
+                            PasswordEntryCard(
+                                entry = password,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        onToggleSelection(password.id)
+                                    } else {
+                                        onPasswordClick(password)
+                                    }
+                                },
+                                onLongClick = {},
+                                onToggleFavorite = { onToggleFavorite(password) },
+                                onToggleGroupCover = null,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = selectedPasswords.contains(password.id),
+                                canSetGroupCover = false,
+                                isInExpandedGroup = false,
+                                isSingleCard = true
+                            )
+                        }
                     }
                 }
             }

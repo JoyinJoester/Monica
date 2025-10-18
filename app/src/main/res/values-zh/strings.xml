@@ -65,6 +65,11 @@
     <string name="username_copied">用户名已复制到剪贴板</string>
     <string name="password_copied">密码已复制到剪贴板</string>
     
+    <!-- Password Group Actions -->
+    <string name="collapse">收起</string>
+    <string name="collapse_group">收起 %d 个密码</string>
+    <string name="passwords_count">%d 个密码</string>
+    
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">添加密码</string>
     <string name="edit_password_title">编辑密码</string>

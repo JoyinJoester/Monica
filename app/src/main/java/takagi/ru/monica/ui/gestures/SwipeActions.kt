@@ -94,6 +94,16 @@ fun SwipeActions(
         0.8f + (progress * 0.4f) // 0.8 -> 1.2
     }
     
+    // 🎨 右滑时卡片渐变色（跟随滑动距离）
+    val cardTintAlpha = remember(offsetX, swipeThreshold) {
+        if (offsetX > 0) {
+            // 右滑时，根据滑动进度渐变到主题色
+            (offsetX / swipeThreshold).coerceIn(0f, 0.6f)
+        } else {
+            0f
+        }
+    }
+    
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -190,15 +200,32 @@ fun SwipeActions(
         }
         
         // 前景内容
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .graphicsLayer {
-                    translationX = animatedOffset.value
-                    // 添加微妙的阴影效果
-                    shadowElevation = (abs(animatedOffset.value) / 100f).coerceIn(0f, 8f)
-                }
-                .pointerInput(enabled) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // 🎨 渐变色遮罩层（右滑时显示）
+            if (cardTintAlpha > 0f) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationX = animatedOffset.value
+                            alpha = cardTintAlpha
+                        },
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(16.dp)
+                ) {}
+            }
+            
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        translationX = animatedOffset.value
+                        // 添加微妙的阴影效果
+                        shadowElevation = (abs(animatedOffset.value) / 100f).coerceIn(0f, 8f)
+                    }
+                    .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
                     
                     detectHorizontalDragGestures(
@@ -285,6 +312,7 @@ fun SwipeActions(
             shadowElevation = 0.dp
         ) {
             content()
+        }
         }
     }
 }

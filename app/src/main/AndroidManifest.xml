@@ -68,6 +68,7 @@
         <!-- Autofill Service -->
         <service
             android:name=".autofill.MonicaAutofillService"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_AUTOFILL_SERVICE"
             android:exported="true">
             <intent-filter>

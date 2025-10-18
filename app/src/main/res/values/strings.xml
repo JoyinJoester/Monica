@@ -65,6 +65,11 @@
     <string name="username_copied">Username copied to clipboard</string>
     <string name="password_copied">Password copied to clipboard</string>
     
+    <!-- Password Group Actions -->
+    <string name="collapse">Collapse</string>
+    <string name="collapse_group">Collapse %d passwords</string>
+    <string name="passwords_count">%d passwords</string>
+    
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">Add Password</string>
     <string name="edit_password_title">Edit Password</string>
