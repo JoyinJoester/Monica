@@ -14,7 +14,7 @@ import androidx.room.TypeConverters
         PasswordEntry::class,
         SecureItem::class
     ],
-    version = 12,  // 删除记账功能后升级到 12
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -229,6 +229,21 @@ abstract class PasswordDatabase : RoomDatabase() {
                 database.execSQL("DROP TABLE IF EXISTS assets")
             }
         }
+        // Migration 12 → 13 - 预留版本 (Passkey 功能开发)
+        private val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 此版本暂无数据库结构变更
+            }
+        }
+        
+        // Migration 13 → 14 - 删除 Passkey 功能
+        private val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 删除 passkeys 表 (如果存在)
+                database.execSQL("DROP TABLE IF EXISTS passkeys")
+            }
+        }
+
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -248,9 +263,10 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_8_9, 
                         MIGRATION_9_10,
                         MIGRATION_10_11,
-                        MIGRATION_11_12  // 删除记账功能
+                        MIGRATION_11_12,  // 删除记账功能
+                        MIGRATION_12_13,
+                        MIGRATION_13_14
                     )
-                    .fallbackToDestructiveMigration() // 如果迁移失败,清除数据重建(避免闪退)
                     .build()
                 INSTANCE = instance
                 instance
@@ -258,3 +274,6 @@ abstract class PasswordDatabase : RoomDatabase() {
         }
     }
 }
+
+
+
