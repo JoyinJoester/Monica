@@ -8,7 +8,14 @@ enum class ThemeMode {
 }
 
 enum class ColorScheme {
-    DEFAULT, DEEP_BLUE_TEAL, DEEP_BLUE_RED, PINK_PURPLE_BLUE, DARK_THEME, GRAY_BLUE_RED, CUSTOM
+    DEFAULT, 
+    OCEAN_BLUE,      // 海洋蓝
+    SUNSET_ORANGE,   // 日落橙
+    FOREST_GREEN,    // 森林绿
+    TECH_PURPLE,     // 科技紫
+    BLACK_MAMBA,     // 黑曼巴 (Kobe Lakers)
+    GREY_STYLE,      // 小黑紫 (Cai Xukun)
+    CUSTOM           // 自定义
 }
 
 enum class Language {

@@ -577,11 +577,12 @@
     <string name="color_scheme">配色方案</string>
     <string name="color_scheme_description">为应用选择一个配色方案</string>
     <string name="default_color_scheme">默认</string>
-    <string name="deep_blue_teal_scheme">深蓝青绿</string>
-    <string name="deep_blue_red_scheme">深蓝红灰</string>
-    <string name="pink_purple_blue_scheme">粉紫蓝</string>
-    <string name="dark_theme_scheme">深色系</string>
-    <string name="gray_blue_red_scheme">灰蓝红</string>
+    <string name="ocean_blue_scheme">海洋蓝</string>
+    <string name="sunset_orange_scheme">日落橙</string>
+    <string name="forest_green_scheme">森林绿</string>
+    <string name="tech_purple_scheme">科技紫</string>
+    <string name="black_mamba_scheme">黑曼巴</string>
+    <string name="grey_style_scheme">小黑紫</string>
     <string name="custom_color_scheme">自定义颜色</string>
     <string name="custom_color_scheme_description">为应用主题设置您自己的三种颜色</string>
     <string name="current_colors">当前颜色</string>
@@ -779,7 +780,20 @@
     <string name="asset_close">关闭</string>
     
     <!-- Phase 8: 生物识别自动填充 -->
-    <string name="biometric_auth_failed">生物识别认证失败，请重试。</string>
+    <string name="biometric_auth_failed">生物识别认证失败,请重试。</string>
     <string name="biometric_auth_error">认证错误: %s</string>
+    
+    <!-- 平板UI -->
+    <string name="passwords_title">密码</string>
+    <string name="authenticator">验证器</string>
+    <string name="documents">证件</string>
+    <string name="bank_cards">银行卡</string>
+    <string name="generator">生成器</string>
+    <string name="generator_hint">使用生成器创建安全密码</string>
+    <string name="settings_description">配置您的 Monica 设置</string>
+    <string name="select_password_hint">选择一个密码查看详情</string>
+    <string name="select_totp_hint">选择一个验证器查看详情</string>
+    <string name="select_document_hint">选择一个证件查看详情</string>
+    <string name="select_bank_card_hint">选择一张银行卡查看详情</string>
     
 </resources>

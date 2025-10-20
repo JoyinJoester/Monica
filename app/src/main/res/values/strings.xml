@@ -555,11 +555,12 @@
     <string name="color_scheme">Color Scheme</string>
     <string name="color_scheme_description">Select a color scheme for the app</string>
     <string name="default_color_scheme">Default</string>
-    <string name="deep_blue_teal_scheme">Deep Blue Teal</string>
-    <string name="deep_blue_red_scheme">Deep Blue Red Grey</string>
-    <string name="pink_purple_blue_scheme">Pink Purple Blue</string>
-    <string name="dark_theme_scheme">Dark Theme</string>
-    <string name="gray_blue_red_scheme">Gray Blue Red</string>
+    <string name="ocean_blue_scheme">Ocean Blue</string>
+    <string name="sunset_orange_scheme">Sunset Orange</string>
+    <string name="forest_green_scheme">Forest Green</string>
+    <string name="tech_purple_scheme">Tech Purple</string>
+    <string name="black_mamba_scheme">Black Mamba</string>
+    <string name="grey_style_scheme">Grey Style</string>
     <string name="custom_color_scheme">Custom Colors</string>
     <string name="custom_color_scheme_description">Set your own three colors for the app theme</string>
     <string name="current_colors">Current Colors</string>
@@ -789,5 +790,18 @@
     <!-- Phase 8: Biometric Autofill -->
     <string name="biometric_auth_failed">Biometric authentication failed. Please try again.</string>
     <string name="biometric_auth_error">Authentication error: %s</string>
+    
+    <!-- Tablet UI -->
+    <string name="passwords_title">Passwords</string>
+    <string name="authenticator">Authenticator</string>
+    <string name="documents">Documents</string>
+    <string name="bank_cards">Bank Cards</string>
+    <string name="generator">Generator</string>
+    <string name="generator_hint">Use the generator to create secure passwords</string>
+    <string name="settings_description">Configure your Monica settings</string>
+    <string name="select_password_hint">Select a password to view details</string>
+    <string name="select_totp_hint">Select an authenticator to view details</string>
+    <string name="select_document_hint">Select a document to view details</string>
+    <string name="select_bank_card_hint">Select a bank card to view details</string>
     
 </resources>

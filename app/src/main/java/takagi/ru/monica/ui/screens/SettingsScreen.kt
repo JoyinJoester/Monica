@@ -971,11 +971,12 @@ private fun getAutoLockDisplayName(minutes: Int, context: android.content.Contex
 private fun getColorSchemeDisplayName(colorScheme: takagi.ru.monica.data.ColorScheme, context: android.content.Context): String {
     return when (colorScheme) {
         takagi.ru.monica.data.ColorScheme.DEFAULT -> context.getString(R.string.default_color_scheme)
-        takagi.ru.monica.data.ColorScheme.DEEP_BLUE_TEAL -> context.getString(R.string.deep_blue_teal_scheme)
-        takagi.ru.monica.data.ColorScheme.DEEP_BLUE_RED -> context.getString(R.string.deep_blue_red_scheme)
-        takagi.ru.monica.data.ColorScheme.PINK_PURPLE_BLUE -> context.getString(R.string.pink_purple_blue_scheme)
-        takagi.ru.monica.data.ColorScheme.DARK_THEME -> context.getString(R.string.dark_theme_scheme)
-        takagi.ru.monica.data.ColorScheme.GRAY_BLUE_RED -> context.getString(R.string.gray_blue_red_scheme)
+        takagi.ru.monica.data.ColorScheme.OCEAN_BLUE -> context.getString(R.string.ocean_blue_scheme)
+        takagi.ru.monica.data.ColorScheme.SUNSET_ORANGE -> context.getString(R.string.sunset_orange_scheme)
+        takagi.ru.monica.data.ColorScheme.FOREST_GREEN -> context.getString(R.string.forest_green_scheme)
+        takagi.ru.monica.data.ColorScheme.TECH_PURPLE -> context.getString(R.string.tech_purple_scheme)
+        takagi.ru.monica.data.ColorScheme.BLACK_MAMBA -> context.getString(R.string.black_mamba_scheme)
+        takagi.ru.monica.data.ColorScheme.GREY_STYLE -> context.getString(R.string.grey_style_scheme)
         takagi.ru.monica.data.ColorScheme.CUSTOM -> context.getString(R.string.custom_color_scheme)
     }
 }

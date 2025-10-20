@@ -2,9 +2,12 @@ package takagi.ru.monica.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,7 +54,7 @@ fun DocumentCard(
     
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
         ),
@@ -62,7 +65,7 @@ fun DocumentCard(
         } else {
             CardDefaults.cardColors(
                 containerColor = when (documentData.documentType) {
-                    DocumentType.ID_CARD -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    DocumentType.ID_CARD -> MaterialTheme.colorScheme.primaryContainer
                     DocumentType.PASSPORT -> MaterialTheme.colorScheme.secondaryContainer
                     DocumentType.DRIVER_LICENSE -> MaterialTheme.colorScheme.tertiaryContainer
                     DocumentType.SOCIAL_SECURITY -> MaterialTheme.colorScheme.surfaceVariant
@@ -73,7 +76,7 @@ fun DocumentCard(
     ) {
         Column(
             modifier = Modifier
-                .clickable { onClick() } // 将 clickable 移到 Column 上
+                .clickable { onClick() }
                 .padding(16.dp)
         ) {
             // 标题和菜单

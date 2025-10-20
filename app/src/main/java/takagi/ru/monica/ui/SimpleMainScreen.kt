@@ -200,7 +200,10 @@ fun SimpleMainScreen(
             }
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                tonalElevation = 0.dp,  // 移除顶部分隔线
+                containerColor = MaterialTheme.colorScheme.surface  // 使用surface颜色移除视觉分隔
+            ) {
                 tabs.forEach { item ->
                     val label = stringResource(item.shortLabelRes())
                     NavigationBarItem(

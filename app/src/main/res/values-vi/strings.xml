@@ -518,11 +518,12 @@
     <string name="color_scheme">Bảng màu</string>
     <string name="color_scheme_description">Chọn bảng màu cho ứng dụng</string>
     <string name="default_color_scheme">Mặc định</string>
-    <string name="deep_blue_teal_scheme">Xanh đậm ngọc lam</string>
-    <string name="deep_blue_red_scheme">Xanh đậm đỏ xám</string>
-    <string name="pink_purple_blue_scheme">Hồng tím xanh</string>
-    <string name="dark_theme_scheme">Chủ đề tối</string>
-    <string name="gray_blue_red_scheme">Xám xanh đỏ</string>
+    <string name="ocean_blue_scheme">Xanh đại dương</string>
+    <string name="sunset_orange_scheme">Cam hoàng hôn</string>
+    <string name="forest_green_scheme">Xanh rừng</string>
+    <string name="tech_purple_scheme">Tím công nghệ</string>
+    <string name="black_mamba_scheme">Mamba đen</string>
+    <string name="grey_style_scheme">Phong cách xám</string>
     <string name="custom_color_scheme">Màu tùy chỉnh</string>
     <string name="custom_color_scheme_description">Đặt ba màu riêng cho chủ đề ứng dụng</string>
     <string name="current_colors">Màu hiện tại</string>

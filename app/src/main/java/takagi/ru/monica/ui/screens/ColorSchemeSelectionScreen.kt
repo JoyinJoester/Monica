@@ -81,67 +81,80 @@ fun ColorSchemeSelectionScreen(
             )
             
             ColorSchemeOption(
-                colorScheme = ColorScheme.DEEP_BLUE_TEAL,
-                name = stringResource(R.string.deep_blue_teal_scheme),
-                primaryColor = Color(0xFF143268),
-                secondaryColor = Color(0xFF61c1bd),
-                tertiaryColor = Color(0xFF98c9d9),
-                isSelected = previewColorScheme == ColorScheme.DEEP_BLUE_TEAL,
+                colorScheme = ColorScheme.OCEAN_BLUE,
+                name = stringResource(R.string.ocean_blue_scheme),
+                primaryColor = Color(0xFF1565C0),
+                secondaryColor = Color(0xFF0277BD),
+                tertiaryColor = Color(0xFF26C6DA),
+                isSelected = previewColorScheme == ColorScheme.OCEAN_BLUE,
                 onClick = { 
-                    previewColorScheme = ColorScheme.DEEP_BLUE_TEAL
-                    settingsViewModel.updateColorScheme(ColorScheme.DEEP_BLUE_TEAL)
+                    previewColorScheme = ColorScheme.OCEAN_BLUE
+                    settingsViewModel.updateColorScheme(ColorScheme.OCEAN_BLUE)
                 }
             )
             
             ColorSchemeOption(
-                colorScheme = ColorScheme.DEEP_BLUE_RED,
-                name = stringResource(R.string.deep_blue_red_scheme),
-                primaryColor = Color(0xFF32586d),
-                secondaryColor = Color(0xFFca3032),
-                tertiaryColor = Color(0xFFb2d1d6),
-                isSelected = previewColorScheme == ColorScheme.DEEP_BLUE_RED,
+                colorScheme = ColorScheme.SUNSET_ORANGE,
+                name = stringResource(R.string.sunset_orange_scheme),
+                primaryColor = Color(0xFFE65100),
+                secondaryColor = Color(0xFFF57C00),
+                tertiaryColor = Color(0xFFFFA726),
+                isSelected = previewColorScheme == ColorScheme.SUNSET_ORANGE,
                 onClick = { 
-                    previewColorScheme = ColorScheme.DEEP_BLUE_RED
-                    settingsViewModel.updateColorScheme(ColorScheme.DEEP_BLUE_RED)
+                    previewColorScheme = ColorScheme.SUNSET_ORANGE
+                    settingsViewModel.updateColorScheme(ColorScheme.SUNSET_ORANGE)
                 }
             )
             
             ColorSchemeOption(
-                colorScheme = ColorScheme.PINK_PURPLE_BLUE,
-                name = stringResource(R.string.pink_purple_blue_scheme),
-                primaryColor = Color(0xFFe6c5cf),
-                secondaryColor = Color(0xFFbdd8dd),
-                tertiaryColor = Color(0xFFaf9dc0),
-                isSelected = previewColorScheme == ColorScheme.PINK_PURPLE_BLUE,
+                colorScheme = ColorScheme.FOREST_GREEN,
+                name = stringResource(R.string.forest_green_scheme),
+                primaryColor = Color(0xFF1B5E20),
+                secondaryColor = Color(0xFF2E7D32),
+                tertiaryColor = Color(0xFF388E3C),
+                isSelected = previewColorScheme == ColorScheme.FOREST_GREEN,
                 onClick = { 
-                    previewColorScheme = ColorScheme.PINK_PURPLE_BLUE
-                    settingsViewModel.updateColorScheme(ColorScheme.PINK_PURPLE_BLUE)
+                    previewColorScheme = ColorScheme.FOREST_GREEN
+                    settingsViewModel.updateColorScheme(ColorScheme.FOREST_GREEN)
                 }
             )
             
             ColorSchemeOption(
-                colorScheme = ColorScheme.DARK_THEME,
-                name = stringResource(R.string.dark_theme_scheme),
-                primaryColor = Color(0xFF263238),
-                secondaryColor = Color(0xFF529bba),
-                tertiaryColor = Color(0xFF63b8a7),
-                isSelected = previewColorScheme == ColorScheme.DARK_THEME,
+                colorScheme = ColorScheme.TECH_PURPLE,
+                name = stringResource(R.string.tech_purple_scheme),
+                primaryColor = Color(0xFF4A148C),
+                secondaryColor = Color(0xFF6A1B9A),
+                tertiaryColor = Color(0xFF8E24AA),
+                isSelected = previewColorScheme == ColorScheme.TECH_PURPLE,
                 onClick = { 
-                    previewColorScheme = ColorScheme.DARK_THEME
-                    settingsViewModel.updateColorScheme(ColorScheme.DARK_THEME)
+                    previewColorScheme = ColorScheme.TECH_PURPLE
+                    settingsViewModel.updateColorScheme(ColorScheme.TECH_PURPLE)
                 }
             )
             
             ColorSchemeOption(
-                colorScheme = ColorScheme.GRAY_BLUE_RED,
-                name = stringResource(R.string.gray_blue_red_scheme),
-                primaryColor = Color(0xFFd9d9d9),
-                secondaryColor = Color(0xFF286181),
-                tertiaryColor = Color(0xFFff5757),
-                isSelected = previewColorScheme == ColorScheme.GRAY_BLUE_RED,
+                colorScheme = ColorScheme.BLACK_MAMBA,
+                name = stringResource(R.string.black_mamba_scheme),
+                primaryColor = Color(0xFF552583),  // 湖人紫
+                secondaryColor = Color(0xFFFDB927), // 湖人金
+                tertiaryColor = Color(0xFF2A2A2A),  // 黑曼巴灰
+                isSelected = previewColorScheme == ColorScheme.BLACK_MAMBA,
                 onClick = { 
-                    previewColorScheme = ColorScheme.GRAY_BLUE_RED
-                    settingsViewModel.updateColorScheme(ColorScheme.GRAY_BLUE_RED)
+                    previewColorScheme = ColorScheme.BLACK_MAMBA
+                    settingsViewModel.updateColorScheme(ColorScheme.BLACK_MAMBA)
+                }
+            )
+            
+            ColorSchemeOption(
+                colorScheme = ColorScheme.GREY_STYLE,
+                name = stringResource(R.string.grey_style_scheme),
+                primaryColor = Color(0xFF616161),  // 高级灰
+                secondaryColor = Color(0xFFE0E0E0), // 浅灰
+                tertiaryColor = Color(0xFF37474F),  // 深蓝灰
+                isSelected = previewColorScheme == ColorScheme.GREY_STYLE,
+                onClick = { 
+                    previewColorScheme = ColorScheme.GREY_STYLE
+                    settingsViewModel.updateColorScheme(ColorScheme.GREY_STYLE)
                 }
             )
             
