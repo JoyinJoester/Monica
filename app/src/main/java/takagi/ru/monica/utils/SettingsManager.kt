@@ -57,9 +57,11 @@ class SettingsManager(private val context: Context) {
             themeMode = ThemeMode.valueOf(
                 preferences[THEME_MODE_KEY] ?: ThemeMode.SYSTEM.name
             ),
-            colorScheme = ColorScheme.valueOf(
-                preferences[COLOR_SCHEME_KEY] ?: ColorScheme.DEFAULT.name
-            ),
+            colorScheme = runCatching {
+                ColorScheme.valueOf(
+                    preferences[COLOR_SCHEME_KEY] ?: ColorScheme.DEFAULT.name
+                )
+            }.getOrDefault(ColorScheme.DEFAULT),
             customPrimaryColor = preferences[CUSTOM_PRIMARY_COLOR_KEY] ?: 0xFF6650a4,
             customSecondaryColor = preferences[CUSTOM_SECONDARY_COLOR_KEY] ?: 0xFF625b71,
             customTertiaryColor = preferences[CUSTOM_TERTIARY_COLOR_KEY] ?: 0xFF7D5260,
