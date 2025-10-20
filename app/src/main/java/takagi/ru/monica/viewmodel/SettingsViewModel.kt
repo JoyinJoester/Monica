@@ -69,6 +69,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateBottomSheetEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateBottomSheetEnabled(enabled)
+        }
+    }
+
     fun updateBottomNavVisibility(tab: BottomNavContentTab, visible: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBottomNavVisibility(tab, visible)

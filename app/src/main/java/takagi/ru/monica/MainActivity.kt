@@ -54,6 +54,7 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.SimpleMainScreen
+import takagi.ru.monica.ui.SimpleMainScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
@@ -77,6 +78,7 @@ import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
+import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SecurityAnalysisViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -187,6 +189,9 @@ fun MonicaApp(
     val settingsViewModel: SettingsViewModel = viewModel {
         SettingsViewModel(settingsManager)
     }
+    val generatorViewModel: GeneratorViewModel = viewModel {
+        GeneratorViewModel()
+    }
 
     val settings by settingsViewModel.settings.collectAsState()
     val isSystemInDarkTheme = isSystemInDarkTheme()
@@ -220,6 +225,7 @@ fun MonicaApp(
                 documentViewModel = documentViewModel,
                 dataExportImportViewModel = dataExportImportViewModel,
                 settingsViewModel = settingsViewModel,
+                generatorViewModel = generatorViewModel,
                 securityManager = securityManager,
                 repository = repository,
                 secureItemRepository = secureItemRepository,
@@ -241,6 +247,7 @@ fun MonicaContent(
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
     dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel,
     settingsViewModel: SettingsViewModel,
+    generatorViewModel: GeneratorViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
@@ -284,6 +291,7 @@ fun MonicaContent(
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
+                generatorViewModel = generatorViewModel,
                 onNavigateToAddPassword = { passwordId ->
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
                 },
@@ -296,7 +304,7 @@ fun MonicaContent(
                 onNavigateToAddDocument = { documentId ->
                     navController.navigate(Screen.AddEditDocument.createRoute(documentId))
                 },
-                onNavigateToDocumentDetail = { documentId ->  // 添加新的导航参数
+                onNavigateToDocumentDetail = { documentId ->
                     navController.navigate(Screen.DocumentDetail.createRoute(documentId))
                 },
                 onNavigateToChangePassword = {

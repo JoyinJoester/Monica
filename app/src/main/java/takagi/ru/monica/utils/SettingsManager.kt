@@ -40,6 +40,7 @@ class SettingsManager(private val context: Context) {
         private val SHOW_LEDGER_TAB_KEY = booleanPreferencesKey("show_ledger_tab")
         private val SHOW_GENERATOR_TAB_KEY = booleanPreferencesKey("show_generator_tab")  // 添加生成器标签键
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
+        private val BOTTOM_SHEET_ENABLED_KEY = booleanPreferencesKey("bottom_sheet_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
     }
     
@@ -70,6 +71,7 @@ class SettingsManager(private val context: Context) {
             autoLockMinutes = preferences[AUTO_LOCK_MINUTES_KEY] ?: 5,
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true, // 默认启用动态颜色
+            bottomSheetEnabled = preferences[BOTTOM_SHEET_ENABLED_KEY] ?: false, // 默认关闭 Bottom Sheet 模式
             bottomNavVisibility = BottomNavVisibility(
                 passwords = preferences[SHOW_PASSWORDS_TAB_KEY] ?: true,
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
@@ -120,6 +122,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateDynamicColorEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateBottomSheetEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BOTTOM_SHEET_ENABLED_KEY] = enabled
         }
     }
 

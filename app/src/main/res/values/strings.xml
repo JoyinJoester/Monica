@@ -463,12 +463,18 @@
     <string name="settings_change_password_description">Change login password</string>
     <string name="settings_security_questions">Security Questions</string>
     <string name="settings_security_questions_description">Set security questions for password recovery</string>
+    <string name="settings_bottom_sheet_title">Bottom Sheet Mode</string>
+    <string name="settings_bottom_sheet_description">Enable pull-up drawer navigation</string>
     <string name="settings_export_data">Export Data</string>
     <string name="settings_export_data_description">Export as CSV file locally</string>
     <string name="settings_import_data">Import Data</string>
     <string name="settings_import_data_description">Restore from backup file</string>
     <string name="settings_version_info">Version Info</string>
-    <string name="settings_version_number">v1.0.0</string>
+    
+    <!-- Bottom Sheet -->
+    <string name="all_navigation_items">All Navigation Items</string>
+    <string name="hidden">Hidden</string>
+    <string name="settings_version_number">v1.0.6</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

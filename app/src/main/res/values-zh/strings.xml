@@ -485,15 +485,21 @@
     <string name="settings_change_password_description">修改登录密码</string>
     <string name="settings_security_questions">密保问题</string>
     <string name="settings_security_questions_description">设置密保问题用于找回密码</string>
+    <string name="settings_bottom_sheet_title">底部抽屉模式</string>
+    <string name="settings_bottom_sheet_description">启用可上拉的抽屉式导航</string>
     <string name="settings_export_data">导出数据</string>
     <string name="settings_export_data_description">导出为CSV文件到本地</string>
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">v1.0.0</string>
+    <string name="settings_version_number">v1.0.6</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
+    
+    <!-- Bottom Sheet -->
+    <string name="all_navigation_items">所有导航项</string>
+    <string name="hidden">已隐藏</string>
     
     <!-- Language Selection Dialog -->
     <string name="dialog_select_language">选择语言</string>

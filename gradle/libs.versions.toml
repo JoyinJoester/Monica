@@ -28,6 +28,7 @@ material = "1.11.0"  # Google Material Components
 autofill = "1.2.0-beta01"  # Autofill framework for InlinePresentation
 slice = "1.1.0-alpha02"  # Slice for inline UI
 playServicesAuth = "21.0.0"  # Google Play Services Auth for SMS Retriever API
+credentials = "1.2.2"  # Credential Manager for Passkeys (Android 14+)
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -106,6 +107,10 @@ androidx-slice-builders = { group = "androidx.slice", name = "slice-builders", v
 
 # Google Play Services for SMS Retriever API
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+
+# Credential Manager for Passkeys (Android 14+)
+androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

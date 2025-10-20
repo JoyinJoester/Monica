@@ -13,8 +13,8 @@ enum class ColorScheme {
     SUNSET_ORANGE,   // 日落橙
     FOREST_GREEN,    // 森林绿
     TECH_PURPLE,     // 科技紫
-    BLACK_MAMBA,     // 黑曼巴 (Kobe Lakers)
-    GREY_STYLE,      // 小黑紫 (Cai Xukun)
+    BLACK_MAMBA,     // 黑曼巴
+    GREY_STYLE,      // 小黑紫
     CUSTOM           // 自定义
 }
 
@@ -85,5 +85,6 @@ data class AppSettings(
     val screenshotProtectionEnabled: Boolean = false, // Prevent screenshots by default
     val dynamicColorEnabled: Boolean = true, // 动态颜色默认开启
     val bottomNavVisibility: BottomNavVisibility = BottomNavVisibility(),
-    val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER
+    val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER,
+    val bottomSheetEnabled: Boolean = false // Bottom Sheet 模式默认关闭
 )

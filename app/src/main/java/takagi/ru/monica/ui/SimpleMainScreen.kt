@@ -200,22 +200,34 @@ fun SimpleMainScreen(
             }
         },
         bottomBar = {
-            NavigationBar(
-                tonalElevation = 0.dp,  // 移除顶部分隔线
-                containerColor = MaterialTheme.colorScheme.surface  // 使用surface颜色移除视觉分隔
-            ) {
-                tabs.forEach { item ->
-                    val label = stringResource(item.shortLabelRes())
-                    NavigationBarItem(
-                        icon = { 
-                            Icon(item.icon, contentDescription = label) 
-                        },
-                        label = { 
-                            Text(label) 
-                        },
-                        selected = item.key == currentTab.key,
-                        onClick = { selectedTabKey = item.key }
-                    )
+            // 根据设置决定使用 Bottom Sheet 还是普通导航栏
+            if (appSettings.bottomSheetEnabled) {
+                takagi.ru.monica.ui.components.ExpressiveBottomSheet(
+                    currentTab = currentTab.toContentTab(),
+                    visibleTabs = tabs.map { it.toContentTab() },
+                    allTabs = BottomNavContentTab.values().toList(),
+                    onTabSelected = { tab ->
+                        selectedTabKey = tab.toBottomNavItemKey()
+                    }
+                )
+            } else {
+                NavigationBar(
+                    tonalElevation = 0.dp,  // 移除顶部分隔线
+                    containerColor = MaterialTheme.colorScheme.surface  // 使用surface颜色移除视觉分隔
+                ) {
+                    tabs.forEach { item ->
+                        val label = stringResource(item.shortLabelRes())
+                        NavigationBarItem(
+                            icon = { 
+                                Icon(item.icon, contentDescription = label) 
+                            },
+                            label = { 
+                                Text(label) 
+                            },
+                            selected = item.key == currentTab.key,
+                            onClick = { selectedTabKey = item.key }
+                        )
+                    }
                 }
             }
         },
@@ -2825,6 +2837,17 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.BANK_CARDS -> BottomNavItem.BankCards
     BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
 }
+
+private fun BottomNavItem.toContentTab(): BottomNavContentTab = when (this) {
+    BottomNavItem.Passwords -> BottomNavContentTab.PASSWORDS
+    BottomNavItem.Authenticator -> BottomNavContentTab.AUTHENTICATOR
+    BottomNavItem.Documents -> BottomNavContentTab.DOCUMENTS
+    BottomNavItem.BankCards -> BottomNavContentTab.BANK_CARDS
+    BottomNavItem.Generator -> BottomNavContentTab.GENERATOR
+    BottomNavItem.Settings -> BottomNavContentTab.PASSWORDS  // Settings 默认映射到 PASSWORDS
+}
+
+private fun BottomNavContentTab.toBottomNavItemKey(): String = this.name
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.Passwords -> R.string.nav_passwords

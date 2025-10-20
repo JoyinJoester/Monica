@@ -426,15 +426,21 @@
     <string name="settings_change_password_description">Thay đổi mật khẩu đăng nhập</string>
     <string name="settings_security_questions">Câu hỏi bảo mật</string>
     <string name="settings_security_questions_description">Đặt câu hỏi bảo mật để khôi phục mật khẩu</string>
+    <string name="settings_bottom_sheet_title">Chế độ ngăn kéo dưới</string>
+    <string name="settings_bottom_sheet_description">Bật điều hướng ngăn kéo có thể kéo lên</string>
     <string name="settings_export_data">Xuất dữ liệu</string>
     <string name="settings_export_data_description">Xuất dưới dạng file CSV cục bộ</string>
     <string name="settings_import_data">Nhập dữ liệu</string>
     <string name="settings_import_data_description">Khôi phục từ file sao lưu</string>
     <string name="settings_version_info">Thông tin phiên bản</string>
-    <string name="settings_version_number">v1.0.0</string>
+    <string name="settings_version_number">v1.0.6</string>
     <string name="settings_support_author">Ủng hộ tác giả</string>
     <string name="settings_support_author_description">Cảm ơn sự ủng hộ của bạn</string>
     <string name="settings_privacy_policy">Chính sách bảo mật</string>
+    
+    <!-- Bottom Sheet -->
+    <string name="all_navigation_items">Tất cả mục điều hướng</string>
+    <string name="hidden">Đã ẩn</string>
     
     <!-- Language Selection Dialog -->
     <string name="dialog_select_language">Chọn ngôn ngữ</string>
