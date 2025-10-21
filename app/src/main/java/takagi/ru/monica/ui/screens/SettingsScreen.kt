@@ -373,7 +373,7 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Info,
                     title = context.getString(R.string.version),
-                    subtitle = "1.0.5",
+                    subtitle = "1.0.6",
                     onClick = {
                         // 打开 GitHub 仓库链接
                         try {
