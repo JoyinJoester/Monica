@@ -332,6 +332,7 @@
     <string name="language_english">English</string>
     <string name="language_chinese">中文</string>
     <string name="language_vietnamese">Tiếng Việt</string>
+    <string name="language_japanese">日本語</string>
     
     <!-- Theme Options -->
     <string name="theme_system">System Default</string>
@@ -452,16 +453,6 @@
     <string name="note_detail_raw_tab">Plain text</string>
     <string name="note_detail_preview_fullscreen">Full screen preview</string>
     <string name="note_detail_preview_fullscreen_title">Markdown preview</string>
-    <string name="markdown_action_heading1">H1</string>
-    <string name="markdown_action_heading2">H2</string>
-    <string name="markdown_action_heading3">H3</string>
-    <string name="markdown_action_bold">Bold</string>
-    <string name="markdown_action_italic">Italic</string>
-    <string name="markdown_action_quote">Quote</string>
-    <string name="markdown_action_list_unordered">Bulleted</string>
-    <string name="markdown_action_list_ordered">Numbered</string>
-    <string name="markdown_action_list_task">Task list</string>
-    <string name="markdown_action_code">Code</string>
     <string name="note_detail_empty_content">This note is empty.</string>
     <string name="note_detail_additional_notes">Additional notes</string>
     <string name="note_detail_updated_at">Last updated %1$s</string>
@@ -491,7 +482,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">v1.0.6</string>
+    <string name="settings_version_number">v1.0.7</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

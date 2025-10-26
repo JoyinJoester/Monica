@@ -332,6 +332,7 @@
     <string name="language_english">English</string>
     <string name="language_chinese">中文</string>
     <string name="language_vietnamese">Tiếng Việt</string>
+    <string name="language_japanese">日本語</string>
     
     <!-- Theme Options -->
     <string name="theme_system">跟随系统</string>
@@ -403,8 +404,6 @@
     <string name="nav_authenticator">验证器</string>
     <string name="nav_documents">证件</string>
     <string name="nav_bank_cards">银行卡</string>
-    <string name="nav_notes">笔记</string>
-    <string name="nav_ledger">记账</string>
     <string name="nav_generator">生成器</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_settings">设置</string>
     <string name="add">添加</string>
@@ -414,8 +413,6 @@
     <string name="nav_authenticator_short">验证</string>
     <string name="nav_documents_short">证件</string>
     <string name="nav_bank_cards_short">银行</string>
-    <string name="nav_notes_short">笔记</string>
-    <string name="nav_ledger_short">记账</string>
     <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_settings_short">设置</string>
     
@@ -446,48 +443,7 @@
     <string name="generator_copied">已复制到剪贴板</string>
     <string name="generator_invalid_length">长度无效</string>
     <string name="generator_action">生成</string>  <!-- 新增：生成按钮文字 -->
-    
-    <!-- Notes -->
-    <string name="add_note_title">添加笔记</string>
-    <string name="edit_note_title">编辑笔记</string>
-    <string name="note_content">内容</string>
-    <string name="note_content_placeholder">写下你的想法...</string>
-    <string name="note_title_label">标题</string>
-    <string name="note_title_placeholder">例如：项目想法</string>
-    <string name="no_notes_title">还没有笔记</string>
-    <string name="no_notes_description">点击右下角的 + 按钮创建第一条安全笔记</string>
-    <string name="delete_note_title">删除笔记</string>
-    <string name="delete_note_message">确定要删除“%s”吗？此操作无法撤销。</string>
-    <string name="search_notes">搜索笔记</string>
-    <string name="batch_delete_notes_title">删除笔记</string>
-    <string name="batch_delete_notes_message">确定要删除选中的 %1$d 条笔记吗？</string>
-    <string name="note_tags">标签</string>
-    <string name="note_tags_placeholder">标签1，标签2</string>
-    <string name="note_markdown_label">Markdown 格式</string>
-    <string name="note_detail_title">笔记</string>
-    <string name="note_detail_not_found_title">找不到笔记</string>
-    <string name="note_detail_not_found_message">该笔记可能已被删除或移动。</string>
-    <string name="note_detail_copied">笔记内容已复制到剪贴板</string>
-    <string name="note_detail_share_title">分享笔记</string>
-    <string name="note_detail_tags_label">标签</string>
-    <string name="note_detail_preview_tab">预览</string>
-    <string name="note_detail_raw_tab">纯文本</string>
-    <string name="note_detail_preview_fullscreen">全屏预览</string>
-    <string name="note_detail_preview_fullscreen_title">Markdown 预览</string>
-    <string name="markdown_action_heading1">标题1</string>
-    <string name="markdown_action_heading2">标题2</string>
-    <string name="markdown_action_heading3">标题3</string>
-    <string name="markdown_action_bold">加粗</string>
-    <string name="markdown_action_italic">斜体</string>
-    <string name="markdown_action_quote">引用</string>
-    <string name="markdown_action_list_unordered">无序列表</string>
-    <string name="markdown_action_list_ordered">有序列表</string>
-    <string name="markdown_action_list_task">任务列表</string>
-    <string name="markdown_action_code">代码</string>
-    <string name="note_detail_empty_content">这条笔记还没有内容。</string>
-    <string name="note_detail_additional_notes">附加备注</string>
-    <string name="note_detail_updated_at">最后更新于 %1$s</string>
-    
+
     <!-- Settings Screen -->
     <string name="settings_general">通用</string>
     <string name="settings_security">安全</string>
@@ -509,7 +465,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">v1.0.6</string>
+    <string name="settings_version_number">v1.0.7</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -738,85 +694,11 @@
     <string name="all_accounts_have_twofa">所有重要账户都已启用双重验证</string>
     <string name="pwned_passwords_attribution">技术支持：Have I Been Pwned</string>
     <string name="twofa_directory_attribution">参考：2FA Directory</string>
-    
-    <!-- Ledger / Accounting -->
-    <string name="ledger_title">记账</string>
-    <string name="ledger_balance">余额</string>
-    <string name="ledger_income">收入</string>
-    <string name="ledger_expense">支出</string>
-    <string name="ledger_transfer">转账</string>
-    <string name="ledger_add_entry">添加记录</string>
-    <string name="ledger_edit_entry">编辑记录</string>
-    <string name="ledger_entry_type">类型</string>
-    <string name="ledger_amount">金额</string>
-    <string name="ledger_category">分类</string>
-    <string name="ledger_category_none">无分类</string>
-    <string name="ledger_no_category_available">此类型无可用分类</string>
-    <string name="ledger_time">时间</string>
-    <string name="ledger_note">备注</string>
-    <string name="ledger_select_category">选择分类</string>
-    <string name="ledger_empty">暂无记录，点击+添加</string>
-    <string name="ledger_payment_method">支付方式</string>
-    <string name="ledger_payment_wechat">微信</string>
-    <string name="ledger_payment_alipay">支付宝</string>
-    <string name="ledger_payment_unionpay">银联</string>
-    <string name="ledger_delete">删除</string>
-    <string name="ledger_delete_confirm_title">删除记录</string>
-    <string name="ledger_delete_confirm_message">确定要删除这条记录吗？</string>
-    <string name="ledger_cancel">取消</string>
-    <string name="ledger_view_switch">视图切换</string>
-    <string name="ledger_view_daily">日视图</string>
-    <string name="ledger_view_weekly">周视图</string>
-    <string name="ledger_view_monthly">月视图</string>
-    <string name="ledger_view_yearly">年视图</string>
-    <string name="ledger_view_all">全部数据</string>
 
-    <!-- Ledger Entry Detail -->
-    <string name="ledger_entry_detail">账单详情</string>
 
-    <!-- Asset Management -->
-    <string name="asset_management_title">资产管理</string>
-    <string name="asset_total">总资产</string>
-    <string name="asset_count_unit">个账户</string>
-    <string name="asset_empty">还没有资产账户，点击 + 添加吧</string>
-    <string name="asset_add">添加资产</string>
-    <string name="asset_back">返回</string>
-    <string name="asset_type_wechat">微信支付</string>
-    <string name="asset_type_alipay">支付宝</string>
-    <string name="asset_type_unionpay">云闪付</string>
-    <string name="asset_type_paypal">PayPal</string>
-    <string name="asset_type_bank_card">银行卡</string>
-    <string name="asset_type_cash">现金</string>
-    <string name="asset_type_other">其他</string>
-    
-    <!-- Adding/Editing Asset -->
-    <string name="asset_edit_title">编辑资产</string>
-    <string name="asset_add_title">添加资产</string>
-    <string name="asset_name">资产名称</string>
-    <string name="asset_type">资产类型</string>
-    <string name="asset_balance">当前余额</string>
-    <string name="asset_currency">货币</string>
-    <string name="asset_save">保存</string>
-    <string name="asset_delete_title">删除资产</string>
-    <string name="asset_delete_message">确定要删除这个资产吗?关联的记账条目也会受到影响。</string>
-    <string name="asset_select_currency">选择货币</string>
-    <string name="asset_close">关闭</string>
-    
     <!-- Phase 8: 生物识别自动填充 -->
     <string name="biometric_auth_failed">生物识别认证失败,请重试。</string>
     <string name="biometric_auth_error">认证错误: %s</string>
     
-    <!-- 平板UI -->
-    <string name="passwords_title">密码</string>
-    <string name="authenticator">验证器</string>
-    <string name="documents">证件</string>
-    <string name="bank_cards">银行卡</string>
-    <string name="generator">生成器</string>
-    <string name="generator_hint">使用生成器创建安全密码</string>
-    <string name="settings_description">配置您的 Monica 设置</string>
-    <string name="select_password_hint">选择一个密码查看详情</string>
-    <string name="select_totp_hint">选择一个验证器查看详情</string>
-    <string name="select_document_hint">选择一个证件查看详情</string>
-    <string name="select_bank_card_hint">选择一张银行卡查看详情</string>
-    
+
 </resources>
