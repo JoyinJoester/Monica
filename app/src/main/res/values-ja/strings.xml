@@ -409,7 +409,7 @@
     <string name="add">追加</string>
     
     <!-- Main Screen Bottom Navigation (Short) -->
-    <string name="nav_passwords_short">パスワード</string>
+    <string name="nav_passwords_short">密碼</string>
     <string name="nav_authenticator_short">認証</string>
     <string name="nav_documents_short">証明書</string>
     <string name="nav_bank_cards_short">銀行</string>
