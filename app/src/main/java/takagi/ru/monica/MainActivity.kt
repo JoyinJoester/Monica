@@ -532,8 +532,17 @@ fun MonicaContent(
                         popUpTo(Screen.Main.routePattern) { inclusive = true }
                     }
                 },
-                onExport = { uri ->
+                onExportAll = { uri ->
                     dataExportImportViewModel.exportData(uri)
+                },
+                onExportPasswords = { uri ->
+                    dataExportImportViewModel.exportPasswords(uri)
+                },
+                onExportTotp = { uri, format, password ->
+                    dataExportImportViewModel.exportTotp(uri, format, password)
+                },
+                onExportBankCardsAndDocs = { uri ->
+                    dataExportImportViewModel.exportBankCardsAndDocuments(uri)
                 }
             )
         }

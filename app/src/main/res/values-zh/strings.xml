@@ -243,6 +243,23 @@
     <string name="export_data_success">数据导出成功</string>
     <string name="export_data_error">导出失败</string>
     <string name="export_data_warning">CSV文件未加密，请妥善保管导出文件</string>
+    
+    <!-- 新的导出界面 -->
+    <string name="export_select_option">选择导出选项</string>
+    <string name="export_option_all">导出全部数据</string>
+    <string name="export_option_all_desc">以CSV格式导出所有密码、TOTP、银行卡和证件</string>
+    <string name="export_option_passwords">仅导出密码</string>
+    <string name="export_option_passwords_desc">以CSV格式仅导出密码条目</string>
+    <string name="export_option_totp">仅导出TOTP</string>
+    <string name="export_option_totp_desc">以CSV或Aegis兼容格式导出TOTP验证器</string>
+    <string name="export_option_cards_docs">导出银行卡和证件</string>
+    <string name="export_option_cards_docs_desc">以CSV格式合并导出银行卡和证件</string>
+    <string name="export_totp_format">选择TOTP导出格式</string>
+    <string name="export_enable_encryption">启用加密</string>
+    <string name="export_encryption_hint">使用密码保护您的TOTP数据（Aegis兼容）</string>
+    <string name="export_encryption_password">输入加密密码</string>
+    <string name="export_encryption_password_hint">导入文件时需要此密码</string>
+    
     <string name="import_data_warning_title">警告</string>
     <string name="import_data_warning_message">导入数据可能会覆盖现有数据。请在导入前确保备份当前数据。</string>
     <string name="import_data_select_file">选择文件</string>

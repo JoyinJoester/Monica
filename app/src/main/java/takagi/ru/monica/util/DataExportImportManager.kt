@@ -704,4 +704,94 @@ class DataExportImportManager(private val context: Context) {
             Result.failure(Exception("导入加密Aegis文件失败：${e.message ?: "未知错误"}"))
         }
     }
+    
+    /**
+     * 导出密码数据到CSV
+     */
+    suspend fun exportPasswords(
+        items: List<SecureItem>,
+        outputUri: Uri
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val outputStream = context.contentResolver.openOutputStream(outputUri)
+                ?: return@withContext Result.failure(Exception("无法创建输出文件"))
+            
+            outputStream.use { output ->
+                BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
+                    writer.write("\uFEFF")
+                    writer.write(CSV_HEADERS.joinToString(CSV_SEPARATOR))
+                    writer.newLine()
+                    
+                    items.forEach { item ->
+                        try {
+                            val row = arrayOf(
+                                item.id.toString(),
+                                item.itemType.name,
+                                escapeCsvField(item.title),
+                                escapeCsvField(item.itemData),
+                                escapeCsvField(item.notes),
+                                item.isFavorite.toString(),
+                                escapeCsvField(item.imagePaths),
+                                item.createdAt.time.toString(),
+                                item.updatedAt.time.toString()
+                            )
+                            writer.write(row.joinToString(CSV_SEPARATOR))
+                            writer.newLine()
+                        } catch (e: Exception) {
+                            android.util.Log.e("DataExport", "写入密码项失败: ${item.id}", e)
+                        }
+                    }
+                }
+            }
+            Result.success("成功导出 ${items.size} 条密码")
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "导出密码失败", e)
+            Result.failure(Exception("导出密码失败：${e.message ?: "未知错误"}"))
+        }
+    }
+    
+    /**
+     * 导出银行卡和证件到CSV
+     */
+    suspend fun exportBankCardsAndDocuments(
+        items: List<SecureItem>,
+        outputUri: Uri
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val outputStream = context.contentResolver.openOutputStream(outputUri)
+                ?: return@withContext Result.failure(Exception("无法创建输出文件"))
+            
+            outputStream.use { output ->
+                BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
+                    writer.write("\uFEFF")
+                    writer.write(CSV_HEADERS.joinToString(CSV_SEPARATOR))
+                    writer.newLine()
+                    
+                    items.forEach { item ->
+                        try {
+                            val row = arrayOf(
+                                item.id.toString(),
+                                item.itemType.name,
+                                escapeCsvField(item.title),
+                                escapeCsvField(item.itemData),
+                                escapeCsvField(item.notes),
+                                item.isFavorite.toString(),
+                                escapeCsvField(item.imagePaths),
+                                item.createdAt.time.toString(),
+                                item.updatedAt.time.toString()
+                            )
+                            writer.write(row.joinToString(CSV_SEPARATOR))
+                            writer.newLine()
+                        } catch (e: Exception) {
+                            android.util.Log.e("DataExport", "写入项失败: ${item.id}", e)
+                        }
+                    }
+                }
+            }
+            Result.success("成功导出 ${items.size} 条数据")
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "导出失败", e)
+            Result.failure(Exception("导出失败：${e.message ?: "未知错误"}"))
+        }
+    }
 }

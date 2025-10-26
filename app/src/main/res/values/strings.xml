@@ -243,6 +243,23 @@
     <string name="export_data_success">Data exported successfully</string>
     <string name="export_data_error">Export failed</string>
     <string name="export_data_warning">CSV file is not encrypted, please keep the exported file safe</string>
+    
+    <!-- New Export Screen -->
+    <string name="export_select_option">Select Export Option</string>
+    <string name="export_option_all">Export All Data</string>
+    <string name="export_option_all_desc">Export all passwords, TOTP, bank cards, and documents in CSV format</string>
+    <string name="export_option_passwords">Export Passwords Only</string>
+    <string name="export_option_passwords_desc">Export only password entries in CSV format</string>
+    <string name="export_option_totp">Export TOTP Only</string>
+    <string name="export_option_totp_desc">Export TOTP authenticators in CSV or Aegis-compatible format</string>
+    <string name="export_option_cards_docs">Export Bank Cards &amp; Documents</string>
+    <string name="export_option_cards_docs_desc">Export bank cards and documents together in CSV format</string>
+    <string name="export_totp_format">Select TOTP Export Format</string>
+    <string name="export_enable_encryption">Enable Encryption</string>
+    <string name="export_encryption_hint">Protect your TOTP data with a password (Aegis-compatible)</string>
+    <string name="export_encryption_password">Enter Encryption Password</string>
+    <string name="export_encryption_password_hint">This password will be required when importing the file</string>
+    
     <string name="import_data_warning_title">Warning</string>
     <string name="import_data_warning_message">Importing data may overwrite existing data. Please make sure to backup your current data before importing.</string>
     <string name="import_data_select_file">Select File</string>

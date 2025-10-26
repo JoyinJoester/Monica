@@ -369,4 +369,114 @@ class DataExportImportViewModel(
             Result.failure(e)
         }
     }
+    
+    /**
+     * 导出密码数据
+     */
+    suspend fun exportPasswords(outputUri: Uri): Result<String> {
+        return try {
+            // 获取PasswordEntry数据
+            val passwordEntries = passwordRepository.getAllPasswordEntries().first()
+            val passwordItems = passwordEntries.map { entry ->
+                val passwordData = buildString {
+                    append("username:${entry.username};")
+                    append("password:${entry.password}")
+                    if (entry.website.isNotEmpty()) {
+                        append(";website:${entry.website}")
+                    }
+                }
+                
+                takagi.ru.monica.data.SecureItem(
+                    id = entry.id,
+                    itemType = ItemType.PASSWORD,
+                    title = entry.title,
+                    itemData = passwordData,
+                    notes = entry.notes,
+                    isFavorite = entry.isFavorite,
+                    imagePaths = "",
+                    createdAt = entry.createdAt,
+                    updatedAt = entry.updatedAt
+                )
+            }
+            
+            exportManager.exportPasswords(passwordItems, outputUri)
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "导出密码失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 导出TOTP数据
+     */
+    suspend fun exportTotp(
+        outputUri: Uri,
+        format: takagi.ru.monica.ui.screens.TotpExportFormat,
+        password: String?
+    ): Result<String> {
+        return try {
+            val totpItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
+            
+            when (format) {
+                takagi.ru.monica.ui.screens.TotpExportFormat.CSV -> {
+                    // CSV格式导出
+                    exportManager.exportData(totpItems, outputUri)
+                }
+                takagi.ru.monica.ui.screens.TotpExportFormat.AEGIS -> {
+                    // Aegis格式导出
+                    val aegisExporter = takagi.ru.monica.util.AegisExporter()
+                    val aegisEntries = totpItems.mapNotNull { item ->
+                        try {
+                            val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                            takagi.ru.monica.util.AegisExporter.AegisEntry(
+                                uuid = java.util.UUID.randomUUID().toString(),
+                                name = totpData.accountName,
+                                issuer = totpData.issuer,
+                                note = item.notes,
+                                secret = totpData.secret,
+                                algorithm = totpData.algorithm,
+                                digits = totpData.digits,
+                                period = totpData.period
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("TotpExport", "解析TOTP数据失败: ${item.title}", e)
+                            null
+                        }
+                    }
+                    
+                    val jsonContent = if (password != null && password.isNotEmpty()) {
+                        aegisExporter.exportToEncryptedAegisJson(aegisEntries, password)
+                    } else {
+                        aegisExporter.exportToUnencryptedAegisJson(aegisEntries)
+                    }
+                    
+                    // 写入JSON文件
+                    context.contentResolver.openOutputStream(outputUri)?.use { output ->
+                        output.write(jsonContent.toByteArray(Charsets.UTF_8))
+                    }
+                    
+                    Result.success("成功导出 ${aegisEntries.size} 条TOTP数据")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "导出TOTP失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 导出银行卡和证件数据
+     */
+    suspend fun exportBankCardsAndDocuments(outputUri: Uri): Result<String> {
+        return try {
+            val bankCards = secureItemRepository.getItemsByType(ItemType.BANK_CARD).first()
+            val documents = secureItemRepository.getItemsByType(ItemType.DOCUMENT).first()
+            val allItems = bankCards + documents
+            
+            exportManager.exportBankCardsAndDocuments(allItems, outputUri)
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "导出银行卡和证件失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }
