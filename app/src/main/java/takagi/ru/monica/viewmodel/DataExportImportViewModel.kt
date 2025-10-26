@@ -428,12 +428,14 @@ class DataExportImportViewModel(
                     val aegisEntries = totpItems.mapNotNull { item ->
                         try {
                             val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                            // 移除secret中的所有空格和特殊字符，确保是纯Base32字符串
+                            val cleanSecret = totpData.secret.replace(Regex("[\\s\\-]"), "").uppercase()
                             takagi.ru.monica.util.AegisExporter.AegisEntry(
                                 uuid = java.util.UUID.randomUUID().toString(),
                                 name = totpData.accountName,
                                 issuer = totpData.issuer,
                                 note = item.notes,
-                                secret = totpData.secret,
+                                secret = cleanSecret,
                                 algorithm = totpData.algorithm,
                                 digits = totpData.digits,
                                 period = totpData.period

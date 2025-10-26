@@ -332,6 +332,7 @@
     <string name="language_english">English</string>
     <string name="language_chinese">中文</string>
     <string name="language_vietnamese">Tiếng Việt</string>
+    <string name="language_japanese">日本語</string>
     
     <!-- Theme Options -->
     <string name="theme_system">跟随系统</string>

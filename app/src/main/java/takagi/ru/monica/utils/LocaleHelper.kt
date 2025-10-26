@@ -14,6 +14,7 @@ object LocaleHelper {
             Language.ENGLISH -> Locale.ENGLISH
             Language.CHINESE -> Locale.CHINA  // 使用 Locale.CHINA 代替 SIMPLIFIED_CHINESE
             Language.VIETNAMESE -> Locale("vi", "VN")  // 越南语
+            Language.JAPANESE -> Locale.JAPAN  // 日语
         }
         
         return updateResources(context, locale)
@@ -53,6 +54,8 @@ object LocaleHelper {
         return when (currentLocale.language) {
             "zh" -> Language.CHINESE
             "en" -> Language.ENGLISH
+            "vi" -> Language.VIETNAMESE
+            "ja" -> Language.JAPANESE
             else -> Language.SYSTEM
         }
     }
