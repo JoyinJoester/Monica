@@ -19,7 +19,7 @@ enum class ColorScheme {
 }
 
 enum class Language {
-    SYSTEM, ENGLISH, CHINESE, VIETNAMESE, JAPANESE
+    SYSTEM, ENGLISH, CHINESE, VIETNAMESE
 }
 
 enum class BottomNavContentTab {
