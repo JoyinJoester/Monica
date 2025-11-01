@@ -565,6 +565,21 @@
     <string name="delete_failed">Xóa thất bại: %s</string>
     <string name="refresh">Làm mới</string>
     
+    <!-- WebDAV Encryption -->
+    <string name="webdav_enable_encryption">Bật mã hóa</string>
+    <string name="webdav_encryption_description">Mã hóa bản sao lưu bằng AES-256</string>
+    <string name="webdav_encryption_password">Mật khẩu mã hóa</string>
+    <string name="webdav_encryption_password_hint">Nhập mật khẩu mã hóa</string>
+    <string name="webdav_encryption_password_confirm">Xác nhận mật khẩu</string>
+    <string name="webdav_encryption_password_mismatch">Mật khẩu không khớp</string>
+    <string name="webdav_encryption_password_empty">Mật khẩu mã hóa không được để trống</string>
+    <string name="webdav_encryption_password_short">Mật khẩu phải có ít nhất 8 ký tự</string>
+    <string name="webdav_backup_encrypted">Đã mã hóa</string>
+    <string name="webdav_backup_unencrypted">Chưa mã hóa</string>
+    <string name="webdav_enter_decrypt_password">Nhập mật khẩu giải mã</string>
+    <string name="webdav_decrypt_password_hint">Mật khẩu để giải mã bản sao lưu</string>
+    <string name="webdav_decryption_failed">Giải mã thất bại: Mật khẩu sai hoặc tệp bị hỏng</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">%d mục đã chọn</string>
     <string name="exit_selection_mode">Thoát chế độ chọn</string>

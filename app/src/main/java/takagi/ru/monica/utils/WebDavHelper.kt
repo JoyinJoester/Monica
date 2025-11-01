@@ -42,8 +42,14 @@ class WebDavHelper(
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
+        private const val KEY_ENABLE_ENCRYPTION = "enable_encryption"
+        private const val KEY_ENCRYPTION_PASSWORD = "encryption_password"
         private const val PASSWORD_META_MARKER = "[MonicaMeta]"
     }
+    
+    // 加密相关
+    private var enableEncryption: Boolean = false
+    private var encryptionPassword: String = ""
     
     init {
         // 启动时自动加载保存的配置
@@ -74,6 +80,8 @@ class WebDavHelper(
             putString(KEY_SERVER_URL, serverUrl)
             putString(KEY_USERNAME, username)
             putString(KEY_PASSWORD, password)
+            putBoolean(KEY_ENABLE_ENCRYPTION, enableEncryption)
+            putString(KEY_ENCRYPTION_PASSWORD, encryptionPassword)
             apply()
         }
     }
@@ -86,6 +94,8 @@ class WebDavHelper(
         val url = prefs.getString(KEY_SERVER_URL, "") ?: ""
         val user = prefs.getString(KEY_USERNAME, "") ?: ""
         val pass = prefs.getString(KEY_PASSWORD, "") ?: ""
+        enableEncryption = prefs.getBoolean(KEY_ENABLE_ENCRYPTION, false)
+        encryptionPassword = prefs.getString(KEY_ENCRYPTION_PASSWORD, "") ?: ""
         
         if (url.isNotEmpty() && user.isNotEmpty() && pass.isNotEmpty()) {
             serverUrl = url
@@ -94,7 +104,7 @@ class WebDavHelper(
             // 重新创建 sardine 实例并设置凭证
             sardine = OkHttpSardine()
             sardine?.setCredentials(username, password)
-            android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username")
+            android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username, encryption=$enableEncryption")
         }
     }
     
@@ -114,8 +124,32 @@ class WebDavHelper(
         serverUrl = ""
         username = ""
         password = ""
+        enableEncryption = false
+        encryptionPassword = ""
         sardine = null
     }
+    
+    /**
+     * 配置加密设置
+     * @param enable 是否启用加密
+     * @param encPassword 加密密码 (如果启用加密)
+     */
+    fun configureEncryption(enable: Boolean, encPassword: String = "") {
+        enableEncryption = enable
+        encryptionPassword = if (enable) encPassword else ""
+        saveConfig()
+        android.util.Log.d("WebDavHelper", "Encryption configured: enabled=$enable")
+    }
+    
+    /**
+     * 获取加密状态
+     */
+    fun isEncryptionEnabled(): Boolean = enableEncryption
+    
+    /**
+     * 检查加密密码是否已设置
+     */
+    fun hasEncryptionPassword(): Boolean = enableEncryption && encryptionPassword.isNotEmpty()
     
     /**
      * 测试连接
@@ -240,6 +274,11 @@ class WebDavHelper(
             val passwordsCsvFile = File(context.cacheDir, "Monica_${timestamp}_password.csv")
             val secureItemsCsvFile = File(context.cacheDir, "Monica_${timestamp}_other.csv")
             val zipFile = File(context.cacheDir, "monica_backup_$timestamp.zip")
+            val finalFile = if (enableEncryption) {
+                File(context.cacheDir, "monica_backup_$timestamp.enc.zip")
+            } else {
+                zipFile
+            }
             
             try {
                 // 2. 导出密码数据到CSV
@@ -264,15 +303,28 @@ class WebDavHelper(
                     addFileToZip(zipOut, secureItemsCsvFile, secureItemsCsvFile.name)
                 }
                 
-                // 5. 上传到WebDAV
-                val uploadResult = uploadBackup(zipFile)
+                // 5. 如果启用加密，加密 ZIP 文件
+                if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                    val encryptResult = EncryptionHelper.encryptFile(zipFile, finalFile, encryptionPassword)
+                    if (encryptResult.isFailure) {
+                        return@withContext Result.failure(encryptResult.exceptionOrNull() 
+                            ?: Exception("加密失败"))
+                    }
+                    android.util.Log.d("WebDavHelper", "Backup encrypted successfully")
+                }
+                
+                // 6. 上传到WebDAV
+                val uploadResult = uploadBackup(finalFile)
                 
                 uploadResult
             } finally {
-                // 6. 清理临时文件
+                // 7. 清理临时文件
                 passwordsCsvFile.delete()
                 secureItemsCsvFile.delete()
                 zipFile.delete()
+                if (finalFile != zipFile) {
+                    finalFile.delete()
+                }
             }
         } catch (e: Exception) {
             Result.failure(Exception("创建备份失败: ${e.message}"))
@@ -323,25 +375,54 @@ class WebDavHelper(
     /**
      * 下载并恢复备份 - 返回密码、其他数据和账单
      * @param backupFile 要恢复的备份文件
+     * @param decryptPassword 解密密码 (如果文件已加密)
      */
-    suspend fun downloadAndRestoreBackup(backupFile: BackupFile): 
-        Result<BackupContent> = 
+    suspend fun downloadAndRestoreBackup(
+        backupFile: BackupFile,
+        decryptPassword: String? = null
+    ): Result<BackupContent> = 
         withContext(Dispatchers.IO) {
         try {
             // 1. 下载备份文件
-            val zipFile = File(context.cacheDir, "restore_${backupFile.name}")
-            val downloadResult = downloadBackup(backupFile, zipFile)
+            val downloadedFile = File(context.cacheDir, "restore_${backupFile.name}")
+            val downloadResult = downloadBackup(backupFile, downloadedFile)
             
             if (downloadResult.isFailure) {
                 return@withContext Result.failure(downloadResult.exceptionOrNull() 
                     ?: Exception("下载备份失败"))
             }
             
+            // 2. 检测是否加密
+            val isEncrypted = EncryptionHelper.isEncryptedFile(downloadedFile)
+            
+            // 3. 解密文件 (如果需要)
+            val zipFile = if (isEncrypted) {
+                val password = decryptPassword ?: encryptionPassword
+                if (password.isEmpty()) {
+                    downloadedFile.delete()
+                    return@withContext Result.failure(Exception("备份文件已加密，请提供解密密码"))
+                }
+                
+                val decryptedFile = File(context.cacheDir, "restore_decrypted_${System.nanoTime()}.zip")
+                val decryptResult = EncryptionHelper.decryptFile(downloadedFile, decryptedFile, password)
+                
+                if (decryptResult.isFailure) {
+                    downloadedFile.delete()
+                    return@withContext Result.failure(decryptResult.exceptionOrNull() 
+                        ?: Exception("解密失败"))
+                }
+                
+                android.util.Log.d("WebDavHelper", "Backup decrypted successfully")
+                decryptedFile
+            } else {
+                downloadedFile
+            }
+            
             try {
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
                 
-                // 2. 解压ZIP文件并读取CSV
+                // 4. 解压ZIP文件并读取CSV
                 ZipInputStream(FileInputStream(zipFile)).use { zipIn ->
                     var entry = zipIn.nextEntry
                     while (entry != null) {
@@ -375,6 +456,9 @@ class WebDavHelper(
                 Result.success(BackupContent(passwords, secureItems))
             } finally {
                 zipFile.delete()
+                if (zipFile != downloadedFile) {
+                    downloadedFile.delete()
+                }
             }
         } catch (e: Exception) {
             Result.failure(Exception("恢复备份失败: ${e.message}"))
@@ -688,7 +772,14 @@ data class BackupFile(
     val path: String,
     val size: Long,
     val modified: Date
-)
+) {
+    /**
+     * 判断是否为加密文件
+     */
+    fun isEncrypted(): Boolean {
+        return name.endsWith(".enc.zip")
+    }
+}
 
 data class BackupContent(
     val passwords: List<PasswordEntry>,

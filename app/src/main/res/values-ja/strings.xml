@@ -601,6 +601,21 @@
     <string name="delete_failed">削除に失敗しました: %s</string>
     <string name="refresh">更新</string>
     
+    <!-- WebDAV Encryption -->
+    <string name="webdav_enable_encryption">暗号化を有効にする</string>
+    <string name="webdav_encryption_description">AES-256でバックアップを暗号化</string>
+    <string name="webdav_encryption_password">暗号化パスワード</string>
+    <string name="webdav_encryption_password_hint">暗号化パスワードを入力</string>
+    <string name="webdav_encryption_password_confirm">パスワードの確認</string>
+    <string name="webdav_encryption_password_mismatch">パスワードが一致しません</string>
+    <string name="webdav_encryption_password_empty">暗号化パスワードは空にできません</string>
+    <string name="webdav_encryption_password_short">パスワードは8文字以上である必要があります</string>
+    <string name="webdav_backup_encrypted">暗号化済み</string>
+    <string name="webdav_backup_unencrypted">暗号化なし</string>
+    <string name="webdav_enter_decrypt_password">復号化パスワードを入力</string>
+    <string name="webdav_decrypt_password_hint">バックアップを復号化するパスワード</string>
+    <string name="webdav_decryption_failed">復号化失敗: パスワードが間違っているか、ファイルが破損しています</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">%d 件選択済み</string>
     <string name="exit_selection_mode">選択モードを終了</string>

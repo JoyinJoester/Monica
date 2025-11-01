@@ -601,6 +601,21 @@
     <string name="delete_failed">删除失败: %s</string>
     <string name="refresh">刷新</string>
     
+    <!-- WebDAV Encryption -->
+    <string name="webdav_enable_encryption">启用加密</string>
+    <string name="webdav_encryption_description">使用 AES-256 加密备份</string>
+    <string name="webdav_encryption_password">加密密码</string>
+    <string name="webdav_encryption_password_hint">输入加密密码</string>
+    <string name="webdav_encryption_password_confirm">确认密码</string>
+    <string name="webdav_encryption_password_mismatch">密码不匹配</string>
+    <string name="webdav_encryption_password_empty">加密密码不能为空</string>
+    <string name="webdav_encryption_password_short">密码长度至少8个字符</string>
+    <string name="webdav_backup_encrypted">已加密</string>
+    <string name="webdav_backup_unencrypted">未加密</string>
+    <string name="webdav_enter_decrypt_password">输入解密密码</string>
+    <string name="webdav_decrypt_password_hint">用于解密备份的密码</string>
+    <string name="webdav_decryption_failed">解密失败: 密码错误或文件已损坏</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">已选择 %d 项</string>
     <string name="exit_selection_mode">退出选择模式</string>

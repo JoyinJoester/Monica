@@ -614,6 +614,21 @@
     <string name="delete_failed">Delete failed: %s</string>
     <string name="refresh">Refresh</string>
     
+    <!-- WebDAV Encryption -->
+    <string name="webdav_enable_encryption">Enable Encryption</string>
+    <string name="webdav_encryption_description">Encrypt backups with AES-256</string>
+    <string name="webdav_encryption_password">Encryption Password</string>
+    <string name="webdav_encryption_password_hint">Enter encryption password</string>
+    <string name="webdav_encryption_password_confirm">Confirm Password</string>
+    <string name="webdav_encryption_password_mismatch">Passwords do not match</string>
+    <string name="webdav_encryption_password_empty">Encryption password cannot be empty</string>
+    <string name="webdav_encryption_password_short">Password must be at least 8 characters</string>
+    <string name="webdav_backup_encrypted">Encrypted</string>
+    <string name="webdav_backup_unencrypted">Unencrypted</string>
+    <string name="webdav_enter_decrypt_password">Enter Decryption Password</string>
+    <string name="webdav_decrypt_password_hint">Password to decrypt backup</string>
+    <string name="webdav_decryption_failed">Decryption failed: Wrong password or corrupted file</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">%d items selected</string>
     <string name="exit_selection_mode">Exit selection mode</string>
