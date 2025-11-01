@@ -91,6 +91,8 @@ import androidx.compose.runtime.collectAsState
 import takagi.ru.monica.util.FileOperationHelper
 import takagi.ru.monica.util.PhotoPickerHelper
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.utils.WebDavHelper
+import takagi.ru.monica.utils.AutoBackupManager
 
 class MainActivity : FragmentActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
@@ -121,9 +123,38 @@ class MainActivity : FragmentActivity() {
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)
         val settingsManager = SettingsManager(this)
+        
+        // Initialize auto backup if enabled
+        initializeAutoBackup()
 
         setContent {
             MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database)
+        }
+    }
+    
+    /**
+     * 初始化自动备份
+     * 检查是否需要执行备份(每天首次打开时,如果距离上次备份超过24小时)
+     */
+    private fun initializeAutoBackup() {
+        try {
+            val webDavHelper = WebDavHelper(this)
+            
+            // 检查自动备份是否已启用
+            if (webDavHelper.isAutoBackupEnabled()) {
+                // 检查是否需要备份(距离上次备份超过24小时)
+                if (webDavHelper.shouldAutoBackup()) {
+                    Log.d("MainActivity", "Auto backup needed, triggering backup...")
+                    
+                    // 使用 WorkManager 在后台执行备份
+                    val autoBackupManager = AutoBackupManager(this)
+                    autoBackupManager.triggerBackupNow()
+                } else {
+                    Log.d("MainActivity", "Auto backup not needed (backed up within 24 hours)")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to initialize auto backup: ${e.message}")
         }
     }
 

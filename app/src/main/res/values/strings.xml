@@ -629,6 +629,19 @@
     <string name="webdav_decrypt_password_hint">Password to decrypt backup</string>
     <string name="webdav_decryption_failed">Decryption failed: Wrong password or corrupted file</string>
     
+    <!-- WebDAV Auto Backup -->
+    <string name="webdav_auto_backup">Auto Backup</string>
+    <string name="webdav_auto_backup_description">Backup on first daily launch or every 12 hours</string>
+    <string name="webdav_auto_backup_enabled">Auto backup enabled</string>
+    <string name="webdav_auto_backup_disabled">Auto backup disabled</string>
+    <string name="webdav_last_backup">Last backup</string>
+    <string name="webdav_last_backup_never">Never</string>
+    <string name="webdav_last_backup_time">%s ago</string>
+    <string name="webdav_backup_now">Backup Now</string>
+    <string name="webdav_backup_in_progress">Backup in progress…</string>
+    <string name="webdav_backup_success">Backup completed successfully</string>
+    <string name="webdav_backup_failed">Backup failed: %s</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">%d items selected</string>
     <string name="exit_selection_mode">Exit selection mode</string>

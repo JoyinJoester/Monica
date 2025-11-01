@@ -44,6 +44,8 @@ class WebDavHelper(
         private const val KEY_PASSWORD = "password"
         private const val KEY_ENABLE_ENCRYPTION = "enable_encryption"
         private const val KEY_ENCRYPTION_PASSWORD = "encryption_password"
+        private const val KEY_AUTO_BACKUP_ENABLED = "auto_backup_enabled"
+        private const val KEY_LAST_BACKUP_TIME = "last_backup_time"
         private const val PASSWORD_META_MARKER = "[MonicaMeta]"
     }
     
@@ -150,6 +152,104 @@ class WebDavHelper(
      * 检查加密密码是否已设置
      */
     fun hasEncryptionPassword(): Boolean = enableEncryption && encryptionPassword.isNotEmpty()
+    
+    /**
+     * 配置自动备份
+     * @param enable 是否启用自动备份
+     */
+    fun configureAutoBackup(enable: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_AUTO_BACKUP_ENABLED, enable).apply()
+        android.util.Log.d("WebDavHelper", "Auto backup configured: enabled=$enable")
+    }
+    
+    /**
+     * 获取自动备份状态
+     */
+    fun isAutoBackupEnabled(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_AUTO_BACKUP_ENABLED, false)
+    }
+    
+    /**
+     * 检查是否需要自动备份
+     * 逻辑:
+     * 1. 每天首次打开必定备份(即使距离上次备份不到12小时)
+     * 2. 如果距离上次备份超过12小时,则备份(即使今天已经备份过)
+     */
+    fun shouldAutoBackup(): Boolean {
+        if (!isAutoBackupEnabled()) {
+            return false
+        }
+        
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastBackupTime = prefs.getLong(KEY_LAST_BACKUP_TIME, 0)
+        
+        // 如果从未备份过,则需要备份
+        if (lastBackupTime == 0L) {
+            android.util.Log.d("WebDavHelper", "Never backed up before, need backup")
+            return true
+        }
+        
+        val currentTime = System.currentTimeMillis()
+        val calendar = java.util.Calendar.getInstance()
+        
+        // 获取上次备份的日期
+        calendar.timeInMillis = lastBackupTime
+        val lastBackupDay = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+        val lastBackupYear = calendar.get(java.util.Calendar.YEAR)
+        
+        // 获取当前日期
+        calendar.timeInMillis = currentTime
+        val currentDay = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+        val currentYear = calendar.get(java.util.Calendar.YEAR)
+        
+        // 计算距离上次备份的小时数
+        val hoursSinceLastBackup = (currentTime - lastBackupTime) / (1000 * 60 * 60)
+        
+        // 判断是否为新的一天
+        val isNewDay = (currentYear > lastBackupYear) || 
+                      (currentYear == lastBackupYear && currentDay > lastBackupDay)
+        
+        android.util.Log.d("WebDavHelper", 
+            "Last backup: year=$lastBackupYear, day=$lastBackupDay, " +
+            "Current: year=$currentYear, day=$currentDay, " +
+            "Hours since: $hoursSinceLastBackup, " +
+            "Is new day: $isNewDay")
+        
+        // 规则1: 如果是新的一天,必定备份
+        if (isNewDay) {
+            android.util.Log.d("WebDavHelper", "New day detected, need backup")
+            return true
+        }
+        
+        // 规则2: 如果距离上次备份超过12小时,则备份
+        if (hoursSinceLastBackup >= 12) {
+            android.util.Log.d("WebDavHelper", "More than 12 hours since last backup, need backup")
+            return true
+        }
+        
+        android.util.Log.d("WebDavHelper", "No backup needed")
+        return false
+    }
+    
+    /**
+     * 更新最后备份时间
+     */
+    fun updateLastBackupTime() {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val currentTime = System.currentTimeMillis()
+        prefs.edit().putLong(KEY_LAST_BACKUP_TIME, currentTime).apply()
+        android.util.Log.d("WebDavHelper", "Updated last backup time: $currentTime")
+    }
+    
+    /**
+     * 获取最后备份时间
+     */
+    fun getLastBackupTime(): Long {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(KEY_LAST_BACKUP_TIME, 0)
+    }
     
     /**
      * 测试连接
@@ -316,9 +416,14 @@ class WebDavHelper(
                 // 6. 上传到WebDAV
                 val uploadResult = uploadBackup(finalFile)
                 
+                // 7. 如果上传成功，更新最后备份时间
+                if (uploadResult.isSuccess) {
+                    updateLastBackupTime()
+                }
+                
                 uploadResult
             } finally {
-                // 7. 清理临时文件
+                // 8. 清理临时文件
                 passwordsCsvFile.delete()
                 secureItemsCsvFile.delete()
                 zipFile.delete()

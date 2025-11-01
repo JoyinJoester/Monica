@@ -25,9 +25,12 @@ import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.utils.BackupFile
 import takagi.ru.monica.utils.BackupContent
 import takagi.ru.monica.utils.WebDavHelper
+import takagi.ru.monica.utils.AutoBackupManager
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlinx.coroutines.flow.first
+import java.text.DateFormat
+import android.text.format.DateUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +54,12 @@ fun WebDavBackupScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     
+    // 自动备份状态
+    var autoBackupEnabled by remember { mutableStateOf(false) }
+    var lastBackupTime by remember { mutableStateOf(0L) }
+    
     val webDavHelper = remember { WebDavHelper(context) }
+    val autoBackupManager = remember { AutoBackupManager(context) }
     
     // 启动时检查是否已有配置
     LaunchedEffect(Unit) {
@@ -65,6 +73,10 @@ fun WebDavBackupScreen(
                 backupList = result.getOrNull() ?: emptyList()
             }
         }
+        
+        // 加载自动备份状态
+        autoBackupEnabled = webDavHelper.isAutoBackupEnabled()
+        lastBackupTime = webDavHelper.getLastBackupTime()
     }
     
     Scaffold(
@@ -282,6 +294,128 @@ fun WebDavBackupScreen(
                 }
             }
             
+            // 自动备份设置卡片 (仅在配置成功后显示)
+            if (isConfigured) {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.webdav_auto_backup),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        
+                        // 自动备份开关
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.webdav_auto_backup),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = stringResource(R.string.webdav_auto_backup_description),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            
+                            Switch(
+                                checked = autoBackupEnabled,
+                                onCheckedChange = { enabled ->
+                                    autoBackupEnabled = enabled
+                                    webDavHelper.configureAutoBackup(enabled)
+                                    
+                                    Toast.makeText(
+                                        context,
+                                        if (enabled) {
+                                            context.getString(R.string.webdav_auto_backup_enabled)
+                                        } else {
+                                            context.getString(R.string.webdav_auto_backup_disabled)
+                                        },
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            )
+                        }
+                        
+                        // 显示上次备份时间
+                        if (lastBackupTime > 0) {
+                            val relativeTime = DateUtils.getRelativeTimeSpanString(
+                                lastBackupTime,
+                                System.currentTimeMillis(),
+                                DateUtils.MINUTE_IN_MILLIS,
+                                DateUtils.FORMAT_ABBREV_RELATIVE
+                            )
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.webdav_last_backup) + " " + relativeTime,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        
+                        // 立即备份按钮
+                        OutlinedButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    try {
+                                        autoBackupManager.triggerBackupNow()
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_backup_in_progress),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        
+                                        // 延迟2秒后更新上次备份时间和刷新备份列表
+                                        kotlinx.coroutines.delay(2000)
+                                        lastBackupTime = webDavHelper.getLastBackupTime()
+                                        
+                                        // 刷新备份列表
+                                        isLoading = true
+                                        loadBackups(webDavHelper) { list, error ->
+                                            backupList = list
+                                            isLoading = false
+                                            error?.let { errorMessage = it }
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(
+                                            context,
+                                            "触发备份失败: ${e.message}",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading && isConfigured
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.webdav_backup_now))
+                        }
+                    }
+                }
+            }
+            
             // 备份列表(仅在配置成功后显示)
             if (isConfigured) {
                 // 创建备份按钮
@@ -300,6 +434,9 @@ fun WebDavBackupScreen(
                                 val result = webDavHelper.createAndUploadBackup(allPasswords, allSecureItems)
                                 
                                 if (result.isSuccess) {
+                                    // 更新上次备份时间
+                                    lastBackupTime = webDavHelper.getLastBackupTime()
+                                    
                                     Toast.makeText(
                                         context,
                                         "备份成功: ${result.getOrNull()}\n已备份 ${allPasswords.size} 个密码、${allSecureItems.size} 个其他数据",

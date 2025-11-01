@@ -131,6 +131,9 @@ dependencies {
     
     // WebDAV for cloud backup
     implementation 'com.github.thegrizzlylabs:sardine-android:0.8'
+    
+    // WorkManager for auto backup
+    implementation libs.androidx.work.runtime.ktx
 
     // Markdown rendering
     implementation libs.commonmark

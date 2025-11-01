@@ -616,6 +616,19 @@
     <string name="webdav_decrypt_password_hint">用于解密备份的密码</string>
     <string name="webdav_decryption_failed">解密失败: 密码错误或文件已损坏</string>
     
+    <!-- WebDAV Auto Backup -->
+    <string name="webdav_auto_backup">自动备份</string>
+    <string name="webdav_auto_backup_description">每天首次打开或每12小时自动备份</string>
+    <string name="webdav_auto_backup_enabled">已启用自动备份</string>
+    <string name="webdav_auto_backup_disabled">已禁用自动备份</string>
+    <string name="webdav_last_backup">上次备份</string>
+    <string name="webdav_last_backup_never">从未备份</string>
+    <string name="webdav_last_backup_time">%s 前</string>
+    <string name="webdav_backup_now">立即备份</string>
+    <string name="webdav_backup_in_progress">正在备份…</string>
+    <string name="webdav_backup_success">备份成功</string>
+    <string name="webdav_backup_failed">备份失败: %s</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">已选择 %d 项</string>
     <string name="exit_selection_mode">退出选择模式</string>

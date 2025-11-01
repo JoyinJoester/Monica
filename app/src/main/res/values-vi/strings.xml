@@ -580,6 +580,19 @@
     <string name="webdav_decrypt_password_hint">Mật khẩu để giải mã bản sao lưu</string>
     <string name="webdav_decryption_failed">Giải mã thất bại: Mật khẩu sai hoặc tệp bị hỏng</string>
     
+    <!-- WebDAV Auto Backup -->
+    <string name="webdav_auto_backup">Sao lưu tự động</string>
+    <string name="webdav_auto_backup_description">Sao lưu lần đầu mỗi ngày hoặc mỗi 12 giờ</string>
+    <string name="webdav_auto_backup_enabled">Đã bật sao lưu tự động</string>
+    <string name="webdav_auto_backup_disabled">Đã tắt sao lưu tự động</string>
+    <string name="webdav_last_backup">Lần sao lưu cuối</string>
+    <string name="webdav_last_backup_never">Chưa từng</string>
+    <string name="webdav_last_backup_time">%s trước</string>
+    <string name="webdav_backup_now">Sao lưu ngay</string>
+    <string name="webdav_backup_in_progress">Đang sao lưu…</string>
+    <string name="webdav_backup_success">Sao lưu thành công</string>
+    <string name="webdav_backup_failed">Sao lưu thất bại: %s</string>
+    
     <!-- Selection Mode -->
     <string name="selected_items">%d mục đã chọn</string>
     <string name="exit_selection_mode">Thoát chế độ chọn</string>
