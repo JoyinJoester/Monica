@@ -33,6 +33,12 @@ class PasswordViewModel(
                 repository.searchPasswordEntries(query)
             }
         }
+        .map { entries ->
+            // 解密所有密码
+            entries.map { entry ->
+                entry.copy(password = securityManager.decryptData(entry.password))
+            }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

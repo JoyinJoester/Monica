@@ -51,6 +51,7 @@ import takagi.ru.monica.ui.icons.MonicaIcons
  * @param onDismiss 关闭对话框回调
  * @param onEdit 编辑按钮回调
  * @param onDelete 删除按钮回调
+ * @param onAddPassword 添加密码按钮回调（用于创建多密码卡片）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +59,8 @@ fun PasswordDetailDialog(
     passwordEntry: PasswordEntry,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onAddPassword: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -94,6 +96,16 @@ fun PasswordDetailDialog(
                         )
                     },
                     actions = {
+                        // 添加密码按钮
+                        if (onAddPassword != null) {
+                            IconButton(onClick = onAddPassword) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = "添加密码",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                         // 编辑按钮
                         IconButton(onClick = onEdit) {
                             Icon(Icons.Default.Edit, contentDescription = "编辑")

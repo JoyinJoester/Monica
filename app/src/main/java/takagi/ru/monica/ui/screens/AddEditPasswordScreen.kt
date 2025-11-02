@@ -90,19 +90,19 @@ fun AddEditPasswordScreen(
     var addressInfoExpanded by remember { mutableStateOf(false) }
     var paymentInfoExpanded by remember { mutableStateOf(false) }
     
-    val isEditing = passwordId != null
+    val isEditing = passwordId != null && passwordId > 0
+    val isCopyMode = passwordId != null && passwordId < 0
     
-    // Load existing password data if editing
+    // Load existing password data if editing or copying
     LaunchedEffect(passwordId) {
         if (passwordId != null) {
             coroutineScope.launch {
-                viewModel.getPasswordEntryById(passwordId)?.let { entry ->
+                val actualId = if (passwordId < 0) -passwordId else passwordId
+                viewModel.getPasswordEntryById(actualId)?.let { entry ->
                     title = entry.title
                     website = entry.website
                     username = entry.username
-                    password = entry.password
                     notes = entry.notes
-                    isFavorite = entry.isFavorite
                     appPackageName = entry.appPackageName
                     appName = entry.appName
                     // Phase 7: 加载新字段
@@ -117,6 +117,14 @@ fun AddEditPasswordScreen(
                     creditCardHolder = entry.creditCardHolder
                     creditCardExpiry = entry.creditCardExpiry
                     creditCardCVV = entry.creditCardCVV
+                    
+                    // 如果是编辑模式，加载密码和收藏状态
+                    if (isEditing) {
+                        password = entry.password
+                        isFavorite = entry.isFavorite
+                    }
+                    // 如果是复制模式，密码留空，不继承收藏状态
+                    // password 和 isFavorite 保持初始值（空字符串和false）
                 }
             }
         }
@@ -125,7 +133,12 @@ fun AddEditPasswordScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(if (isEditing) R.string.edit_password_title else R.string.add_password_title)) },
+                title = { 
+                    Text(stringResource(
+                        if (isEditing) R.string.edit_password_title 
+                        else R.string.add_password_title
+                    )) 
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
@@ -145,7 +158,7 @@ fun AddEditPasswordScreen(
                         onClick = {
                             if (title.isNotEmpty() && password.isNotEmpty()) {
                                 val entry = PasswordEntry(
-                                    id = passwordId ?: 0,
+                                    id = if (isEditing) passwordId!! else 0,  // 复制模式下使用0创建新条目
                                     title = title,
                                     website = website,
                                     username = username,
@@ -171,6 +184,7 @@ fun AddEditPasswordScreen(
                                 if (isEditing) {
                                     viewModel.updatePasswordEntry(entry)
                                 } else {
+                                    // 复制模式和新建模式都使用 addPasswordEntry
                                     viewModel.addPasswordEntry(entry)
                                 }
                                 onNavigateBack()

@@ -47,6 +47,9 @@ fun PasswordListScreen(
     var batchPasswordInput by remember { mutableStateOf("") }
     var showBatchPasswordVerify by remember { mutableStateOf(false) }
     
+    // 分组模式: "none" 不分组, "website" 按网站分组, "title" 按标题分组
+    var groupMode by remember { mutableStateOf("none") }
+    
     Scaffold(
         topBar = {
             if (!hideTopBar) {
@@ -102,6 +105,27 @@ fun PasswordListScreen(
                                 )
                             }
                         } else {
+                            // 分组模式切换按钮
+                            IconButton(onClick = {
+                                groupMode = when (groupMode) {
+                                    "none" -> "website"
+                                    "website" -> "title"
+                                    else -> "none"
+                                }
+                            }) {
+                                Icon(
+                                    when (groupMode) {
+                                        "website" -> Icons.Default.Language  // 地球图标表示按网站
+                                        "title" -> Icons.Default.Title       // 标题图标表示按标题
+                                        else -> Icons.Default.ViewList       // 列表图标表示不分组
+                                    },
+                                    contentDescription = when (groupMode) {
+                                        "website" -> "按网站分组"
+                                        "title" -> "按标题分组"
+                                        else -> "不分组"
+                                    }
+                                )
+                            }
                             IconButton(onClick = onSettings) {
                                 Icon(Icons.Default.Settings, contentDescription = context.getString(R.string.settings_title))
                             }
@@ -183,60 +207,224 @@ fun PasswordListScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(passwordEntries) { entry ->
-                        PasswordEntryCard(
-                            entry = entry,
-                            isSelected = selectedItems.contains(entry.id),
-                            selectionMode = selectionMode,
-                            onCopyPassword = { password ->
-                                if (!selectionMode) {
-                                    clipboardUtils.copyToClipboard(password, "Password")
+                    when (groupMode) {
+                        "website" -> {
+                            // 按网站分组
+                            val groupedByWebsite = passwordEntries.groupBy { 
+                                it.website.ifEmpty { "未分类" }
+                            }.toList().sortedBy { it.first }
+                            
+                            groupedByWebsite.forEach { (website, entries) ->
+                                // 分组标题
+                                item {
+                                    Text(
+                                        text = "$website (${entries.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                    )
                                 }
-                            },
-                            onCopyUsername = { username ->
-                                if (!selectionMode) {
-                                    clipboardUtils.copyToClipboard(username, "Username")
-                                }
-                            },
-                            onCopyWebsite = { website ->
-                                if (!selectionMode) {
-                                    clipboardUtils.copyToClipboard(website, "Website")
-                                }
-                            },
-                            onCopyNotes = { notes ->
-                                if (!selectionMode) {
-                                    clipboardUtils.copyToClipboard(notes, "Notes")
-                                }
-                            },
-                            onEdit = { 
-                                if (!selectionMode) {
-                                    onEditPassword(entry.id)
-                                }
-                            },
-                            onDelete = { 
-                                if (!selectionMode) {
-                                    viewModel.deletePasswordEntry(entry)
-                                }
-                            },
-                            onClick = {
-                                if (selectionMode) {
-                                    selectedItems = if (selectedItems.contains(entry.id)) {
-                                        selectedItems - entry.id
-                                    } else {
-                                        selectedItems + entry.id
-                                    }
-                                } else {
-                                    onEditPassword(entry.id)
-                                }
-                            },
-                            onLongPress = {
-                                android.util.Log.d("PasswordList", "Long press detected on entry: ${entry.title}")
-                                if (!selectionMode) {
-                                    selectionMode = true
-                                    selectedItems = setOf(entry.id)
+                                
+                                // 该分组的所有密码
+                                items(entries) { entry ->
+                                    PasswordEntryCard(
+                                        entry = entry,
+                                        isSelected = selectedItems.contains(entry.id),
+                                        selectionMode = selectionMode,
+                                        onCopyPassword = { password ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(password, "Password")
+                                            }
+                                        },
+                                        onCopyUsername = { username ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(username, "Username")
+                                            }
+                                        },
+                                        onCopyWebsite = { website ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(website, "Website")
+                                            }
+                                        },
+                                        onCopyNotes = { notes ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(notes, "Notes")
+                                            }
+                                        },
+                                        onEdit = { 
+                                            if (!selectionMode) {
+                                                onEditPassword(entry.id)
+                                            }
+                                        },
+                                        onDelete = { 
+                                            if (!selectionMode) {
+                                                viewModel.deletePasswordEntry(entry)
+                                            }
+                                        },
+                                        onClick = {
+                                            if (selectionMode) {
+                                                selectedItems = if (selectedItems.contains(entry.id)) {
+                                                    selectedItems - entry.id
+                                                } else {
+                                                    selectedItems + entry.id
+                                                }
+                                            } else {
+                                                onEditPassword(entry.id)
+                                            }
+                                        },
+                                        onLongPress = {
+                                            android.util.Log.d("PasswordList", "Long press detected on entry: ${entry.title}")
+                                            if (!selectionMode) {
+                                                selectionMode = true
+                                                selectedItems = setOf(entry.id)
+                                            }
+                                        }
+                                    )
                                 }
                             }
-                        )
+                        }
+                        
+                        "title" -> {
+                            // 按标题分组(取首字母或首字)
+                            val groupedByTitle = passwordEntries.groupBy { entry ->
+                                val firstChar = entry.title.firstOrNull()?.toString()?.uppercase() ?: "#"
+                                when {
+                                    firstChar.matches(Regex("[A-Z]")) -> firstChar
+                                    firstChar.matches(Regex("[0-9]")) -> "#"
+                                    else -> firstChar
+                                }
+                            }.toList().sortedBy { it.first }
+                            
+                            groupedByTitle.forEach { (letter, entries) ->
+                                // 分组标题
+                                item {
+                                    Text(
+                                        text = "$letter (${entries.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                    )
+                                }
+                                
+                                // 该分组的所有密码
+                                items(entries) { entry ->
+                                    PasswordEntryCard(
+                                        entry = entry,
+                                        isSelected = selectedItems.contains(entry.id),
+                                        selectionMode = selectionMode,
+                                        onCopyPassword = { password ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(password, "Password")
+                                            }
+                                        },
+                                        onCopyUsername = { username ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(username, "Username")
+                                            }
+                                        },
+                                        onCopyWebsite = { website ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(website, "Website")
+                                            }
+                                        },
+                                        onCopyNotes = { notes ->
+                                            if (!selectionMode) {
+                                                clipboardUtils.copyToClipboard(notes, "Notes")
+                                            }
+                                        },
+                                        onEdit = { 
+                                            if (!selectionMode) {
+                                                onEditPassword(entry.id)
+                                            }
+                                        },
+                                        onDelete = { 
+                                            if (!selectionMode) {
+                                                viewModel.deletePasswordEntry(entry)
+                                            }
+                                        },
+                                        onClick = {
+                                            if (selectionMode) {
+                                                selectedItems = if (selectedItems.contains(entry.id)) {
+                                                    selectedItems - entry.id
+                                                } else {
+                                                    selectedItems + entry.id
+                                                }
+                                            } else {
+                                                onEditPassword(entry.id)
+                                            }
+                                        },
+                                        onLongPress = {
+                                            android.util.Log.d("PasswordList", "Long press detected on entry: ${entry.title}")
+                                            if (!selectionMode) {
+                                                selectionMode = true
+                                                selectedItems = setOf(entry.id)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        
+                        else -> {
+                            // 不分组,直接显示列表
+                            items(passwordEntries) { entry ->
+                                PasswordEntryCard(
+                                    entry = entry,
+                                    isSelected = selectedItems.contains(entry.id),
+                                    selectionMode = selectionMode,
+                                    onCopyPassword = { password ->
+                                        if (!selectionMode) {
+                                            clipboardUtils.copyToClipboard(password, "Password")
+                                        }
+                                    },
+                                    onCopyUsername = { username ->
+                                        if (!selectionMode) {
+                                            clipboardUtils.copyToClipboard(username, "Username")
+                                        }
+                                    },
+                                    onCopyWebsite = { website ->
+                                        if (!selectionMode) {
+                                            clipboardUtils.copyToClipboard(website, "Website")
+                                        }
+                                    },
+                                    onCopyNotes = { notes ->
+                                        if (!selectionMode) {
+                                            clipboardUtils.copyToClipboard(notes, "Notes")
+                                        }
+                                    },
+                                    onEdit = { 
+                                        if (!selectionMode) {
+                                            onEditPassword(entry.id)
+                                        }
+                                    },
+                                    onDelete = { 
+                                        if (!selectionMode) {
+                                            viewModel.deletePasswordEntry(entry)
+                                        }
+                                    },
+                                    onClick = {
+                                        if (selectionMode) {
+                                            selectedItems = if (selectedItems.contains(entry.id)) {
+                                                selectedItems - entry.id
+                                            } else {
+                                                selectedItems + entry.id
+                                            }
+                                        } else {
+                                            onEditPassword(entry.id)
+                                        }
+                                    },
+                                    onLongPress = {
+                                        android.util.Log.d("PasswordList", "Long press detected on entry: ${entry.title}")
+                                        if (!selectionMode) {
+                                            selectionMode = true
+                                            selectedItems = setOf(entry.id)
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
