@@ -1,12 +1,15 @@
 package takagi.ru.monica.data
 
+import android.os.Parcelable
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.parcelize.Parcelize
 import java.util.Date
 
 /**
  * Password entry entity for Room database
  */
+@Parcelize
 @Entity(tableName = "password_entries")
 data class PasswordEntry(
     @PrimaryKey(autoGenerate = true)
@@ -40,4 +43,4 @@ data class PasswordEntry(
     val creditCardHolder: String = "",
     val creditCardExpiry: String = "",       // 格式: MM/YY
     val creditCardCVV: String = ""           // 加密存储
-)
+) : Parcelable

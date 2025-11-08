@@ -32,13 +32,18 @@ class AutofillPreferences(private val context: Context) {
         
         // 新架构：使用增强匹配引擎
         private val KEY_USE_ENHANCED_MATCHING = booleanPreferencesKey("use_enhanced_matching")
+        
+        // 密码保存功能配置
+        private val KEY_AUTO_UPDATE_DUPLICATE_PASSWORDS = booleanPreferencesKey("auto_update_duplicate_passwords")
+        private val KEY_SHOW_SAVE_NOTIFICATION = booleanPreferencesKey("show_save_notification")
+        private val KEY_SMART_TITLE_GENERATION = booleanPreferencesKey("smart_title_generation")
     }
     
     /**
      * 是否启用自动填充服务
      */
     val isAutofillEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[KEY_AUTOFILL_ENABLED] ?: false
+        preferences[KEY_AUTOFILL_ENABLED] ?: true  // 默认启用
     }
     
     suspend fun setAutofillEnabled(enabled: Boolean) {
@@ -155,6 +160,47 @@ class AutofillPreferences(private val context: Context) {
     suspend fun setUseEnhancedMatching(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_USE_ENHANCED_MATCHING] = enabled
+        }
+    }
+    
+    /**
+     * 是否自动更新重复密码
+     * 启用后，保存已存在的用户名时自动更新密码而不提示用户
+     */
+    val isAutoUpdateDuplicatePasswordsEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_AUTO_UPDATE_DUPLICATE_PASSWORDS] ?: false
+    }
+    
+    suspend fun setAutoUpdateDuplicatePasswordsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_AUTO_UPDATE_DUPLICATE_PASSWORDS] = enabled
+        }
+    }
+    
+    /**
+     * 保存密码时是否显示通知
+     */
+    val isShowSaveNotificationEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_SHOW_SAVE_NOTIFICATION] ?: true
+    }
+    
+    suspend fun setShowSaveNotificationEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SHOW_SAVE_NOTIFICATION] = enabled
+        }
+    }
+    
+    /**
+     * 是否启用智能标题生成
+     * 启用后，自动从应用名或域名生成有意义的标题
+     */
+    val isSmartTitleGenerationEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_SMART_TITLE_GENERATION] ?: true
+    }
+    
+    suspend fun setSmartTitleGenerationEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SMART_TITLE_GENERATION] = enabled
         }
     }
 }

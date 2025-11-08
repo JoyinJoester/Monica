@@ -58,6 +58,7 @@ class EnhancedAutofillStructureParserV2 {
         CREDIT_CARD_NUMBER,
         CREDIT_CARD_EXPIRATION_DATE,
         CREDIT_CARD_SECURITY_CODE,
+        CREDIT_CARD_HOLDER_NAME,  // 新增: 持卡人姓名
         POSTAL_ADDRESS,
         POSTAL_CODE,
         PERSON_NAME,
@@ -227,6 +228,93 @@ class EnhancedAutofillStructureParserV2 {
         "kart",         // 土耳其语
     )
     
+    /**
+     * 信用卡有效期的翻译
+     */
+    private val creditCardExpiryTranslations = listOf(
+        "expiry",
+        "expiration",
+        "exp date",
+        "valid",
+        "有效期",       // 中文简体
+        "到期日",
+        "有效日期",
+        "有効期限",     // 日语
+        "만료일",       // 韩语
+        "vencimiento",  // 西班牙语
+        "validade",     // 葡萄牙语
+        "срок",         // 俄语
+        "son kullanma", // 土耳其语
+    )
+    
+    /**
+     * CVV/安全码的翻译
+     */
+    private val creditCardCvvTranslations = listOf(
+        "cvv",
+        "cvc",
+        "cid",
+        "security code",
+        "verification",
+        "安全码",       // 中文简体
+        "验证码",
+        "セキュリティコード", // 日语
+        "보안코드",     // 韩语
+        "código",       // 西班牙语/葡萄牙语
+        "код",          // 俄语
+        "güvenlik",     // 土耳其语
+    )
+    
+    /**
+     * 持卡人姓名的翻译
+     */
+    private val cardHolderNameTranslations = listOf(
+        "cardholder",
+        "card holder",
+        "name on card",
+        "持卡人",       // 中文简体
+        "姓名",
+        "カード名義",   // 日语
+        "카드소유자",   // 韩语
+        "titular",      // 西班牙语/葡萄牙语
+        "владелец",     // 俄语
+        "kart sahibi",  // 土耳其语
+    )
+    
+    /**
+     * 邮政编码的翻译
+     */
+    private val postalCodeTranslations = listOf(
+        "zip",
+        "zip code",
+        "postal",
+        "postcode",
+        "邮编",         // 中文简体
+        "邮政编码",
+        "郵便番号",     // 日语
+        "우편번호",     // 韩语
+        "código postal", // 西班牙语
+        "código postal", // 葡萄牙语
+        "почтовый индекс", // 俄语
+        "posta kodu",   // 土耳其语
+    )
+    
+    /**
+     * 地址的翻译
+     */
+    private val addressTranslations = listOf(
+        "address",
+        "street",
+        "billing",
+        "地址",         // 中文简体
+        "住所",         // 日语
+        "주소",         // 韩语
+        "dirección",    // 西班牙语
+        "endereço",     // 葡萄牙语
+        "адрес",        // 俄语
+        "adres",        // 土耳其语
+    )
+    
     // ==================== 标签匹配器列表 ====================
     
     private val labelMatchers = buildList {
@@ -255,9 +343,34 @@ class EnhancedAutofillStructureParserV2 {
             add(LabelMatcher(FieldHint.OTP_CODE, translation, Accuracy.HIGH, partialMatch = true))
         }
         
-        // 信用卡匹配
+        // 信用卡号匹配
         creditCardNumberTranslations.forEach { translation ->
             add(LabelMatcher(FieldHint.CREDIT_CARD_NUMBER, translation, Accuracy.MEDIUM, partialMatch = true))
+        }
+        
+        // 信用卡有效期匹配
+        creditCardExpiryTranslations.forEach { translation ->
+            add(LabelMatcher(FieldHint.CREDIT_CARD_EXPIRATION_DATE, translation, Accuracy.HIGH, partialMatch = true))
+        }
+        
+        // CVV/安全码匹配
+        creditCardCvvTranslations.forEach { translation ->
+            add(LabelMatcher(FieldHint.CREDIT_CARD_SECURITY_CODE, translation, Accuracy.HIGH, partialMatch = true))
+        }
+        
+        // 持卡人姓名匹配
+        cardHolderNameTranslations.forEach { translation ->
+            add(LabelMatcher(FieldHint.CREDIT_CARD_HOLDER_NAME, translation, Accuracy.HIGH, partialMatch = true))
+        }
+        
+        // 邮政编码匹配
+        postalCodeTranslations.forEach { translation ->
+            add(LabelMatcher(FieldHint.POSTAL_CODE, translation, Accuracy.HIGH, partialMatch = true))
+        }
+        
+        // 地址匹配
+        addressTranslations.forEach { translation ->
+            add(LabelMatcher(FieldHint.POSTAL_ADDRESS, translation, Accuracy.MEDIUM, partialMatch = true))
         }
     }
     

@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:ns2="http://schemas.android.com/tools">
+    <plurals name="mtrl_badge_content_description">
+    <item quantity="one">%d 条新通知</item>
+    <item quantity="other">%d 条新通知</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"转到首页"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"转到上一层级"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"更多选项"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"完成"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"查看全部"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"选择应用"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"关闭"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"开启"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"Delete 键"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"Enter 键"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Fn+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"空格键"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menu+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"搜索…"</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"清除查询"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"搜索查询"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"搜索"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"提交查询"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"语音搜索"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"分享对象"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"与<ns1:g id="APPLICATION_NAME">%s</ns1:g>分享"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"收起"</string>
+    <string name="bottomsheet_action_collapse">收起底部动作条</string>
+    <string name="bottomsheet_action_expand">展开底部动作条</string>
+    <string name="bottomsheet_action_expand_halfway">展开到一半高度</string>
+    <string name="bottomsheet_drag_handle_clicked">拖动手柄被点按两次</string>
+    <string name="bottomsheet_drag_handle_content_description">拖动手柄</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"接听"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"视频通话"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"拒接"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"挂断"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"来电"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"正在通话"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"正在过滤来电"</string>
+    <string name="character_counter_content_description">输入了 %1$d 个字符（上限为 %2$d 个）</string>
+    <string name="character_counter_overflowed_content_description">超出字符数限制（共 %1$d 个，上限为 %2$d 个）</string>
+    <string name="clear_text_end_icon_content_description">清除文字</string>
+    <string msgid="406453423630273620" name="close_drawer">"关闭导航菜单"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"关闭工作表"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"输入无效"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"弹出式窗口"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"下拉菜单"</string>
+    <string name="error_icon_content_description">错误</string>
+    <string name="exposed_dropdown_menu_content_description">显示下拉菜单</string>
+    <string name="icon_content_description">对话框图标</string>
+    <string msgid="6827826412747255547" name="in_progress">"进行中"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"部分选中"</string>
+    <string name="item_view_role_description">标签页</string>
+    <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"收起底部动作条"</string>
+    <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"关闭底部动作条"</string>
+    <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"拖动手柄"</string>
+    <string msgid="6670819569745899763" name="m3c_bottom_sheet_expand_description">"展开底部动作条"</string>
+    <string msgid="3010635850035863127" name="m3c_bottom_sheet_pane_title">"底部动作条"</string>
+    <string msgid="8166741421776570875" name="m3c_date_input_headline">"输入的日期"</string>
+    <string msgid="229313757840775812" name="m3c_date_input_headline_description">"输入的日期：%1$s"</string>
+    <string msgid="6116910750161463197" name="m3c_date_input_invalid_for_pattern">"日期不符合格式要求：%1$s"</string>
+    <string msgid="2521768508935305279" name="m3c_date_input_invalid_not_allowed">"日期无效：%1$s"</string>
+    <string msgid="7052898923934555305" name="m3c_date_input_invalid_year_range">"日期超出预期年份范围 %1$s - %2$s"</string>
+    <string msgid="2895559812010326913" name="m3c_date_input_label">"日期"</string>
+    <string msgid="1237013946323089826" name="m3c_date_input_no_input_description">"无"</string>
+    <string msgid="7306227249789210568" name="m3c_date_input_title">"选择日期"</string>
+    <string msgid="7605002211875882969" name="m3c_date_picker_headline">"选定的日期"</string>
+    <string msgid="3664277305226978227" name="m3c_date_picker_headline_description">"当前的选择：%1$s"</string>
+    <string msgid="8436650776581492840" name="m3c_date_picker_navigate_to_year_description">"切换到年份：%1$s"</string>
+    <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"无"</string>
+    <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"滚动即可显示之前的年份"</string>
+    <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"滚动即可显示之后的年份"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"切换到日历输入模式"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"滑动可选择年份，点按可切换回选择日期"</string>
+    <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"切换到文本字段输入模式"</string>
+    <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"转到下个月"</string>
+    <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"转到上个月"</string>
+    <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"切换为选择年份"</string>
+    <string msgid="7430790972741451689" name="m3c_date_picker_title">"选择日期"</string>
+    <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"今天"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"年份选择器可见"</string>
+    <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"输入的日期范围无效"</string>
+    <string msgid="3148384720560189467" name="m3c_date_range_input_title">"输入日期"</string>
+    <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"在范围内"</string>
+    <string msgid="4947636797751277713" name="m3c_date_range_picker_end_headline">"结束日期"</string>
+    <string msgid="602077859540990149" name="m3c_date_range_picker_scroll_to_next_month">"滚动即可显示下个月"</string>
+    <string msgid="4592174524846109496" name="m3c_date_range_picker_scroll_to_previous_month">"滚动即可显示上个月"</string>
+    <string msgid="4665981448952749820" name="m3c_date_range_picker_start_headline">"开始日期"</string>
+    <string msgid="3134165431120340385" name="m3c_date_range_picker_title">"选择日期"</string>
+    <string msgid="7617233117134790350" name="m3c_dialog">"对话框"</string>
+    <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"已收起"</string>
+    <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"已展开"</string>
+    <string msgid="6152806324422087846" name="m3c_search_bar_search">"搜索"</string>
+    <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"关闭"</string>
+    <string msgid="7655536806087401899" name="m3c_suggestions_available">"以下是搜索建议"</string>
+    <string msgid="2786685010796619560" name="m3c_time_picker_am">"上午"</string>
+    <string msgid="2349193472625211372" name="m3c_time_picker_hour">"小时"</string>
+    <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d 小时"</string>
+    <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"选择小时"</string>
+    <string msgid="3458167507790628988" name="m3c_time_picker_hour_suffix">"%1$d 点"</string>
+    <string msgid="6973808109666874069" name="m3c_time_picker_hour_text_field">"输入小时"</string>
+    <string msgid="4313071914266462005" name="m3c_time_picker_minute">"分钟"</string>
+    <string msgid="4699133535056739733" name="m3c_time_picker_minute_selection">"选择分钟"</string>
+    <string msgid="5064177921781937179" name="m3c_time_picker_minute_suffix">"%1$d 分钟"</string>
+    <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"输入分钟"</string>
+    <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"选择上午或下午"</string>
+    <string msgid="6616362054113087709" name="m3c_time_picker_pm">"下午"</string>
+    <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"显示提示"</string>
+    <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"提示"</string>
+    <string name="material_clock_toggle_content_description">选择上午或下午</string>
+    <string name="material_hour_24h_suffix">%1$s 小时</string>
+    <string name="material_hour_selection">选择小时</string>
+    <string name="material_hour_suffix">%1$s 点</string>
+    <string name="material_minute_selection">选择分钟</string>
+    <string name="material_minute_suffix">%1$s 分</string>
+    <string name="material_timepicker_am">上午</string>
+    <string name="material_timepicker_clock_mode_description">切换到时钟模式来输入时间。</string>
+    <string name="material_timepicker_hour">小时</string>
+    <string name="material_timepicker_minute">分钟</string>
+    <string name="material_timepicker_pm">下午</string>
+    <string name="material_timepicker_select_time">选择时间</string>
+    <string name="material_timepicker_text_input_mode_description">切换到文字输入模式来输入时间。</string>
+    <string name="mtrl_badge_numberless_content_description">新通知</string>
+    <string name="mtrl_chip_close_icon_content_description">移除%1$s</string>
+    <string name="mtrl_exceed_max_badge_number_content_description" ns2:ignore="PluralsCandidate">有 %1$d 条以上的新通知</string>
+    <string name="mtrl_picker_a11y_next_month">转到下个月</string>
+    <string name="mtrl_picker_a11y_prev_month">转到上个月</string>
+    <string name="mtrl_picker_announce_current_range_selection">开始日期选择：%1$s – 结束日期选择：%2$s</string>
+    <string name="mtrl_picker_announce_current_selection">当前的选择是：%1$s</string>
+    <string name="mtrl_picker_announce_current_selection_none">无</string>
+    <string name="mtrl_picker_cancel">取消</string>
+    <string name="mtrl_picker_confirm">确定</string>
+    <string name="mtrl_picker_date_header_selected">%1$s</string>
+    <string name="mtrl_picker_date_header_title">请选择日期</string>
+    <string name="mtrl_picker_date_header_unselected">选定的日期</string>
+    <string name="mtrl_picker_day_of_week_column_header">表示周几的列：%1$s</string>
+    <string name="mtrl_picker_end_date_description">结束日期 %1$s</string>
+    <string name="mtrl_picker_invalid_format">格式无效。</string>
+    <string name="mtrl_picker_invalid_format_example">示例：%1$s</string>
+    <string name="mtrl_picker_invalid_format_use">使用：%1$s</string>
+    <string name="mtrl_picker_invalid_range">范围无效。</string>
+    <string name="mtrl_picker_navigate_to_current_year_description">转到今年%1$d</string>
+    <string name="mtrl_picker_navigate_to_year_description">转到 %1$d 年</string>
+    <string name="mtrl_picker_out_of_range">不在允许的范围内：%1$s</string>
+    <string name="mtrl_picker_range_header_only_end_selected">开始日期 – %1$s</string>
+    <string name="mtrl_picker_range_header_only_start_selected">%1$s – 结束日期</string>
+    <string name="mtrl_picker_range_header_selected">%1$s - %2$s</string>
+    <string name="mtrl_picker_range_header_title">请选择范围</string>
+    <string name="mtrl_picker_range_header_unselected">开始日期 - 结束日期</string>
+    <string name="mtrl_picker_save">保存</string>
+    <string name="mtrl_picker_start_date_description">开始日期 %1$s</string>
+    <string name="mtrl_picker_text_input_date_hint">日期</string>
+    <string name="mtrl_picker_text_input_date_range_end_hint">结束日期</string>
+    <string name="mtrl_picker_text_input_date_range_start_hint">开始日期</string>
+    <string name="mtrl_picker_text_input_day_abbr">d</string>
+    <string name="mtrl_picker_text_input_month_abbr">m</string>
+    <string name="mtrl_picker_text_input_year_abbr">y</string>
+    <string name="mtrl_picker_today_description">今天%1$s</string>
+    <string name="mtrl_picker_toggle_to_calendar_input_mode">切换到日历输入模式</string>
+    <string name="mtrl_picker_toggle_to_day_selection">点按即可切换到日历视图</string>
+    <string name="mtrl_picker_toggle_to_text_input_mode">切换到文本字段输入模式</string>
+    <string name="mtrl_picker_toggle_to_year_selection">点按即可切换到年视图</string>
+    <string name="mtrl_timepicker_cancel">取消</string>
+    <string name="mtrl_timepicker_confirm">确定</string>
+    <string msgid="542007171693138492" name="navigation_menu">"导航菜单"</string>
+    <string msgid="6610465462668679431" name="not_selected">"未选择"</string>
+    <string msgid="875452955155264703" name="off">"已关闭"</string>
+    <string msgid="8655164131929253426" name="on">"已开启"</string>
+    <string name="password_toggle_content_description">显示密码</string>
+    <string msgid="5941395253238309765" name="range_end">"范围终点"</string>
+    <string msgid="7097486360902471446" name="range_start">"范围起点"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"搜索"</string>
+    <string msgid="6043586758067023" name="selected">"已选择"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"开关"</string>
+    <string msgid="1672349317127674378" name="tab">"标签页"</string>
+    <string msgid="5946805113151406391" name="template_percent">"百分之 <ns1:g id="PERCENTAGE">%1$d</ns1:g>。"</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"提示"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"显示提示"</string>
+</resources>

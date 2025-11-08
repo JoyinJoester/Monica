@@ -131,48 +131,73 @@ class AutofillSaveBottomSheet : BottomSheetDialogFragment() {
                 val packageName = arguments?.getString(ARG_PACKAGE_NAME) ?: ""
                 val appName = getAppName(requireContext(), packageName)
                 
-                // 检查是否已存在
-                val existingPasswords = passwordRepository.getAllPasswordEntries().first()
-                val existing = existingPasswords.firstOrNull { entry ->
-                    if (packageName.isNotBlank() && entry.appPackageName == packageName && 
-                        entry.username.equals(username, ignoreCase = true)) {
-                        true
-                    } else {
-                        entry.website.equals(website, ignoreCase = true) && 
-                        entry.username.equals(username, ignoreCase = true)
-                    }
-                }
+                // 使用 SecurityManager 加密密码
+                val securityManager = takagi.ru.monica.security.SecurityManager(requireContext())
+                val encryptedPassword = securityManager.encryptData(password)
                 
-                if (existing != null) {
-                    // 更新现有密码
-                    val updated = existing.copy(
-                        password = password,
-                        notes = notes,
-                        appPackageName = packageName.ifBlank { existing.appPackageName },
-                        appName = appName.ifBlank { existing.appName },
-                        updatedAt = Date()
-                    )
-                    passwordRepository.updatePasswordEntry(updated)
-                } else {
-                    // 创建新密码
-                    val newEntry = PasswordEntry(
-                        title = title.ifBlank { appName.ifBlank { website } },
-                        username = username,
-                        password = password,
-                        website = website,
-                        notes = notes,
-                        appPackageName = packageName,
-                        appName = appName,
-                        createdAt = Date(),
-                        updatedAt = Date()
-                    )
-                    passwordRepository.insertPasswordEntry(newEntry)
+                android.util.Log.d("AutofillSave", "📱 保存密码信息:")
+                android.util.Log.d("AutofillSave", "  - Username: $username")
+                android.util.Log.d("AutofillSave", "  - Password: ${password.length} chars")
+                android.util.Log.d("AutofillSave", "  - Website: $website")
+                android.util.Log.d("AutofillSave", "  - PackageName: $packageName")
+                android.util.Log.d("AutofillSave", "  - AppName: $appName")
+                android.util.Log.d("AutofillSave", "  - Encrypted: ${encryptedPassword.take(20)}...")
+                
+                // 检查是否已存在相同的密码
+                val existingPasswords = passwordRepository.getAllPasswordEntries().first()
+                
+                // 使用 PasswordSaveHelper 检测重复
+                val saveData = PasswordSaveHelper.SaveData(
+                    username = username,
+                    password = password,
+                    packageName = packageName,
+                    webDomain = website.takeIf { it.isNotBlank() }
+                )
+                
+                android.util.Log.d("AutofillSave", "🔍 SaveData 创建:")
+                android.util.Log.d("AutofillSave", "  - packageName: ${saveData.packageName}")
+                android.util.Log.d("AutofillSave", "  - webDomain: ${saveData.webDomain}")
+                
+                when (val duplicateCheck = PasswordSaveHelper.checkDuplicate(saveData, existingPasswords)) {
+                    is PasswordSaveHelper.DuplicateCheckResult.SameUsernameDifferentPassword -> {
+                        // 更新现有密码
+                        val updated = PasswordSaveHelper.updatePasswordEntry(
+                            duplicateCheck.existingEntry,
+                            saveData,
+                            encryptedPassword
+                        )
+                        passwordRepository.updatePasswordEntry(updated)
+                        android.util.Log.i("AutofillSave", "更新密码成功: id=${updated.id}")
+                    }
+                    is PasswordSaveHelper.DuplicateCheckResult.ExactDuplicate -> {
+                        // 完全相同,不需要保存
+                        android.util.Log.i("AutofillSave", "密码已存在,跳过保存")
+                    }
+                    else -> {
+                        // 创建新密码条目
+                        val newEntry = PasswordSaveHelper.createNewPasswordEntry(
+                            requireContext(),
+                            saveData,
+                            encryptedPassword
+                        )
+                        
+                        android.util.Log.i("AutofillSave", "💾 新密码条目创建:")
+                        android.util.Log.i("AutofillSave", "  - Title: ${newEntry.title}")
+                        android.util.Log.i("AutofillSave", "  - Username: ${newEntry.username}")
+                        android.util.Log.i("AutofillSave", "  - Website: ${newEntry.website}")
+                        android.util.Log.i("AutofillSave", "  - AppPackageName: ${newEntry.appPackageName}")
+                        android.util.Log.i("AutofillSave", "  - AppName: ${newEntry.appName}")
+                        
+                        passwordRepository.insertPasswordEntry(newEntry)
+                        android.util.Log.i("AutofillSave", "✅ 保存新密码成功!")
+                    }
                 }
                 
                 onSaveCallback?.invoke()
                 dismiss()
             } catch (e: Exception) {
-                android.util.Log.e("AutofillSave", "Error saving password", e)
+                android.util.Log.e("AutofillSave", "保存密码失败", e)
+                // TODO: 显示错误消息
                 dismiss()
             }
         }
@@ -234,13 +259,14 @@ fun SavePasswordBottomSheetContent(
         }
     }
     
-    // 优先使用应用名称，其次使用website
+    // 优先使用应用名称,其次使用website
     val defaultTitle = appName.ifBlank { website.takeIf { it.isNotBlank() } ?: packageName }
     
     var title by remember { mutableStateOf(defaultTitle) }
     var editedUsername by remember { mutableStateOf(username) }
     var editedPassword by remember { mutableStateOf(password) }
     var showAdvanced by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) } // 🔧 密码可见性状态
     
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -322,19 +348,40 @@ fun SavePasswordBottomSheetContent(
                     Icon(Icons.Default.Lock, contentDescription = null) 
                 },
                 trailingIcon = {
-                    // 密码生成器按钮
-                    IconButton(
-                        onClick = {
-                            editedPassword = generateStrongPassword()
+                    Row {
+                        // 👁️ 显示/隐藏密码按钮
+                        IconButton(
+                            onClick = { passwordVisible = !passwordVisible }
+                        ) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (passwordVisible) 
+                                    stringResource(R.string.hide_password) 
+                                else 
+                                    stringResource(R.string.show_password),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                    ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.generate_password),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        
+                        // 🔄 密码生成器按钮
+                        IconButton(
+                            onClick = {
+                                editedPassword = generateStrongPassword()
+                                passwordVisible = true // 生成后自动显示密码
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.generate_password),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 },
+                visualTransformation = if (passwordVisible) 
+                    androidx.compose.ui.text.input.VisualTransformation.None 
+                else 
+                    androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
@@ -391,7 +438,7 @@ fun SavePasswordBottomSheetContent(
                 
                 Button(
                     onClick = {
-                        onSave(title, editedUsername, editedPassword, website, "通过自动填充保存")
+                        onSave(title, editedUsername, editedPassword, website, context.getString(R.string.autofill_saved_via))
                     },
                     modifier = Modifier.weight(1f),
                     enabled = editedUsername.isNotBlank() || editedPassword.isNotBlank(),

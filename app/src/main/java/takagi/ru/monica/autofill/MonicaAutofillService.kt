@@ -34,6 +34,10 @@ import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.ParsedItem
 import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill.di.AutofillDI
 import takagi.ru.monica.autofill.core.AutofillLogger
+import takagi.ru.monica.autofill.core.AutofillDiagnostics
+import takagi.ru.monica.autofill.core.ImprovedFieldParser
+import takagi.ru.monica.autofill.core.EnhancedPasswordMatcher
+import takagi.ru.monica.autofill.core.SafeResponseBuilder
 import takagi.ru.monica.autofill.data.AutofillContext
 import takagi.ru.monica.autofill.data.PasswordMatch
 import takagi.ru.monica.utils.DeviceUtils
@@ -69,6 +73,9 @@ class MonicaAutofillService : AutofillService() {
     // SMS Retriever Helper for OTP auto-read
     private var smsRetrieverHelper: SmsRetrieverHelper? = null
     
+    // 🔍 诊断系统
+    private lateinit var diagnostics: AutofillDiagnostics
+    
     // 缓存应用信息以提高性能
     private val appInfoCache = mutableMapOf<String, String>()
     
@@ -93,6 +100,9 @@ class MonicaAutofillService : AutofillService() {
             
             // 初始化SMS Retriever Helper
             smsRetrieverHelper = SmsRetrieverHelper(applicationContext)
+            
+            // 🔍 初始化诊断系统
+            diagnostics = AutofillDiagnostics(applicationContext)
             
             // 🚀 预初始化自动填充引擎
             autofillEngine
@@ -212,7 +222,18 @@ class MonicaAutofillService : AutofillService() {
         android.util.Log.d("MonicaAutofill", "Request flags: ${request.flags}")
         android.util.Log.d("MonicaAutofill", "Fill contexts count: ${request.fillContexts.size}")
         
+        // 🔍 记录填充请求到诊断系统
+        val context = request.fillContexts.lastOrNull()
+        val packageName = context?.structure?.activityComponent?.packageName ?: "unknown"
+        diagnostics.logFillRequest(
+            packageName = packageName,
+            flags = request.flags,
+            contextCount = request.fillContexts.size,
+            hasInlineRequest = request.inlineSuggestionsRequest != null
+        )
+        
         serviceScope.launch {
+            val startTime = System.currentTimeMillis()
             try {
                 // 🎯 根据设备品牌设置动态超时时间
                 val recommendedTimeout = DeviceUtils.getRecommendedAutofillTimeout()
@@ -222,8 +243,11 @@ class MonicaAutofillService : AutofillService() {
                     processFillRequest(request, cancellationSignal)
                 }
                 
+                val processingTime = System.currentTimeMillis() - startTime
+                diagnostics.logRequestTime(processingTime)
+                
                 if (result != null) {
-                    AutofillLogger.i("REQUEST", "Fill request completed successfully")
+                    AutofillLogger.i("REQUEST", "Fill request completed successfully in ${processingTime}ms")
                     callback.onSuccess(result)
                 } else {
                     // 🔄 国产ROM支持重试机制
@@ -235,6 +259,8 @@ class MonicaAutofillService : AutofillService() {
                             processFillRequest(request, cancellationSignal)
                         }
                         
+                        val totalTime = System.currentTimeMillis() - startTime
+                        diagnostics.logRequestTime(totalTime)
                         callback.onSuccess(retryResult)
                     } else {
                         AutofillLogger.w("REQUEST", "Fill request timed out after ${recommendedTimeout}ms")
@@ -246,6 +272,7 @@ class MonicaAutofillService : AutofillService() {
             } catch (e: Exception) {
                 AutofillLogger.e("REQUEST", "Error in onFillRequest: ${e.message}", e)
                 android.util.Log.e("MonicaAutofill", "Error in onFillRequest", e)
+                diagnostics.logError("REQUEST", "Fill request failed: ${e.message}", e)
                 callback.onFailure(e.message ?: "Unknown error")
             }
         }
@@ -302,6 +329,14 @@ class MonicaAutofillService : AutofillService() {
         
         val structure = context.structure
         
+        // ✨ 使用改进的字段解析器（多层策略）
+        // 可选：使用 ImprovedFieldParser 进行多层解析
+        // val improvedParser = ImprovedFieldParser(structure)
+        // val improvedResult = improvedParser.parse()
+        // if (improvedParser.validateParseResult(improvedResult)) {
+        //     // 使用改进的解析结果
+        // }
+        
         // ✨ 使用增强的字段解析器 V2
         val respectAutofillOff = true
         val parsedStructure = enhancedParserV2.parse(structure, respectAutofillOff)
@@ -333,6 +368,27 @@ class MonicaAutofillService : AutofillService() {
         
         val parser = AutofillFieldParser(structure)
         val fieldCollection = parser.parse()
+        
+        // 🔍 记录字段解析结果到诊断系统
+        val usernameFieldCount = parsedStructure.items.count { 
+            it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS 
+        }
+        val passwordFieldCount = parsedStructure.items.count { 
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD 
+        }
+        val otherFieldCount = parsedStructure.items.size - usernameFieldCount - passwordFieldCount
+        val avgAccuracy = if (parsedStructure.items.isNotEmpty()) {
+            parsedStructure.items.map { it.accuracy.score }.average().toFloat()
+        } else 0f
+        
+        diagnostics.logFieldParsing(
+            totalFields = parsedStructure.items.size,
+            usernameFields = usernameFieldCount,
+            passwordFields = passwordFieldCount,
+            otherFields = otherFieldCount,
+            parserUsed = "EnhancedAutofillStructureParserV2",
+            accuracy = avgAccuracy
+        )
         
         // 检查是否有可填充的凭据字段
         val hasUsernameOrEmail = parsedStructure.items.any { 
@@ -366,6 +422,34 @@ class MonicaAutofillService : AutofillService() {
         
         AutofillLogger.d("MATCHING", "Package: $packageName, WebDomain: $webDomain, Identifier: $identifier")
         android.util.Log.d("MonicaAutofill", "Identifier: $identifier (package: $packageName, web: $webDomain)")
+        
+        // 🔍 可选：使用增强的密码匹配器
+        // val matchStrategy = autofillPreferences.domainMatchStrategy.first()
+        // val enhancedMatcher = EnhancedPasswordMatcher(matchStrategy)
+        // val allPasswords = passwordRepository.getAllPasswordEntries().first()
+        // val matchResult = enhancedMatcher.findMatches(packageName, structure, allPasswords)
+        // if (matchResult.hasMatches()) {
+        //     val matchedPasswords = matchResult.matches.map { it.entry }
+        //     // 记录匹配详情
+        //     val matchDetails = matchResult.matches.map { match ->
+        //         AutofillDiagnostics.MatchDetail(
+        //             passwordId = match.entry.id,
+        //             passwordTitle = match.entry.title,
+        //             matchType = match.matchType.name,
+        //             score = match.score,
+        //             matchedOn = webDomain ?: packageName,
+        //             reason = match.reason
+        //         )
+        //     }
+        //     diagnostics.logPasswordMatching(
+        //         packageName = packageName,
+        //         domain = webDomain,
+        //         matchStrategy = matchResult.matchStrategy,
+        //         totalPasswords = allPasswords.size,
+        //         matchedPasswords = matchedPasswords.size,
+        //         matchDetails = matchDetails
+        //     )
+        // }
         
         // 🚀 使用新引擎进行匹配（如果启用）
         val useNewEngine = autofillPreferences.useEnhancedMatching.first() ?: true
@@ -404,6 +488,17 @@ class MonicaAutofillService : AutofillService() {
         AutofillLogger.i("MATCHING", "Found ${matchedPasswords.size} matched passwords")
         android.util.Log.d("MonicaAutofill", "Found ${matchedPasswords.size} matched passwords")
         
+        // 🔍 记录密码匹配结果到诊断系统
+        val allPasswordsCount = passwordRepository.getAllPasswordEntries().first().size
+        val matchStrategy = autofillPreferences.domainMatchStrategy.first().toString()
+        diagnostics.logPasswordMatching(
+            packageName = packageName,
+            domain = webDomain,
+            matchStrategy = matchStrategy,
+            totalPasswords = allPasswordsCount,
+            matchedPasswords = matchedPasswords.size
+        )
+        
         if (matchedPasswords.isEmpty()) {
             return null
         }
@@ -428,6 +523,11 @@ class MonicaAutofillService : AutofillService() {
         
         android.util.Log.d("MonicaAutofill", "🔍 Matching: packageName=$packageName, identifier=$identifier")
         android.util.Log.d("MonicaAutofill", "📦 Total passwords in database: ${allPasswords.size}")
+        
+        // 🔍 调试:输出所有密码的实际内容
+        allPasswords.forEachIndexed { index, pwd ->
+            android.util.Log.d("MonicaAutofill", "密码 #$index: title='${pwd.title}', username='${pwd.username}', password='${pwd.password}' (长度=${pwd.password.length})")
+        }
         
         // 智能匹配算法：优先级排序
         val exactMatches = mutableListOf<PasswordEntry>()
@@ -499,8 +599,9 @@ class MonicaAutofillService : AutofillService() {
             startOTPAutoRead(enhancedCollection)
         }
         
-        // 为每个匹配的密码创建数据集
-        passwords.forEachIndexed { index, password ->
+        // 为每个匹配的密码创建数据集 - 最多显示3个
+        val maxDirectShow = 3
+        passwords.take(maxDirectShow).forEachIndexed { index, password ->
             val datasetBuilder = Dataset.Builder()
             
             // 创建RemoteViews显示 (传统下拉菜单)
@@ -756,6 +857,8 @@ class MonicaAutofillService : AutofillService() {
             
             // 设置保存提示
             saveInfoBuilder.setDescription("保存到 Monica 密码管理器")
+            // 添加标志以确保在所有情况下都提示保存
+            saveInfoBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
             
             responseBuilder.setSaveInfo(saveInfoBuilder.build())
         }
@@ -783,7 +886,52 @@ class MonicaAutofillService : AutofillService() {
         packageName: String,
         inlineRequest: InlineSuggestionsRequest? = null
     ): FillResponse {
+        // 🎯 新用户体验: 直接显示所有匹配的密码 + "手动选择"选项
+        AutofillLogger.i("RESPONSE", "Creating direct list response with ${passwords.size} passwords")
+        android.util.Log.d("MonicaAutofill", "🎨 Using new direct list UI for ${passwords.size} passwords")
+        
+        return try {
+            val domain = parsedStructure.webDomain
+            val directListResponse = AutofillPickerLauncher.createDirectListResponse(
+                context = applicationContext,
+                matchedPasswords = passwords,
+                allPasswordIds = emptyList(),
+                packageName = packageName,
+                domain = domain,
+                parsedStructure = parsedStructure
+            )
+            
+            android.util.Log.d("MonicaAutofill", "✓ Direct list response created successfully")
+            
+            // SaveInfo 已经配置 - 日志已确认
+            android.util.Log.i("MonicaAutofill", "📌 SaveInfo has been configured in FillResponse")
+            
+            directListResponse
+        } catch (e: Exception) {
+            AutofillLogger.e("RESPONSE", "Failed to create direct list response, falling back to standard", e)
+            android.util.Log.e("MonicaAutofill", "✗ Direct list failed, using standard UI", e)
+            // 如果失败,继续使用标准方式
+            buildStandardResponse(passwords, parsedStructure, fieldCollection, enhancedCollection, packageName, inlineRequest)
+        }
+    }
+    
+    /**
+     * 构建标准的填充响应(原有逻辑)
+     */
+    private suspend fun buildStandardResponse(
+        passwords: List<PasswordEntry>,
+        parsedStructure: ParsedStructure,
+        fieldCollection: AutofillFieldCollection,
+        enhancedCollection: EnhancedAutofillFieldCollection,
+        packageName: String,
+        inlineRequest: InlineSuggestionsRequest? = null
+    ): FillResponse {
         val responseBuilder = FillResponse.Builder()
+        
+        // 🔍 跟踪响应构建统计
+        var datasetsCreated = 0
+        var datasetsFailed = 0
+        val buildErrors = mutableListOf<String>()
         
         // 获取内联建议规格列表 (Android 11+)
         val inlineSpecs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && inlineRequest != null) {
@@ -813,8 +961,9 @@ class MonicaAutofillService : AutofillService() {
             startOTPAutoRead(enhancedCollection)
         }
         
-        // 为每个匹配的密码创建数据集
-        passwords.forEachIndexed { index, password ->
+        // 为每个匹配的密码创建数据集 - 最多显示3个
+        val maxDirectShow = 3
+        passwords.take(maxDirectShow).forEachIndexed { index, password ->
             val datasetBuilder = Dataset.Builder()
             
             // 创建RemoteViews显示 (传统下拉菜单)
@@ -1021,12 +1170,17 @@ class MonicaAutofillService : AutofillService() {
                 try {
                     val dataset = datasetBuilder.build()
                     responseBuilder.addDataset(dataset)
+                    datasetsCreated++
                     android.util.Log.d("MonicaAutofill", "✅ Dataset #$index added successfully for: ${password.title}")
                 } catch (e: Exception) {
+                    datasetsFailed++
+                    buildErrors.add("${password.title}: ${e.message}")
                     android.util.Log.e("MonicaAutofill", "❌ Failed to build dataset for: ${password.title}", e)
                     AutofillLogger.e("DATASET", "Failed to build dataset: ${e.message}", e)
                 }
             } else {
+                datasetsFailed++
+                buildErrors.add("${password.title}: No fields filled")
                 android.util.Log.w("MonicaAutofill", "⚠️ Skipping dataset for '${password.title}' - no fields filled")
             }
         }
@@ -1049,14 +1203,24 @@ class MonicaAutofillService : AutofillService() {
                 
                 // 设置保存提示
                 saveInfoBuilder.setDescription("保存到 Monica 密码管理器")
+                // 添加标志以确保在所有情况下都提示保存
+                saveInfoBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
                 
                 responseBuilder.setSaveInfo(saveInfoBuilder.build())
-                android.util.Log.d("MonicaAutofill", "💾 SaveInfo configured for ${saveFieldIds.size} fields")
+                android.util.Log.d("MonicaAutofill", "💾 SaveInfo configured for ${saveFieldIds.size} fields with FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE")
             }
         }
         
+        // 🔍 记录响应构建结果到诊断系统
+        diagnostics.logResponseBuilding(
+            datasetsCreated = datasetsCreated,
+            datasetsFailed = datasetsFailed,
+            hasInlinePresentation = inlineSpecs != null,
+            errors = buildErrors
+        )
+        
         android.util.Log.d("MonicaAutofill", "========================================")
-        android.util.Log.d("MonicaAutofill", "✅ FillResponse built successfully")
+        android.util.Log.d("MonicaAutofill", "✅ FillResponse built successfully (created=$datasetsCreated, failed=$datasetsFailed)")
         android.util.Log.d("MonicaAutofill", "========================================")
         return responseBuilder.build()
     }
@@ -1071,7 +1235,7 @@ class MonicaAutofillService : AutofillService() {
         index: Int,
         enhancedCollection: EnhancedAutofillFieldCollection
     ): RemoteViews {
-        val presentation = RemoteViews(this.packageName, R.layout.autofill_dataset_item)
+        val presentation = RemoteViews(this.packageName, R.layout.autofill_dataset_card)
         
         // 设置标题
         val displayTitle = if (password.title.isNotBlank()) {
@@ -1233,27 +1397,55 @@ class MonicaAutofillService : AutofillService() {
     
     /**
      * 处理保存请求
-     * 当用户提交表单时调用，可以保存新的密码或更新现有密码
+     * 当用户提交表单时调用,可以保存新的密码或更新现有密码
      */
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
-        AutofillLogger.i("REQUEST", "onSaveRequest called - User submitted a form")
-        android.util.Log.d("MonicaAutofill", "onSaveRequest called")
+        // 🚨 重要: 添加醒目的日志来确认此方法被调用
+        AutofillLogger.i("REQUEST", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        AutofillLogger.i("REQUEST", "💾💾💾 onSaveRequest TRIGGERED! 💾💾💾")
+        AutofillLogger.i("REQUEST", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        android.util.Log.w("MonicaAutofill", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        android.util.Log.w("MonicaAutofill", "💾💾💾 onSaveRequest TRIGGERED! 💾💾💾")
+        android.util.Log.w("MonicaAutofill", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        android.util.Log.d("MonicaAutofill", "SaveRequest contexts: ${request.fillContexts.size}")
         
         serviceScope.launch {
             try {
-                // 🎯 使用品牌特定的超时时间（保存请求通常更快）
-                val saveTimeout = (DeviceUtils.getRecommendedAutofillTimeout() * 0.6).toLong()
+                // 🎯 Keyguard 风格实现: 返回 PendingIntent 给系统
+                // 系统会在用户点击"Save"后自动启动我们的 Activity
+                val intent = processSaveRequest(request)
                 
-                val result = withTimeoutOrNull(saveTimeout) {
-                    processSaveRequest(request)
-                }
-                
-                if (result == true) {
-                    AutofillLogger.i("REQUEST", "Save request completed successfully")
-                    callback.onSuccess()
+                if (intent != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= 28) {
+                        // Android 9+ 使用 PendingIntent
+                        // 🔧 关键修复: 使用 FLAG_MUTABLE 而不是 FLAG_IMMUTABLE
+                        // FLAG_MUTABLE 允许系统修改 Intent 并正确传递 extras
+                        val flags = if (android.os.Build.VERSION.SDK_INT >= 31) {
+                            android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                        } else {
+                            android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                        }
+                        
+                        val pi = android.app.PendingIntent.getActivity(
+                            this@MonicaAutofillService, 
+                            System.currentTimeMillis().toInt(), // 使用时间戳作为 request code
+                            intent, 
+                            flags
+                        )
+                        AutofillLogger.i("REQUEST", "✅ 返回 PendingIntent 给系统 (flags=$flags)")
+                        callback.onSuccess(pi.intentSender)
+                    } else {
+                        // Android 8 直接启动
+                        try {
+                            startActivity(intent)
+                            callback.onSuccess()
+                        } catch (e: Exception) {
+                            AutofillLogger.e("REQUEST", "启动 Activity 失败", e)
+                            callback.onFailure(e.message ?: "启动失败")
+                        }
+                    }
                 } else {
-                    AutofillLogger.w("REQUEST", "Save request failed or timed out")
-                    android.util.Log.w("MonicaAutofill", "Save request failed or timed out")
+                    AutofillLogger.w("REQUEST", "无法创建 Intent")
                     callback.onSuccess() // 即使失败也返回成功，避免系统重试
                 }
                 
@@ -1267,63 +1459,166 @@ class MonicaAutofillService : AutofillService() {
     
     /**
      * 处理保存请求的核心逻辑
+     * @return Intent 用于启动自定义保存 UI,如果无法处理则返回 null
      */
-    private suspend fun processSaveRequest(request: SaveRequest): Boolean {
-        val context = request.fillContexts.lastOrNull() ?: return false
+    private suspend fun processSaveRequest(request: SaveRequest): android.content.Intent? {
+        val startTime = System.currentTimeMillis()
+        AutofillLogger.i("SAVE", "开始处理密码保存请求")
         
-        val structure = context.structure
-        val parser = AutofillFieldParser(structure)
-        val fieldCollection = parser.parse()
-        
-        // 提取用户名和密码
-        val username = fieldCollection.usernameValue ?: ""
-        val password = fieldCollection.passwordValue ?: ""
-        
-        if (username.isBlank() && password.isBlank()) {
-            android.util.Log.d("MonicaAutofill", "No credentials to save")
-            return false
+        try {
+            // 1. 获取填充上下文
+            val context = request.fillContexts.lastOrNull()
+            if (context == null) {
+                AutofillLogger.e("SAVE", "无法获取填充上下文")
+                return null
+            }
+            
+            val structure = context.structure
+            
+            // 2. 使用增强解析器提取字段
+            val parsedStructure = enhancedParserV2.parse(structure)
+            AutofillLogger.i("SAVE", "解析到 ${parsedStructure.items.size} 个字段")
+            
+            // 3. 提取用户名和密码字段的值
+            var username = ""
+            var password = ""
+            var newPassword: String? = null
+            var confirmPassword: String? = null
+            var isNewPasswordScenario = false
+            
+            // 创建一个 map 来存储 AutofillId 到 ViewNode 的映射
+            val idToNodeMap = mutableMapOf<android.view.autofill.AutofillId, AssistStructure.ViewNode>()
+            
+            // 递归收集所有 ViewNode
+            fun collectNodes(node: AssistStructure.ViewNode) {
+                node.autofillId?.let { id ->
+                    idToNodeMap[id] = node
+                }
+                for (i in 0 until node.childCount) {
+                    collectNodes(node.getChildAt(i))
+                }
+            }
+            
+            // 收集所有节点
+            for (i in 0 until structure.windowNodeCount) {
+                val windowNode = structure.getWindowNodeAt(i)
+                collectNodes(windowNode.rootViewNode)
+            }
+            
+            // 遍历解析的字段并从对应的 ViewNode 提取值
+            parsedStructure.items.forEach { item ->
+                val node = idToNodeMap[item.id]
+                val value = node?.autofillValue?.let { autofillValue ->
+                    if (autofillValue.isText) {
+                        autofillValue.textValue?.toString() ?: ""
+                    } else {
+                        ""
+                    }
+                } ?: ""
+                
+                when (item.hint) {
+                    EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                        if (username.isBlank()) {
+                            username = value
+                            AutofillLogger.d("SAVE", "提取用户名字段: ${value.take(3)}***")
+                        }
+                    }
+                    EnhancedAutofillStructureParserV2.FieldHint.PASSWORD -> {
+                        if (password.isBlank()) {
+                            password = value
+                            AutofillLogger.d("SAVE", "提取密码字段: ${value.length}个字符")
+                        }
+                    }
+                    EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
+                        isNewPasswordScenario = true
+                        if (newPassword == null) {
+                            newPassword = value
+                            AutofillLogger.d("SAVE", "提取新密码字段: ${value.length}个字符")
+                        } else if (confirmPassword == null) {
+                            confirmPassword = value
+                            AutofillLogger.d("SAVE", "提取确认密码字段: ${value.length}个字符")
+                        }
+                    }
+                    else -> {}
+                }
+            }
+            
+            // 4. 提取包名和域名
+            val packageName = structure.activityComponent.packageName
+            val webDomain = PasswordSaveHelper.extractWebDomain(structure)
+            
+            AutofillLogger.i("SAVE", "来源信息: packageName=$packageName, domain=$webDomain")
+            
+            // 5. 构建SaveData并验证
+            val saveData = PasswordSaveHelper.SaveData(
+                username = username,
+                password = password,
+                newPassword = newPassword,
+                confirmPassword = confirmPassword,
+                packageName = packageName,
+                webDomain = webDomain,
+                isNewPasswordScenario = isNewPasswordScenario
+            )
+            
+            when (val validation = saveData.validate()) {
+                is PasswordSaveHelper.ValidationResult.Success -> {
+                    AutofillLogger.i("SAVE", "数据验证通过")
+                }
+                is PasswordSaveHelper.ValidationResult.Warning -> {
+                    AutofillLogger.w("SAVE", "数据验证警告: ${validation.message}")
+                }
+                is PasswordSaveHelper.ValidationResult.Error -> {
+                    AutofillLogger.e("SAVE", "数据验证失败: ${validation.message}")
+                    return null
+                }
+            }
+            
+            // 6. 检查是否启用保存功能
+            val saveEnabled = autofillPreferences.isRequestSaveDataEnabled.first()
+            if (!saveEnabled) {
+                AutofillLogger.i("SAVE", "密码保存功能已禁用")
+                return null
+            }
+            
+            // 7. 检查重复密码
+            val allPasswords = passwordRepository.getAllPasswordEntries().first()
+            val duplicateCheck = PasswordSaveHelper.checkDuplicate(saveData, allPasswords)
+            
+            when (duplicateCheck) {
+                is PasswordSaveHelper.DuplicateCheckResult.ExactDuplicate -> {
+                    AutofillLogger.i("SAVE", "发现完全相同的密码,跳过保存")
+                    return null // 完全重复不需要显示 UI
+                }
+                else -> {
+                    // 其他情况继续保存流程
+                    AutofillLogger.i("SAVE", "重复检查结果: ${duplicateCheck::class.simpleName}")
+                }
+            }
+            
+            // 8. 🎯 创建 Intent 用于启动自定义 Material 3 Bottom Sheet
+            // Keyguard 风格: 返回 Intent,让系统在用户点击后启动
+            // 🔧 关键优化: 完全不设置 flags!
+            // 让 PendingIntent 自动处理,系统会在原应用上下文中启动
+            val finalPassword = saveData.getFinalPassword()
+            val saveIntent = android.content.Intent(applicationContext, AutofillSaveTransparentActivity::class.java).apply {
+                putExtra(AutofillSaveTransparentActivity.EXTRA_USERNAME, username)
+                putExtra(AutofillSaveTransparentActivity.EXTRA_PASSWORD, finalPassword)
+                putExtra(AutofillSaveTransparentActivity.EXTRA_WEBSITE, webDomain ?: "")
+                putExtra(AutofillSaveTransparentActivity.EXTRA_PACKAGE_NAME, packageName)
+                putExtra("EXTRA_IS_UPDATE", duplicateCheck is PasswordSaveHelper.DuplicateCheckResult.SameUsernameDifferentPassword)
+                // ⚠️ 不设置任何 flags - 让系统自动处理!
+            }
+            
+            val duration = System.currentTimeMillis() - startTime
+            AutofillLogger.i("SAVE", "Intent 已创建,将由系统在用户点击后启动,耗时: ${duration}ms")
+            return saveIntent
+            
+        } catch (e: Exception) {
+            val duration = System.currentTimeMillis() - startTime
+            AutofillLogger.e("SAVE", "处理保存请求失败,耗时: ${duration}ms", e)
+            return null
         }
-        
-        // 获取包名或域名
-        val packageName = structure.activityComponent.packageName
-        val webDomain = parser.extractWebDomain()
-        val website = webDomain ?: ""
-        
-        android.util.Log.d("MonicaAutofill", "Save request - username: $username, website: $website, package: $packageName")
-        
-        // 检查是否启用保存功能
-        val requestSaveEnabled = autofillPreferences.isRequestSaveDataEnabled.first()
-        if (!requestSaveEnabled) {
-            android.util.Log.d("MonicaAutofill", "Save request disabled")
-            return false
-        }
-        
-        // 检查是否已存在相同的密码
-        val existingPasswords = passwordRepository.getAllPasswordEntries().first()
-        val isDuplicate = existingPasswords.any { entry ->
-            (entry.appPackageName == packageName || entry.website == website) &&
-            entry.username == username &&
-            entry.password == password
-        }
-        
-        if (isDuplicate) {
-            android.util.Log.d("MonicaAutofill", "Duplicate password, skipping save")
-            return true
-        }
-        
-        // 启动保存Activity
-        val saveIntent = android.content.Intent(applicationContext, AutofillSaveTransparentActivity::class.java).apply {
-            putExtra(AutofillSaveTransparentActivity.EXTRA_USERNAME, username)
-            putExtra(AutofillSaveTransparentActivity.EXTRA_PASSWORD, password)
-            putExtra(AutofillSaveTransparentActivity.EXTRA_WEBSITE, website)
-            putExtra(AutofillSaveTransparentActivity.EXTRA_PACKAGE_NAME, packageName)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
-        
-        startActivity(saveIntent)
-        return true
     }
     
     override fun onConnected() {

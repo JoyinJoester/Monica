@@ -18,6 +18,9 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE id = :id")
     suspend fun getPasswordEntryById(id: Long): PasswordEntry?
     
+    @Query("SELECT * FROM password_entries WHERE id IN (:ids)")
+    suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry>
+    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long
     
@@ -68,4 +71,39 @@ interface PasswordEntryDao {
      */
     @Query("SELECT * FROM password_entries WHERE title = :title AND username = :username AND website = :website LIMIT 1")
     suspend fun findDuplicateEntry(title: String, username: String, website: String): PasswordEntry?
+    
+    /**
+     * 按包名和用户名查询密码
+     * 用于自动填充保存时检测重复
+     */
+    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) LIMIT 1")
+    suspend fun findByPackageAndUsername(packageName: String, username: String): PasswordEntry?
+    
+    /**
+     * 按网站和用户名查询密码
+     * 用于自动填充保存时检测重复
+     */
+    @Query("SELECT * FROM password_entries WHERE LOWER(website) LIKE '%' || LOWER(:domain) || '%' AND LOWER(username) = LOWER(:username) LIMIT 1")
+    suspend fun findByDomainAndUsername(domain: String, username: String): PasswordEntry?
+    
+    /**
+     * 按包名查询所有密码
+     * 用于检测同一应用的多个账号
+     */
+    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName ORDER BY updatedAt DESC")
+    suspend fun findByPackageName(packageName: String): List<PasswordEntry>
+    
+    /**
+     * 按网站域名查询所有密码
+     * 用于检测同一网站的多个账号
+     */
+    @Query("SELECT * FROM password_entries WHERE LOWER(website) LIKE '%' || LOWER(:domain) || '%' ORDER BY updatedAt DESC")
+    suspend fun findByDomain(domain: String): List<PasswordEntry>
+    
+    /**
+     * 检查是否存在完全相同的密码(包名+用户名+密码)
+     * 用于避免重复保存
+     */
+    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) AND password = :encryptedPassword LIMIT 1")
+    suspend fun findExactMatch(packageName: String, username: String, encryptedPassword: String): PasswordEntry?
 }

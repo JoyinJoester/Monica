@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:ns2="http://schemas.android.com/tools">
+    <plurals name="mtrl_badge_content_description">
+    <item quantity="one">%d նոր ծանուցում</item>
+    <item quantity="other">%d նոր ծանուցում</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"Անցնել գլխավոր էջ"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"Անցնել վերև"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"Այլ ընտրանքներ"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"Պատրաստ է"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"Տեսնել բոլորը"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"Ընտրել հավելված"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"ԱՆՋԱՏԵԼ"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"ՄԻԱՑՆԵԼ"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"Delete"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"Enter"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Function+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"բացատ"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menu+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"Որոնում…"</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"Ջնջել հարցումը"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"Որոնման հարցում"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"Որոնել"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"Ուղարկել հարցումը"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"Ձայնային որոնում"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"Կիսվել…"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"Կիսվել <ns1:g id="APPLICATION_NAME">%s</ns1:g> հավելվածի միջոցով"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"Ծալել"</string>
+    <string name="bottomsheet_action_collapse">Ծալել ներքևի էկրանը</string>
+    <string name="bottomsheet_action_expand">Ծավալել ներքևի էկրանը</string>
+    <string name="bottomsheet_action_expand_halfway">Ծավալել կիսով չափ</string>
+    <string name="bottomsheet_drag_handle_clicked">Կրկնակի հպում տեղափոխման նշիչին</string>
+    <string name="bottomsheet_drag_handle_content_description">Տեղափոխման նշիչ</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"Պատասխանել"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Տեսազանգ"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"Մերժել"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"Ավարտել"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"Մուտքային զանգ"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"Ընթացիկ զանգ"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"Մուտքային զանգի զտում"</string>
+    <string name="character_counter_content_description">Մուտքագրված նիշեր՝ %1$d/%2$d</string>
+    <string name="character_counter_overflowed_content_description">Նիշերի առավելագույն քանակը գերազանցվել է (%1$d/%2$d)</string>
+    <string name="clear_text_end_icon_content_description">Ջնջել տեքստը</string>
+    <string msgid="406453423630273620" name="close_drawer">"Փակել նավիգացիայի ընտրացանկը"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"Փակել թերթը"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"Սխալ ներածում"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"Ելնող պատուհան"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"Իջնող ցանկ"</string>
+    <string name="error_icon_content_description">Սխալ</string>
+    <string name="exposed_dropdown_menu_content_description">Ցույց տալ իջնող ընտրացանկը</string>
+    <string name="icon_content_description">Երկխոսության պատուհանի պատկերակ</string>
+    <string msgid="6827826412747255547" name="in_progress">"Ընթացքում է"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"Մասնակի նշված"</string>
+    <string name="item_view_role_description">Ներդիր</string>
+    <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Ծալել ներքևի էկրանը"</string>
+    <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"Փակել ներքևի էկրանը"</string>
+    <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"Տեղափոխման նշիչ"</string>
+    <string msgid="6670819569745899763" name="m3c_bottom_sheet_expand_description">"Ծավալել ներքևի էկրանը"</string>
+    <string msgid="3010635850035863127" name="m3c_bottom_sheet_pane_title">"Ներքևի էկրան"</string>
+    <string msgid="8166741421776570875" name="m3c_date_input_headline">"Մուտքագրված ամսաթիվ"</string>
+    <string msgid="229313757840775812" name="m3c_date_input_headline_description">"Մուտքագրված ամսաթիվ՝ %1$s"</string>
+    <string msgid="6116910750161463197" name="m3c_date_input_invalid_for_pattern">"Ամսաթիվը չի համընկնում թույլատրելի ձևաչափի հետ՝ %1$s"</string>
+    <string msgid="2521768508935305279" name="m3c_date_input_invalid_not_allowed">"Ամսաթիվը թույլատրված չէ՝ %1$s"</string>
+    <string msgid="7052898923934555305" name="m3c_date_input_invalid_year_range">"Ամսաթիվը տարեթվերի թույլատրելի միջակայքից (%1$s – %2$s) դուրս է"</string>
+    <string msgid="2895559812010326913" name="m3c_date_input_label">"Ամսաթիվ"</string>
+    <string msgid="1237013946323089826" name="m3c_date_input_no_input_description">"Չկա"</string>
+    <string msgid="7306227249789210568" name="m3c_date_input_title">"Ընտրեք ամսաթիվը"</string>
+    <string msgid="7605002211875882969" name="m3c_date_picker_headline">"Ընտրված ամսաթիվ"</string>
+    <string msgid="3664277305226978227" name="m3c_date_picker_headline_description">"Ընթացիկ ընտրությունը՝ %1$s"</string>
+    <string msgid="8436650776581492840" name="m3c_date_picker_navigate_to_year_description">"Անցնել %1$s թվական"</string>
+    <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"Չկա"</string>
+    <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"Ոլորեք՝ նախորդ տարիները ցուցադրելու համար"</string>
+    <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"Ոլորեք՝ վերջին տարիները ցուցադրելու համար"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"Անցնել օրացույցի մուտքագրման ռեժիմ"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"Սահեցրեք՝ տարեթիվ ընտրելու համար, կամ հպեք՝ օրվա ընտրությանը վերադառնալու համար"</string>
+    <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"Անցնել տեքստի մուտքագրման ռեժիմին"</string>
+    <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"Անցնել հաջորդ ամսվան"</string>
+    <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"Անցնել նախորդ ամսվան"</string>
+    <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"Անցնել տարվա ընտրությանը"</string>
+    <string msgid="7430790972741451689" name="m3c_date_picker_title">"Ընտրեք ամսաթիվը"</string>
+    <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"Այսօր"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"Տարեթվի ցուցադրվող ընտրիչ"</string>
+    <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"Մուտքագրված ամսաթվերի միջակայքն անվավեր է"</string>
+    <string msgid="3148384720560189467" name="m3c_date_range_input_title">"Մուտքագրեք ամսաթվերը"</string>
+    <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"Միջակայքում"</string>
+    <string msgid="4947636797751277713" name="m3c_date_range_picker_end_headline">"Ավարտի ամսաթիվ"</string>
+    <string msgid="602077859540990149" name="m3c_date_range_picker_scroll_to_next_month">"Ոլորեք՝ հաջորդ ամիսը ցուցադրելու համար"</string>
+    <string msgid="4592174524846109496" name="m3c_date_range_picker_scroll_to_previous_month">"Ոլորեք՝ նախորդ ամիսը ցուցադրելու համար"</string>
+    <string msgid="4665981448952749820" name="m3c_date_range_picker_start_headline">"Սկզբի ամսաթիվ"</string>
+    <string msgid="3134165431120340385" name="m3c_date_range_picker_title">"Ընտրեք ամսաթվեր"</string>
+    <string msgid="7617233117134790350" name="m3c_dialog">"Երկխոսության պատուհան"</string>
+    <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"Ծալված է"</string>
+    <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"Ծավալված է"</string>
+    <string msgid="6152806324422087846" name="m3c_search_bar_search">"Որոնում"</string>
+    <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"Փակել"</string>
+    <string msgid="7655536806087401899" name="m3c_suggestions_available">"Առաջարկները հասանելի են ստորև"</string>
+    <string msgid="2786685010796619560" name="m3c_time_picker_am">"AM"</string>
+    <string msgid="2349193472625211372" name="m3c_time_picker_hour">"Ժամ"</string>
+    <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d ժամ"</string>
+    <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"Ընտրեք ժամը"</string>
+    <string msgid="3458167507790628988" name="m3c_time_picker_hour_suffix">"%1$d"</string>
+    <string msgid="6973808109666874069" name="m3c_time_picker_hour_text_field">"ժամեր"</string>
+    <string msgid="4313071914266462005" name="m3c_time_picker_minute">"Րոպեներ"</string>
+    <string msgid="4699133535056739733" name="m3c_time_picker_minute_selection">"Ընտրեք րոպեն"</string>
+    <string msgid="5064177921781937179" name="m3c_time_picker_minute_suffix">"%1$d րոպե"</string>
+    <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"րոպեներ"</string>
+    <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"Ընտրել AM կամ PM"</string>
+    <string msgid="6616362054113087709" name="m3c_time_picker_pm">"PM"</string>
+    <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"Ցուցադրել հուշում"</string>
+    <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"Հուշակ"</string>
+    <string name="material_clock_toggle_content_description">Ընտրել AM կամ PM</string>
+    <string name="material_hour_24h_suffix">%1$s ժամ</string>
+    <string name="material_hour_selection">Ընտրել ժամը</string>
+    <string name="material_hour_suffix">Ժամը %1$s է</string>
+    <string name="material_minute_selection">Ընտրեք րոպեն</string>
+    <string name="material_minute_suffix">%1$s րոպե</string>
+    <string name="material_timepicker_am">AM</string>
+    <string name="material_timepicker_clock_mode_description">Ժամը մուտքագրելու համար միացրեք ժամացույցի ռեժիմը:</string>
+    <string name="material_timepicker_hour">Ժամ</string>
+    <string name="material_timepicker_minute">Րոպե</string>
+    <string name="material_timepicker_pm">PM</string>
+    <string name="material_timepicker_select_time">Ժամանակի ընտրություն</string>
+    <string name="material_timepicker_text_input_mode_description">Ժամը մուտքագրելու համար միացրեք տեքստի մուտքագրման ռեժիմը:</string>
+    <string name="mtrl_badge_numberless_content_description">Նոր ծանուցում</string>
+    <string name="mtrl_chip_close_icon_content_description">Հեռացնել (%1$s)</string>
+    <string name="mtrl_exceed_max_badge_number_content_description" ns2:ignore="PluralsCandidate">Ավելի քան %1$d նոր ծանուցում</string>
+    <string name="mtrl_picker_a11y_next_month">Անցնել հաջորդ ամիս</string>
+    <string name="mtrl_picker_a11y_prev_month">Անցնել նախորդ ամիս</string>
+    <string name="mtrl_picker_announce_current_range_selection">Մեկնարկի ամսաթվի ընտրություն՝ %1$s – Ավարտի ամսաթվի ընտրություն՝ %2$s</string>
+    <string name="mtrl_picker_announce_current_selection">Ներկայիս ընտրությունը՝ %1$s</string>
+    <string name="mtrl_picker_announce_current_selection_none">ոչ մեկը</string>
+    <string name="mtrl_picker_cancel">Չեղարկել</string>
+    <string name="mtrl_picker_confirm">Եղավ</string>
+    <string name="mtrl_picker_date_header_selected">%1$s</string>
+    <string name="mtrl_picker_date_header_title">Ընտրեք ամսաթիվը</string>
+    <string name="mtrl_picker_date_header_unselected">Ընտրված ամսաթիվ</string>
+    <string name="mtrl_picker_day_of_week_column_header">Օրերի սյունակ՝ %1$s</string>
+    <string name="mtrl_picker_end_date_description">Ավարտի ամսաթիվը՝ %1$s</string>
+    <string name="mtrl_picker_invalid_format">Ձևաչափը սխալ է։</string>
+    <string name="mtrl_picker_invalid_format_example">Օրինակ՝ %1$s</string>
+    <string name="mtrl_picker_invalid_format_use">Օգտագործեք՝ %1$s</string>
+    <string name="mtrl_picker_invalid_range">Ընդգրկույթն անվավեր է:</string>
+    <string name="mtrl_picker_navigate_to_current_year_description">Անցնել ընթացիկ տարվան (%1$d)</string>
+    <string name="mtrl_picker_navigate_to_year_description">Անցնել %1$d թվական</string>
+    <string name="mtrl_picker_out_of_range">Ընդգրկույթից դուրս է՝ %1$s</string>
+    <string name="mtrl_picker_range_header_only_end_selected">Մեկնարկի ամսաթիվը – %1$s</string>
+    <string name="mtrl_picker_range_header_only_start_selected">%1$s – Ավարտի ամսաթիվը</string>
+    <string name="mtrl_picker_range_header_selected">%1$s – %2$s</string>
+    <string name="mtrl_picker_range_header_title">Ընտրեք ընդգրկույթը</string>
+    <string name="mtrl_picker_range_header_unselected">Մեկնարկի ամսաթիվը – Ավարտի ամսաթիվը</string>
+    <string name="mtrl_picker_save">Պահել</string>
+    <string name="mtrl_picker_start_date_description">Սկզբի ամսաթիվը՝ %1$s</string>
+    <string name="mtrl_picker_text_input_date_hint">Ամսաթիվ</string>
+    <string name="mtrl_picker_text_input_date_range_end_hint">Ավարտի ամսաթիվը</string>
+    <string name="mtrl_picker_text_input_date_range_start_hint">Մեկնարկի ամսաթիվը</string>
+    <string name="mtrl_picker_text_input_day_abbr">օ</string>
+    <string name="mtrl_picker_text_input_month_abbr">ա</string>
+    <string name="mtrl_picker_text_input_year_abbr">տ</string>
+    <string name="mtrl_picker_today_description">Այսօր (%1$s)</string>
+    <string name="mtrl_picker_toggle_to_calendar_input_mode">Անցնել օրացույցի մուտքագրման ռեժիմ</string>
+    <string name="mtrl_picker_toggle_to_day_selection">Հպեք՝ Օրացույցի դիտակերպին անցնելու համար</string>
+    <string name="mtrl_picker_toggle_to_text_input_mode">Անցնել տեքստի մուտքագրման ռեժիմին</string>
+    <string name="mtrl_picker_toggle_to_year_selection">Հպեք՝ տարվա դիտակերպին անցնելու համար</string>
+    <string name="mtrl_timepicker_cancel">Չեղարկել</string>
+    <string name="mtrl_timepicker_confirm">Եղավ</string>
+    <string msgid="542007171693138492" name="navigation_menu">"Նավիգացիայի ընտրացանկ"</string>
+    <string msgid="6610465462668679431" name="not_selected">"Ընտրված չէ"</string>
+    <string msgid="875452955155264703" name="off">"Անջատված է"</string>
+    <string msgid="8655164131929253426" name="on">"Միացված է"</string>
+    <string name="password_toggle_content_description">Ցուցադրել գաղտնաբառը</string>
+    <string msgid="5941395253238309765" name="range_end">"Ընդգրկույթի վերջ"</string>
+    <string msgid="7097486360902471446" name="range_start">"Ընդգրկույթի սկիզբ"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"Որոնել"</string>
+    <string msgid="6043586758067023" name="selected">"Ընտրված է"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"Փոխանջատիչ"</string>
+    <string msgid="1672349317127674378" name="tab">"Ներդիր"</string>
+    <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> տոկոս։"</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"հուշակ"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"ցուցադրել հուշակ"</string>
+</resources>

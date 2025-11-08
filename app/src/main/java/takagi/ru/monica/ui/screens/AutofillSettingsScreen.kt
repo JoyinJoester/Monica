@@ -26,11 +26,20 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.launch
 import takagi.ru.monica.autofill.AutofillPreferences
 import takagi.ru.monica.autofill.DomainMatchStrategy
+import takagi.ru.monica.autofill.core.AutofillServiceChecker
+import takagi.ru.monica.autofill.core.AutofillDiagnostics
+import takagi.ru.monica.ui.components.AutofillStatusCard
+import takagi.ru.monica.ui.components.TroubleshootDialog
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,15 +59,55 @@ fun AutofillSettingsScreen(
     val autoSaveWebsiteInfoEnabled by autofillPreferences.isAutoSaveWebsiteInfoEnabled.collectAsState(initial = true)
     
     var showStrategyDialog by remember { mutableStateOf(false) }
+    var showTroubleshootDialog by remember { mutableStateOf(false) }
     
-    // 检查系统自动填充服务状态
-    val isSystemAutofillEnabled = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val autofillManager = context.getSystemService(AutofillManager::class.java)
-            autofillManager?.hasEnabledAutofillServices() == true
-        } else {
-            false
+    // 服务状态检查器和诊断系统
+    val serviceChecker = remember { AutofillServiceChecker(context) }
+    val diagnostics = remember { AutofillDiagnostics(context) }
+    var serviceStatus by remember { mutableStateOf<AutofillServiceChecker.ServiceStatus?>(null) }
+    var diagnosticReport by remember { mutableStateOf<takagi.ru.monica.autofill.core.DiagnosticReport?>(null) }
+    
+    // 使用可变状态来追踪系统自动填充服务状态,这样可以实时更新
+    var isSystemAutofillEnabled by remember { mutableStateOf(false) }
+    
+    // 获取生命周期所有者
+    val lifecycleOwner = LocalLifecycleOwner.current
+    
+    // 刷新状态的函数
+    fun refreshAutofillStatus() {
+        scope.launch {
+            serviceStatus = serviceChecker.checkServiceStatus()
+            
+            // 实时检查系统自动填充服务状态
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val autofillManager = context.getSystemService(AutofillManager::class.java)
+                isSystemAutofillEnabled = autofillManager?.hasEnabledAutofillServices() == true
+                
+                android.util.Log.d("AutofillSettings", "刷新状态: isSystemAutofillEnabled = $isSystemAutofillEnabled")
+                android.util.Log.d("AutofillSettings", "当前服务: ${autofillManager?.autofillServiceComponentName}")
+            }
         }
+    }
+    
+    // 监听生命周期,当界面 Resume 时刷新状态
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                android.util.Log.d("AutofillSettings", "界面 Resume,刷新自动填充状态")
+                refreshAutofillStatus()
+            }
+        }
+        
+        lifecycleOwner.lifecycle.addObserver(observer)
+        
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    
+    // 首次加载时检查状态
+    LaunchedEffect(Unit) {
+        refreshAutofillStatus()
     }
     
     Scaffold(
@@ -78,6 +127,21 @@ fun AutofillSettingsScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
                 },
+                actions = {
+                    // 添加刷新按钮
+                    IconButton(
+                        onClick = { 
+                            android.util.Log.d("AutofillSettings", "手动刷新状态")
+                            refreshAutofillStatus() 
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "刷新状态",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -94,8 +158,24 @@ fun AutofillSettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // 顶部状态Banner - 带渐变背景
-            StatusBanner(isEnabled = isSystemAutofillEnabled)
+            // 顶部状态卡片 - 使用新的 AutofillStatusCard 组件
+            serviceStatus?.let { status ->
+                AutofillStatusCard(
+                    status = status,
+                    onEnableClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val intent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
+                            intent.data = Uri.parse("package:${context.packageName}")
+                            context.startActivity(intent)
+                        }
+                    },
+                    onTroubleshootClick = {
+                        // 生成诊断报告并显示对话框
+                        diagnosticReport = diagnostics.generateDiagnosticReport()
+                        showTroubleshootDialog = true
+                    }
+                )
+            }
             
             // 系统设置卡片
             SectionCard(
@@ -256,6 +336,34 @@ fun AutofillSettingsScreen(
                 }
             },
             onDismiss = { showStrategyDialog = false }
+        )
+    }
+    
+    // 故障排查对话框
+    if (showTroubleshootDialog && diagnosticReport != null) {
+        TroubleshootDialog(
+            diagnosticReport = diagnosticReport!!,
+            onDismiss = { showTroubleshootDialog = false },
+            onExportLogs = {
+                scope.launch {
+                    try {
+                        val logs = diagnostics.exportLogs()
+                        val file = File(context.getExternalFilesDir(null), "monica_autofill_logs.txt")
+                        file.writeText(logs)
+                        
+                        // 分享日志文件
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, logs)
+                            putExtra(Intent.EXTRA_SUBJECT, "Monica 自动填充诊断日志")
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "导出日志"))
+                    } catch (e: Exception) {
+                        // 处理错误
+                        e.printStackTrace()
+                    }
+                }
+            }
         )
     }
 }

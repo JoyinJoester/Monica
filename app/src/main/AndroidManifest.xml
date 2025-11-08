@@ -95,13 +95,24 @@
             android:exported="false"
             android:theme="@style/Theme.Transparent"
             android:excludeFromRecents="true"
-            android:launchMode="singleTop" />
+            android:noHistory="true"
+            android:taskAffinity=":autofill_save"
+            android:launchMode="singleTask"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize" />
         
         <!-- Phase 8: Biometric Authentication Activity for Autofill -->
         <activity
             android:name=".autofill.BiometricAuthActivity"
             android:exported="false"
             android:theme="@style/Theme.Transparent"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+        
+        <!-- Autofill Picker Activity (UI Improvement) -->
+        <activity
+            android:name=".autofill.AutofillPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Monica.BottomSheet"
             android:excludeFromRecents="true"
             android:launchMode="singleTop" />
         

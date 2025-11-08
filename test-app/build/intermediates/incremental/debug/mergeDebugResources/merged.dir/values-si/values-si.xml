@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:ns2="http://schemas.android.com/tools">
+    <plurals name="mtrl_badge_content_description">
+    <item quantity="one">නව දැනුම්දීම් %dක්</item>
+    <item quantity="other">නව දැනුම්දීම් %dක්</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"මුල් පිටුවට සංචාලනය කරන්න"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"ඉහළට සංචාලනය කරන්න"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"තවත් විකල්ප"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"කළා"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"සියල්ල බලන්න"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"යෙදුමක් තෝරන්න"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"ක්‍රියාවිරහිතයි"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"ක්‍රියාත්මකයි"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"මකන්න"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"enter"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Function+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"space"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menu+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"සොයන්න..."</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"විමසුම හිස් කරන්න"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"සෙවුම් විමසුම"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"සෙවීම"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"විමසුම යොමු කරන්න"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"හඬ සෙවීම"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"සමග බෙදා ගන්න"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"<ns1:g id="APPLICATION_NAME">%s</ns1:g> සමඟ බෙදා ගන්න"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"හකුළන්න"</string>
+    <string name="bottomsheet_action_collapse">පහළම පත්‍රය හකුළන්න</string>
+    <string name="bottomsheet_action_expand">පහළම පත්‍රය දිග හරින්න</string>
+    <string name="bottomsheet_action_expand_halfway">අඩක් දිග හරින්න</string>
+    <string name="bottomsheet_drag_handle_clicked">ඇදීම් හැඬලය දෙවරක් තට්ටු කර ඇත</string>
+    <string name="bottomsheet_drag_handle_content_description">හැඬලය අදින්න</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"පිළිතුරු දෙ."</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"වීඩියෝ"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"ප්‍රතික්ෂේප ක"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"විසන්ධි කරන්න"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"එන ඇමතුම"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"කරගෙන යන ඇමතුම"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"එන ඇමතුමක් පරීක්ෂා කරන්න"</string>
+    <string name="character_counter_content_description">අනුලකුණු %2$dන් %1$dක් ඇතුළු කෙරිණි</string>
+    <string name="character_counter_overflowed_content_description">අනුලකුණු සීමාව %2$dකින් %1$d ඉක්ම විය</string>
+    <string name="clear_text_end_icon_content_description">පෙළ හිස් කරන්න</string>
+    <string msgid="406453423630273620" name="close_drawer">"සංචාලන මෙනුව වසන්න"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"පත්‍රය වසන්න"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"වලංගු නොවන ආදානයකි"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"උත්පතන කවුළුව"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"පතන මෙනුව"</string>
+    <string name="error_icon_content_description">දෝෂය</string>
+    <string name="exposed_dropdown_menu_content_description">පතන මෙනුව පෙන්වන්න</string>
+    <string name="icon_content_description">සංවාද නිරූපකය</string>
+    <string msgid="6827826412747255547" name="in_progress">"ප්‍රගතියේ පවතී"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"අඩ වශයෙන් ලකුණු කළ"</string>
+    <string name="item_view_role_description">ටැබය</string>
+    <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"පහළම පත්‍රය හකුළන්න"</string>
+    <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"පහළම පත්‍රය අස් කරන්න"</string>
+    <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"ඇදීම් හැඬලය"</string>
+    <string msgid="6670819569745899763" name="m3c_bottom_sheet_expand_description">"පහළම පත්‍රය දිග හරින්න"</string>
+    <string msgid="3010635850035863127" name="m3c_bottom_sheet_pane_title">"පහළම පත්‍රය"</string>
+    <string msgid="8166741421776570875" name="m3c_date_input_headline">"ඇතුළත් කළ දිනය"</string>
+    <string msgid="229313757840775812" name="m3c_date_input_headline_description">"ඇතුළත් කළ දිනය: %1$s"</string>
+    <string msgid="6116910750161463197" name="m3c_date_input_invalid_for_pattern">"දිනය අපේක්ෂිත රටාවට නොගැළපෙයි: %1$s"</string>
+    <string msgid="2521768508935305279" name="m3c_date_input_invalid_not_allowed">"දිනයට ඉඩ දෙනු නොලැබේ: %1$s"</string>
+    <string msgid="7052898923934555305" name="m3c_date_input_invalid_year_range">"දිනය %1$s - %2$s අපේක්ෂිත වසර පරාසයෙන් පිටත වේ"</string>
+    <string msgid="2895559812010326913" name="m3c_date_input_label">"දිනය"</string>
+    <string msgid="1237013946323089826" name="m3c_date_input_no_input_description">"කිසිවක් නැත"</string>
+    <string msgid="7306227249789210568" name="m3c_date_input_title">"දිනය තෝරන්න"</string>
+    <string msgid="7605002211875882969" name="m3c_date_picker_headline">"තෝරා ගත් දිනය"</string>
+    <string msgid="3664277305226978227" name="m3c_date_picker_headline_description">"වත්මන් තේරීම: %1$s"</string>
+    <string msgid="8436650776581492840" name="m3c_date_picker_navigate_to_year_description">"%1$s වසර වෙත සංචලන කරන්න"</string>
+    <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"කිසිවක් නැත"</string>
+    <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"පෙර වසර පෙන්වීමට අනුචලන කරන්න"</string>
+    <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"පසු වසර පෙන්වීමට අනුචලන කරන්න"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"දිනදර්ශන ආදාන ප්‍රකාරයට මාරු වන්න"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"වසරක් තේරීමට ස්වයිප් කරන්න, නැතහොත් දිනක් තේරීමට ආපසු මාරු වීමට තට්ටු කරන්න"</string>
+    <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"පාඨ ආදාන ප්‍රකාරයට මාරු වන්න"</string>
+    <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"ඊළඟ මාසයට වෙනස් කරන්න"</string>
+    <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"පෙර මාසයට වෙනස් කරන්න"</string>
+    <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"වසරක් තේරීමට මාරු වන්න"</string>
+    <string msgid="7430790972741451689" name="m3c_date_picker_title">"දිනය තෝරන්න"</string>
+    <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"අද"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"වසර තෝරකය දෘශ්‍යමානයි"</string>
+    <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"අවලංගු දින පරාස ආදානය"</string>
+    <string msgid="3148384720560189467" name="m3c_date_range_input_title">"දින ඇතුළු කරන්න"</string>
+    <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"පරාසය තුළ"</string>
+    <string msgid="4947636797751277713" name="m3c_date_range_picker_end_headline">"අවසාන දිනය"</string>
+    <string msgid="602077859540990149" name="m3c_date_range_picker_scroll_to_next_month">"ඊළඟ මාසය පෙන්වීමට අනුචලන කරන්න"</string>
+    <string msgid="4592174524846109496" name="m3c_date_range_picker_scroll_to_previous_month">"පෙර මාසය පෙන්වීමට අනුචලන කරන්න"</string>
+    <string msgid="4665981448952749820" name="m3c_date_range_picker_start_headline">"ආරම්භක දිනය"</string>
+    <string msgid="3134165431120340385" name="m3c_date_range_picker_title">"දින තෝරන්න"</string>
+    <string msgid="7617233117134790350" name="m3c_dialog">"සංවාදය"</string>
+    <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"හකුළන ලදි"</string>
+    <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"දිග හරින ලදි"</string>
+    <string msgid="6152806324422087846" name="m3c_search_bar_search">"සෙවීම"</string>
+    <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"අස් කරන්න"</string>
+    <string msgid="7655536806087401899" name="m3c_suggestions_available">"පහත යෝජනා"</string>
+    <string msgid="2786685010796619560" name="m3c_time_picker_am">"පෙ.ව."</string>
+    <string msgid="2349193472625211372" name="m3c_time_picker_hour">"පැය"</string>
+    <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"පැය %1$d"</string>
+    <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"පැය තෝරන්න"</string>
+    <string msgid="3458167507790628988" name="m3c_time_picker_hour_suffix">"%1$dට"</string>
+    <string msgid="6973808109666874069" name="m3c_time_picker_hour_text_field">"පැයක් සඳහා"</string>
+    <string msgid="4313071914266462005" name="m3c_time_picker_minute">"විනාඩි"</string>
+    <string msgid="4699133535056739733" name="m3c_time_picker_minute_selection">"මිනිත්තු ගණන තෝරන්න"</string>
+    <string msgid="5064177921781937179" name="m3c_time_picker_minute_suffix">"මිනිත්තු %1$d"</string>
+    <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"මිනිත්තු ගණනක් සඳහා"</string>
+    <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"පෙ.ව. හෝ ප.ව. තෝරන්න"</string>
+    <string msgid="6616362054113087709" name="m3c_time_picker_pm">"ප.ව."</string>
+    <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"මෙවලම් ඉඟිය පෙන්වන්න"</string>
+    <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"මෙවලම් ඉඟිය"</string>
+    <string name="material_clock_toggle_content_description">පෙරවරු හෝ පස්වරු තෝරන්න</string>
+    <string name="material_hour_24h_suffix">පැය %1$sක්</string>
+    <string name="material_hour_selection">පැය තෝරන්න</string>
+    <string name="material_hour_suffix">%1$sයි</string>
+    <string name="material_minute_selection">මිනිත්තු තෝරන්න</string>
+    <string name="material_minute_suffix">මිනිත්තු %1$sයි</string>
+    <string name="material_timepicker_am">පෙව</string>
+    <string name="material_timepicker_clock_mode_description">වේලා ආදානය සඳහා ඔරලෝසු ප්‍රකාරය වෙත මාරු වෙන්න.</string>
+    <string name="material_timepicker_hour">පැය</string>
+    <string name="material_timepicker_minute">මිනිත්තු</string>
+    <string name="material_timepicker_pm">පව</string>
+    <string name="material_timepicker_select_time">වේලාව තෝරන්න</string>
+    <string name="material_timepicker_text_input_mode_description">වේලා ආදානය සඳහා ආදාන ප්‍රකාරය වෙත මාරු වෙන්න.</string>
+    <string name="mtrl_badge_numberless_content_description">නව දැනුම්දීම</string>
+    <string name="mtrl_chip_close_icon_content_description">%1$s ඉවත් කරන්න</string>
+    <string name="mtrl_exceed_max_badge_number_content_description" ns2:ignore="PluralsCandidate">නව දැනුම්දීම් %1$dකට වඩා</string>
+    <string name="mtrl_picker_a11y_next_month">ලබන මාසයට වෙනස් කරන්න</string>
+    <string name="mtrl_picker_a11y_prev_month">කලින් මාසයට වෙනස් කරන්න</string>
+    <string name="mtrl_picker_announce_current_range_selection">ආරම්භක දිනය තේරීම: %1$s – අවසාන දිනය තේරීම: %2$s</string>
+    <string name="mtrl_picker_announce_current_selection">වත්මන් තේරීම: %1$s</string>
+    <string name="mtrl_picker_announce_current_selection_none">කිසිවක් නැත</string>
+    <string name="mtrl_picker_cancel">අවලංගු කරන්න</string>
+    <string name="mtrl_picker_confirm">හරි</string>
+    <string name="mtrl_picker_date_header_selected">%1$s</string>
+    <string name="mtrl_picker_date_header_title">දිනය තෝරන්න</string>
+    <string name="mtrl_picker_date_header_unselected">තේරූ දිනය</string>
+    <string name="mtrl_picker_day_of_week_column_header">දින තීරුව: %1$s</string>
+    <string name="mtrl_picker_end_date_description">අවසාන දිනය %1$s</string>
+    <string name="mtrl_picker_invalid_format">අවලංගු ආකෘතියකි.</string>
+    <string name="mtrl_picker_invalid_format_example">උදාහරණය: %1$s</string>
+    <string name="mtrl_picker_invalid_format_use">භාවිතය: %1$s</string>
+    <string name="mtrl_picker_invalid_range">අවලංගු පරාසයකි.</string>
+    <string name="mtrl_picker_navigate_to_current_year_description">වත්මන් වර්ෂය %1$d වෙත සංචාලනය කරන්න</string>
+    <string name="mtrl_picker_navigate_to_year_description">%1$d වසරට සංචාලනය කරන්න</string>
+    <string name="mtrl_picker_out_of_range">පරාසයෙන් පිටත: %1$s</string>
+    <string name="mtrl_picker_range_header_only_end_selected">ආරම්භක දිනය – %1$s</string>
+    <string name="mtrl_picker_range_header_only_start_selected">%1$s – නිමා වන දිනය</string>
+    <string name="mtrl_picker_range_header_selected">%1$s – %2$s</string>
+    <string name="mtrl_picker_range_header_title">පරාසය තෝරන්න</string>
+    <string name="mtrl_picker_range_header_unselected">ආරම්භක දිනය – නිමා වන දිනය</string>
+    <string name="mtrl_picker_save">සුරකින්න</string>
+    <string name="mtrl_picker_start_date_description">ආරම්භක දිනය %1$s</string>
+    <string name="mtrl_picker_text_input_date_hint">දිනය</string>
+    <string name="mtrl_picker_text_input_date_range_end_hint">නිමා වන දිනය</string>
+    <string name="mtrl_picker_text_input_date_range_start_hint">ආරම්භක දිනය</string>
+    <string name="mtrl_picker_text_input_day_abbr">ද</string>
+    <string name="mtrl_picker_text_input_month_abbr">ම</string>
+    <string name="mtrl_picker_text_input_year_abbr">ව</string>
+    <string name="mtrl_picker_today_description">අද %1$s</string>
+    <string name="mtrl_picker_toggle_to_calendar_input_mode">දින දර්ශන ආදාන ප්‍රකාරයට මාරු වන්න</string>
+    <string name="mtrl_picker_toggle_to_day_selection">දින දර්ශන දසුන වෙත මාරු වීමට තට්ටු කරන්න</string>
+    <string name="mtrl_picker_toggle_to_text_input_mode">පෙළ ආදාන ප්‍රකාරයට මාරු වන්න</string>
+    <string name="mtrl_picker_toggle_to_year_selection">වසරේ දසුන වෙත මාරු වීමට තට්ටු කරන්න</string>
+    <string name="mtrl_timepicker_cancel">අවලංගු කරන්න</string>
+    <string name="mtrl_timepicker_confirm">හරි</string>
+    <string msgid="542007171693138492" name="navigation_menu">"සංචාලන මෙනුව"</string>
+    <string msgid="6610465462668679431" name="not_selected">"තෝරා නැත"</string>
+    <string msgid="875452955155264703" name="off">"ක්‍රියාවිරහිතයි"</string>
+    <string msgid="8655164131929253426" name="on">"ක්‍රියාත්මකයි"</string>
+    <string name="password_toggle_content_description">මුරපදය පෙන්වන්න</string>
+    <string msgid="5941395253238309765" name="range_end">"පරාස අන්තය"</string>
+    <string msgid="7097486360902471446" name="range_start">"පරාස ආරම්භය"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"සෙවීම"</string>
+    <string msgid="6043586758067023" name="selected">"තෝරන ලදි"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"මාරු කරන්න"</string>
+    <string msgid="1672349317127674378" name="tab">"ටැබය"</string>
+    <string msgid="5946805113151406391" name="template_percent">"සියයට <ns1:g id="PERCENTAGE">%1$d</ns1:g>."</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"මෙවලම් ඉඟිය"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"මෙවලම් ඉඟිය පෙන්වන්න"</string>
+</resources>

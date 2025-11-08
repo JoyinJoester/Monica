@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:ns2="http://schemas.android.com/tools">
+    <plurals name="mtrl_badge_content_description">
+    <item quantity="one">%d ਨਵੀਂ ਸੂਚਨਾ</item>
+    <item quantity="other">%d ਨਵੀਆਂ ਸੂਚਨਾਵਾਂ</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"ਹੋਮ \'ਤੇ ਜਾਓ"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"ਉੱਪਰ ਜਾਓ"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"ਹੋਰ ਵਿਕਲਪ"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"ਹੋ ਗਿਆ"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"ਸਭ ਦੇਖੋ"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"ਇੱਕ ਐਪ ਚੁਣੋ"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"ਬੰਦ"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"ਚਾਲੂ"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"ਮਿਟਾਓ"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"enter"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Function+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"space"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menu+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"ਖੋਜ…"</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"ਪੁੱਛਗਿੱਛ ਕਲੀਅਰ ਕਰੋ"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"ਖੋਜ ਪੁੱਛਗਿੱਛ"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"ਖੋਜ"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"ਪੁੱਛਗਿੱਛ ਸਪੁਰਦ ਕਰੋ"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"ਅਵਾਜ਼ੀ ਖੋਜ"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"ਇਸ ਨਾਲ ਸਾਂਝਾ ਕਰੋ"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"<ns1:g id="APPLICATION_NAME">%s</ns1:g> ਨਾਲ ਸਾਂਝਾ ਕਰੋ"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"ਸਮੇਟੋ"</string>
+    <string name="bottomsheet_action_collapse">ਹੇਠਲੀ ਸ਼ੀਟ ਨੂੰ ਸਮੇਟੋ</string>
+    <string name="bottomsheet_action_expand">ਹੇਠਲੀ ਸ਼ੀਟ ਦਾ ਵਿਸਤਾਰ ਕਰੋ</string>
+    <string name="bottomsheet_action_expand_halfway">ਅੱਧ ਤੱਕ ਵਿਸਤਾਰ ਕਰੋ</string>
+    <string name="bottomsheet_drag_handle_clicked">ਘਸੀਟਣ ਵਾਲੇ ਹੈਂਡਲ \'ਤੇ ਡਬਲ-ਟੈਪ ਕੀਤਾ ਗਿਆ</string>
+    <string name="bottomsheet_drag_handle_content_description">ਘਸੀਟਣ ਵਾਲਾ ਹੈਂਡਲ</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"ਜਵਾਬ ਦਿਓ"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"ਵੀਡੀਓ"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"ਅਸਵੀਕਾਰ ਕਰੋ"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"ਸਮਾਪਤ ਕਰੋ"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"ਇਨਕਮਿੰਗ ਕਾਲ"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"ਜਾਰੀ ਕਾਲ"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"ਇਨਕਮਿੰਗ ਕਾਲ ਦੀ ਸਕ੍ਰੀਨਿੰਗ ਕੀਤੀ ਜਾ ਰਹੀ ਹੈ"</string>
+    <string name="character_counter_content_description">%2$d ਵਿੱਚੋਂ %1$d ਅੱਖਰ-ਚਿੰਨ੍ਹ ਦਾਖਲ ਕੀਤੇ ਗਏ</string>
+    <string name="character_counter_overflowed_content_description">ਅੱਖਰ-ਚਿੰਨ੍ਹ ਸੀਮਾ %2$d ਤੋਂ %1$d ਵਧੀ</string>
+    <string name="clear_text_end_icon_content_description">ਲਿਖਤ ਕਲੀਅਰ ਕਰੋ</string>
+    <string msgid="406453423630273620" name="close_drawer">"ਨੈਵੀਗੇਸ਼ਨ ਮੀਨੂ ਬੰਦ ਕਰੋ"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"ਸ਼ੀਟ ਬੰਦ ਕਰੋ"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"ਅਵੈਧ ਇਨਪੁੱਟ"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"ਪੌਪ-ਅੱਪ ਵਿੰਡੋ"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"ਡ੍ਰੌਪ-ਡਾਊਨ ਮੀਨੂ"</string>
+    <string name="error_icon_content_description">ਗੜਬੜ</string>
+    <string name="exposed_dropdown_menu_content_description">ਡ੍ਰੌਪ-ਡਾਊਨ ਮੀਨੂ ਦਿਖਾਓ</string>
+    <string name="icon_content_description">ਵਿੰਡੋ ਦਾ ਪ੍ਰਤੀਕ</string>
+    <string msgid="6827826412747255547" name="in_progress">"ਜਾਰੀ ਹੈ"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"ਅੰਸ਼ਕ ਤੌਰ ਤੇ ਜਾਂਚ ਕੀਤੀ ਗਈ"</string>
+    <string name="item_view_role_description">ਟੈਬ</string>
+    <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"ਹੇਠਲੀ ਸ਼ੀਟ ਨੂੰ ਸਮੇਟੋ"</string>
+    <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"ਹੇਠਲੀ ਸ਼ੀਟ ਨੂੰ ਖਾਰਜ ਕਰੋ"</string>
+    <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"ਘਸੀਟਣ ਵਾਲਾ ਹੈਂਡਲ"</string>
+    <string msgid="6670819569745899763" name="m3c_bottom_sheet_expand_description">"ਹੇਠਲੀ ਸ਼ੀਟ ਦਾ ਵਿਸਤਾਰ ਕਰੋ"</string>
+    <string msgid="3010635850035863127" name="m3c_bottom_sheet_pane_title">"ਹੇਠਲੀ ਸ਼ੀਟ"</string>
+    <string msgid="8166741421776570875" name="m3c_date_input_headline">"ਦਾਖਲ ਕੀਤੀ ਗਈ ਤਾਰੀਖ"</string>
+    <string msgid="229313757840775812" name="m3c_date_input_headline_description">"ਦਾਖਲ ਕੀਤੀ ਗਈ ਤਾਰੀਖ: %1$s"</string>
+    <string msgid="6116910750161463197" name="m3c_date_input_invalid_for_pattern">"ਤਾਰੀਖ ਸੰਭਾਵਿਤ ਪੈਟਰਨ ਨਾਲ ਮੇਲ ਨਹੀਂ ਖਾਂਦੀ: %1$s"</string>
+    <string msgid="2521768508935305279" name="m3c_date_input_invalid_not_allowed">"ਇਸ ਤਾਰੀਖ ਦੀ ਆਗਿਆ ਨਹੀਂ ਹੈ: %1$s"</string>
+    <string msgid="7052898923934555305" name="m3c_date_input_invalid_year_range">"ਤਾਰੀਖ ਸੰਭਾਵਿਤ ਸਾਲ ਦੀ ਰੇਂਜ, %1$s - %2$s ਤੋਂ ਬਾਹਰ ਹੈ"</string>
+    <string msgid="2895559812010326913" name="m3c_date_input_label">"ਤਾਰੀਖ"</string>
+    <string msgid="1237013946323089826" name="m3c_date_input_no_input_description">"ਕੋਈ ਨਹੀਂ"</string>
+    <string msgid="7306227249789210568" name="m3c_date_input_title">"ਤਾਰੀਖ ਚੁਣੋ"</string>
+    <string msgid="7605002211875882969" name="m3c_date_picker_headline">"ਚੁਣੀ ਗਈ ਤਾਰੀਖ"</string>
+    <string msgid="3664277305226978227" name="m3c_date_picker_headline_description">"ਮੌਜੂਦਾ ਚੋਣ: %1$s"</string>
+    <string msgid="8436650776581492840" name="m3c_date_picker_navigate_to_year_description">"ਸਾਲ %1$s \'ਤੇ ਜਾਓ"</string>
+    <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"ਕੋਈ ਨਹੀਂ"</string>
+    <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"ਪਿਛਲੇ ਸਾਲਾਂ ਨੂੰ ਦਿਖਾਉਣ ਲਈ ਸਕ੍ਰੋਲ ਕਰੋ"</string>
+    <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"ਬਾਅਦ ਵਾਲੇ ਸਾਲਾਂ ਨੂੰ ਦਿਖਾਉਣ ਲਈ ਸਕ੍ਰੋਲ ਕਰੋ"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"ਕੈਲੰਡਰ ਇਨਪੁੱਟ ਮੋਡ \'ਤੇ ਸਵਿੱਚ ਕਰੋ"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"ਕੋਈ ਸਾਲ ਚੁਣਨ ਲਈ ਸਵਾਈਪ ਕਰੋ ਜਾਂ ਕੋਈ ਦਿਨ ਚੁਣਨ ਲਈ ਵਾਪਸ ਜਾਣ ਵਾਸਤੇ ਟੈਪ ਕਰੋ"</string>
+    <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"ਲਿਖਤ ਇਨਪੁੱਟ ਮੋਡ \'ਤੇ ਸਵਿੱਚ ਕਰੋ"</string>
+    <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"ਅਗਲੇ ਮਹੀਨੇ \'ਤੇ ਜਾਓ"</string>
+    <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"ਪਿਛਲੇ ਮਹੀਨੇ \'ਤੇ ਜਾਓ"</string>
+    <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"ਸਾਲ ਚੁਣਨ ਲਈ ਸਵਿੱਚ ਕਰੋ"</string>
+    <string msgid="7430790972741451689" name="m3c_date_picker_title">"ਤਾਰੀਖ ਚੁਣੋ"</string>
+    <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"ਅੱਜ"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"ਸਾਲ ਚੋਣਕਾਰ ਦਿਖਣਯੋਗ ਹੈ"</string>
+    <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"ਇਨਪੁੱਟ ਕੀਤੀ ਗਈ ਤਾਰੀਖ ਦੀ ਰੇਂਜ ਅਵੈਧ ਹੈ"</string>
+    <string msgid="3148384720560189467" name="m3c_date_range_input_title">"ਤਾਰੀਖਾਂ ਦਾਖਲ ਕਰੋ"</string>
+    <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"ਰੇਂਜ ਵਿੱਚ"</string>
+    <string msgid="4947636797751277713" name="m3c_date_range_picker_end_headline">"ਸਮਾਪਤੀ ਤਾਰੀਖ"</string>
+    <string msgid="602077859540990149" name="m3c_date_range_picker_scroll_to_next_month">"ਅਗਲਾ ਮਹੀਨਾ ਦਿਖਾਉਣ ਲਈ ਸਕ੍ਰੋਲ ਕਰੋ"</string>
+    <string msgid="4592174524846109496" name="m3c_date_range_picker_scroll_to_previous_month">"ਪਿਛਲਾ ਮਹੀਨਾ ਦਿਖਾਉਣ ਲਈ ਸਕ੍ਰੋਲ ਕਰੋ"</string>
+    <string msgid="4665981448952749820" name="m3c_date_range_picker_start_headline">"ਸ਼ੁੁਰੂਆਤੀ ਤਾਰੀਖ"</string>
+    <string msgid="3134165431120340385" name="m3c_date_range_picker_title">"ਤਾਰੀਖਾਂ ਚੁਣੋ"</string>
+    <string msgid="7617233117134790350" name="m3c_dialog">"ਡਾਇਲੌਗ"</string>
+    <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"ਸਮੇਟਿਆ ਗਿਆ"</string>
+    <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"ਵਿਸਤਾਰ ਕੀਤਾ ਗਿਆ"</string>
+    <string msgid="6152806324422087846" name="m3c_search_bar_search">"ਖੋਜੋ"</string>
+    <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"ਖਾਰਜ ਕਰੋ"</string>
+    <string msgid="7655536806087401899" name="m3c_suggestions_available">"ਸੁਝਾਅ ਹੇਠਾਂ ਹਨ"</string>
+    <string msgid="2786685010796619560" name="m3c_time_picker_am">"AM"</string>
+    <string msgid="2349193472625211372" name="m3c_time_picker_hour">"ਘੰਟਾ"</string>
+    <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d ਘੰਟੇ"</string>
+    <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"ਘੰਟਾ ਚੁਣੋ"</string>
+    <string msgid="3458167507790628988" name="m3c_time_picker_hour_suffix">"%1$d ਵਜੇ"</string>
+    <string msgid="6973808109666874069" name="m3c_time_picker_hour_text_field">"ਘੰਟੇ ਲਈ"</string>
+    <string msgid="4313071914266462005" name="m3c_time_picker_minute">"ਮਿੰਟ"</string>
+    <string msgid="4699133535056739733" name="m3c_time_picker_minute_selection">"ਮਿੰਟ ਚੁਣੋ"</string>
+    <string msgid="5064177921781937179" name="m3c_time_picker_minute_suffix">"%1$d ਮਿੰਟ"</string>
+    <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"ਮਿੰਟਾਂ ਲਈ"</string>
+    <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"AM ਜਾਂ PM ਚੁਣੋ"</string>
+    <string msgid="6616362054113087709" name="m3c_time_picker_pm">"PM"</string>
+    <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"ਟੂਲ-ਟਿੱਪ ਦਿਖਾਓ"</string>
+    <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"ਟੂਲ-ਟਿੱਪ"</string>
+    <string name="material_clock_toggle_content_description">AM ਜਾਂ PM ਚੁਣੋ</string>
+    <string name="material_hour_24h_suffix">%1$s ਘੰਟੇ</string>
+    <string name="material_hour_selection">ਸਮਾਂ ਚੁਣੋ</string>
+    <string name="material_hour_suffix">%1$s ਵਜੇ</string>
+    <string name="material_minute_selection">ਮਿੰਟ ਚੁਣੋ</string>
+    <string name="material_minute_suffix">%1$s ਮਿੰਟ</string>
+    <string name="material_timepicker_am">AM</string>
+    <string name="material_timepicker_clock_mode_description">ਸਮਾਂ ਇਨਪੁੱਟ ਕਰਨ ਲਈ ਘੜੀ ਮੋਡ \'ਤੇ ਸਵਿੱਚ ਕਰੋ।</string>
+    <string name="material_timepicker_hour">ਘੰਟਾ</string>
+    <string name="material_timepicker_minute">ਮਿੰਟ</string>
+    <string name="material_timepicker_pm">PM</string>
+    <string name="material_timepicker_select_time">ਸਮਾਂ ਚੁਣੋ</string>
+    <string name="material_timepicker_text_input_mode_description">ਸਮਾਂ ਇਨਪੁੱਟ ਕਰਨ ਲਈ ਲਿਖਤ ਇਨਪੁੱਟ ਮੋਡ \'ਤੇ ਸਵਿੱਚ ਕਰੋ।</string>
+    <string name="mtrl_badge_numberless_content_description">ਨਵੀਂ ਸੂਚਨਾ</string>
+    <string name="mtrl_chip_close_icon_content_description">%1$s ਹਟਾਓ</string>
+    <string name="mtrl_exceed_max_badge_number_content_description" ns2:ignore="PluralsCandidate">%1$d ਤੋਂ ਵੱਧ ਨਵੀਆਂ ਸੂਚਨਾਵਾਂ</string>
+    <string name="mtrl_picker_a11y_next_month">ਅਗਲੇ ਮਹੀਨੇ \'ਤੇ ਜਾਓ</string>
+    <string name="mtrl_picker_a11y_prev_month">ਪਿਛਲੇ ਮਹੀਨੇ \'ਤੇ ਜਾਓ</string>
+    <string name="mtrl_picker_announce_current_range_selection">ਸ਼ੁਰੂਆਤੀ ਤਾਰੀਖ ਦੀ ਚੋਣ: %1$s – ਸਮਾਪਤੀ ਤਾਰੀਖ ਦੀ ਚੋਣ: %2$s</string>
+    <string name="mtrl_picker_announce_current_selection">ਮੌਜੂਦਾ ਚੋਣ: %1$s</string>
+    <string name="mtrl_picker_announce_current_selection_none">ਕੋਈ ਨਹੀਂਂ</string>
+    <string name="mtrl_picker_cancel">ਰੱਦ ਕਰੋ</string>
+    <string name="mtrl_picker_confirm">ਠੀਕ ਹੈ</string>
+    <string name="mtrl_picker_date_header_selected">%1$s</string>
+    <string name="mtrl_picker_date_header_title">ਤਾਰੀਖ ਚੁਣੋ</string>
+    <string name="mtrl_picker_date_header_unselected">ਚੁਣੀ ਗਈ ਤਾਰੀਖ</string>
+    <string name="mtrl_picker_day_of_week_column_header">ਦਿਨਾਂ ਦਾ ਕਾਲਮ: %1$s</string>
+    <string name="mtrl_picker_end_date_description">ਸਮਾਪਤੀ ਤਾਰੀਖ %1$s</string>
+    <string name="mtrl_picker_invalid_format">ਅਵੈਧ ਫਾਰਮੈਟ।</string>
+    <string name="mtrl_picker_invalid_format_example">ਉਦਾਹਰਨ: %1$s</string>
+    <string name="mtrl_picker_invalid_format_use">ਵਰਤੋ: %1$s</string>
+    <string name="mtrl_picker_invalid_range">ਅਵੈਧ ਰੇਂਜ।</string>
+    <string name="mtrl_picker_navigate_to_current_year_description">ਮੌਜੂਦਾ ਸਾਲ \'ਤੇ ਜਾਓ %1$d</string>
+    <string name="mtrl_picker_navigate_to_year_description">ਸਾਲ %1$d \'ਤੇ ਨੈਵੀਗੇਟ ਕਰੋ</string>
+    <string name="mtrl_picker_out_of_range">ਰੇਂਜ ਤੋਂ ਬਾਹਰ: %1$s</string>
+    <string name="mtrl_picker_range_header_only_end_selected">ਸ਼ੁੁਰੂਆਤੀ ਤਾਰੀਖ – %1$s</string>
+    <string name="mtrl_picker_range_header_only_start_selected">%1$s – ਸਮਾਪਤੀ ਤਾਰੀਖ</string>
+    <string name="mtrl_picker_range_header_selected">%1$s – %2$s</string>
+    <string name="mtrl_picker_range_header_title">ਰੇਂਜ ਚੁਣੋ</string>
+    <string name="mtrl_picker_range_header_unselected">ਸ਼ੁਰੂਆਤੀ ਤਾਰੀਖ – ਸਮਾਪਤੀ ਤਾਰੀਖ</string>
+    <string name="mtrl_picker_save">ਰੱਖਿਅਤ ਕਰੋ</string>
+    <string name="mtrl_picker_start_date_description">ਸ਼ੁਰੂਆਤੀ ਤਾਰੀਖ %1$s</string>
+    <string name="mtrl_picker_text_input_date_hint">ਤਾਰੀਖ</string>
+    <string name="mtrl_picker_text_input_date_range_end_hint">ਸਮਾਪਤੀ ਤਾਰੀਖ</string>
+    <string name="mtrl_picker_text_input_date_range_start_hint">ਸ਼ੁਰੂਆਤੀ ਤਾਰੀਖ</string>
+    <string name="mtrl_picker_text_input_day_abbr">d</string>
+    <string name="mtrl_picker_text_input_month_abbr">m</string>
+    <string name="mtrl_picker_text_input_year_abbr">y</string>
+    <string name="mtrl_picker_today_description">ਅੱਜ %1$s</string>
+    <string name="mtrl_picker_toggle_to_calendar_input_mode">ਕੈਲੰਡਰ ਇਨਪੁੱਟ ਮੋਡ \'ਤੇ ਜਾਓ</string>
+    <string name="mtrl_picker_toggle_to_day_selection">Calendar ਦ੍ਰਿਸ਼ \'ਤੇ ਸਵਿੱਚ ਕਰਨ ਲਈ ਟੈਪ ਕਰੋ</string>
+    <string name="mtrl_picker_toggle_to_text_input_mode">ਲਿਖਤ ਇਨਪੁੱਟ ਮੋਡ \'ਤੇ ਜਾਓ</string>
+    <string name="mtrl_picker_toggle_to_year_selection">ਸਾਲ ਦ੍ਰਿਸ਼ \'ਤੇ ਸਵਿੱਚ ਕਰਨ ਲਈ ਟੈਪ ਕਰੋ</string>
+    <string name="mtrl_timepicker_cancel">ਰੱਦ ਕਰੋ</string>
+    <string name="mtrl_timepicker_confirm">ਠੀਕ ਹੈ</string>
+    <string msgid="542007171693138492" name="navigation_menu">"ਨੈਵੀਗੇਸ਼ਨ ਮੀਨੂ"</string>
+    <string msgid="6610465462668679431" name="not_selected">"ਚੁਣੀ ਨਹੀਂ ਗਈ"</string>
+    <string msgid="875452955155264703" name="off">"ਬੰਦ ਹੈ"</string>
+    <string msgid="8655164131929253426" name="on">"ਚਾਲੂ ਹੈ"</string>
+    <string name="password_toggle_content_description">ਪਾਸਵਰਡ ਦਿਖਾਓ</string>
+    <string msgid="5941395253238309765" name="range_end">"ਰੇਂਜ ਸਮਾਪਤ"</string>
+    <string msgid="7097486360902471446" name="range_start">"ਰੇਂਜ ਸ਼ੁਰੂ"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"ਖੋਜ"</string>
+    <string msgid="6043586758067023" name="selected">"ਚੁਣੀ ਗਈ"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"ਸਵਿੱਚ ਕਰੋ"</string>
+    <string msgid="1672349317127674378" name="tab">"ਟੈਬ"</string>
+    <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> ਫ਼ੀਸਦ।"</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"ਟੂਲ-ਟਿੱਪ"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"ਟੂਲ-ਟਿੱਪ ਦਿਖਾਓ"</string>
+</resources>

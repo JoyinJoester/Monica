@@ -23,6 +23,10 @@ class PasswordRepository(
         return passwordEntryDao.getPasswordEntryById(id)
     }
     
+    suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry> {
+        return passwordEntryDao.getPasswordsByIds(ids)
+    }
+    
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long {
         return passwordEntryDao.insertPasswordEntry(entry)
     }
@@ -68,5 +72,40 @@ class PasswordRepository(
      */
     suspend fun isDuplicateEntry(title: String, username: String, website: String): Boolean {
         return passwordEntryDao.findDuplicateEntry(title, username, website) != null
+    }
+    
+    /**
+     * 按包名和用户名查询密码(自动填充保存功能)
+     */
+    suspend fun findByPackageAndUsername(packageName: String, username: String): PasswordEntry? {
+        return passwordEntryDao.findByPackageAndUsername(packageName, username)
+    }
+    
+    /**
+     * 按网站和用户名查询密码(自动填充保存功能)
+     */
+    suspend fun findByDomainAndUsername(domain: String, username: String): PasswordEntry? {
+        return passwordEntryDao.findByDomainAndUsername(domain, username)
+    }
+    
+    /**
+     * 按包名查询所有密码
+     */
+    suspend fun findByPackageName(packageName: String): List<PasswordEntry> {
+        return passwordEntryDao.findByPackageName(packageName)
+    }
+    
+    /**
+     * 按网站域名查询所有密码
+     */
+    suspend fun findByDomain(domain: String): List<PasswordEntry> {
+        return passwordEntryDao.findByDomain(domain)
+    }
+    
+    /**
+     * 检查是否存在完全相同的密码
+     */
+    suspend fun findExactMatch(packageName: String, username: String, encryptedPassword: String): PasswordEntry? {
+        return passwordEntryDao.findExactMatch(packageName, username, encryptedPassword)
     }
 }

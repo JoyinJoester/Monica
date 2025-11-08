@@ -10,4 +10,22 @@
     
     <!-- 应用图标背景色 - 默认蓝色,Android 12+ 会自动适配 Material You -->
     <color name="ic_launcher_background">#1976D2</color>
+    
+    <!-- 自动填充相关颜色 - 日间模式 -->
+    <color name="autofill_icon_tint">#6750A4</color>
+    <color name="autofill_icon_background">#E8DEF8</color>
+    <color name="autofill_manual_icon_tint">#1565C0</color>
+    <color name="autofill_manual_icon_background">#D0E4FF</color>
+    
+    <!-- 背景色 -->
+    <color name="autofill_background">#FFFFFF</color>
+    <color name="autofill_manual_background">#F5F5F5</color>
+    
+    <!-- 文字颜色 -->
+    <color name="autofill_text_primary">#1C1B1F</color>
+    <color name="autofill_text_secondary">#49454F</color>
+    
+    <!-- 内联卡片颜色 -->
+    <color name="autofill_card_background">#FFFFFF</color>
+    <color name="autofill_card_stroke">#CAC4D0</color>
 </resources>

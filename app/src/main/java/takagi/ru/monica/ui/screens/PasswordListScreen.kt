@@ -1,9 +1,13 @@
 package takagi.ru.monica.ui.screens
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
@@ -15,11 +19,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.utils.ClipboardUtils
@@ -544,6 +550,37 @@ fun PasswordListScreen(
     }
 }
 
+/**
+ * 加载应用图标
+ * @param context Context
+ * @param packageName 应用包名
+ * @return 应用的Drawable图标,如果应用未安装或加载失败则返回null
+ */
+@Composable
+fun rememberAppIcon(context: Context, packageName: String?): Drawable? {
+    return remember(packageName) {
+        android.util.Log.d("PasswordListScreen", "rememberAppIcon: packageName = $packageName")
+        if (packageName.isNullOrEmpty()) {
+            android.util.Log.d("PasswordListScreen", "rememberAppIcon: packageName is null or empty")
+            null
+        } else {
+            try {
+                val icon = context.packageManager.getApplicationIcon(packageName)
+                android.util.Log.d("PasswordListScreen", "rememberAppIcon: Successfully loaded icon for $packageName")
+                icon
+            } catch (e: PackageManager.NameNotFoundException) {
+                // 应用未安装
+                android.util.Log.w("PasswordListScreen", "rememberAppIcon: App not found: $packageName", e)
+                null
+            } catch (e: Exception) {
+                // 其他错误
+                android.util.Log.e("PasswordListScreen", "rememberAppIcon: Error loading icon for $packageName", e)
+                null
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PasswordEntryCard(
@@ -602,6 +639,32 @@ fun PasswordEntryCard(
                             checked = isSelected,
                             onCheckedChange = { onClick() },
                             modifier = Modifier.padding(end = 8.dp)
+                        )
+                    }
+                    
+                    // 应用图标或默认密钥图标
+                    android.util.Log.d("PasswordEntryCard", "Entry: title=${entry.title}, appPackageName=${entry.appPackageName}")
+                    val appIcon = rememberAppIcon(context, entry.appPackageName)
+                    android.util.Log.d("PasswordEntryCard", "AppIcon loaded: ${appIcon != null}")
+                    if (appIcon != null) {
+                        // 显示应用图标
+                        Image(
+                            painter = rememberDrawablePainter(drawable = appIcon),
+                            contentDescription = "App Icon",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .padding(end = 12.dp)
+                        )
+                    } else {
+                        // 显示默认密钥图标
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = "Password Icon",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .padding(end = 12.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                     

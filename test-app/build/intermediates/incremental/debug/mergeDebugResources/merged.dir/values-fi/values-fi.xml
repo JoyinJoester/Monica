@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:ns2="http://schemas.android.com/tools">
+    <plurals name="mtrl_badge_content_description">
+    <item quantity="one">%d uusi ilmoitus</item>
+    <item quantity="other">%d uutta ilmoitusta</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"Siirry etusivulle"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"Siirry ylös"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"Lisäasetukset"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"Valmis"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"Näytä kaikki"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"Valitse sovellus"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"POIS PÄÄLTÄ"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"PÄÄLLÄ"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"delete"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"enter"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Fn+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Vaihto+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"välilyönti"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Valikko+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"Haku…"</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"Tyhjennä kysely"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"Hakukysely"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"Haku"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"Lähetä kysely"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"Puhehaku"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"Jaa…"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"Jaa: <ns1:g id="APPLICATION_NAME">%s</ns1:g>"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"Tiivistä"</string>
+    <string name="bottomsheet_action_collapse">Tiivistä alapaneeli</string>
+    <string name="bottomsheet_action_expand">Laajenna alapaneeli</string>
+    <string name="bottomsheet_action_expand_halfway">Laajenna puoliväliin</string>
+    <string name="bottomsheet_drag_handle_clicked">Vetokahvaa kaksoisnapautettu</string>
+    <string name="bottomsheet_drag_handle_content_description">Vetokahva</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"Vastaa"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Video"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"Hylkää"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"Lopeta puhelu"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"Saapuva puhelu"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"Käynnissä oleva puhelu"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"Seulotaan saapuvaa puhelua"</string>
+    <string name="character_counter_content_description">%1$d/%2$d merkkiä kirjoitettu</string>
+    <string name="character_counter_overflowed_content_description">Merkkiraja ylitetty: %1$d/%2$d</string>
+    <string name="clear_text_end_icon_content_description">Tyhjennä teksti</string>
+    <string msgid="406453423630273620" name="close_drawer">"Sulje navigointivalikko"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"Sulje taulukko"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"Virheellinen syöte"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"Ponnahdusikkuna"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"Avattava valikko"</string>
+    <string name="error_icon_content_description">Virhe</string>
+    <string name="exposed_dropdown_menu_content_description">Näytä avattava valikko</string>
+    <string name="icon_content_description">Valintaikkunan kuvake</string>
+    <string msgid="6827826412747255547" name="in_progress">"Kesken"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"Osittain tarkistettu"</string>
+    <string name="item_view_role_description">Välilehti</string>
+    <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Tiivistä alapaneeli"</string>
+    <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"Hylkää alapaneeli"</string>
+    <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"Vetokahva"</string>
+    <string msgid="6670819569745899763" name="m3c_bottom_sheet_expand_description">"Laajenna alapaneeli"</string>
+    <string msgid="3010635850035863127" name="m3c_bottom_sheet_pane_title">"Alapaneeli"</string>
+    <string msgid="8166741421776570875" name="m3c_date_input_headline">"Lisätty päivämäärä"</string>
+    <string msgid="229313757840775812" name="m3c_date_input_headline_description">"Lisätty päivämäärä: %1$s"</string>
+    <string msgid="6116910750161463197" name="m3c_date_input_invalid_for_pattern">"Päivämäärä ei vastaa odotettua mallia: %1$s"</string>
+    <string msgid="2521768508935305279" name="m3c_date_input_invalid_not_allowed">"Päivämäärä ei sallittu: %1$s"</string>
+    <string msgid="7052898923934555305" name="m3c_date_input_invalid_year_range">"Päivämäärä ei sisälly odotettuun vuosiaikaväliin: %1$s–%2$s"</string>
+    <string msgid="2895559812010326913" name="m3c_date_input_label">"Päivämäärä"</string>
+    <string msgid="1237013946323089826" name="m3c_date_input_no_input_description">"–"</string>
+    <string msgid="7306227249789210568" name="m3c_date_input_title">"Valitse päivämäärä"</string>
+    <string msgid="7605002211875882969" name="m3c_date_picker_headline">"Valittu päivämäärä"</string>
+    <string msgid="3664277305226978227" name="m3c_date_picker_headline_description">"Nykyinen valinta: %1$s"</string>
+    <string msgid="8436650776581492840" name="m3c_date_picker_navigate_to_year_description">"Siirry vuoteen %1$s"</string>
+    <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"–"</string>
+    <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"Vieritä nähdäksesi aiemmat vuodet"</string>
+    <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"Vieritä nähdäksesi myöhemmät vuodet"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"Vaihda syöttötavaksi kalenteri"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"Valitse vuosi pyyhkäisemällä tai palaa päivän valintaan napauttamalla"</string>
+    <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"Vaihda tekstinsyöttötilaan"</string>
+    <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"Vaihda seuraavaan kuukauteen"</string>
+    <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"Vaihda edelliseen kuukauteen"</string>
+    <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"Vaihda vuoden valintaan"</string>
+    <string msgid="7430790972741451689" name="m3c_date_picker_title">"Valitse päivämäärä"</string>
+    <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"Tänään"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"Vuosivalitsin näkyvillä"</string>
+    <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"Virheellinen aikaväli"</string>
+    <string msgid="3148384720560189467" name="m3c_date_range_input_title">"Lisää päivämäärät"</string>
+    <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"Valitulla välillä"</string>
+    <string msgid="4947636797751277713" name="m3c_date_range_picker_end_headline">"Päättymispäivä"</string>
+    <string msgid="602077859540990149" name="m3c_date_range_picker_scroll_to_next_month">"Vieritä nähdäksesi seuraavan kuukauden"</string>
+    <string msgid="4592174524846109496" name="m3c_date_range_picker_scroll_to_previous_month">"Vieritä nähdäksesi edellisen kuukauden"</string>
+    <string msgid="4665981448952749820" name="m3c_date_range_picker_start_headline">"Alkamispäivä"</string>
+    <string msgid="3134165431120340385" name="m3c_date_range_picker_title">"Valitse päivämäärät"</string>
+    <string msgid="7617233117134790350" name="m3c_dialog">"Valintaikkuna"</string>
+    <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"Tiivistetty"</string>
+    <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"Laajennettu"</string>
+    <string msgid="6152806324422087846" name="m3c_search_bar_search">"Hae"</string>
+    <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"Ohita"</string>
+    <string msgid="7655536806087401899" name="m3c_suggestions_available">"Ehdotuksia alla"</string>
+    <string msgid="2786685010796619560" name="m3c_time_picker_am">"AP"</string>
+    <string msgid="2349193472625211372" name="m3c_time_picker_hour">"Tunti"</string>
+    <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d h"</string>
+    <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"Valitse tunti"</string>
+    <string msgid="3458167507790628988" name="m3c_time_picker_hour_suffix">"Kello %1$d"</string>
+    <string msgid="6973808109666874069" name="m3c_time_picker_hour_text_field">"tuntien osalta"</string>
+    <string msgid="4313071914266462005" name="m3c_time_picker_minute">"Minuutti"</string>
+    <string msgid="4699133535056739733" name="m3c_time_picker_minute_selection">"Valitse minuutit"</string>
+    <string msgid="5064177921781937179" name="m3c_time_picker_minute_suffix">"%1$d minuuttia"</string>
+    <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"minuuttien osalta"</string>
+    <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"Valitse AP tai IP"</string>
+    <string msgid="6616362054113087709" name="m3c_time_picker_pm">"IP"</string>
+    <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"Näytä vihjeteksti"</string>
+    <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"Vihjeteksti"</string>
+    <string name="material_clock_toggle_content_description">Valitse AP tai IP</string>
+    <string name="material_hour_24h_suffix">%1$s tuntia</string>
+    <string name="material_hour_selection">Valitse tunti</string>
+    <string name="material_hour_suffix">klo %1$s</string>
+    <string name="material_minute_selection">Valitse minuutit</string>
+    <string name="material_minute_suffix">%1$s minuuttia</string>
+    <string name="material_timepicker_am">ap</string>
+    <string name="material_timepicker_clock_mode_description">Vaihda ajan syöttämiseen kellotilassa.</string>
+    <string name="material_timepicker_hour">Tunnit</string>
+    <string name="material_timepicker_minute">Minuutti</string>
+    <string name="material_timepicker_pm">ip</string>
+    <string name="material_timepicker_select_time">Valitse aika</string>
+    <string name="material_timepicker_text_input_mode_description">Vaihda ajan syöttämiseen tekstitilassa.</string>
+    <string name="mtrl_badge_numberless_content_description">Uusi ilmoitus</string>
+    <string name="mtrl_chip_close_icon_content_description">Poista %1$s</string>
+    <string name="mtrl_exceed_max_badge_number_content_description" ns2:ignore="PluralsCandidate">Yli %1$d uutta ilmoitusta</string>
+    <string name="mtrl_picker_a11y_next_month">Vaihda seuraavaan kuukauteen</string>
+    <string name="mtrl_picker_a11y_prev_month">Vaihda edelliseen kuukauteen</string>
+    <string name="mtrl_picker_announce_current_range_selection">Alkamispäivän valinta: %1$s – päättymispäivän valinta: %2$s</string>
+    <string name="mtrl_picker_announce_current_selection">Nykyinen valinta: %1$s</string>
+    <string name="mtrl_picker_announce_current_selection_none">–</string>
+    <string name="mtrl_picker_cancel">Peru</string>
+    <string name="mtrl_picker_confirm">OK</string>
+    <string name="mtrl_picker_date_header_selected">%1$s</string>
+    <string name="mtrl_picker_date_header_title">Valitse päivämäärä</string>
+    <string name="mtrl_picker_date_header_unselected">Valittu päivämäärä</string>
+    <string name="mtrl_picker_day_of_week_column_header">Päiväsarake: %1$s</string>
+    <string name="mtrl_picker_end_date_description">Päättyy %1$s</string>
+    <string name="mtrl_picker_invalid_format">Virheellinen muoto</string>
+    <string name="mtrl_picker_invalid_format_example">Esimerkki: %1$s</string>
+    <string name="mtrl_picker_invalid_format_use">Käytä muotoa %1$s</string>
+    <string name="mtrl_picker_invalid_range">Virheellinen alue</string>
+    <string name="mtrl_picker_navigate_to_current_year_description">Siirry kuluvaan vuoteen: %1$d</string>
+    <string name="mtrl_picker_navigate_to_year_description">Siirry vuoteen %1$d</string>
+    <string name="mtrl_picker_out_of_range">Aikavälin ulkop.: %1$s</string>
+    <string name="mtrl_picker_range_header_only_end_selected">Alkamispäivä – %1$s</string>
+    <string name="mtrl_picker_range_header_only_start_selected">%1$s – päättymispäivä</string>
+    <string name="mtrl_picker_range_header_selected">%1$s – %2$s</string>
+    <string name="mtrl_picker_range_header_title">Valitse jakso</string>
+    <string name="mtrl_picker_range_header_unselected">Alkamispäivä – päättymispäivä</string>
+    <string name="mtrl_picker_save">Tallenna</string>
+    <string name="mtrl_picker_start_date_description">Alkaa %1$s</string>
+    <string name="mtrl_picker_text_input_date_hint">Päivämäärä</string>
+    <string name="mtrl_picker_text_input_date_range_end_hint">Päättymispäivä</string>
+    <string name="mtrl_picker_text_input_date_range_start_hint">Alkamispäivä</string>
+    <string name="mtrl_picker_text_input_day_abbr">p</string>
+    <string name="mtrl_picker_text_input_month_abbr">k</string>
+    <string name="mtrl_picker_text_input_year_abbr">v</string>
+    <string name="mtrl_picker_today_description">Tänään: %1$s</string>
+    <string name="mtrl_picker_toggle_to_calendar_input_mode">Vaihda syöttötavaksi kalenteri</string>
+    <string name="mtrl_picker_toggle_to_day_selection">Siirry kalenterinäkymään napauttamalla</string>
+    <string name="mtrl_picker_toggle_to_text_input_mode">Valitse syöttötavaksi teksti</string>
+    <string name="mtrl_picker_toggle_to_year_selection">Siirry vuosinäkymään napauttamalla</string>
+    <string name="mtrl_timepicker_cancel">Peru</string>
+    <string name="mtrl_timepicker_confirm">OK</string>
+    <string msgid="542007171693138492" name="navigation_menu">"Navigointivalikko"</string>
+    <string msgid="6610465462668679431" name="not_selected">"Ei valittu"</string>
+    <string msgid="875452955155264703" name="off">"Pois"</string>
+    <string msgid="8655164131929253426" name="on">"Päällä"</string>
+    <string name="password_toggle_content_description">Näytä salasana</string>
+    <string msgid="5941395253238309765" name="range_end">"Alueen loppu"</string>
+    <string msgid="7097486360902471446" name="range_start">"Alueen alku"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"Haku"</string>
+    <string msgid="6043586758067023" name="selected">"Valittu"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"Vaihda"</string>
+    <string msgid="1672349317127674378" name="tab">"Välilehti"</string>
+    <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> prosenttia"</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"vihjeteksti"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"näytä vihjeteksti"</string>
+</resources>

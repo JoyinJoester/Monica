@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     id 'kotlin-kapt'
+    id 'kotlin-parcelize'
 }
 
 android {
@@ -125,6 +126,7 @@ dependencies {
     
     // Permissions
     implementation libs.accompanist.permissions
+    implementation libs.accompanist.drawablepainter
     
     // Kotlinx Serialization
     implementation libs.kotlinx.serialization.json
