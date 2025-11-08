@@ -13,3 +13,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 签名文件 - 绝对不要提交到 Git!
+keystore/
+*.jks
+*.keystore
+keystore.properties
+
+# APK 文件
+*.apk
+installed-monica.apk
