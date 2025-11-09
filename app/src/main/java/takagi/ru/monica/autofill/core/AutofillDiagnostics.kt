@@ -105,7 +105,7 @@ class AutofillDiagnostics(private val context: Context) {
         )
         
         AutofillLogger.i(
-            AutofillLogCategory.REQUEST,
+            "REQUEST",
             "Fill request: package=$packageName, contexts=$contextCount, inline=$hasInlineRequest"
         )
     }
@@ -144,7 +144,7 @@ class AutofillDiagnostics(private val context: Context) {
         )
         
         AutofillLogger.i(
-            AutofillLogCategory.PARSING,
+            "PARSING",
             "Parsed $totalFields fields (username=$usernameFields, password=$passwordFields) " +
             "using $parserUsed, accuracy=$accuracy"
         )
@@ -186,7 +186,7 @@ class AutofillDiagnostics(private val context: Context) {
         )
         
         AutofillLogger.i(
-            AutofillLogCategory.MATCHING,
+            "MATCHING",
             "Matched $matchedPasswords/$totalPasswords passwords for $packageName" +
             (domain?.let { " (domain=$it)" } ?: "")
         )
@@ -231,7 +231,7 @@ class AutofillDiagnostics(private val context: Context) {
         }
         
         AutofillLogger.i(
-            AutofillLogCategory.FILLING,
+            "FILLING",
             "Built $datasetsCreated datasets ($datasetsFailed failed), inline=$hasInlinePresentation"
         )
     }
@@ -246,7 +246,7 @@ class AutofillDiagnostics(private val context: Context) {
         }
         
         AutofillLogger.d(
-            AutofillLogCategory.PERFORMANCE,
+            "PERFORMANCE",
             "Request processed in ${timeMs}ms"
         )
     }
@@ -572,8 +572,168 @@ class AutofillDiagnostics(private val context: Context) {
         successfulRequests = 0
         failedRequests = 0
         requestTimes.clear()
+        totalSaveRequests = 0
+        successfulSaves = 0
+        skippedSaves = 0
+        failedSaves = 0
+        saveTimes.clear()
         
         AutofillLogger.i(TAG, "Diagnostics cleared")
+    }
+    
+    // ==================== 保存功能诊断 ====================
+    
+    // 保存统计信息
+    private var totalSaveRequests = 0
+    private var successfulSaves = 0
+    private var skippedSaves = 0
+    private var failedSaves = 0
+    private val saveTimes = mutableListOf<Long>()
+    
+    /**
+     * 记录保存请求
+     */
+    fun logSaveRequest(
+        packageName: String,
+        domain: String?,
+        hasUsername: Boolean,
+        hasPassword: Boolean,
+        isNewPasswordScenario: Boolean
+    ) {
+        totalSaveRequests++
+        
+        val details = mutableMapOf<String, Any>(
+            "packageName" to packageName,
+            "hasUsername" to hasUsername,
+            "hasPassword" to hasPassword,
+            "isNewPasswordScenario" to isNewPasswordScenario,
+            "deviceBrand" to Build.MANUFACTURER,
+            "romType" to DeviceUtils.getROMType().name
+        )
+        
+        domain?.let { details["domain"] = it }
+        
+        addLog(
+            LogLevel.INFO,
+            "SAVE",
+            "Save request received",
+            details
+        )
+        
+        AutofillLogger.i(
+            "SAVE",
+            "Save request: package=$packageName, domain=$domain, " +
+            "username=$hasUsername, password=$hasPassword, newPassword=$isNewPasswordScenario"
+        )
+    }
+    
+    /**
+     * 记录保存结果
+     */
+    fun logSaveResult(
+        success: Boolean,
+        action: String, // "created", "updated", "skipped", "error"
+        reason: String?,
+        processingTimeMs: Long
+    ) {
+        saveTimes.add(processingTimeMs)
+        if (saveTimes.size > 100) {
+            saveTimes.removeAt(0)
+        }
+        
+        when (action) {
+            "created", "updated" -> if (success) successfulSaves++
+            "skipped" -> skippedSaves++
+            "error" -> failedSaves++
+        }
+        
+        val details = mutableMapOf<String, Any>(
+            "action" to action,
+            "processingTime" to "${processingTimeMs}ms"
+        )
+        
+        reason?.let { details["reason"] = it }
+        
+        val level = when {
+            success -> LogLevel.INFO
+            action == "skipped" -> LogLevel.WARNING
+            else -> LogLevel.ERROR
+        }
+        
+        addLog(
+            level,
+            "SAVE",
+            "Save result: $action",
+            details
+        )
+        
+        AutofillLogger.i(
+            "SAVE",
+            "Save $action (success=$success) in ${processingTimeMs}ms" +
+            (reason?.let { ", reason=$it" } ?: "")
+        )
+    }
+    
+    /**
+     * 记录 SaveInfo 配置
+     */
+    fun logSaveInfoConfig(
+        deviceInfo: takagi.ru.monica.autofill.core.SaveInfoBuilder.DeviceInfo,
+        flags: Int,
+        fieldCount: Int,
+        saveType: Int
+    ) {
+        val details = mapOf(
+            "manufacturer" to deviceInfo.manufacturer.name,
+            "romType" to deviceInfo.romType.name,
+            "flags" to flags,
+            "fieldCount" to fieldCount,
+            "saveType" to saveType,
+            "supportsDelayedSave" to deviceInfo.supportsDelayedSavePrompt()
+        )
+        
+        addLog(
+            LogLevel.INFO,
+            "SAVE_CONFIG",
+            "SaveInfo configured",
+            details
+        )
+        
+        AutofillLogger.d(
+            "SAVE",
+            "SaveInfo: device=${deviceInfo.manufacturer}, flags=$flags, fields=$fieldCount"
+        )
+    }
+    
+    /**
+     * 获取保存统计信息
+     */
+    fun getSaveStatistics(): SaveStatistics {
+        val avgSaveTime = if (saveTimes.isNotEmpty()) {
+            saveTimes.average().toLong()
+        } else {
+            0L
+        }
+        
+        // 分析设备特定问题
+        val deviceIssues = mutableMapOf<String, Int>()
+        synchronized(logEntries) {
+            logEntries
+                .filter { it.category == "SAVE" && it.level == LogLevel.ERROR }
+                .forEach { entry ->
+                    val romType = entry.details["romType"]?.toString() ?: "unknown"
+                    deviceIssues[romType] = (deviceIssues[romType] ?: 0) + 1
+                }
+        }
+        
+        return SaveStatistics(
+            totalSaveRequests = totalSaveRequests,
+            successfulSaves = successfulSaves,
+            skippedSaves = skippedSaves,
+            failedSaves = failedSaves,
+            averageProcessingTime = avgSaveTime,
+            deviceSpecificIssues = deviceIssues
+        )
     }
 }
 
@@ -634,3 +794,22 @@ data class Recommendation(
     val actionLabel: String?,
     val action: (() -> Unit)?
 )
+
+/**
+ * 保存统计信息
+ */
+data class SaveStatistics(
+    val totalSaveRequests: Int,
+    val successfulSaves: Int,
+    val skippedSaves: Int,
+    val failedSaves: Int,
+    val averageProcessingTime: Long,
+    val deviceSpecificIssues: Map<String, Int>
+) {
+    val successRate: Float
+        get() = if (totalSaveRequests > 0) {
+            (successfulSaves.toFloat() / totalSaveRequests) * 100
+        } else {
+            0f
+        }
+}

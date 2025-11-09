@@ -892,10 +892,16 @@ class MonicaAutofillService : AutofillService() {
         
         return try {
             val domain = parsedStructure.webDomain
+            
+            // 🔧 修复: 获取所有密码的 ID,以便"手动选择"时可以显示所有密码
+            val allPasswords = passwordRepository.getAllPasswordEntries().first()
+            val allPasswordIds = allPasswords.map { it.id }
+            android.util.Log.d("MonicaAutofill", "📋 Total passwords available for manual selection: ${allPasswordIds.size}")
+            
             val directListResponse = AutofillPickerLauncher.createDirectListResponse(
                 context = applicationContext,
                 matchedPasswords = passwords,
-                allPasswordIds = emptyList(),
+                allPasswordIds = allPasswordIds, // 传递所有密码ID而不是空列表
                 packageName = packageName,
                 domain = domain,
                 parsedStructure = parsedStructure
@@ -903,8 +909,16 @@ class MonicaAutofillService : AutofillService() {
             
             android.util.Log.d("MonicaAutofill", "✓ Direct list response created successfully")
             
-            // SaveInfo 已经配置 - 日志已确认
-            android.util.Log.i("MonicaAutofill", "📌 SaveInfo has been configured in FillResponse")
+            // 🔧 添加设备适配的 SaveInfo 配置
+            val requestSaveData = autofillPreferences.isRequestSaveDataEnabled.first()
+            if (requestSaveData) {
+                val saveInfo = takagi.ru.monica.autofill.core.SaveInfoBuilder.build(parsedStructure)
+                if (saveInfo != null) {
+                    android.util.Log.i("MonicaAutofill", "📌 SaveInfo configured using SaveInfoBuilder")
+                } else {
+                    android.util.Log.w("MonicaAutofill", "⚠️ SaveInfo not configured - no saveable fields found")
+                }
+            }
             
             directListResponse
         } catch (e: Exception) {
@@ -1188,26 +1202,14 @@ class MonicaAutofillService : AutofillService() {
         // 添加保存信息（如果启用）
         val requestSaveData = autofillPreferences.isRequestSaveDataEnabled.first()
         if (requestSaveData) {
-            // 收集所有用户名和密码字段的ID
-            val saveFieldIds = mutableListOf<AutofillId>()
-            usernameItems.forEach { saveFieldIds.add(it.id) }
-            emailItems.forEach { saveFieldIds.add(it.id) }
-            passwordItems.forEach { saveFieldIds.add(it.id) }
-            newPasswordItems.forEach { saveFieldIds.add(it.id) }
+            // 使用 SaveInfoBuilder 构建设备适配的 SaveInfo
+            val saveInfo = takagi.ru.monica.autofill.core.SaveInfoBuilder.build(parsedStructure)
             
-            if (saveFieldIds.isNotEmpty()) {
-                val saveInfoBuilder = SaveInfo.Builder(
-                    SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD,
-                    saveFieldIds.toTypedArray()
-                )
-                
-                // 设置保存提示
-                saveInfoBuilder.setDescription("保存到 Monica 密码管理器")
-                // 添加标志以确保在所有情况下都提示保存
-                saveInfoBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
-                
-                responseBuilder.setSaveInfo(saveInfoBuilder.build())
-                android.util.Log.d("MonicaAutofill", "💾 SaveInfo configured for ${saveFieldIds.size} fields with FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE")
+            if (saveInfo != null) {
+                responseBuilder.setSaveInfo(saveInfo)
+                android.util.Log.d("MonicaAutofill", "💾 SaveInfo configured using SaveInfoBuilder with device-specific flags")
+            } else {
+                android.util.Log.w("MonicaAutofill", "⚠️ SaveInfo not configured - no saveable fields found")
             }
         }
         
@@ -1411,41 +1413,28 @@ class MonicaAutofillService : AutofillService() {
         
         serviceScope.launch {
             try {
-                // 🎯 Keyguard 风格实现: 返回 PendingIntent 给系统
-                // 系统会在用户点击"Save"后自动启动我们的 Activity
+                // 🔧 关键修复: 直接启动 Activity,不使用 PendingIntent
+                // 因为我们移除了 setDescription(),系统不会显示对话框
+                // onSaveRequest 被直接调用,我们需要立即启动 Activity
                 val intent = processSaveRequest(request)
                 
                 if (intent != null) {
-                    if (android.os.Build.VERSION.SDK_INT >= 28) {
-                        // Android 9+ 使用 PendingIntent
-                        // 🔧 关键修复: 使用 FLAG_MUTABLE 而不是 FLAG_IMMUTABLE
-                        // FLAG_MUTABLE 允许系统修改 Intent 并正确传递 extras
-                        val flags = if (android.os.Build.VERSION.SDK_INT >= 31) {
-                            android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
-                        } else {
-                            android.app.PendingIntent.FLAG_UPDATE_CURRENT
-                        }
-                        
-                        val pi = android.app.PendingIntent.getActivity(
-                            this@MonicaAutofillService, 
-                            System.currentTimeMillis().toInt(), // 使用时间戳作为 request code
-                            intent, 
-                            flags
-                        )
-                        AutofillLogger.i("REQUEST", "✅ 返回 PendingIntent 给系统 (flags=$flags)")
-                        callback.onSuccess(pi.intentSender)
-                    } else {
-                        // Android 8 直接启动
-                        try {
-                            startActivity(intent)
-                            callback.onSuccess()
-                        } catch (e: Exception) {
-                            AutofillLogger.e("REQUEST", "启动 Activity 失败", e)
-                            callback.onFailure(e.message ?: "启动失败")
-                        }
+                    // 添加 FLAG_ACTIVITY_NEW_TASK - Service 启动 Activity 必须的
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    
+                    try {
+                        AutofillLogger.i("REQUEST", "🚀 直接启动保存 Activity")
+                        android.util.Log.w("MonicaAutofill", "🚀 直接启动保存 Activity")
+                        startActivity(intent)
+                        callback.onSuccess()
+                    } catch (e: Exception) {
+                        AutofillLogger.e("REQUEST", "启动 Activity 失败", e)
+                        android.util.Log.e("MonicaAutofill", "启动 Activity 失败", e)
+                        callback.onFailure(e.message ?: "启动失败")
                     }
                 } else {
                     AutofillLogger.w("REQUEST", "无法创建 Intent")
+                    android.util.Log.w("MonicaAutofill", "无法创建 Intent")
                     callback.onSuccess() // 即使失败也返回成功，避免系统重试
                 }
                 

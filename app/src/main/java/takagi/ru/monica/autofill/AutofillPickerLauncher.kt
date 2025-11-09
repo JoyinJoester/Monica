@@ -122,10 +122,10 @@ object AutofillPickerLauncher {
         
         // 2. 添加"手动选择"选项 - 使用Authentication打开Bottom Sheet
         val pickerIntent = Intent(context, AutofillPickerActivity::class.java).apply {
-            // 传递所有密码ID
+            // 🔧 修复: 传递所有密码ID而不仅仅是匹配的密码,这样用户可以从所有密码中选择
             putExtra(
                 AutofillPickerActivity.EXTRA_PASSWORD_IDS,
-                matchedPasswords.map { it.id }.toLongArray()
+                allPasswordIds.toLongArray() // 使用 allPasswordIds 而不是 matchedPasswords
             )
             putExtra(AutofillPickerActivity.EXTRA_PACKAGE_NAME, packageName)
             putExtra(AutofillPickerActivity.EXTRA_DOMAIN, domain)
@@ -136,6 +136,8 @@ object AutofillPickerLauncher {
             
             putExtra(AutofillPickerActivity.EXTRA_FIELD_TYPE, "password")
         }
+        
+        android.util.Log.d("AutofillPicker", "📋 Manual selection will show ${allPasswordIds.size} passwords (${matchedPasswords.size} matched + ${allPasswordIds.size - matchedPasswords.size} others)")
         
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
@@ -170,37 +172,22 @@ object AutofillPickerLauncher {
      * 
      * 配置最简洁的 SaveInfo:
      * - 无 description(移除提示文字)
-     * - 最小 flags
+     * - 使用设备特定的 flags
      * - 目标:让系统对话框尽快消失
      */
     private fun addMinimalSaveInfo(
         responseBuilder: FillResponse.Builder,
         parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure
     ) {
-        // 找到密码字段
-        val passwordFields = parsedStructure.items.filter {
-            it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
-            it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
-        }.map { it.id }
+        // 使用 SaveInfoBuilder 构建设备适配的 SaveInfo
+        val saveInfo = takagi.ru.monica.autofill.core.SaveInfoBuilder.build(parsedStructure)
         
-        if (passwordFields.isEmpty()) {
-            android.util.Log.w("AutofillPicker", "No password fields - SaveInfo not configured")
-            return
+        if (saveInfo != null) {
+            responseBuilder.setSaveInfo(saveInfo)
+            android.util.Log.d("AutofillPicker", "✅ SaveInfo configured using SaveInfoBuilder with device-specific flags")
+        } else {
+            android.util.Log.w("AutofillPicker", "⚠️ SaveInfo not configured - no saveable fields found")
         }
-        
-        val saveInfoBuilder = SaveInfo.Builder(
-            SaveInfo.SAVE_DATA_TYPE_PASSWORD,
-            passwordFields.toTypedArray()
-        )
-        
-        // ⚠️ 不设置任何 description - 最小化系统UI
-        // ⚠️ 不设置 optional fields - 简化流程
-        // ⚠️ 只用最基础的 flag
-        saveInfoBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
-        
-        responseBuilder.setSaveInfo(saveInfoBuilder.build())
-        
-        android.util.Log.d("AutofillPicker", "✅ Minimal SaveInfo configured (no description)")
     }
     
     /**
@@ -314,10 +301,11 @@ object AutofillPickerLauncher {
             saveInfoBuilder.setOptionalIds(usernameFields.toTypedArray())
         }
         
-        // ✨ 保留 description - 让系统对话框显示友好的文本
-        // 虽然会显示两次提示,但这是 Android 框架的限制
-        // 用户体验: 系统对话框(1秒) → 自定义 Bottom Sheet(主要交互)
-        saveInfoBuilder.setDescription("保存到 Monica 密码管理器")
+        // 🔧 关键修复: 不设置 description!
+        // 如果设置了 description,系统会显示自己的保存对话框
+        // 用户点击后系统认为已完成,不会调用 onSaveRequest
+        // 不设置 description → 系统直接调用 onSaveRequest → 显示我们的 BottomSheet
+        // saveInfoBuilder.setDescription("保存到 Monica 密码管理器") // ❌ 移除
         
         // 使用标准 flags
         saveInfoBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)

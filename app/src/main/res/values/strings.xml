@@ -2,7 +2,7 @@
     <string name="app_name">Monica</string>
     
     <!-- Accessibility Service -->
-    <string name="accessibility_service_description">Monica 自动填充服务可以帮助你自动填充密码,并在提交表单时提供保存密码的选项。启用此服务后,Monica 可以:\n\n• 检测登录表单并自动填充用户名和密码\n• 在提交表单时显示保存密码的对话框\n• 提供完全自定义的 Material 3 UI,无系统对话框\n\nMonica 不会收集或分享你的任何数据。</string>
+    <string name="accessibility_service_description">Monica Accessibility Service helps improve autofill functionality by detecting password fields more accurately.</string>
     
     <!-- General -->
     <string name="ok">OK</string>
@@ -485,7 +485,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">v1.0.7</string>
+    <string name="settings_version_number">V1.0.8</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

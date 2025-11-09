@@ -57,6 +57,9 @@ fun AutofillSettingsScreen(
     val requestSaveDataEnabled by autofillPreferences.isRequestSaveDataEnabled.collectAsState(initial = true)
     val autoSaveAppInfoEnabled by autofillPreferences.isAutoSaveAppInfoEnabled.collectAsState(initial = true)
     val autoSaveWebsiteInfoEnabled by autofillPreferences.isAutoSaveWebsiteInfoEnabled.collectAsState(initial = true)
+    val autoUpdateDuplicatePasswordsEnabled by autofillPreferences.isAutoUpdateDuplicatePasswordsEnabled.collectAsState(initial = false)
+    val showSaveNotificationEnabled by autofillPreferences.isShowSaveNotificationEnabled.collectAsState(initial = true)
+    val smartTitleGenerationEnabled by autofillPreferences.isSmartTitleGenerationEnabled.collectAsState(initial = true)
     
     var showStrategyDialog by remember { mutableStateOf(false) }
     var showTroubleshootDialog by remember { mutableStateOf(false) }
@@ -283,12 +286,51 @@ fun AutofillSettingsScreen(
             ) {
                 SwitchSettingItem(
                     icon = Icons.Outlined.AddCircleOutline,
-                    title = "请求保存数据",
-                    subtitle = "填写表单时询问是否更新密码库",
+                    title = "启用自动保存",
+                    subtitle = "填写表单时自动提示保存密码",
                     checked = requestSaveDataEnabled,
                     onCheckedChange = {
                         scope.launch {
                             autofillPreferences.setRequestSaveDataEnabled(it)
+                        }
+                    }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Sync,
+                    title = "自动更新重复密码",
+                    subtitle = "检测到重复用户名时自动更新密码",
+                    checked = autoUpdateDuplicatePasswordsEnabled,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setAutoUpdateDuplicatePasswordsEnabled(it)
+                        }
+                    }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Notifications,
+                    title = "显示保存通知",
+                    subtitle = "密码保存成功后显示通知提示",
+                    checked = showSaveNotificationEnabled,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setShowSaveNotificationEnabled(it)
+                        }
+                    }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.AutoAwesome,
+                    title = "智能标题生成",
+                    subtitle = "自动从应用名或域名生成密码标题",
+                    checked = smartTitleGenerationEnabled,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setSmartTitleGenerationEnabled(it)
                         }
                     }
                 )

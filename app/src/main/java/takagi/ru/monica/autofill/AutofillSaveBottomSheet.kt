@@ -128,23 +128,33 @@ class AutofillSaveBottomSheet : BottomSheetDialogFragment() {
     ) {
         lifecycleScope.launch {
             try {
+                android.util.Log.d("AutofillSave", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                android.util.Log.d("AutofillSave", "💾 开始密码保存流程")
+                android.util.Log.d("AutofillSave", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                
                 val packageName = arguments?.getString(ARG_PACKAGE_NAME) ?: ""
                 val appName = getAppName(requireContext(), packageName)
                 
-                // 使用 SecurityManager 加密密码
+                // Step 1: 加密密码
+                android.util.Log.d("AutofillSave", "1️⃣ 开始加密密码...")
                 val securityManager = takagi.ru.monica.security.SecurityManager(requireContext())
                 val encryptedPassword = securityManager.encryptData(password)
+                android.util.Log.d("AutofillSave", "   ✅ 加密成功: ${encryptedPassword.length} bytes")
                 
-                android.util.Log.d("AutofillSave", "📱 保存密码信息:")
+                android.util.Log.d("AutofillSave", "")
+                android.util.Log.d("AutofillSave", "📱 密码信息:")
                 android.util.Log.d("AutofillSave", "  - Username: $username")
                 android.util.Log.d("AutofillSave", "  - Password: ${password.length} chars")
                 android.util.Log.d("AutofillSave", "  - Website: $website")
                 android.util.Log.d("AutofillSave", "  - PackageName: $packageName")
                 android.util.Log.d("AutofillSave", "  - AppName: $appName")
-                android.util.Log.d("AutofillSave", "  - Encrypted: ${encryptedPassword.take(20)}...")
+                android.util.Log.d("AutofillSave", "")
                 
-                // 检查是否已存在相同的密码
+                // Step 2: 检查现有密码
+                android.util.Log.d("AutofillSave", "2️⃣ 检查现有密码...")
                 val existingPasswords = passwordRepository.getAllPasswordEntries().first()
+                android.util.Log.d("AutofillSave", "   📊 现有密码数量: ${existingPasswords.size}")
+                android.util.Log.d("AutofillSave", "   🔓 无数量上限!")
                 
                 // 使用 PasswordSaveHelper 检测重复
                 val saveData = PasswordSaveHelper.SaveData(
@@ -154,49 +164,84 @@ class AutofillSaveBottomSheet : BottomSheetDialogFragment() {
                     webDomain = website.takeIf { it.isNotBlank() }
                 )
                 
-                android.util.Log.d("AutofillSave", "🔍 SaveData 创建:")
+                android.util.Log.d("AutofillSave", "")
+                android.util.Log.d("AutofillSave", "🔍 SaveData:")
                 android.util.Log.d("AutofillSave", "  - packageName: ${saveData.packageName}")
                 android.util.Log.d("AutofillSave", "  - webDomain: ${saveData.webDomain}")
+                android.util.Log.d("AutofillSave", "")
                 
+                // Step 3: 检查重复
+                android.util.Log.d("AutofillSave", "3️⃣ 检查重复密码...")
                 when (val duplicateCheck = PasswordSaveHelper.checkDuplicate(saveData, existingPasswords)) {
                     is PasswordSaveHelper.DuplicateCheckResult.SameUsernameDifferentPassword -> {
+                        android.util.Log.d("AutofillSave", "   📝 发现相同用户名,更新密码")
                         // 更新现有密码
                         val updated = PasswordSaveHelper.updatePasswordEntry(
                             duplicateCheck.existingEntry,
                             saveData,
                             encryptedPassword
                         )
+                        android.util.Log.d("AutofillSave", "")
+                        android.util.Log.d("AutofillSave", "4️⃣ 更新数据库...")
                         passwordRepository.updatePasswordEntry(updated)
-                        android.util.Log.i("AutofillSave", "更新密码成功: id=${updated.id}")
+                        android.util.Log.i("AutofillSave", "   ✅ 更新密码成功! ID=${updated.id}")
                     }
                     is PasswordSaveHelper.DuplicateCheckResult.ExactDuplicate -> {
-                        // 完全相同,不需要保存
-                        android.util.Log.i("AutofillSave", "密码已存在,跳过保存")
+                        android.util.Log.i("AutofillSave", "   ⏭️  密码完全相同,跳过保存")
                     }
                     else -> {
-                        // 创建新密码条目
+                        android.util.Log.d("AutofillSave", "   ✨ 新密码,准备创建")
+                        
+                        // Step 4: 创建新密码条目
+                        android.util.Log.d("AutofillSave", "")
+                        android.util.Log.d("AutofillSave", "4️⃣ 创建新密码条目...")
                         val newEntry = PasswordSaveHelper.createNewPasswordEntry(
                             requireContext(),
                             saveData,
                             encryptedPassword
                         )
                         
-                        android.util.Log.i("AutofillSave", "💾 新密码条目创建:")
-                        android.util.Log.i("AutofillSave", "  - Title: ${newEntry.title}")
-                        android.util.Log.i("AutofillSave", "  - Username: ${newEntry.username}")
-                        android.util.Log.i("AutofillSave", "  - Website: ${newEntry.website}")
-                        android.util.Log.i("AutofillSave", "  - AppPackageName: ${newEntry.appPackageName}")
-                        android.util.Log.i("AutofillSave", "  - AppName: ${newEntry.appName}")
+                        android.util.Log.i("AutofillSave", "   💾 新密码条目:")
+                        android.util.Log.i("AutofillSave", "      - Title: ${newEntry.title}")
+                        android.util.Log.i("AutofillSave", "      - Username: ${newEntry.username}")
+                        android.util.Log.i("AutofillSave", "      - Website: ${newEntry.website}")
+                        android.util.Log.i("AutofillSave", "      - AppPackageName: ${newEntry.appPackageName}")
+                        android.util.Log.i("AutofillSave", "      - AppName: ${newEntry.appName}")
                         
-                        passwordRepository.insertPasswordEntry(newEntry)
-                        android.util.Log.i("AutofillSave", "✅ 保存新密码成功!")
+                        // Step 5: 插入数据库
+                        android.util.Log.d("AutofillSave", "")
+                        android.util.Log.d("AutofillSave", "5️⃣ 插入数据库...")
+                        val newId = passwordRepository.insertPasswordEntry(newEntry)
+                        android.util.Log.i("AutofillSave", "   ✅ 数据库插入成功! 新ID=$newId")
+                        
+                        // Step 6: 验证保存
+                        android.util.Log.d("AutofillSave", "")
+                        android.util.Log.d("AutofillSave", "6️⃣ 验证保存结果...")
+                        val saved = passwordRepository.getPasswordEntryById(newId)
+                        if (saved != null) {
+                            android.util.Log.i("AutofillSave", "   ✅ 验证成功! 密码已正确保存到数据库")
+                            android.util.Log.i("AutofillSave", "   📊 验证: Title=${saved.title}, Username=${saved.username}")
+                        } else {
+                            android.util.Log.e("AutofillSave", "   ❌ 验证失败! 数据库中找不到刚保存的密码!")
+                        }
+                        
+                        android.util.Log.i("AutofillSave", "")
+                        android.util.Log.i("AutofillSave", "✅✅✅ 保存新密码成功! ✅✅✅")
                     }
                 }
+                
+                android.util.Log.d("AutofillSave", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                android.util.Log.d("AutofillSave", "💚 密码保存流程完成")
+                android.util.Log.d("AutofillSave", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 
                 onSaveCallback?.invoke()
                 dismiss()
             } catch (e: Exception) {
-                android.util.Log.e("AutofillSave", "保存密码失败", e)
+                android.util.Log.e("AutofillSave", "")
+                android.util.Log.e("AutofillSave", "❌❌❌ 保存密码失败! ❌❌❌")
+                android.util.Log.e("AutofillSave", "错误类型: ${e.javaClass.simpleName}")
+                android.util.Log.e("AutofillSave", "错误信息: ${e.message}")
+                android.util.Log.e("AutofillSave", "完整堆栈:", e)
                 // TODO: 显示错误消息
                 dismiss()
             }
@@ -438,7 +483,20 @@ fun SavePasswordBottomSheetContent(
                 
                 Button(
                     onClick = {
-                        onSave(title, editedUsername, editedPassword, website, context.getString(R.string.autofill_saved_via))
+                        android.util.Log.w("AutofillSave", "🔘🔘🔘 保存按钮被点击! 🔘🔘🔘")
+                        android.util.Log.d("AutofillSave", "准备调用 onSave 回调...")
+                        android.util.Log.d("AutofillSave", "  参数:")
+                        android.util.Log.d("AutofillSave", "    - title: $title")
+                        android.util.Log.d("AutofillSave", "    - username: $editedUsername")
+                        android.util.Log.d("AutofillSave", "    - password: ${editedPassword.length} chars")
+                        android.util.Log.d("AutofillSave", "    - website: $website")
+                        
+                        try {
+                            onSave(title, editedUsername, editedPassword, website, context.getString(R.string.autofill_saved_via))
+                            android.util.Log.d("AutofillSave", "✅ onSave 回调执行完成")
+                        } catch (e: Exception) {
+                            android.util.Log.e("AutofillSave", "❌ onSave 回调执行失败!", e)
+                        }
                     },
                     modifier = Modifier.weight(1f),
                     enabled = editedUsername.isNotBlank() || editedPassword.isNotBlank(),

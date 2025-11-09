@@ -33,6 +33,15 @@ class AutofillSaveTransparentActivity : FragmentActivity() {
         val website = intent.getStringExtra(EXTRA_WEBSITE) ?: ""
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
         
+        android.util.Log.w("AutofillSaveActivity", "╔══════════════════════════════════════════╗")
+        android.util.Log.w("AutofillSaveActivity", "║  AutofillSaveTransparentActivity 启动  ║")
+        android.util.Log.w("AutofillSaveActivity", "╚══════════════════════════════════════════╝")
+        android.util.Log.d("AutofillSaveActivity", "接收到的数据:")
+        android.util.Log.d("AutofillSaveActivity", "  - Username: $username")
+        android.util.Log.d("AutofillSaveActivity", "  - Password: ${password.length} chars")
+        android.util.Log.d("AutofillSaveActivity", "  - Website: $website")
+        android.util.Log.d("AutofillSaveActivity", "  - PackageName: $packageName")
+        
         // 如果已经有BottomSheet在显示，先关闭
         if (savedInstanceState != null) {
             bottomSheet = supportFragmentManager.findFragmentByTag("save_bottom_sheet") as? AutofillSaveBottomSheet
@@ -40,6 +49,8 @@ class AutofillSaveTransparentActivity : FragmentActivity() {
         
         // 显示底部弹窗（避免重复显示）
         if (bottomSheet == null) {
+            android.util.Log.d("AutofillSaveActivity", "创建 BottomSheet...")
+            
             bottomSheet = AutofillSaveBottomSheet.newInstance(
                 username = username,
                 password = password,
@@ -47,11 +58,16 @@ class AutofillSaveTransparentActivity : FragmentActivity() {
                 packageName = packageName
             ).apply {
                 setOnSaveListener {
+                    android.util.Log.w("AutofillSaveActivity", "🎉🎉🎉 onSaveListener 回调触发! 🎉🎉🎉")
+                    android.util.Log.d("AutofillSaveActivity", "设置 Activity 结果为 RESULT_SAVED")
                     // 保存成功，返回结果
                     setResult(RESULT_SAVED)
+                    android.util.Log.d("AutofillSaveActivity", "准备关闭 Activity...")
                     finish()
+                    android.util.Log.d("AutofillSaveActivity", "Activity.finish() 已调用")
                 }
                 setOnDismissListener {
+                    android.util.Log.w("AutofillSaveActivity", "❌ onDismissListener 回调触发 (用户取消)")
                     // 用户取消，关闭Activity
                     if (!isFinishing) {
                         setResult(Activity.RESULT_CANCELED)
@@ -60,17 +76,23 @@ class AutofillSaveTransparentActivity : FragmentActivity() {
                 }
             }
             
+            android.util.Log.d("AutofillSaveActivity", "显示 BottomSheet...")
             bottomSheet?.show(supportFragmentManager, "save_bottom_sheet")
+            android.util.Log.d("AutofillSaveActivity", "✅ BottomSheet 已显示")
+        } else {
+            android.util.Log.w("AutofillSaveActivity", "⚠️ BottomSheet 已存在,跳过创建")
         }
     }
     
     override fun onDestroy() {
+        android.util.Log.d("AutofillSaveActivity", "🔴 Activity.onDestroy() 被调用")
         bottomSheet = null
         super.onDestroy()
     }
     
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        android.util.Log.d("AutofillSaveActivity", "⬅️ 用户按下返回键")
         // 按返回键时关闭BottomSheet和Activity
         bottomSheet?.dismiss()
         super.onBackPressed()
