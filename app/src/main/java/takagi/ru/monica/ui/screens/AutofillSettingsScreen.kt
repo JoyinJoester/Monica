@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -32,13 +33,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.LaunchedEffect
+import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import kotlinx.coroutines.launch
 import takagi.ru.monica.autofill.AutofillPreferences
 import takagi.ru.monica.autofill.DomainMatchStrategy
 import takagi.ru.monica.autofill.core.AutofillServiceChecker
 import takagi.ru.monica.autofill.core.AutofillDiagnostics
 import takagi.ru.monica.ui.components.AutofillStatusCard
-import takagi.ru.monica.ui.components.TroubleshootDialog
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,15 +61,15 @@ fun AutofillSettingsScreen(
     val autoUpdateDuplicatePasswordsEnabled by autofillPreferences.isAutoUpdateDuplicatePasswordsEnabled.collectAsState(initial = false)
     val showSaveNotificationEnabled by autofillPreferences.isShowSaveNotificationEnabled.collectAsState(initial = true)
     val smartTitleGenerationEnabled by autofillPreferences.isSmartTitleGenerationEnabled.collectAsState(initial = true)
+    val blacklistEnabled by autofillPreferences.isBlacklistEnabled.collectAsState(initial = true)
+    val blacklistPackages by autofillPreferences.blacklistPackages.collectAsState(initial = AutofillPreferences.DEFAULT_BLACKLIST_PACKAGES)
     
     var showStrategyDialog by remember { mutableStateOf(false) }
-    var showTroubleshootDialog by remember { mutableStateOf(false) }
+    var showBlacklistDialog by remember { mutableStateOf(false) }
     
-    // 服务状态检查器和诊断系统
+    // 服务状态检查器
     val serviceChecker = remember { AutofillServiceChecker(context) }
-    val diagnostics = remember { AutofillDiagnostics(context) }
     var serviceStatus by remember { mutableStateOf<AutofillServiceChecker.ServiceStatus?>(null) }
-    var diagnosticReport by remember { mutableStateOf<takagi.ru.monica.autofill.core.DiagnosticReport?>(null) }
     
     // 使用可变状态来追踪系统自动填充服务状态,这样可以实时更新
     var isSystemAutofillEnabled by remember { mutableStateOf(false) }
@@ -171,11 +172,6 @@ fun AutofillSettingsScreen(
                             intent.data = Uri.parse("package:${context.packageName}")
                             context.startActivity(intent)
                         }
-                    },
-                    onTroubleshootClick = {
-                        // 生成诊断报告并显示对话框
-                        diagnosticReport = diagnostics.generateDiagnosticReport()
-                        showTroubleshootDialog = true
                     }
                 )
             }
@@ -362,6 +358,36 @@ fun AutofillSettingsScreen(
                 )
             }
             
+            // 黑名单卡片
+            SectionCard(
+                title = "黑名单",
+                icon = Icons.Outlined.Block,
+                iconTint = MaterialTheme.colorScheme.error
+            ) {
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Block,
+                    title = "启用黑名单",
+                    subtitle = "禁止特定应用使用自动填充功能",
+                    checked = blacklistEnabled,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setBlacklistEnabled(it)
+                        }
+                    }
+                )
+                
+                if (blacklistEnabled) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    AutofillSettingItem(
+                        icon = Icons.Outlined.Apps,
+                        title = "管理黑名单应用",
+                        subtitle = "已添加 ${blacklistPackages.size} 个应用",
+                        trailingIcon = Icons.Default.ChevronRight,
+                        onClick = { showBlacklistDialog = true }
+                    )
+                }
+            }
+            
             // 底部说明
             InfoCard()
         }
@@ -381,28 +407,17 @@ fun AutofillSettingsScreen(
         )
     }
     
-    // 故障排查对话框
-    if (showTroubleshootDialog && diagnosticReport != null) {
-        TroubleshootDialog(
-            diagnosticReport = diagnosticReport!!,
-            onDismiss = { showTroubleshootDialog = false },
-            onExportLogs = {
+    // 黑名单管理对话框
+    if (showBlacklistDialog) {
+        BlacklistManagementDialog(
+            blacklistPackages = blacklistPackages,
+            onDismiss = { showBlacklistDialog = false },
+            onPackageToggle = { packageName, isBlacklisted ->
                 scope.launch {
-                    try {
-                        val logs = diagnostics.exportLogs()
-                        val file = File(context.getExternalFilesDir(null), "monica_autofill_logs.txt")
-                        file.writeText(logs)
-                        
-                        // 分享日志文件
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, logs)
-                            putExtra(Intent.EXTRA_SUBJECT, "Monica 自动填充诊断日志")
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "导出日志"))
-                    } catch (e: Exception) {
-                        // 处理错误
-                        e.printStackTrace()
+                    if (isBlacklisted) {
+                        autofillPreferences.addToBlacklist(packageName)
+                    } else {
+                        autofillPreferences.removeFromBlacklist(packageName)
                     }
                 }
             }
@@ -709,6 +724,143 @@ fun StrategySelectionDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("关闭")
+            }
+        },
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+// 黑名单管理对话框
+@Composable
+fun BlacklistManagementDialog(
+    blacklistPackages: Set<String>,
+    onDismiss: () -> Unit,
+    onPackageToggle: (String, Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    
+    // 预定义的常见应用
+    val commonApps = listOf(
+        "com.tencent.mm" to "微信",
+        "com.eg.android.AlipayGphone" to "支付宝",
+        "com.unionpay" to "云闪付",
+        "com.tencent.mobileqq" to "QQ",
+        "com.taobao.taobao" to "淘宝",
+        "com.jingdong.app.mall" to "京东",
+        "com.tencent.wework" to "企业微信",
+        "com.sina.weibo" to "微博"
+    )
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Outlined.Block,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = {
+            Text(
+                "黑名单管理",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "黑名单中的应用将无法使用自动填充功能",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                commonApps.forEach { (packageName, appName) ->
+                    val isInBlacklist = blacklistPackages.contains(packageName)
+                    
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { 
+                                onPackageToggle(packageName, !isInBlacklist)
+                            },
+                        color = if (isInBlacklist)
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                // 尝试显示应用图标
+                                val appIcon = remember(packageName) {
+                                    try {
+                                        context.packageManager.getApplicationIcon(packageName)
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+                                }
+                                
+                                if (appIcon != null) {
+                                    Image(
+                                        painter = rememberDrawablePainter(drawable = appIcon),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Apps,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(32.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                
+                                Column {
+                                    Text(
+                                        text = appName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = packageName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            
+                            Switch(
+                                checked = isInBlacklist,
+                                onCheckedChange = { checked ->
+                                    onPackageToggle(packageName, checked)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("完成")
             }
         },
         shape = RoundedCornerShape(24.dp)

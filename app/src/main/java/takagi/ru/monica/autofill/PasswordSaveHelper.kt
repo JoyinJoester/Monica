@@ -47,12 +47,12 @@ object PasswordSaveHelper {
             }
             
             // 2. 如果是新密码场景,验证新密码和确认密码匹配
-            if (isNewPasswordScenario && newPassword != null) {
-                if (confirmPassword == null) {
-                    return ValidationResult.Error("请输入确认密码")
-                }
-                if (newPassword != confirmPassword) {
+            if (isNewPasswordScenario && !newPassword.isNullOrBlank()) {
+                if (!confirmPassword.isNullOrBlank() && newPassword != confirmPassword) {
                     return ValidationResult.Error("新密码和确认密码不匹配")
+                }
+                if (confirmPassword.isNullOrBlank()) {
+                    return ValidationResult.Warning("已检测到单个新密码字段,建议确认输入无误后继续")
                 }
                 if (newPassword.length < 6) {
                     return ValidationResult.Warning("密码长度建议至少6位")

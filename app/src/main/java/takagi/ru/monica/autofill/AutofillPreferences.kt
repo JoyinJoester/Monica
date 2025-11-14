@@ -6,9 +6,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 
 /**
  * 自动填充配置管理
@@ -37,6 +39,17 @@ class AutofillPreferences(private val context: Context) {
         private val KEY_AUTO_UPDATE_DUPLICATE_PASSWORDS = booleanPreferencesKey("auto_update_duplicate_passwords")
         private val KEY_SHOW_SAVE_NOTIFICATION = booleanPreferencesKey("show_save_notification")
         private val KEY_SMART_TITLE_GENERATION = booleanPreferencesKey("smart_title_generation")
+        
+        // 黑名单配置
+        private val KEY_BLACKLIST_ENABLED = booleanPreferencesKey("blacklist_enabled")
+        private val KEY_BLACKLIST_PACKAGES = stringSetPreferencesKey("blacklist_packages")
+        
+        // 默认黑名单应用
+        val DEFAULT_BLACKLIST_PACKAGES = setOf(
+            "com.tencent.mm",           // 微信
+            "com.eg.android.AlipayGphone", // 支付宝
+            "com.unionpay"              // 云闪付
+        )
     }
     
     /**
@@ -202,5 +215,62 @@ class AutofillPreferences(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[KEY_SMART_TITLE_GENERATION] = enabled
         }
+    }
+    
+    /**
+     * 是否启用黑名单功能
+     */
+    val isBlacklistEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_BLACKLIST_ENABLED] ?: true  // 默认启用
+    }
+    
+    suspend fun setBlacklistEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BLACKLIST_ENABLED] = enabled
+        }
+    }
+    
+    /**
+     * 黑名单应用包名集合
+     */
+    val blacklistPackages: Flow<Set<String>> = context.dataStore.data.map { preferences ->
+        preferences[KEY_BLACKLIST_PACKAGES] ?: DEFAULT_BLACKLIST_PACKAGES
+    }
+    
+    suspend fun setBlacklistPackages(packages: Set<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BLACKLIST_PACKAGES] = packages
+        }
+    }
+    
+    /**
+     * 添加应用到黑名单
+     */
+    suspend fun addToBlacklist(packageName: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[KEY_BLACKLIST_PACKAGES] ?: DEFAULT_BLACKLIST_PACKAGES
+            preferences[KEY_BLACKLIST_PACKAGES] = current + packageName
+        }
+    }
+    
+    /**
+     * 从黑名单移除应用
+     */
+    suspend fun removeFromBlacklist(packageName: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[KEY_BLACKLIST_PACKAGES] ?: DEFAULT_BLACKLIST_PACKAGES
+            preferences[KEY_BLACKLIST_PACKAGES] = current - packageName
+        }
+    }
+    
+    /**
+     * 检查应用是否在黑名单中
+     */
+    suspend fun isInBlacklist(packageName: String): Boolean {
+        val enabled = isBlacklistEnabled.first()
+        if (!enabled) return false
+        
+        val packages = blacklistPackages.first()
+        return packages.contains(packageName)
     }
 }

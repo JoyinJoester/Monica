@@ -63,30 +63,9 @@ fun filterPasswords(
     val securityManager = SecurityManager(context)
     
     return passwords.filter { password ->
-        // 解密用户名 (如果已加密)
-        val decryptedUsername = try {
-            if (password.username.contains("==") && password.username.length > 20) {
-                securityManager.decryptData(password.username)
-            } else {
-                password.username
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("SearchUtils", "Failed to decrypt username for password ID ${password.id}", e)
-            password.username // 解密失败,使用原始值
-        }
-        
-        // 解密备注 (如果已加密)
-        val decryptedNotes = try {
-            if (password.notes.contains("==") && password.notes.length > 20) {
-                securityManager.decryptData(password.notes)
-            } else {
-                password.notes
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("SearchUtils", "Failed to decrypt notes for password ID ${password.id}", e)
-            password.notes // 解密失败,使用原始值
-        }
-        
+        val decryptedUsername = decryptIfNeeded(password.username, securityManager)
+        val decryptedNotes = decryptIfNeeded(password.notes, securityManager)
+
         // 搜索所有字段(包括解密后的用户名和备注)
         password.title.lowercase().contains(searchQuery) ||
         decryptedUsername.lowercase().contains(searchQuery) ||
@@ -121,6 +100,26 @@ fun filterPaymentInfo(
         info.cardHolderName.lowercase().contains(searchQuery) ||
         info.cardNumber.takeLast(4).contains(searchQuery)
     }
+}
+
+private fun decryptIfNeeded(value: String, securityManager: SecurityManager): String {
+    if (!looksLikeCiphertext(value)) {
+        return value
+    }
+    return try {
+        securityManager.decryptData(value)
+    } catch (e: Exception) {
+        android.util.Log.w("SearchUtils", "Failed to decrypt field", e)
+        value
+    }
+}
+
+private fun looksLikeCiphertext(value: String): Boolean {
+    if (value.isBlank()) return false
+    val sanitized = value.trim().replace("\n", "").replace("\r", "")
+    if (sanitized.length < 24) return false
+    if (sanitized.length % 4 != 0) return false
+    return sanitized.all { it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' }
 }
 
 /**

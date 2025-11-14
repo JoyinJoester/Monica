@@ -24,6 +24,13 @@ class AutofillSaveTransparentActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        android.util.Log.w("AutofillSaveActivity", "")
+        android.util.Log.w("AutofillSaveActivity", "🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
+        android.util.Log.w("AutofillSaveActivity", "🟢🟢  Activity 已被系统启动!  🟢🟢")
+        android.util.Log.w("AutofillSaveActivity", "🟢🟢  IntentSender 生效!      🟢🟢")
+        android.util.Log.w("AutofillSaveActivity", "🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢")
+        android.util.Log.w("AutofillSaveActivity", "")
+        
         // 设置透明背景
         window.setBackgroundDrawableResource(android.R.color.transparent)
         

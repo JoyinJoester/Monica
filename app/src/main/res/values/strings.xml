@@ -485,7 +485,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.8</string>
+    <string name="settings_version_number">V1.0.7</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

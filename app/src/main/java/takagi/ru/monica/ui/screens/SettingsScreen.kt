@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.app.Activity
 import android.content.ContextWrapper
 import android.content.Intent
@@ -67,6 +69,7 @@ fun SettingsScreen(
     
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showDebugLogsDialog by remember { mutableStateOf(false) }
     
     // 生物识别帮助类
     val biometricHelper = remember { BiometricAuthHelper(context) }
@@ -389,6 +392,70 @@ fun SettingsScreen(
                     }
                 )
             }
+            
+            // Developer Debug Settings
+            SettingsSection(
+                title = "开发者调试"
+            ) {
+                SettingsItem(
+                    icon = Icons.Default.BugReport,
+                    title = "查看日志",
+                    subtitle = "查看应用的 Logcat 输出日志",
+                    onClick = { showDebugLogsDialog = true }
+                )
+                
+                SettingsItem(
+                    icon = Icons.Default.DeleteSweep,
+                    title = "清除日志缓冲区",
+                    subtitle = "清除设备的日志缓冲区",
+                    onClick = {
+                        coroutineScope.launch {
+                            try {
+                                Runtime.getRuntime().exec("logcat -c")
+                                Toast.makeText(
+                                    context,
+                                    "日志缓冲区已清除",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    "清除失败: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                )
+                
+                SettingsItem(
+                    icon = Icons.Default.Share,
+                    title = "分享日志",
+                    subtitle = "导出并分享完整的系统日志",
+                    onClick = {
+                        coroutineScope.launch {
+                            try {
+                                // 获取最近1000行日志
+                                val process = Runtime.getRuntime().exec("logcat -d -t 1000")
+                                val logs = process.inputStream.bufferedReader().readText()
+                                
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, logs)
+                                    putExtra(Intent.EXTRA_SUBJECT, "Monica 系统日志")
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "分享日志"))
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    "分享失败: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                )
+            }
         }
     }
     
@@ -421,6 +488,13 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+    
+    // Debug Logs Dialog
+    if (showDebugLogsDialog) {
+        DebugLogsDialog(
+            onDismiss = { showDebugLogsDialog = false }
         )
     }
     
@@ -1061,4 +1135,199 @@ fun BottomNavSettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+}
+
+/**
+ * 调试日志对话框 - 显示真实的 Logcat 输出
+ */
+@Composable
+fun DebugLogsDialog(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var logs by remember { mutableStateOf("正在加载日志...") }
+    var isLoading by remember { mutableStateOf(true) }
+    
+    // 加载日志
+    LaunchedEffect(Unit) {
+        try {
+            // 获取最近500行日志,过滤 Monica 应用相关
+            val process = Runtime.getRuntime().exec(arrayOf(
+                "logcat",
+                "-d",
+                "-t", "500",
+                "takagi.ru.monica:*",
+                "MonicaAutofill:*",
+                "AutofillSaveActivity:*",
+                "*:S"  // 静默其他标签
+            ))
+            
+            val output = process.inputStream.bufferedReader().readText()
+            logs = if (output.isNotBlank()) {
+                output
+            } else {
+                "暂无日志\n\n提示: 确保应用已运行过一些操作"
+            }
+            isLoading = false
+        } catch (e: Exception) {
+            logs = "加载失败: ${e.message}\n\n可能需要调试权限才能读取日志"
+            isLoading = false
+        }
+    }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.BugReport,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "系统日志",
+                    fontWeight = FontWeight.Bold
+                )
+                if (!isLoading) {
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    val process = Runtime.getRuntime().exec(arrayOf(
+                                        "logcat",
+                                        "-d",
+                                        "-t", "500",
+                                        "takagi.ru.monica:*",
+                                        "MonicaAutofill:*",
+                                        "AutofillSaveActivity:*",
+                                        "*:S"
+                                    ))
+                                    logs = process.inputStream.bufferedReader().readText()
+                                } catch (e: Exception) {
+                                    logs = "刷新失败: ${e.message}"
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "刷新",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 500.dp)
+            ) {
+                // 统计信息
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = "过滤标签",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "• takagi.ru.monica\n• MonicaAutofill\n• AutofillSaveActivity",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                }
+                
+                // 日志内容
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    )
+                ) {
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 350.dp)
+                                .verticalScroll(rememberScrollState())
+                                .horizontalScroll(rememberScrollState())
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = logs,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 11.sp
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextButton(
+                    onClick = {
+                        try {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, logs)
+                                putExtra(Intent.EXTRA_SUBJECT, "Monica 系统日志")
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "分享日志"))
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "分享失败", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("分享")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("关闭")
+                }
+            }
+        },
+        shape = RoundedCornerShape(24.dp)
+    )
 }

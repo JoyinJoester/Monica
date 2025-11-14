@@ -2,6 +2,7 @@ package takagi.ru.monica.autofill
 
 import android.app.assist.AssistStructure
 import android.view.View
+import takagi.ru.monica.autofill.core.safeTextOrNull
 
 /**
  * 增强的自动填充字段解析器
@@ -63,7 +64,8 @@ class EnhancedAutofillFieldParser(private val structure: AssistStructure) {
         val text = node.text?.toString()
         val inputType = node.inputType
         val className = node.className
-        val autofillValue = node.autofillValue?.textValue?.toString()
+        val autofillValue = (node.autofillValue)
+            .safeTextOrNull(TAG, "field ${idEntry ?: className ?: "unknown"}")
         
         // 检查是否是可编辑文本字段
         val isEditableTextField = className?.contains("EditText") == true ||
@@ -84,7 +86,10 @@ class EnhancedAutofillFieldParser(private val structure: AssistStructure) {
             idEntry,
             hint,
             text,
-            inputType
+            inputType,
+            className,
+            node.autofillType,
+            node.htmlInfo
         )
         
         android.util.Log.d(TAG, "Detected field - Type: $fieldType, ID: $idEntry, Hint: $hint")

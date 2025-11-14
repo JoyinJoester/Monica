@@ -19,13 +19,13 @@ import takagi.ru.monica.autofill.core.AutofillServiceChecker
  * 
  * @param status 服务状态
  * @param onEnableClick 启用服务点击回调
- * @param onTroubleshootClick 故障排查点击回调
+ * @param onTroubleshootClick 故障排查点击回调(可选)
  */
 @Composable
 fun AutofillStatusCard(
     status: AutofillServiceChecker.ServiceStatus,
     onEnableClick: () -> Unit,
-    onTroubleshootClick: () -> Unit,
+    onTroubleshootClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -150,22 +150,24 @@ fun AutofillStatusCard(
                 }
             }
             
-            // 故障排查按钮
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = onTroubleshootClick
+            // 故障排查按钮(可选)
+            if (onTroubleshootClick != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Text(
-                        "故障排查",
-                        color = if (status.isSystemEnabled) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        }
-                    )
+                    TextButton(
+                        onClick = onTroubleshootClick
+                    ) {
+                        Text(
+                            "故障排查",
+                            color = if (status.isSystemEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            }
+                        )
+                    }
                 }
             }
         }

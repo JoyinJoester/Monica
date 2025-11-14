@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.autofill.data.AutofillContext
 import takagi.ru.monica.autofill.data.PasswordMatch
+import java.util.Date
 
 /**
  * MatchingStrategy 单元测试
@@ -30,15 +31,14 @@ class MatchingStrategyTest {
         return PasswordEntry(
             id = id,
             title = title,
+            website = website ?: "",
             username = username,
             password = password,
-            website = website,
-            applicationId = applicationId,
-            folderId = null,
-            note = "",
+            notes = "",
+            createdAt = Date(),
+            updatedAt = Date(),
             isFavorite = false,
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
+            appPackageName = applicationId ?: ""
         )
     }
     

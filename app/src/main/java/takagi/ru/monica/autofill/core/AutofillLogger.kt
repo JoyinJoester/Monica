@@ -103,13 +103,7 @@ object AutofillLogger {
         val logMessage = "[$category] $sanitizedMessage${
             sanitizedMetadata.takeIf { it.isNotEmpty() }?.let { " $it" } ?: ""
         }"
-        
-        when (level) {
-            Level.DEBUG -> Log.d(TAG, logMessage)
-            Level.INFO -> Log.i(TAG, logMessage)
-            Level.WARN -> Log.w(TAG, logMessage)
-            Level.ERROR -> Log.e(TAG, logMessage)
-        }
+        emitAndroidLog(level, logMessage)
         
         // 内存存储（最近 500 条）
         if (isEnabled) {
@@ -191,7 +185,7 @@ object AutofillLogger {
         synchronized(logs) {
             logs.clear()
         }
-        Log.i(TAG, "日志已清除")
+        emitAndroidLog(Level.INFO, "日志已清除")
     }
     
     /**
@@ -199,7 +193,7 @@ object AutofillLogger {
      */
     fun setEnabled(enabled: Boolean) {
         isEnabled = enabled
-        Log.i(TAG, "日志系统${if (enabled) "已启用" else "已禁用"}")
+        emitAndroidLog(Level.INFO, "日志系统${if (enabled) "已启用" else "已禁用"}")
     }
     
     /**
@@ -220,6 +214,22 @@ object AutofillLogger {
             }
             
             return stats
+        }
+    }
+
+    /**
+     * 封装 android.util.Log，避免在 JVM 单元测试环境崩溃
+     */
+    private fun emitAndroidLog(level: Level, message: String) {
+        try {
+            when (level) {
+                Level.DEBUG -> Log.d(TAG, message)
+                Level.INFO -> Log.i(TAG, message)
+                Level.WARN -> Log.w(TAG, message)
+                Level.ERROR -> Log.e(TAG, message)
+            }
+        } catch (ignored: RuntimeException) {
+            // 本地 JVM 测试环境没有 Android Log 实现，直接忽略
         }
     }
 }

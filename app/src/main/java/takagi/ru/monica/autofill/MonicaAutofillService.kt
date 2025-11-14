@@ -38,6 +38,7 @@ import takagi.ru.monica.autofill.core.AutofillDiagnostics
 import takagi.ru.monica.autofill.core.ImprovedFieldParser
 import takagi.ru.monica.autofill.core.EnhancedPasswordMatcher
 import takagi.ru.monica.autofill.core.SafeResponseBuilder
+import takagi.ru.monica.autofill.core.safeTextOrNull
 import takagi.ru.monica.autofill.data.AutofillContext
 import takagi.ru.monica.autofill.data.PasswordMatch
 import takagi.ru.monica.utils.DeviceUtils
@@ -293,6 +294,17 @@ class MonicaAutofillService : AutofillService() {
             AutofillLogger.w("REQUEST", "Autofill disabled in preferences")
             android.util.Log.d("MonicaAutofill", "Autofill disabled")
             return null
+        }
+        
+        // 🔒 检查应用是否在黑名单中
+        val fillContext = request.fillContexts.lastOrNull()
+        if (fillContext != null) {
+            val packageName = fillContext.structure.activityComponent.packageName
+            if (autofillPreferences.isInBlacklist(packageName)) {
+                AutofillLogger.w("REQUEST", "Package in blacklist: $packageName")
+                android.util.Log.d("MonicaAutofill", "⛔ Package blocked by blacklist: $packageName")
+                return null
+            }
         }
         
         // 检查取消信号
@@ -842,25 +854,6 @@ class MonicaAutofillService : AutofillService() {
             }
             
             responseBuilder.addDataset(datasetBuilder.build())
-        }
-        
-        // 添加保存信息（如果启用）
-        val requestSaveData = autofillPreferences.isRequestSaveDataEnabled.first()
-        if (requestSaveData) {
-            val saveInfoBuilder = SaveInfo.Builder(
-                SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD,
-                arrayOf(
-                    fieldCollection.usernameField,
-                    fieldCollection.passwordField
-                ).filterNotNull().toTypedArray()
-            )
-            
-            // 设置保存提示
-            saveInfoBuilder.setDescription("保存到 Monica 密码管理器")
-            // 添加标志以确保在所有情况下都提示保存
-            saveInfoBuilder.setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
-            
-            responseBuilder.setSaveInfo(saveInfoBuilder.build())
         }
         
         return responseBuilder.build()
@@ -1413,24 +1406,52 @@ class MonicaAutofillService : AutofillService() {
         
         serviceScope.launch {
             try {
-                // 🔧 关键修复: 直接启动 Activity,不使用 PendingIntent
-                // 因为我们移除了 setDescription(),系统不会显示对话框
-                // onSaveRequest 被直接调用,我们需要立即启动 Activity
                 val intent = processSaveRequest(request)
                 
                 if (intent != null) {
-                    // 添加 FLAG_ACTIVITY_NEW_TASK - Service 启动 Activity 必须的
                     intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     
+                    val requestCode = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+                    val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                    } else {
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                    }
+                    
                     try {
-                        AutofillLogger.i("REQUEST", "🚀 直接启动保存 Activity")
-                        android.util.Log.w("MonicaAutofill", "🚀 直接启动保存 Activity")
-                        startActivity(intent)
-                        callback.onSuccess()
-                    } catch (e: Exception) {
-                        AutofillLogger.e("REQUEST", "启动 Activity 失败", e)
-                        android.util.Log.e("MonicaAutofill", "启动 Activity 失败", e)
-                        callback.onFailure(e.message ?: "启动失败")
+                        val pendingIntent = android.app.PendingIntent.getActivity(
+                            applicationContext,
+                            requestCode,
+                            intent,
+                            flags
+                        )
+                        
+                        // 🎯 醒目的日志标记 - 用于确认 IntentSender 创建成功
+                        AutofillLogger.i("REQUEST", "╔═══════════════════════════════════════════╗")
+                        AutofillLogger.i("REQUEST", "║  ✅ PendingIntent 已创建!               ║")
+                        AutofillLogger.i("REQUEST", "║  📤 将通过 IntentSender 交由系统启动   ║")
+                        AutofillLogger.i("REQUEST", "╚═══════════════════════════════════════════╝")
+                        android.util.Log.w("MonicaAutofill", "╔═══════════════════════════════════════════╗")
+                        android.util.Log.w("MonicaAutofill", "║  ✅ PendingIntent 已创建!               ║")
+                        android.util.Log.w("MonicaAutofill", "║  📤 即将调用 callback.onSuccess()       ║")
+                        android.util.Log.w("MonicaAutofill", "╚═══════════════════════════════════════════╝")
+                        
+                        callback.onSuccess(pendingIntent.intentSender)
+                        
+                        // 🎯 确认回调已执行
+                        AutofillLogger.i("REQUEST", "✅✅✅ callback.onSuccess(intentSender) 已调用!")
+                        android.util.Log.w("MonicaAutofill", "✅✅✅ callback.onSuccess(intentSender) 已执行!")
+                    } catch (intentSenderError: Exception) {
+                        AutofillLogger.e("REQUEST", "IntentSender 启动失败,尝试直接 startActivity", intentSenderError)
+                        android.util.Log.e("MonicaAutofill", "IntentSender 启动失败,回退到 startActivity", intentSenderError)
+                        try {
+                            startActivity(intent)
+                            callback.onSuccess()
+                        } catch (fallbackError: Exception) {
+                            AutofillLogger.e("REQUEST", "回退 startActivity 仍然失败", fallbackError)
+                            android.util.Log.e("MonicaAutofill", "回退 startActivity 仍然失败", fallbackError)
+                            callback.onFailure(fallbackError.message ?: "启动失败")
+                        }
                     }
                 } else {
                     AutofillLogger.w("REQUEST", "无法创建 Intent")
@@ -1497,13 +1518,9 @@ class MonicaAutofillService : AutofillService() {
             // 遍历解析的字段并从对应的 ViewNode 提取值
             parsedStructure.items.forEach { item ->
                 val node = idToNodeMap[item.id]
-                val value = node?.autofillValue?.let { autofillValue ->
-                    if (autofillValue.isText) {
-                        autofillValue.textValue?.toString() ?: ""
-                    } else {
-                        ""
-                    }
-                } ?: ""
+                val value = (node?.autofillValue)
+                    .safeTextOrNull(tag = "SAVE", fieldDescription = item.hint.name)
+                    ?: ""
                 
                 when (item.hint) {
                     EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
@@ -1714,6 +1731,7 @@ class MonicaAutofillService : AutofillService() {
  * 增强版：更智能的字段识别
  */
 private class AutofillFieldParser(private val structure: AssistStructure) {
+    private val tag = "AutofillFieldParser"
     
     fun parse(): AutofillFieldCollection {
         val collection = AutofillFieldCollection()
@@ -1739,13 +1757,15 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
                 android.view.View.AUTOFILL_HINT_EMAIL_ADDRESS -> {
                     if (collection.usernameField == null) {
                         collection.usernameField = node.autofillId
-                        collection.usernameValue = node.autofillValue?.textValue?.toString()
+                        collection.usernameValue = (node.autofillValue)
+                            .safeTextOrNull(tag, "username hint field")
                     }
                 }
                 android.view.View.AUTOFILL_HINT_PASSWORD -> {
                     if (collection.passwordField == null) {
                         collection.passwordField = node.autofillId
-                        collection.passwordValue = node.autofillValue?.textValue?.toString()
+                        collection.passwordValue = (node.autofillValue)
+                            .safeTextOrNull(tag, "password hint field")
                     }
                 }
             }
@@ -1769,14 +1789,16 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
                     isUsernameField(idEntry, hint, text) -> {
                         if (collection.usernameField == null) {
                             collection.usernameField = node.autofillId
-                            collection.usernameValue = node.autofillValue?.textValue?.toString()
+                            collection.usernameValue = (node.autofillValue)
+                                .safeTextOrNull(tag, "username heuristic field")
                         }
                     }
                     // 密码字段识别
                     isPasswordField(idEntry, hint, text, node) -> {
                         if (collection.passwordField == null) {
                             collection.passwordField = node.autofillId
-                            collection.passwordValue = node.autofillValue?.textValue?.toString()
+                            collection.passwordValue = (node.autofillValue)
+                                .safeTextOrNull(tag, "password heuristic field")
                         }
                     }
                 }
@@ -1841,11 +1863,13 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
             when {
                 isPasswordInput && collection.passwordField == null -> {
                     collection.passwordField = node.autofillId
-                    collection.passwordValue = node.autofillValue?.textValue?.toString()
+                    collection.passwordValue = (node.autofillValue)
+                        .safeTextOrNull(tag, "password fallback field")
                 }
                 !isPasswordInput && collection.usernameField == null -> {
                     collection.usernameField = node.autofillId
-                    collection.usernameValue = node.autofillValue?.textValue?.toString()
+                    collection.usernameValue = (node.autofillValue)
+                        .safeTextOrNull(tag, "username fallback field")
                 }
             }
         }

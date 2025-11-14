@@ -1,6 +1,8 @@
 package takagi.ru.monica.autofill
 
+import android.app.assist.AssistStructure
 import android.view.View
+import android.view.ViewStructure
 import android.view.autofill.AutofillId
 import java.util.regex.Pattern
 
@@ -190,14 +192,35 @@ object SmartFieldDetector {
         idEntry: String?,
         hint: String?,
         text: String?,
-        inputType: Int
+        inputType: Int,
+        className: String?,
+        autofillType: Int,
+        htmlInfo: ViewStructure.HtmlInfo?
     ): AutofillFieldType {
+        val id = idEntry?.lowercase() ?: ""
+        val hintText = hint?.lowercase() ?: ""
+        val labelText = text?.lowercase() ?: ""
+        val classText = className?.lowercase() ?: ""
+        val htmlSignature = buildHtmlSignature(htmlInfo)
+        val combined = "$id $hintText $labelText"
+        val contextCombined = "$combined $classText $htmlSignature"
+        val sensitivePaymentField = isSensitivePaymentField(
+            autofillHints,
+            contextCombined,
+            classText,
+            htmlSignature,
+            inputType,
+            autofillType
+        )
         
         // 1. 优先检查官方 autofill hints
         autofillHints?.forEach { officialHint ->
             when (officialHint) {
                 View.AUTOFILL_HINT_USERNAME -> return AutofillFieldType.USERNAME
-                View.AUTOFILL_HINT_PASSWORD -> return AutofillFieldType.PASSWORD
+                View.AUTOFILL_HINT_PASSWORD -> {
+                    if (sensitivePaymentField) return AutofillFieldType.UNKNOWN
+                    return AutofillFieldType.PASSWORD
+                }
                 View.AUTOFILL_HINT_EMAIL_ADDRESS -> return AutofillFieldType.EMAIL
                 View.AUTOFILL_HINT_PHONE -> return AutofillFieldType.PHONE
                 View.AUTOFILL_HINT_NAME -> return AutofillFieldType.PERSON_NAME
@@ -215,15 +238,13 @@ object SmartFieldDetector {
         // 2. 检查输入类型
         val typeFromInputType = detectFromInputType(inputType)
         if (typeFromInputType != AutofillFieldType.UNKNOWN) {
+            if (typeFromInputType == AutofillFieldType.PASSWORD && sensitivePaymentField) {
+                return AutofillFieldType.UNKNOWN
+            }
             return typeFromInputType
         }
         
         // 3. 使用关键词匹配
-        val id = idEntry?.lowercase() ?: ""
-        val hintText = hint?.lowercase() ?: ""
-        val labelText = text?.lowercase() ?: ""
-        val combined = "$id $hintText $labelText"
-        
         // Email 检测
         if (matchesKeywords(combined, EMAIL_KEYWORDS)) {
             return AutofillFieldType.EMAIL
@@ -246,6 +267,9 @@ object SmartFieldDetector {
         
         // 密码检测
         if (matchesKeywords(combined, PASSWORD_KEYWORDS)) {
+            if (sensitivePaymentField) {
+                return AutofillFieldType.UNKNOWN
+            }
             return AutofillFieldType.PASSWORD
         }
         
@@ -313,6 +337,10 @@ object SmartFieldDetector {
             return AutofillFieldType.PASSWORD
         }
         
+        // 数字密码类型（如支付 PIN）
+        if (inputType and android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD != 0) {
+            return AutofillFieldType.PASSWORD
+        }
         // Email类型
         if (inputType and android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS != 0 ||
             inputType and android.text.InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS != 0) {
@@ -394,6 +422,48 @@ object SmartFieldDetector {
      */
     fun isValidZipCode(zipCode: String): Boolean {
         return ZIP_CODE_CN_PATTERN.matcher(zipCode).matches()
+    }
+    
+    private fun buildHtmlSignature(htmlInfo: ViewStructure.HtmlInfo?): String {
+        if (htmlInfo == null) return ""
+        val builder = StringBuilder()
+        htmlInfo.tag?.let { builder.append(it.lowercase()).append(' ') }
+        val attributes = htmlInfo.attributes
+        attributes?.forEach { attribute: android.util.Pair<String, String> ->
+            builder.append(attribute.first.lowercase()).append('=')
+            builder.append(attribute.second.lowercase())
+            builder.append(' ')
+        }
+        return builder.toString()
+    }
+    
+    // 结合多种信号判定字段是否属于支付/安全键盘场景，避免触发自动填充
+    private fun isSensitivePaymentField(
+        autofillHints: Array<String>?,
+        combinedContext: String,
+        classText: String,
+        htmlSignature: String,
+        inputType: Int,
+        autofillType: Int
+    ): Boolean {
+        val hintSignal = autofillHints?.any { hint ->
+            PAYMENT_HINT_TOKENS.any { token -> hint.contains(token, ignoreCase = true) }
+        } ?: false
+        val keywordSignal = matchesKeywords(combinedContext, PAYMENT_KEYWORDS)
+        val classSignal = SECURE_CLASS_KEYWORDS.any { classText.contains(it) }
+        val htmlSignal = matchesKeywords(htmlSignature, WEB_PAYMENT_ATTRIBUTES)
+        val numericPassword = isNumericPasswordInput(inputType)
+        val signalCount = listOf(hintSignal, keywordSignal, classSignal, htmlSignal).count { it }
+        val textCompatible = autofillType == View.AUTOFILL_TYPE_TEXT || autofillType == View.AUTOFILL_TYPE_NONE
+        return textCompatible && ((signalCount >= 2 && (numericPassword || classSignal)) ||
+               (classSignal && keywordSignal) ||
+               (hintSignal && (numericPassword || classSignal)))
+    }
+    
+    private fun isNumericPasswordInput(inputType: Int): Boolean {
+        val isNumberClass = inputType and android.text.InputType.TYPE_CLASS_NUMBER != 0
+        val isNumberPassword = inputType and android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD != 0
+        return isNumberClass && isNumberPassword
     }
     
     /**
@@ -481,5 +551,29 @@ object SmartFieldDetector {
     private val CVV_KEYWORDS = listOf(
         "cvv", "cvc", "cid", "security", "securitycode", "verification",
         "安全码", "验证码", "cvv码"
+    )
+    
+    // 支付相关关键词（更广覆盖）
+    private val PAYMENT_KEYWORDS = listOf(
+        "pay", "payment", "pay_password", "payment_password", "tenpay", "mmpay",
+        "wallet", "cashier", "securepay", "apppay", "微信支付", "支付宝", "支付密码",
+        "付款密码", "财付通", "安全键盘", "收银台"
+    )
+    
+    // 自定义autofill hint中常见的支付字段标识
+    private val PAYMENT_HINT_TOKENS = listOf(
+        "paypwd", "paymentpwd", "tenpay", "alipay", "mmpaypassword", "cashierpwd"
+    )
+    
+    // 自定义控件/系统安全键盘类名中的关键词
+    private val SECURE_CLASS_KEYWORDS = listOf(
+        "secureedittext", "securityedittext", "tenpay", "walletcore", "paypassword",
+        "paypwd", "sixdigit", "gridpassword", "safepassword", "keyboardview", "cashier"
+    )
+    
+    // WebView Html 属性中识别支付组件的关键词
+    private val WEB_PAYMENT_ATTRIBUTES = listOf(
+        "pay_pwd", "paypassword", "paymentpassword", "tenpay", "alipaysso",
+        "wechatpay", "cashier-password", "safe_pwd", "wallet_pwd", "secure-pay"
     )
 }

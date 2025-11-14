@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.View
 import android.view.autofill.AutofillId
 import androidx.autofill.HintConstants
+import takagi.ru.monica.autofill.core.safeTextOrNull
 
 /**
  * 增强的自动填充结构解析器
@@ -551,7 +552,8 @@ class EnhancedAutofillStructureParserV2 {
                 id = autofillId,
                 hint = hint,
                 accuracy = accuracy,
-                value = node.autofillValue?.textValue?.toString(),
+                value = (node.autofillValue)
+                    .safeTextOrNull(tag = "EnhancedParserV2", fieldDescription = hint.name),
                 isFocused = node.isFocused,
                 isVisible = node.visibility == View.VISIBLE,
                 parentWebViewNodeId = parentWebViewNodeId

@@ -237,7 +237,10 @@ class SaveRequestProcessor(
         targetId: android.view.autofill.AutofillId
     ): String? {
         if (node.autofillId == targetId) {
-            return node.autofillValue?.textValue?.toString()
+            return (node.autofillValue).safeTextOrNull(
+                tag = TAG,
+                fieldDescription = node.idEntry ?: node.className ?: "unknown"
+            )
         }
         
         for (i in 0 until node.childCount) {
