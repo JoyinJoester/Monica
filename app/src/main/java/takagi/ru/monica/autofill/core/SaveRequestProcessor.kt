@@ -362,3 +362,42 @@ class SaveRequestProcessor(
         return intent
     }
 }
+
+
+/**
+ * 安全地从 AutofillValue 提取文本值的扩展函数
+ * 处理不同类型的 AutofillValue，避免类型错误
+ */
+private fun AutofillValue?.safeTextOrNull(tag: String, fieldDescription: String): String? {
+    if (this == null) {
+        return null
+    }
+    
+    return try {
+        when {
+            this.isText -> this.textValue?.toString()
+            this.isList -> {
+                // List 类型（下拉选择），记录但返回 null
+                AutofillLogger.d(tag, "Field '$fieldDescription' is LIST type, index=${this.listValue}")
+                null
+            }
+            this.isToggle -> {
+                // Toggle 类型（复选框/开关），记录但返回 null
+                AutofillLogger.d(tag, "Field '$fieldDescription' is TOGGLE type, value=${this.toggleValue}")
+                null
+            }
+            this.isDate -> {
+                // Date 类型，记录但返回 null
+                AutofillLogger.d(tag, "Field '$fieldDescription' is DATE type, value=${this.dateValue}")
+                null
+            }
+            else -> {
+                AutofillLogger.w(tag, "Field '$fieldDescription' has unknown AutofillValue type")
+                null
+            }
+        }
+    } catch (e: Exception) {
+        AutofillLogger.e(tag, "Failed to extract value from field '$fieldDescription'", e)
+        null
+    }
+}
