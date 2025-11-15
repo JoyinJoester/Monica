@@ -55,6 +55,11 @@
     <string name="biometric_unlock_disabled">指纹解锁已禁用</string>
     <string name="biometric_cannot_enable">无法启用指纹解锁</string>
     
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_title">验证身份以填充</string>
+    <string name="autofill_auth_subtitle">使用指纹或密码验证</string>
+    <string name="autofill_auth_description">验证后将自动填充密码</string>
+    
     <!-- Password List Screen -->
     <string name="search_passwords">搜索密码...</string>
     <string name="no_passwords_saved">还没有保存任何密码</string>
@@ -468,7 +473,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">V1.0.7</string>
+    <string name="settings_version_number">V1.0.8</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>

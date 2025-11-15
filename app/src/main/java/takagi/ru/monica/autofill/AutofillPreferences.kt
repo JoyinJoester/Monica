@@ -150,10 +150,10 @@ class AutofillPreferences(private val context: Context) {
     
     /**
      * Phase 8: 是否启用生物识别快速填充
-     * 启用后，用户选择密码时需要生物识别验证才能自动填充
+     * 启用后,用户选择密码时需要生物识别验证才能自动填充
      */
     val isBiometricQuickFillEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[KEY_BIOMETRIC_QUICK_FILL_ENABLED] ?: false
+        preferences[KEY_BIOMETRIC_QUICK_FILL_ENABLED] ?: true  // 默认启用
     }
     
     suspend fun setBiometricQuickFillEnabled(enabled: Boolean) {

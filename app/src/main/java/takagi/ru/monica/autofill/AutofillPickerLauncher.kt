@@ -8,6 +8,7 @@ import android.service.autofill.Dataset
 import android.service.autofill.FillResponse
 import android.service.autofill.SaveInfo
 import android.widget.RemoteViews
+import kotlinx.coroutines.flow.first
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 
@@ -40,6 +41,17 @@ object AutofillPickerLauncher {
         parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
+        
+        // 检查是否启用了填充前验证
+        val autofillPreferences = AutofillPreferences(context)
+        var biometricQuickFillEnabled = false
+        
+        // 同步读取 preference 值
+        kotlinx.coroutines.runBlocking {
+            biometricQuickFillEnabled = autofillPreferences.isBiometricQuickFillEnabled.first()
+        }
+        
+        android.util.Log.d("AutofillPicker", "Biometric quick fill enabled: $biometricQuickFillEnabled")
         
         // 1. 为每个匹配的密码创建独立的Dataset - 只显示前3个最匹配的
         val maxDirectShow = 3 // 最多直接显示3个密码
@@ -76,39 +88,108 @@ object AutofillPickerLauncher {
             val datasetBuilder = Dataset.Builder(presentation)
             var fieldCount = 0
             
+            // 如果启用了身份验证,则为 dataset 添加验证
+            if (biometricQuickFillEnabled) {
+                // 创建验证 Intent
+                val authIntent = Intent(context, AutofillAuthenticationActivity::class.java).apply {
+                    putExtra(AutofillAuthenticationActivity.EXTRA_PASSWORD_ENTRY_ID, password.id)
+                    putExtra(AutofillAuthenticationActivity.EXTRA_USERNAME_VALUE, 
+                        if (password.username.contains("==") && password.username.length > 20) {
+                            securityManager.decryptData(password.username)
+                        } else {
+                            password.username
+                        })
+                    putExtra(AutofillAuthenticationActivity.EXTRA_PASSWORD_VALUE, 
+                        securityManager.decryptData(password.password))
+                    
+                    // 传递字段ID和类型
+                    val autofillIds = ArrayList<android.view.autofill.AutofillId>()
+                    val fieldTypes = ArrayList<String>()
+                    
+                    parsedStructure.items.forEach { item ->
+                        when (item.hint) {
+                            EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+                            EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                                autofillIds.add(item.id)
+                                fieldTypes.add("username")
+                            }
+                            EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+                            EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
+                                autofillIds.add(item.id)
+                                fieldTypes.add("password")
+                            }
+                            else -> {}
+                        }
+                    }
+                    
+                    putParcelableArrayListExtra(AutofillAuthenticationActivity.EXTRA_AUTOFILL_IDS, autofillIds)
+                    putStringArrayListExtra(AutofillAuthenticationActivity.EXTRA_FIELD_TYPES, fieldTypes)
+                }
+                
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                
+                val authPendingIntent = PendingIntent.getActivity(
+                    context,
+                    password.id.toInt(),
+                    authIntent,
+                    flags
+                )
+                
+                // 设置验证
+                datasetBuilder.setAuthentication(authPendingIntent.intentSender)
+                
+                android.util.Log.d("AutofillPicker", "  Dataset authentication configured for: ${password.title}")
+            }
+            
             // 填充字段 - 不再传递 presentation 参数,使用整体的 dataset presentation
             parsedStructure.items.forEach { item ->
                 when (item.hint) {
                     EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
                     EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
-                        // 用户名可能也需要解密(如果加密的话)
-                        val decryptedUsername = if (password.username.contains("==") && password.username.length > 20) {
-                            // 看起来像是Base64加密的,尝试解密
-                            securityManager.decryptData(password.username)
+                        if (!biometricQuickFillEnabled) {
+                            // 不需要验证,直接填充
+                            // 用户名可能也需要解密(如果加密的话)
+                            val decryptedUsername = if (password.username.contains("==") && password.username.length > 20) {
+                                // 看起来像是Base64加密的,尝试解密
+                                securityManager.decryptData(password.username)
+                            } else {
+                                password.username
+                            }
+                            android.util.Log.d("AutofillPicker", "  Setting username field: ${item.hint}")
+                            android.util.Log.d("AutofillPicker", "  Username value: '${decryptedUsername}' (length: ${decryptedUsername.length})")
+                            datasetBuilder.setValue(
+                                item.id,
+                                android.view.autofill.AutofillValue.forText(decryptedUsername)
+                            )
+                            fieldCount++
                         } else {
-                            password.username
+                            // 需要验证,设置占位符
+                            datasetBuilder.setValue(item.id, null, presentation)
                         }
-                        android.util.Log.d("AutofillPicker", "  Setting username field: ${item.hint}")
-                        android.util.Log.d("AutofillPicker", "  Username value: '${decryptedUsername}' (length: ${decryptedUsername.length})")
-                        datasetBuilder.setValue(
-                            item.id,
-                            android.view.autofill.AutofillValue.forText(decryptedUsername)
-                        )
-                        fieldCount++
                     }
                     EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
                     EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
-                        // 解密密码
-                        val decryptedPassword = securityManager.decryptData(password.password)
-                        android.util.Log.d("AutofillPicker", "  Setting password field: ${item.hint}")
-                        android.util.Log.d("AutofillPicker", "  Encrypted password: '${password.password}' (length: ${password.password.length})")
-                        android.util.Log.d("AutofillPicker", "  Decrypted password: '${decryptedPassword}' (length: ${decryptedPassword.length})")
-                        android.util.Log.d("AutofillPicker", "  Password title: '${password.title}'")
-                        datasetBuilder.setValue(
-                            item.id,
-                            android.view.autofill.AutofillValue.forText(decryptedPassword)
-                        )
-                        fieldCount++
+                        if (!biometricQuickFillEnabled) {
+                            // 不需要验证,直接填充
+                            // 解密密码
+                            val decryptedPassword = securityManager.decryptData(password.password)
+                            android.util.Log.d("AutofillPicker", "  Setting password field: ${item.hint}")
+                            android.util.Log.d("AutofillPicker", "  Encrypted password: '${password.password}' (length: ${password.password.length})")
+                            android.util.Log.d("AutofillPicker", "  Decrypted password: '${decryptedPassword}' (length: ${decryptedPassword.length})")
+                            android.util.Log.d("AutofillPicker", "  Password title: '${password.title}'")
+                            datasetBuilder.setValue(
+                                item.id,
+                                android.view.autofill.AutofillValue.forText(decryptedPassword)
+                            )
+                            fieldCount++
+                        } else {
+                            // 需要验证,设置占位符
+                            datasetBuilder.setValue(item.id, null, presentation)
+                        }
                     }
                     else -> {
                         android.util.Log.d("AutofillPicker", "  Skipping field: ${item.hint}")

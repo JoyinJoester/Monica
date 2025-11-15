@@ -55,6 +55,7 @@ fun AutofillSettingsScreen(
     val domainMatchStrategy by autofillPreferences.domainMatchStrategy.collectAsState(initial = DomainMatchStrategy.BASE_DOMAIN)
     val fillSuggestionsEnabled by autofillPreferences.isFillSuggestionsEnabled.collectAsState(initial = true)
     val manualSelectionEnabled by autofillPreferences.isManualSelectionEnabled.collectAsState(initial = true)
+    val biometricQuickFillEnabled by autofillPreferences.isBiometricQuickFillEnabled.collectAsState(initial = true)
     val requestSaveDataEnabled by autofillPreferences.isRequestSaveDataEnabled.collectAsState(initial = true)
     val autoSaveAppInfoEnabled by autofillPreferences.isAutoSaveAppInfoEnabled.collectAsState(initial = true)
     val autoSaveWebsiteInfoEnabled by autofillPreferences.isAutoSaveWebsiteInfoEnabled.collectAsState(initial = true)
@@ -248,6 +249,19 @@ fun AutofillSettingsScreen(
                 icon = Icons.Outlined.Input,
                 iconTint = MaterialTheme.colorScheme.tertiary
             ) {
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Fingerprint,
+                    title = "填充前验证身份",
+                    subtitle = "选择密码后需要指纹或密码验证才能填充",
+                    checked = biometricQuickFillEnabled,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setBiometricQuickFillEnabled(it)
+                        }
+                    }
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.AutoAwesome,
                     title = "填充建议",
