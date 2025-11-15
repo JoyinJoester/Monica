@@ -86,4 +86,10 @@ class SettingsViewModel(
             settingsManager.updateCustomColors(primary, secondary, tertiary)
         }
     }
+
+    fun updateDisablePasswordVerification(disabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateDisablePasswordVerification(disabled)
+        }
+    }
 }

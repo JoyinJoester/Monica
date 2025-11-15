@@ -368,6 +368,9 @@ fun MonicaContent(
                 onSecurityAnalysis = {
                     navController.navigate(Screen.SecurityAnalysis.route)
                 },
+                onNavigateToDeveloperSettings = {
+                    navController.navigate(Screen.DeveloperSettings.route)
+                },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
                     // 清空所有数据
                     android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards")
@@ -831,6 +834,15 @@ fun MonicaContent(
                 },
                 onNavigateToPassword = { passwordId ->
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
+                }
+            )
+        }
+        
+        composable(Screen.DeveloperSettings.route) {
+            takagi.ru.monica.ui.screens.DeveloperSettingsScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }

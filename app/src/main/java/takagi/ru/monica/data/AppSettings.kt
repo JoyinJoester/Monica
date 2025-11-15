@@ -85,5 +85,6 @@ data class AppSettings(
     val screenshotProtectionEnabled: Boolean = false, // Prevent screenshots by default
     val dynamicColorEnabled: Boolean = true, // 动态颜色默认开启
     val bottomNavVisibility: BottomNavVisibility = BottomNavVisibility(),
-    val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER
+    val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER,
+    val disablePasswordVerification: Boolean = false // 开发者选项：关闭密码验证
 )

@@ -83,6 +83,7 @@ fun SimpleMainScreen(
     onNavigateToBottomNavSettings: () -> Unit = {},
     onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
+    onNavigateToDeveloperSettings: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
@@ -386,6 +387,7 @@ fun SimpleMainScreen(
                         onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
                         onNavigateToColorScheme = onNavigateToColorScheme,
                         onSecurityAnalysis = onSecurityAnalysis,
+                        onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
                         onClearAllData = onClearAllData,
                         showTopBar = false  // 在标签页中不显示顶栏
                     )

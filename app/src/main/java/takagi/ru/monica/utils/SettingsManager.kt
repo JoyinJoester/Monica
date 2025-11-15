@@ -41,6 +41,7 @@ class SettingsManager(private val context: Context) {
         private val SHOW_GENERATOR_TAB_KEY = booleanPreferencesKey("show_generator_tab")  // 添加生成器标签键
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
+        private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -79,7 +80,8 @@ class SettingsManager(private val context: Context) {
                 bankCards = preferences[SHOW_BANK_CARDS_TAB_KEY] ?: false,  // 银行卡功能默认关闭
                 generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false    // 生成器功能默认关闭
             ),
-            bottomNavOrder = sanitizedOrder
+            bottomNavOrder = sanitizedOrder,
+            disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false
         )
     }
     
@@ -149,6 +151,12 @@ class SettingsManager(private val context: Context) {
             preferences[CUSTOM_PRIMARY_COLOR_KEY] = primary
             preferences[CUSTOM_SECONDARY_COLOR_KEY] = secondary
             preferences[CUSTOM_TERTIARY_COLOR_KEY] = tertiary
+        }
+    }
+
+    suspend fun updateDisablePasswordVerification(disabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[DISABLE_PASSWORD_VERIFICATION_KEY] = disabled
         }
     }
 }
