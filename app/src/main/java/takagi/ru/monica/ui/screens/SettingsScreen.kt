@@ -74,8 +74,8 @@ fun SettingsScreen(
     var developerPasswordInput by remember { mutableStateOf("") }
     
     // 生物识别帮助类
-    val biometricHelper = remember { BiometricAuthHelper(context) }
-    val isBiometricAvailable = remember { 
+    val biometricHelper = remember(context) { BiometricAuthHelper(context) }
+    val isBiometricAvailable = remember(biometricHelper) { 
         val available = biometricHelper.isBiometricAvailable()
         android.util.Log.d("SettingsScreen", "Biometric available: $available")
         android.util.Log.d("SettingsScreen", "Activity: $activity")
@@ -403,7 +403,86 @@ fun SettingsScreen(
                     icon = Icons.Default.Code,
                     title = "开发者设置",
                     subtitle = "日志查看、开发者调试工具",
-                    onClick = { showDeveloperVerifyDialog = true }
+                    onClick = {
+                        val hasActivity = activity != null
+                        val biometricAvailableNow = hasActivity && biometricHelper.isBiometricAvailable()
+                        android.util.Log.d(
+                            "SettingsScreen",
+                            "Developer settings tapped. hasActivity=$hasActivity, biometricAvailable=$biometricAvailableNow"
+                        )
+
+                        developerPasswordInput = ""
+                        showDeveloperVerifyDialog = false
+
+                        when {
+                            !hasActivity -> {
+                                android.util.Log.w(
+                                    "SettingsScreen",
+                                    "Cannot start biometric auth: FragmentActivity context missing"
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.use_master_password),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                showDeveloperVerifyDialog = true
+                            }
+                            biometricAvailableNow -> {
+                                biometricHelper.authenticate(
+                                    activity = activity!!,
+                                    title = context.getString(R.string.biometric_login_title),
+                                    subtitle = context.getString(R.string.biometric_login_subtitle),
+                                    description = context.getString(R.string.biometric_login_description),
+                                    negativeButtonText = context.getString(R.string.use_master_password),
+                                    onSuccess = {
+                                        android.util.Log.d(
+                                            "SettingsScreen",
+                                            "Developer biometric authentication succeeded"
+                                        )
+                                        showDeveloperVerifyDialog = false
+                                        developerPasswordInput = ""
+                                        onNavigateToDeveloperSettings()
+                                    },
+                                    onError = { errorCode, errorMessage ->
+                                        android.util.Log.w(
+                                            "SettingsScreen",
+                                            "Developer biometric error: code=$errorCode, message=$errorMessage"
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.biometric_auth_error, errorMessage),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        showDeveloperVerifyDialog = true
+                                    },
+                                    onCancel = {
+                                        android.util.Log.d(
+                                            "SettingsScreen",
+                                            "Developer biometric canceled by user"
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.use_master_password),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        showDeveloperVerifyDialog = true
+                                    }
+                                )
+                            }
+                            else -> {
+                                android.util.Log.d(
+                                    "SettingsScreen",
+                                    "Biometric unavailable, showing password dialog for developer settings"
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.biometric_not_available),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                showDeveloperVerifyDialog = true
+                            }
+                        }
+                    }
                 )
             }
             

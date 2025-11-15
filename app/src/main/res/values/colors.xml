@@ -28,4 +28,9 @@
     <!-- 内联卡片颜色 -->
     <color name="autofill_card_background">#FFFFFF</color>
     <color name="autofill_card_stroke">#CAC4D0</color>
+
+    <!-- Autofill authentication dialog (dark) -->
+    <color name="autofill_auth_dialog_surface">#1C1B1F</color>
+    <color name="autofill_auth_dialog_on_surface">#FFFFFFFF</color>
+    <color name="autofill_auth_dialog_accent">#FF8AB4F8</color>
 </resources>
