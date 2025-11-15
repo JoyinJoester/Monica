@@ -239,7 +239,74 @@ object AutofillPickerLauncher {
         
         responseBuilder.addDataset(manualSelectDataset.build())
         
-        // 3. 🎯 添加最小化的 SaveInfo
+        // 3. 🔐 添加"生成强密码"Dataset
+        val passwordSuggestionIntent = Intent(context, PasswordSuggestionActivity::class.java).apply {
+            // 生成强密码
+            val generatedPassword = generateStrongPassword()
+            
+            // 提取用户名 (如果有)
+            val usernameValue = parsedStructure.items
+                .firstOrNull { 
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS
+                }?.value ?: ""
+            
+            // 获取密码字段 AutofillId
+            val passwordAutofillIds = parsedStructure.items
+                .filter { 
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
+                }
+                .map { it.id }
+            
+            putExtra(PasswordSuggestionActivity.EXTRA_USERNAME, usernameValue)
+            putExtra(PasswordSuggestionActivity.EXTRA_GENERATED_PASSWORD, generatedPassword)
+            putExtra(PasswordSuggestionActivity.EXTRA_PACKAGE_NAME, packageName)
+            putExtra(PasswordSuggestionActivity.EXTRA_WEB_DOMAIN, domain ?: "")
+            putParcelableArrayListExtra(
+                PasswordSuggestionActivity.EXTRA_PASSWORD_FIELD_IDS,
+                ArrayList(passwordAutofillIds)
+            )
+            
+            android.util.Log.d("AutofillPicker", "🔐 Password suggestion intent created:")
+            android.util.Log.d("AutofillPicker", "  - Username: $usernameValue")
+            android.util.Log.d("AutofillPicker", "  - Password fields count: ${passwordAutofillIds.size}")
+            passwordAutofillIds.forEachIndexed { index, id ->
+                android.util.Log.d("AutofillPicker", "  - Field $index: $id")
+            }
+        }
+        
+        val passwordSuggestionPendingIntent = PendingIntent.getActivity(
+            context,
+            1001, // 使用独特的 requestCode
+            passwordSuggestionIntent,
+            flags
+        )
+        
+        // 创建密码建议卡片
+        val passwordSuggestionPresentation = RemoteViews(context.packageName, R.layout.autofill_password_suggestion_card)
+        
+        val passwordSuggestionDataset = Dataset.Builder(passwordSuggestionPresentation)
+        // 只为密码字段设置值，不为所有字段设置
+        parsedStructure.items.forEach { item ->
+            when (item.hint) {
+                EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+                EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
+                    passwordSuggestionDataset.setValue(item.id, null, passwordSuggestionPresentation)
+                    android.util.Log.d("AutofillPicker", "🔐 Added password field to suggestion dataset: ${item.id}")
+                }
+                else -> {
+                    // 不为非密码字段设置值
+                }
+            }
+        }
+        passwordSuggestionDataset.setAuthentication(passwordSuggestionPendingIntent.intentSender)
+        
+        responseBuilder.addDataset(passwordSuggestionDataset.build())
+        
+        android.util.Log.d("AutofillPicker", "🔐 Password suggestion card added")
+        
+        // 4. 🎯 添加最小化的 SaveInfo
         // Android 框架限制:无法完全移除系统对话框
         // 策略:让系统对话框尽可能简洁,然后立即显示自定义 Bottom Sheet
         // 用户体验:闪现系统对话框(< 0.5秒) → 立即切换到自定义 Bottom Sheet
@@ -718,5 +785,25 @@ object AutofillPickerLauncher {
         addSaveInfo(responseBuilder, parsedStructure, context)
         
         return responseBuilder.build()
+    }
+    
+    /**
+     * 生成强密码
+     * 默认生成16位包含大小写字母、数字和符号的强密码
+     * 
+     * @return 生成的强密码
+     */
+    private fun generateStrongPassword(): String {
+        val options = takagi.ru.monica.utils.PasswordGenerator.PasswordOptions(
+            length = 16,
+            includeUppercase = true,
+            includeLowercase = true,
+            includeNumbers = true,
+            includeSymbols = true,
+            excludeSimilar = true
+        )
+        
+        val generator = takagi.ru.monica.utils.PasswordGenerator()
+        return generator.generatePassword(options)
     }
 }

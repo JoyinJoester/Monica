@@ -511,11 +511,8 @@ class MonicaAutofillService : AutofillService() {
             matchedPasswords = matchedPasswords.size
         )
         
-        if (matchedPasswords.isEmpty()) {
-            return null
-        }
-        
-        // 构建填充响应
+        // 🎨 统一构建填充响应 - 整合密码建议和自动填充
+        // 始终显示填充选项,即使没有匹配的密码也会显示"生成强密码"
         return buildFillResponseEnhanced(
             passwords = matchedPasswords, 
             parsedStructure = parsedStructure,
@@ -860,15 +857,201 @@ class MonicaAutofillService : AutofillService() {
     }
     
     /**
-     * 🚀 构建填充响应（增强版）
+     * 🔐 判断是否应该提供密码建议
+     * 
+     * 触发条件:
+     * 1. 检测到 NEW_PASSWORD 字段 (明确的新密码场景)
+     * 2. 或者: 同时有用户名字段和密码字段,且密码字段为空 (注册场景)
+     * 
+     * @param parsedStructure 解析的表单结构
+     * @return 是否应该提供密码建议
+     */
+    private fun shouldSuggestPassword(parsedStructure: ParsedStructure): Boolean {
+        // 1. 检测是否有 NEW_PASSWORD 字段
+        val hasNewPasswordField = parsedStructure.items.any { 
+            it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD 
+        }
+        
+        if (hasNewPasswordField) {
+            AutofillLogger.i("SUGGESTION", "✓ NEW_PASSWORD field detected - suggesting password")
+            return true
+        }
+        
+        // 2. 检测是否有用户名和密码字段
+        val hasUsernameOrEmail = parsedStructure.items.any { 
+            it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME || 
+            it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS 
+        }
+        
+        val hasPasswordField = parsedStructure.items.any { 
+            it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD 
+        }
+        
+        if (hasUsernameOrEmail && hasPasswordField) {
+            AutofillLogger.i("SUGGESTION", "✓ Username + Password fields detected - suggesting password")
+            return true
+        }
+        
+        AutofillLogger.d("SUGGESTION", "✗ Conditions not met for password suggestion")
+        return false
+    }
+    
+    /**
+     * 🔐 构建密码建议响应
+     * 
+     * 创建一个包含"生成强密码"选项的 FillResponse
+     * 
+     * @param parsedStructure 解析的表单结构
+     * @param packageName 应用包名
+     * @param inlineRequest 内联建议请求 (Android 11+)
+     * @return FillResponse 包含密码建议的响应
+     */
+    private suspend fun buildPasswordSuggestionResponse(
+        parsedStructure: ParsedStructure,
+        packageName: String,
+        inlineRequest: InlineSuggestionsRequest? = null
+    ): FillResponse {
+        val responseBuilder = FillResponse.Builder()
+        
+        try {
+            // 1. 生成强密码
+            val generatedPassword = generateStrongPassword(parsedStructure)
+            AutofillLogger.i("SUGGESTION", "Generated strong password: ${generatedPassword.length} chars")
+            
+            // 2. 提取用户名 (如果有)
+            val usernameItems = parsedStructure.items.filter { 
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS
+            }
+            val usernameValue = usernameItems.firstOrNull()?.value ?: ""
+            
+            // 3. 获取密码字段 AutofillId
+            val passwordItems = parsedStructure.items.filter { 
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
+            }
+            
+            if (passwordItems.isEmpty()) {
+                AutofillLogger.w("SUGGESTION", "No password field found - cannot suggest password")
+                return responseBuilder.build()
+            }
+            
+            val passwordAutofillIds = passwordItems.map { it.id }
+            
+            // 4. 创建启动 PasswordSuggestionActivity 的 Intent
+            val suggestionIntent = android.content.Intent(applicationContext, PasswordSuggestionActivity::class.java).apply {
+                putExtra(PasswordSuggestionActivity.EXTRA_USERNAME, usernameValue)
+                putExtra(PasswordSuggestionActivity.EXTRA_GENERATED_PASSWORD, generatedPassword)
+                putExtra(PasswordSuggestionActivity.EXTRA_PACKAGE_NAME, packageName)
+                putExtra(PasswordSuggestionActivity.EXTRA_WEB_DOMAIN, parsedStructure.webDomain ?: "")
+                putParcelableArrayListExtra(
+                    PasswordSuggestionActivity.EXTRA_PASSWORD_FIELD_IDS,
+                    ArrayList(passwordAutofillIds)
+                )
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            
+            // 5. 创建 PendingIntent
+            val requestCode = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                applicationContext,
+                requestCode,
+                suggestionIntent,
+                flags
+            )
+            
+            // 6. 创建密码建议 Dataset
+            val datasetBuilder = Dataset.Builder()
+            
+            // 创建 RemoteViews 显示
+            val presentation = createPasswordSuggestionView(packageName)
+            
+            // 为所有密码字段设置认证 Intent (空值,仅用于触发认证)
+            for (autofillId in passwordAutofillIds) {
+                datasetBuilder.setValue(autofillId, null as AutofillValue?, presentation)
+            }
+            
+            // 设置认证 Intent
+            datasetBuilder.setAuthentication(pendingIntent.intentSender)
+            
+            responseBuilder.addDataset(datasetBuilder.build())
+            
+            // 7. 添加 SaveInfo (确保用户使用建议密码后能自动保存)
+            val saveInfo = takagi.ru.monica.autofill.core.SaveInfoBuilder.build(parsedStructure)
+            if (saveInfo != null) {
+                responseBuilder.setSaveInfo(saveInfo)
+                AutofillLogger.i("SUGGESTION", "✓ SaveInfo configured for password suggestion")
+            }
+            
+            AutofillLogger.i("SUGGESTION", "✓ Password suggestion response created successfully")
+            
+        } catch (e: Exception) {
+            AutofillLogger.e("SUGGESTION", "Error building password suggestion response", e)
+        }
+        
+        return responseBuilder.build()
+    }
+    
+    /**
+     * 生成强密码
+     * 根据表单要求智能生成符合条件的强密码
+     * 
+     * @param parsedStructure 解析的表单结构
+     * @return 生成的强密码
+     */
+    private fun generateStrongPassword(parsedStructure: ParsedStructure): String {
+        // 默认参数: 16位,包含大小写字母、数字和符号
+        val options = takagi.ru.monica.utils.PasswordGenerator.PasswordOptions(
+            length = 16,
+            includeUppercase = true,
+            includeLowercase = true,
+            includeNumbers = true,
+            includeSymbols = true,
+            excludeSimilar = true
+        )
+        
+        // TODO: 未来可以分析 parsedStructure 中的密码字段约束
+        // 例如: maxLength, inputType, hint 等来调整生成参数
+        
+        val generator = takagi.ru.monica.utils.PasswordGenerator()
+        return generator.generatePassword(options)
+    }
+    
+    /**
+     * 创建密码建议的 RemoteViews
+     * 显示 "生成强密码" 提示
+     */
+    private fun createPasswordSuggestionView(packageName: String): RemoteViews {
+        val presentation = RemoteViews(this.packageName, R.layout.autofill_suggestion_item)
+        
+        // 设置图标
+        presentation.setImageViewResource(R.id.icon, R.drawable.ic_key_24dp)
+        
+        // 设置标题
+        presentation.setTextViewText(R.id.title, "生成强密码")
+        
+        // 设置副标题
+        presentation.setTextViewText(R.id.subtitle, "Monica 将为您创建一个安全的强密码")
+        
+        return presentation
+    }
+    
+    /**
+     * 🚀 构建填充响应(增强版)
      * 使用 EnhancedAutofillStructureParserV2 的解析结果
      * 
      * @param passwords 匹配的密码列表
      * @param parsedStructure 增强解析器 V2 的解析结果
-     * @param fieldCollection 传统字段集合（后备）
-     * @param enhancedCollection 增强字段集合（后备）
+     * @param fieldCollection 传统字段集合(后备)
+     * @param enhancedCollection 增强字段集合(后备)
      * @param packageName 应用包名
-     * @param inlineRequest 内联建议请求（Android 11+）
+     * @param inlineRequest 内联建议请求(Android 11+)
      * @return FillResponse 填充响应
      */
     private suspend fun buildFillResponseEnhanced(

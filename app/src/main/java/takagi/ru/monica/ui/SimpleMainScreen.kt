@@ -369,7 +369,8 @@ fun SimpleMainScreen(
                     // 生成器页面
                     GeneratorScreen(
                         onNavigateBack = {}, // 在主屏幕中不需要返回
-                        viewModel = generatorViewModel // 传递ViewModel
+                        viewModel = generatorViewModel, // 传递ViewModel
+                        passwordViewModel = passwordViewModel // 传递 PasswordViewModel
                     )
                 }
                 BottomNavItem.Settings -> {

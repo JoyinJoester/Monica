@@ -7,19 +7,28 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -27,23 +36,60 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
 import takagi.ru.monica.util.PasswordGenerator
 import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.viewmodel.GeneratorType
+import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.data.PasswordHistoryManager
+import takagi.ru.monica.data.PasswordEntry
+import java.util.Date
 import kotlin.random.Random
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+
+/**
+ * 将密码转换为彩色文本
+ * 数字:蓝色，符号:红色，字母:白色
+ */
+@Composable
+fun colorizePassword(password: String): AnnotatedString {
+    return buildAnnotatedString {
+        password.forEach { char ->
+            val color = when {
+                char.isDigit() -> Color(0xFF2196F3) // 蓝色
+                char.isLetter() -> Color.White // 白色
+                else -> Color(0xFFE91E63) // 红色 (符号)
+            }
+            withStyle(style = SpanStyle(color = color)) {
+                append(char)
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GeneratorScreen(
     onNavigateBack: () -> Unit,
-    viewModel: GeneratorViewModel = viewModel()
+    viewModel: GeneratorViewModel = viewModel(),
+    passwordViewModel: PasswordViewModel
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    
+    // 历史记录状态
+    var showHistorySheet by remember { mutableStateOf(false) }
+    val historyManager = remember { PasswordHistoryManager(context) }
+    val historyList by historyManager.historyFlow.collectAsState(initial = emptyList())
     
     // 从ViewModel收集状态
     val selectedGenerator by viewModel.selectedGenerator.collectAsState()
@@ -55,6 +101,26 @@ fun GeneratorScreen(
     val excludeSimilar by viewModel.excludeSimilar.collectAsState()
     val excludeAmbiguous by viewModel.excludeAmbiguous.collectAsState()
     val symbolResult by viewModel.symbolResult.collectAsState()
+    
+    // 初始化时生成默认密码
+    LaunchedEffect(Unit) {
+        if (symbolResult.isEmpty()) {
+            val result = PasswordGenerator.generatePassword(
+                length = symbolLength,
+                includeUppercase = includeUppercase,
+                includeLowercase = includeLowercase,
+                includeNumbers = includeNumbers,
+                includeSymbols = includeSymbols,
+                excludeSimilar = excludeSimilar,
+                excludeAmbiguous = excludeAmbiguous,
+                uppercaseMin = 0,
+                lowercaseMin = 0,
+                numbersMin = 0,
+                symbolsMin = 0
+            )
+            viewModel.updateSymbolResult(result)
+        }
+    }
     
     // 最小字符数要求状态
     val uppercaseMin by viewModel.uppercaseMin.collectAsState()
@@ -81,6 +147,75 @@ fun GeneratorScreen(
     val pinLength by viewModel.pinLength.collectAsState()
     val pinResult by viewModel.pinResult.collectAsState()
     
+    // ✨ 自动生成：监听参数变化并实时生成
+    LaunchedEffect(
+        selectedGenerator,
+        symbolLength, includeUppercase, includeLowercase, includeNumbers, 
+        includeSymbols, excludeSimilar, excludeAmbiguous, 
+        uppercaseMin, lowercaseMin, numbersMin, symbolsMin,
+        passwordLength, firstLetterUppercase, includeNumbersInPassword, 
+        customSeparator, separatorCountsTowardsLength, segmentLength,
+        passphraseWordCount, passphraseDelimiter, passphraseCapitalize, 
+        passphraseIncludeNumber, passphraseCustomWord,
+        pinLength
+    ) {
+        // 延迟100ms以避免频繁生成
+        kotlinx.coroutines.delay(100)
+        
+        when (selectedGenerator) {
+            GeneratorType.SYMBOL -> {
+                val result = PasswordGenerator.generatePassword(
+                    length = symbolLength,
+                    includeUppercase = includeUppercase,
+                    includeLowercase = includeLowercase,
+                    includeNumbers = includeNumbers,
+                    includeSymbols = includeSymbols,
+                    excludeSimilar = excludeSimilar,
+                    excludeAmbiguous = excludeAmbiguous,
+                    uppercaseMin = uppercaseMin,
+                    lowercaseMin = lowercaseMin,
+                    numbersMin = numbersMin,
+                    symbolsMin = symbolsMin
+                )
+                viewModel.updateSymbolResult(result)
+            }
+            GeneratorType.PASSWORD -> {
+                val result = generatePassword(
+                    length = passwordLength,
+                    firstLetterUppercase = firstLetterUppercase,
+                    includeNumbers = includeNumbersInPassword,
+                    separator = customSeparator,
+                    separatorCountsTowardsLength = separatorCountsTowardsLength,
+                    segmentLength = segmentLength
+                )
+                viewModel.updatePasswordResult(result)
+                // 保存到历史记录
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = "密码生成器"
+                    )
+                }
+            }
+            GeneratorType.PASSPHRASE -> {
+                val result = PasswordGenerator.generatePassphrase(
+                    context = context,
+                    wordCount = passphraseWordCount,
+                    delimiter = passphraseDelimiter,
+                    capitalize = passphraseCapitalize,
+                    includeNumber = passphraseIncludeNumber,
+                    customWord = passphraseCustomWord.takeIf { it.isNotEmpty() }
+                )
+                viewModel.updatePassphraseResult(result)
+            }
+            GeneratorType.PIN -> {
+                val result = PasswordGenerator.generatePinCode(pinLength)
+                viewModel.updatePinResult(result)
+            }
+        }
+    }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -91,14 +226,29 @@ fun GeneratorScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
         ) {
-            // 页面标题
-            Text(
-                text = stringResource(R.string.generator_title),
-                style = MaterialTheme.typography.headlineMedium,
+            // 页面标题和历史按钮
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            )
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.generator_title),
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                
+                IconButton(
+                    onClick = { showHistorySheet = true }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = "历史记录",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
             
             // 生成器类型选择按钮 - Pill 样式按钮
             Surface(
@@ -142,57 +292,41 @@ fun GeneratorScreen(
                 }
             }
             
-            // 结果显示卡片区域 - 优化后的显示效果
-            Box(
+            // 结果显示卡片区域 - 始终显示，带动画过渡
+            AnimatedContent(
+                targetState = when (selectedGenerator) {
+                    GeneratorType.SYMBOL -> symbolResult
+                    GeneratorType.PASSWORD -> passwordResult
+                    GeneratorType.PASSPHRASE -> passphraseResult
+                    GeneratorType.PIN -> pinResult
+                },
+                transitionSpec = {
+                    // 淡入淡出 + 轻微缩放动画
+                    fadeIn(
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) + scaleIn(
+                        initialScale = 0.92f,
+                        animationSpec = tween(300, easing = FastOutSlowInEasing)
+                    ) togetherWith fadeOut(
+                        animationSpec = tween(200, easing = FastOutLinearInEasing)
+                    ) + scaleOut(
+                        targetScale = 0.92f,
+                        animationSpec = tween(200, easing = FastOutLinearInEasing)
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 20.dp)
-            ) {
-                when (selectedGenerator) {
-                    GeneratorType.SYMBOL -> {
-                        if (symbolResult.isNotEmpty()) {
-                            ResultCard(
-                                result = symbolResult,
-                                onCopy = { text ->
-                                    copyToClipboard(context, text)
-                                    Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-                                }
-                            )
+                    .padding(bottom = 20.dp),
+                label = "result_animation"
+            ) { currentResult ->
+                if (currentResult.isNotEmpty()) {
+                    ResultCard(
+                        result = currentResult,
+                        onCopy = { text ->
+                            copyToClipboard(context, text)
+                            Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
                         }
-                    }
-                    GeneratorType.PASSWORD -> {
-                        if (passwordResult.isNotEmpty()) {
-                            ResultCard(
-                                result = passwordResult,
-                                onCopy = { text ->
-                                    copyToClipboard(context, text)
-                                    Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-                    }
-                    GeneratorType.PASSPHRASE -> {
-                        if (passphraseResult.isNotEmpty()) {
-                            ResultCard(
-                                result = passphraseResult,
-                                onCopy = { text ->
-                                    copyToClipboard(context, text)
-                                    Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-                    }
-                    GeneratorType.PIN -> {
-                        if (pinResult.isNotEmpty()) {
-                            ResultCard(
-                                result = pinResult,
-                                onCopy = { text ->
-                                    copyToClipboard(context, text)
-                                    Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-                    }
+                    )
                 }
             }
             
@@ -219,8 +353,8 @@ fun GeneratorScreen(
                         Slider(
                             value = symbolLength.toFloat(),
                             onValueChange = { viewModel.updateSymbolLength(it.toInt()) },
-                            valueRange = 1f..128f,
-                            steps = 127,
+                            valueRange = 1f..30f,
+                            steps = 29,
                             modifier = Modifier.fillMaxWidth()
                         )
                         
@@ -362,8 +496,8 @@ fun GeneratorScreen(
                         Slider(
                             value = passwordLength.toFloat(),
                             onValueChange = { viewModel.updatePasswordLength(it.toInt()) },
-                            valueRange = 4f..128f,
-                            steps = 124,
+                            valueRange = 4f..30f,
+                            steps = 26,
                             modifier = Modifier.fillMaxWidth()
                         )
                         
@@ -410,8 +544,8 @@ fun GeneratorScreen(
                         Slider(
                             value = segmentLength.toFloat(),
                             onValueChange = { viewModel.updateSegmentLength(it.toInt()) },
-                            valueRange = 0f..128f,  // 0表示不使用分段功能
-                            steps = 128,  // 步进值为1
+                            valueRange = 0f..20f,  // 0表示不使用分段功能
+                            steps = 20,  // 步进值为1
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -514,9 +648,13 @@ fun GeneratorScreen(
             }
         }
         
-        // 生成按钮 - 固定在右下角的悬浮位置（长方形ExtendedFloatingActionButton）
-        ExtendedFloatingActionButton(
+        // 右下角重新生成按钮 - FAB 设计
+        var isRegenerating by remember { mutableStateOf(false) }
+        
+        FloatingActionButton(
             onClick = {
+                isRegenerating = true
+                // 触发重新生成
                 when (selectedGenerator) {
                     GeneratorType.SYMBOL -> {
                         val result = PasswordGenerator.generatePassword(
@@ -565,19 +703,286 @@ fun GeneratorScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
-            text = {
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ) {
+            // 旋转动画
+            val rotation by animateFloatAsState(
+                targetValue = if (isRegenerating) 360f else 0f,
+                animationSpec = tween(
+                    durationMillis = 500,
+                    easing = FastOutSlowInEasing
+                ),
+                finishedListener = { isRegenerating = false },
+                label = "refresh_rotation"
+            )
+            
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "重新生成",
+                modifier = Modifier
+                    .size(24.dp)
+                    .graphicsLayer { rotationZ = rotation }
+            )
+        }
+    }
+    
+    // 历史记录底部弹窗
+    if (showHistorySheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showHistorySheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
                 Text(
-                    text = "生成",
-                    style = MaterialTheme.typography.labelLarge
+                    text = "密码生成历史",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
-            },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Done,
-                    contentDescription = "生成密码"
-                )
+                
+                if (historyList.isEmpty()) {
+                    // 空状态
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Text(
+                                text = "暂无历史记录",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "通过自动填充生成并使用的密码将显示在这里",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    // 历史记录列表
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(historyList) { historyItem ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                ) {
+                                    // 密码显示
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        var passwordVisible by remember { mutableStateOf(false) }
+                                        
+                                        Text(
+                                            text = if (passwordVisible) historyItem.password else "••••••••••",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        
+                                        // 显示/隐藏密码按钮
+                                        IconButton(
+                                            onClick = { passwordVisible = !passwordVisible }
+                                        ) {
+                                            Icon(
+                                                imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        
+                                        var copied by remember { mutableStateOf(false) }
+                                        
+                                        FilledTonalIconButton(
+                                            onClick = {
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                val clip = ClipData.newPlainText("password", historyItem.password)
+                                                clipboard.setPrimaryClip(clip)
+                                                copied = true
+                                            },
+                                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                                containerColor = if (copied) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = if (copied) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        ) {
+                                            Icon(
+                                                imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
+                                                contentDescription = "复制密码"
+                                            )
+                                        }
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    
+                                    // 应用信息
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Key,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                        Text(
+                                            text = if (historyItem.domain.isNotEmpty()) {
+                                                historyItem.domain
+                                            } else {
+                                                historyItem.packageName
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    
+                                    // 用户名信息
+                                    if (historyItem.username.isNotEmpty()) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Key,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                            )
+                                            Text(
+                                                text = "用户名: ${historyItem.username}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                    
+                                    // 时间戳
+                                    Text(
+                                        text = java.text.SimpleDateFormat(
+                                            "yyyy-MM-dd HH:mm:ss",
+                                            java.util.Locale.getDefault()
+                                        ).format(java.util.Date(historyItem.timestamp)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    
+                                    // 保存到密码库按钮
+                                    val allPasswords by passwordViewModel.passwordEntries.collectAsState()
+                                    
+                                    // 检查密码是否已存在（相同密码和域名/包名）
+                                    val alreadyExists = remember(historyItem.password, historyItem.domain, historyItem.packageName, allPasswords) {
+                                        allPasswords.any { entry ->
+                                            entry.password == historyItem.password && 
+                                            (entry.website == historyItem.domain || 
+                                             entry.appPackageName == historyItem.packageName)
+                                        }
+                                    }
+                                    
+                                    var saved by remember { mutableStateOf(false) }
+                                    
+                                    Button(
+                                        onClick = {
+                                            if (!alreadyExists) {
+                                                scope.launch {
+                                                    val entry = PasswordEntry(
+                                                        title = if (historyItem.domain.isNotEmpty()) {
+                                                            historyItem.domain
+                                                        } else {
+                                                            historyItem.packageName.substringAfterLast('.')
+                                                        },
+                                                        website = historyItem.domain,
+                                                        username = historyItem.username,
+                                                        password = historyItem.password,
+                                                        notes = "从密码生成器历史记录保存\n生成时间: ${java.text.SimpleDateFormat(
+                                                            "yyyy-MM-dd HH:mm:ss",
+                                                            java.util.Locale.getDefault()
+                                                        ).format(java.util.Date(historyItem.timestamp))}",
+                                                        appPackageName = historyItem.packageName,
+                                                        createdAt = Date(),
+                                                        updatedAt = Date()
+                                                    )
+                                                    passwordViewModel.addPasswordEntry(entry)
+                                                    saved = true
+                                                    Toast.makeText(context, "已保存到密码库", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = !alreadyExists && !saved,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (alreadyExists || saved) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
+                                            contentColor = if (alreadyExists || saved) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = if (alreadyExists || saved) Icons.Default.Done else Icons.Default.Save,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            if (alreadyExists) "已存在于密码库"
+                                            else if (saved) "已保存到密码库"
+                                            else "保存到密码库"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 清空历史按钮
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                historyManager.clearHistory()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Text("清空历史记录")
+                    }
+                }
             }
-        )
+        }
     }
 }
 
@@ -918,7 +1323,7 @@ private fun FilterChipTab(
 }
 
 /**
- * 优化后的结果显示卡片
+ * 优化后的结果显示卡片 - 带流畅动画
  */
 @Composable
 private fun ResultCard(
@@ -933,9 +1338,28 @@ private fun ResultCard(
             showCopied = false
         }
     }
+    
+    // 渐变动画
+    val cardAlpha by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "card_alpha"
+    )
+    
+    // 复制按钮背景颜色动画
+    val buttonColor by animateColorAsState(
+        targetValue = if (showCopied) 
+            Color(0xFF4CAF50) 
+        else 
+            MaterialTheme.colorScheme.secondary,
+        animationSpec = tween(durationMillis = 300),
+        label = "button_color"
+    )
 
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = cardAlpha },
         elevation = CardDefaults.elevatedCardElevation(
             defaultElevation = 4.dp
         ),
@@ -953,12 +1377,23 @@ private fun ResultCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Key,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Key,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "生成的密码",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
                 
                 FilledTonalButton(
                     onClick = {
@@ -966,61 +1401,81 @@ private fun ResultCard(
                         showCopied = true
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = if (showCopied) 
-                            Color(0xFF4CAF50) 
-                        else 
-                            MaterialTheme.colorScheme.secondary
+                        containerColor = buttonColor
                     )
                 ) {
-                    Icon(
-                        imageVector = if (showCopied) 
-                            Icons.Default.Done 
-                        else 
-                            Icons.Default.ContentCopy,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (showCopied) "已复制" else "复制",
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                    // 图标动画切换
+                    AnimatedContent(
+                        targetState = showCopied,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(200)) togetherWith 
+                            fadeOut(animationSpec = tween(200))
+                        },
+                        label = "icon_animation"
+                    ) { copied ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (copied) "已复制" else "复制",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    }
                 }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // 结果文本 - 使用等宽字体
-            SelectionContainer {
-                Text(
-                    text = result,
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                    ),
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    lineHeight = MaterialTheme.typography.headlineSmall.lineHeight * 1.3f
-                )
+            // 结果文本 - 使用等宽字体，带入场动画
+            AnimatedVisibility(
+                visible = result.isNotEmpty(),
+                enter = fadeIn(animationSpec = tween(300)) + expandVertically(),
+                exit = fadeOut(animationSpec = tween(200)) + shrinkVertically()
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = colorizePassword(result),
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            letterSpacing = androidx.compose.ui.unit.TextUnit(0.5f, androidx.compose.ui.unit.TextUnitType.Sp)
+                        ),
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = MaterialTheme.typography.headlineSmall.lineHeight * 1.4f
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // 长度信息
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // 长度信息 - 带动画
+            AnimatedVisibility(
+                visible = result.isNotEmpty(),
+                enter = fadeIn(animationSpec = tween(300, delayMillis = 100)) + slideInVertically(),
+                exit = fadeOut(animationSpec = tween(200))
             ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = "长度: ${result.length} 字符",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "长度: ${result.length} 字符",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     }

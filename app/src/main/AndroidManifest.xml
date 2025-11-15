@@ -124,6 +124,15 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTop" />
         
+        <!-- 🔐 Password Suggestion Activity (Strong Password Generator) -->
+        <activity
+            android:name=".autofill.PasswordSuggestionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TransparentDialog"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+        
         <!-- FileProvider for camera photos -->
         <provider
             android:name="androidx.core.content.FileProvider"

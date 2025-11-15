@@ -873,7 +873,8 @@ fun MonicaContent(
             takagi.ru.monica.ui.screens.GeneratorScreen(
                 onNavigateBack = {
                     navController.popBackStack()
-                }
+                },
+                passwordViewModel = viewModel
             )
         }
     }

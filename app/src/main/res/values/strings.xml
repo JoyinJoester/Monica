@@ -60,6 +60,14 @@
     <string name="autofill_auth_subtitle">Use fingerprint or password</string>
     <string name="autofill_auth_description">Autofill after verification</string>
     
+    <!-- 🔐 Password Suggestion -->
+    <string name="password_suggestion">Strong Password Suggestion</string>
+    <string name="password_suggestion_title">Generate Strong Password</string>
+    <string name="password_suggestion_subtitle">Monica will create a secure password for you</string>
+    <string name="password_suggestion_accept">Use This Password</string>
+    <string name="password_suggestion_decline">No, Thanks</string>
+    <string name="password_suggestion_copied">Password copied to clipboard</string>
+    
     <!-- Password List Screen -->
     <string name="search_passwords">Search passwords...</string>
     <string name="no_passwords_saved">No passwords saved yet</string>
@@ -490,7 +498,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.8</string>
+    <string name="settings_version_number">V1.0.9</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

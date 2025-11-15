@@ -60,6 +60,14 @@
     <string name="autofill_auth_subtitle">使用指纹或密码验证</string>
     <string name="autofill_auth_description">验证后将自动填充密码</string>
     
+    <!-- 🔐 Password Suggestion -->
+    <string name="password_suggestion">强密码建议</string>
+    <string name="password_suggestion_title">生成强密码</string>
+    <string name="password_suggestion_subtitle">Monica 将为您创建一个安全的强密码</string>
+    <string name="password_suggestion_accept">使用此密码</string>
+    <string name="password_suggestion_decline">不了,谢谢</string>
+    <string name="password_suggestion_copied">密码已复制</string>
+    
     <!-- Password List Screen -->
     <string name="search_passwords">搜索密码...</string>
     <string name="no_passwords_saved">还没有保存任何密码</string>
@@ -473,7 +481,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">V1.0.8</string>
+    <string name="settings_version_number">V1.0.9</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>

@@ -35,6 +35,9 @@ class AutofillPreferences(private val context: Context) {
         // 新架构：使用增强匹配引擎
         private val KEY_USE_ENHANCED_MATCHING = booleanPreferencesKey("use_enhanced_matching")
         
+        // 🔐 密码建议功能配置
+        private val KEY_PASSWORD_SUGGESTION_ENABLED = booleanPreferencesKey("password_suggestion_enabled")
+        
         // 密码保存功能配置
         private val KEY_AUTO_UPDATE_DUPLICATE_PASSWORDS = booleanPreferencesKey("auto_update_duplicate_passwords")
         private val KEY_SHOW_SAVE_NOTIFICATION = booleanPreferencesKey("show_save_notification")
@@ -173,6 +176,21 @@ class AutofillPreferences(private val context: Context) {
     suspend fun setUseEnhancedMatching(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_USE_ENHANCED_MATCHING] = enabled
+        }
+    }
+    
+    /**
+     * 🔐 是否启用密码建议功能
+     * 启用后，在注册/修改密码时自动提供强密码建议
+     * 默认启用
+     */
+    val isPasswordSuggestionEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_PASSWORD_SUGGESTION_ENABLED] ?: true
+    }
+    
+    suspend fun setPasswordSuggestionEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_PASSWORD_SUGGESTION_ENABLED] = enabled
         }
     }
     
