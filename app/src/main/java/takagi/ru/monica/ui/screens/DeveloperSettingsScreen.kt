@@ -15,7 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
+import takagi.ru.monica.utils.BiometricAuthHelper
 import androidx.compose.ui.text.font.FontFamily
+import android.util.Log
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,7 +43,7 @@ fun DeveloperSettingsScreen(
     
     var showDebugLogsDialog by remember { mutableStateOf(false) }
     var disablePasswordVerification by remember { mutableStateOf(settings.disablePasswordVerification) }
-    
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -138,9 +141,11 @@ fun DeveloperSettingsScreen(
                     subtitle = "跳过应用启动时的密码验证（仅用于开发测试）",
                     checked = disablePasswordVerification,
                     onCheckedChange = { enabled ->
+                        android.util.Log.d("DeveloperSettings", "Toggling password verification: $enabled")
                         disablePasswordVerification = enabled
                         scope.launch {
                             viewModel.updateDisablePasswordVerification(enabled)
+                            android.util.Log.d("DeveloperSettings", "Password verification setting updated to: $enabled")
                         }
                     }
                 )
@@ -321,3 +326,4 @@ fun DebugLogsDialog(
         }
     )
 }
+

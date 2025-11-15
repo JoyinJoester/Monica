@@ -55,6 +55,11 @@
     <string name="biometric_unlock_disabled">Fingerprint unlock disabled</string>
     <string name="biometric_cannot_enable">Cannot enable fingerprint unlock</string>
     
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_title">Verify to Autofill</string>
+    <string name="autofill_auth_subtitle">Use fingerprint or password</string>
+    <string name="autofill_auth_description">Autofill after verification</string>
+    
     <!-- Password List Screen -->
     <string name="search_passwords">Search passwords...</string>
     <string name="no_passwords_saved">No passwords saved yet</string>
@@ -485,7 +490,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.7</string>
+    <string name="settings_version_number">V1.0.8</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

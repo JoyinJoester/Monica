@@ -23,3 +23,7 @@ keystore.properties
 # APK 文件
 *.apk
 installed-monica.apk
+
+# Kiro files
+*.kiro
+.kiro

@@ -70,10 +70,12 @@ fun SettingsScreen(
     
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
+    var developerPasswordInput by remember { mutableStateOf("") }
     
     // 生物识别帮助类
-    val biometricHelper = remember { BiometricAuthHelper(context) }
-    val isBiometricAvailable = remember { 
+    val biometricHelper = remember(context) { BiometricAuthHelper(context) }
+    val isBiometricAvailable = remember(biometricHelper) { 
         val available = biometricHelper.isBiometricAvailable()
         android.util.Log.d("SettingsScreen", "Biometric available: $available")
         android.util.Log.d("SettingsScreen", "Activity: $activity")
@@ -401,7 +403,86 @@ fun SettingsScreen(
                     icon = Icons.Default.Code,
                     title = "开发者设置",
                     subtitle = "日志查看、开发者调试工具",
-                    onClick = onNavigateToDeveloperSettings
+                    onClick = {
+                        val hasActivity = activity != null
+                        val biometricAvailableNow = hasActivity && biometricHelper.isBiometricAvailable()
+                        android.util.Log.d(
+                            "SettingsScreen",
+                            "Developer settings tapped. hasActivity=$hasActivity, biometricAvailable=$biometricAvailableNow"
+                        )
+
+                        developerPasswordInput = ""
+                        showDeveloperVerifyDialog = false
+
+                        when {
+                            !hasActivity -> {
+                                android.util.Log.w(
+                                    "SettingsScreen",
+                                    "Cannot start biometric auth: FragmentActivity context missing"
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.use_master_password),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                showDeveloperVerifyDialog = true
+                            }
+                            biometricAvailableNow -> {
+                                biometricHelper.authenticate(
+                                    activity = activity!!,
+                                    title = context.getString(R.string.biometric_login_title),
+                                    subtitle = context.getString(R.string.biometric_login_subtitle),
+                                    description = context.getString(R.string.biometric_login_description),
+                                    negativeButtonText = context.getString(R.string.use_master_password),
+                                    onSuccess = {
+                                        android.util.Log.d(
+                                            "SettingsScreen",
+                                            "Developer biometric authentication succeeded"
+                                        )
+                                        showDeveloperVerifyDialog = false
+                                        developerPasswordInput = ""
+                                        onNavigateToDeveloperSettings()
+                                    },
+                                    onError = { errorCode, errorMessage ->
+                                        android.util.Log.w(
+                                            "SettingsScreen",
+                                            "Developer biometric error: code=$errorCode, message=$errorMessage"
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.biometric_auth_error, errorMessage),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        showDeveloperVerifyDialog = true
+                                    },
+                                    onCancel = {
+                                        android.util.Log.d(
+                                            "SettingsScreen",
+                                            "Developer biometric canceled by user"
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.use_master_password),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        showDeveloperVerifyDialog = true
+                                    }
+                                )
+                            }
+                            else -> {
+                                android.util.Log.d(
+                                    "SettingsScreen",
+                                    "Biometric unavailable, showing password dialog for developer settings"
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.biometric_not_available),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                showDeveloperVerifyDialog = true
+                            }
+                        }
+                    }
                 )
             }
             
@@ -438,6 +519,77 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+    
+    // Developer Settings Verification Dialog
+    if (showDeveloperVerifyDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showDeveloperVerifyDialog = false
+                developerPasswordInput = ""
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Code,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text("验证身份")
+            },
+            text = {
+                Column {
+                    Text(
+                        "访问开发者设置需要验证主密码",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = developerPasswordInput,
+                        onValueChange = { developerPasswordInput = it },
+                        label = { Text("主密码") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                            if (securityManager.verifyMasterPassword(developerPasswordInput)) {
+                                showDeveloperVerifyDialog = false
+                                developerPasswordInput = ""
+                                onNavigateToDeveloperSettings()
+                            } else {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "密码错误",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                developerPasswordInput = ""
+                            }
+                        }
+                    },
+                    enabled = developerPasswordInput.isNotEmpty()
+                ) {
+                    Text("确认")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showDeveloperVerifyDialog = false
+                        developerPasswordInput = ""
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
         )
     }
     

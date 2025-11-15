@@ -108,6 +108,14 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTop" />
         
+        <!-- Autofill Authentication Activity -->
+        <activity
+            android:name=".autofill.AutofillAuthenticationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TransparentDialog"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+        
         <!-- Autofill Picker Activity (UI Improvement) -->
         <activity
             android:name=".autofill.AutofillPickerActivity"
