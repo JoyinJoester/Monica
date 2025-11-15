@@ -3,6 +3,9 @@ package takagi.ru.monica.security
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import takagi.ru.monica.utils.SettingsManager
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.spec.PBEKeySpec
@@ -12,6 +15,8 @@ import javax.crypto.SecretKeyFactory
  * Security manager for encryption and master password handling
  */
 class SecurityManager(private val context: Context) {
+    
+    private val settingsManager = SettingsManager(context)
     
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -59,8 +64,20 @@ class SecurityManager(private val context: Context) {
     
     /**
      * Verify the master password
+     * 如果开发者设置中启用了"关闭密码验证",则直接返回true
      */
     fun verifyMasterPassword(inputPassword: String): Boolean {
+        // 检查是否禁用密码验证(开发者选项)
+        val disableVerification = runBlocking {
+            settingsManager.settingsFlow.first().disablePasswordVerification
+        }
+        
+        // 如果禁用验证,直接返回true
+        if (disableVerification) {
+            android.util.Log.d("SecurityManager", "Password verification disabled by developer settings")
+            return true
+        }
+        
         val storedHash = sharedPreferences.getString(MASTER_PASSWORD_HASH_KEY, null) ?: return false
         val storedSalt = sharedPreferences.getString(MASTER_PASSWORD_SALT_KEY, null)?.let { saltStr ->
             saltStr.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
