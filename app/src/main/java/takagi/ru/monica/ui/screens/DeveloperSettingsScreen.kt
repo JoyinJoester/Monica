@@ -138,9 +138,11 @@ fun DeveloperSettingsScreen(
                     subtitle = "跳过应用启动时的密码验证（仅用于开发测试）",
                     checked = disablePasswordVerification,
                     onCheckedChange = { enabled ->
+                        android.util.Log.d("DeveloperSettings", "Toggling password verification: $enabled")
                         disablePasswordVerification = enabled
                         scope.launch {
                             viewModel.updateDisablePasswordVerification(enabled)
+                            android.util.Log.d("DeveloperSettings", "Password verification setting updated to: $enabled")
                         }
                     }
                 )

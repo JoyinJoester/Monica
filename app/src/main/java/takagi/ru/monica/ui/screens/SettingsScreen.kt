@@ -70,6 +70,8 @@ fun SettingsScreen(
     
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
+    var developerPasswordInput by remember { mutableStateOf("") }
     
     // 生物识别帮助类
     val biometricHelper = remember { BiometricAuthHelper(context) }
@@ -401,7 +403,7 @@ fun SettingsScreen(
                     icon = Icons.Default.Code,
                     title = "开发者设置",
                     subtitle = "日志查看、开发者调试工具",
-                    onClick = onNavigateToDeveloperSettings
+                    onClick = { showDeveloperVerifyDialog = true }
                 )
             }
             
@@ -438,6 +440,77 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+    
+    // Developer Settings Verification Dialog
+    if (showDeveloperVerifyDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showDeveloperVerifyDialog = false
+                developerPasswordInput = ""
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Code,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text("验证身份")
+            },
+            text = {
+                Column {
+                    Text(
+                        "访问开发者设置需要验证主密码",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = developerPasswordInput,
+                        onValueChange = { developerPasswordInput = it },
+                        label = { Text("主密码") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                            if (securityManager.verifyMasterPassword(developerPasswordInput)) {
+                                showDeveloperVerifyDialog = false
+                                developerPasswordInput = ""
+                                onNavigateToDeveloperSettings()
+                            } else {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "密码错误",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                developerPasswordInput = ""
+                            }
+                        }
+                    },
+                    enabled = developerPasswordInput.isNotEmpty()
+                ) {
+                    Text("确认")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showDeveloperVerifyDialog = false
+                        developerPasswordInput = ""
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
         )
     }
     

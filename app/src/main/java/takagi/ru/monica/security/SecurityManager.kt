@@ -69,22 +69,29 @@ class SecurityManager(private val context: Context) {
     fun verifyMasterPassword(inputPassword: String): Boolean {
         // 检查是否禁用密码验证(开发者选项)
         val disableVerification = runBlocking {
-            settingsManager.settingsFlow.first().disablePasswordVerification
+            val settings = settingsManager.settingsFlow.first()
+            android.util.Log.d("SecurityManager", "Reading settings: disablePasswordVerification = ${settings.disablePasswordVerification}")
+            settings.disablePasswordVerification
         }
+        
+        android.util.Log.d("SecurityManager", "Password verification check: disabled = $disableVerification")
         
         // 如果禁用验证,直接返回true
         if (disableVerification) {
-            android.util.Log.d("SecurityManager", "Password verification disabled by developer settings")
+            android.util.Log.d("SecurityManager", "Password verification BYPASSED by developer settings")
             return true
         }
         
+        android.util.Log.d("SecurityManager", "Performing normal password verification")
         val storedHash = sharedPreferences.getString(MASTER_PASSWORD_HASH_KEY, null) ?: return false
         val storedSalt = sharedPreferences.getString(MASTER_PASSWORD_SALT_KEY, null)?.let { saltStr ->
             saltStr.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         } ?: return false
         
         val (computedHash, _) = hashMasterPassword(inputPassword, storedSalt)
-        return computedHash == storedHash
+        val result = computedHash == storedHash
+        android.util.Log.d("SecurityManager", "Password verification result: $result")
+        return result
     }
     
     /**

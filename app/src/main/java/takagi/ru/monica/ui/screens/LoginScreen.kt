@@ -48,6 +48,7 @@ fun LoginScreen(
     
     // 获取设置
     val settings = settingsViewModel?.settings?.collectAsState()?.value
+    val disablePasswordVerification = settings?.disablePasswordVerification ?: false
     // 如果设置未初始化,默认启用指纹验证
     val biometricEnabled = settings?.biometricEnabled ?: true
     
@@ -109,6 +110,17 @@ fun LoginScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
+            )
+        }
+        
+        if (!isFirstTime && disablePasswordVerification) {
+            Text(
+                text = "开发者模式: 已关闭密码验证",
+                color = MaterialTheme.colorScheme.tertiary,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
             )
         }
         
@@ -196,6 +208,7 @@ fun LoginScreen(
                     confirmPassword = confirmPassword,
                     isFirstTime = isFirstTime,
                     isConfirmingPassword = isConfirmingPassword,
+                    disablePasswordVerification = disablePasswordVerification,
                     onSuccess = onLoginSuccess,
                     onError = { error -> errorMessage = error },
                     onNeedConfirm = { isConfirmingPassword = true },
@@ -206,7 +219,8 @@ fun LoginScreen(
                 )
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = (if (isConfirmingPassword) confirmPassword else masterPassword).isNotEmpty()
+            enabled = disablePasswordVerification ||
+                (if (isConfirmingPassword) confirmPassword else masterPassword).isNotEmpty()
         ) {
             Text(
                 text = when {
@@ -277,11 +291,19 @@ private fun handleLogin(
     confirmPassword: String,
     isFirstTime: Boolean,
     isConfirmingPassword: Boolean,
+    disablePasswordVerification: Boolean,
     onSuccess: () -> Unit,
     onError: (String) -> Unit,
     onNeedConfirm: () -> Unit,
     onResetConfirm: () -> Unit
 ) {
+    // 如果已存在主密码且关闭了密码验证,直接通过
+    if (!isFirstTime && disablePasswordVerification) {
+        viewModel.authenticate(masterPassword)
+        onSuccess()
+        return
+    }
+    
     // 检查密码长度
     if (masterPassword.length < 6) {
         onError(context.getString(R.string.error_password_min_6_digits))
