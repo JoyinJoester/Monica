@@ -948,4 +948,21 @@
     <string name="expand">展开</string>
     <string name="copied">已复制%s</string>
 
+    <!-- Generator Screen -->
+    <string name="generator_symbol">符号密码</string>
+    <string name="generator_word">单词密码</string>
+    <string name="generator_passphrase">密码短语</string>
+    <string name="generator_pin">PIN码</string>
+    <string name="generated_password">生成的密码</string>
+    <string name="symbol_password_generator">符号密码生成器</string>
+    <string name="character_types">字符类型</string>
+    <string name="include_uppercase">包含大写字母 (A-Z)</string>
+    <string name="include_lowercase">包含小写字母 (a-z)</string>
+    <string name="include_numbers">包含数字 (0-9)</string>
+    <string name="include_symbols">包含符号 (!@#$%)</string>
+    <string name="passphrase_generator">密码短语生成器</string>
+    <string name="pin_length">PIN码长度: %d</string>
+    <string name="length_label">长度: %d</string>
+    <string name="length_chars">长度: %d 字符</string>
+
 </resources>

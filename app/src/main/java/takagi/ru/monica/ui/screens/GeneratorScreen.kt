@@ -263,28 +263,28 @@ fun GeneratorScreen(
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     FilterChipTab(
-                        text = "符号密码",
+                        text = stringResource(R.string.generator_symbol),
                         isSelected = selectedGenerator == GeneratorType.SYMBOL,
                         onClick = { viewModel.updateSelectedGenerator(GeneratorType.SYMBOL) },
                         modifier = Modifier.weight(1f)
                     )
                     
                     FilterChipTab(
-                        text = "单词密码",
+                        text = stringResource(R.string.generator_word),
                         isSelected = selectedGenerator == GeneratorType.PASSWORD,
                         onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSWORD) },
                         modifier = Modifier.weight(1f)
                     )
                     
                     FilterChipTab(
-                        text = "密码短语",
+                        text = stringResource(R.string.generator_passphrase),
                         isSelected = selectedGenerator == GeneratorType.PASSPHRASE,
                         onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSPHRASE) },
                         modifier = Modifier.weight(1f)
                     )
                     
                     FilterChipTab(
-                        text = "PIN码",
+                        text = stringResource(R.string.generator_pin),
                         isSelected = selectedGenerator == GeneratorType.PIN,
                         onClick = { viewModel.updateSelectedGenerator(GeneratorType.PIN) },
                         modifier = Modifier.weight(1f)
@@ -340,14 +340,14 @@ fun GeneratorScreen(
                             .padding(horizontal = 16.dp)
                     ) {
                         Text(
-                            text = "符号密码生成器",
+                            text = stringResource(R.string.symbol_password_generator),
                             style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                         
                         // 长度滑块
                         Text(
-                            text = "长度: $symbolLength",
+                            text = stringResource(R.string.length_label, symbolLength),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Slider(
@@ -362,7 +362,7 @@ fun GeneratorScreen(
                         
                         // 字符类型复选框选项
                         Text(
-                            text = "字符类型",
+                            text = stringResource(R.string.character_types),
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
@@ -370,25 +370,25 @@ fun GeneratorScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             CheckboxWithText(
-                                text = "包含大写字母 (A-Z)",
+                                text = stringResource(R.string.include_uppercase),
                                 checked = includeUppercase,
                                 onCheckedChange = { viewModel.updateIncludeUppercase(it) }
                             )
                             
                             CheckboxWithText(
-                                text = "包含小写字母 (a-z)",
+                                text = stringResource(R.string.include_lowercase),
                                 checked = includeLowercase,
                                 onCheckedChange = { viewModel.updateIncludeLowercase(it) }
                             )
                             
                             CheckboxWithText(
-                                text = "包含数字 (0-9)",
+                                text = stringResource(R.string.include_numbers),
                                 checked = includeNumbers,
                                 onCheckedChange = { viewModel.updateIncludeNumbers(it) }
                             )
                             
                             CheckboxWithText(
-                                text = "包含符号 (!@#$%...)",
+                                text = stringResource(R.string.include_symbols),
                                 checked = includeSymbols,
                                 onCheckedChange = { viewModel.updateIncludeSymbols(it) }
                             )
@@ -559,7 +559,7 @@ fun GeneratorScreen(
                             .padding(horizontal = 16.dp)
                     ) {
                         Text(
-                            text = "密码短语生成器",
+                            text = stringResource(R.string.passphrase_generator),
                             style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
@@ -626,14 +626,14 @@ fun GeneratorScreen(
                             .padding(horizontal = 16.dp)
                     ) {
                         Text(
-                            text = "PIN码生成器",
+                            text = stringResource(R.string.pin_generator),
                             style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                         
                         // 长度滑块
                         Text(
-                            text = "PIN码长度: $pinLength",
+                            text = stringResource(R.string.pin_length, pinLength),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Slider(
@@ -1388,7 +1388,7 @@ private fun ResultCard(
                         modifier = Modifier.size(24.dp)
                     )
                     Text(
-                        text = "生成的密码",
+                        text = stringResource(R.string.generated_password),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -1471,7 +1471,7 @@ private fun ResultCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "长度: ${result.length} 字符",
+                        text = stringResource(R.string.length_chars, result.length),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )

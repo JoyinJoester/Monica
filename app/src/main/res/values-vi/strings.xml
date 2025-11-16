@@ -986,4 +986,21 @@
     <string name="expand">Mở rộng</string>
     <string name="copied">Đã sao chép %s</string>
 
+    <!-- Generator Screen -->
+    <string name="generator_symbol">Mật khẩu ký hiệu</string>
+    <string name="generator_word">Mật khẩu từ</string>
+    <string name="generator_passphrase">Cụm mật khẩu</string>
+    <string name="generator_pin">Mã PIN</string>
+    <string name="generated_password">Mật khẩu đã tạo</string>
+    <string name="symbol_password_generator">Trình tạo mật khẩu ký hiệu</string>
+    <string name="character_types">Loại ký tự</string>
+    <string name="include_uppercase">Bao gồm chữ hoa (A-Z)</string>
+    <string name="include_lowercase">Bao gồm chữ thường (a-z)</string>
+    <string name="include_numbers">Bao gồm số (0-9)</string>
+    <string name="include_symbols">Bao gồm ký hiệu (!@#$%)</string>
+    <string name="passphrase_generator">Trình tạo cụm mật khẩu</string>
+    <string name="pin_length">Độ dài PIN: %d</string>
+    <string name="length_label">Độ dài: %d</string>
+    <string name="length_chars">Độ dài: %d ký tự</string>
+
 </resources>

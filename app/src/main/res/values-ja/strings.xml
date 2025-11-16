@@ -1002,4 +1002,21 @@
     <string name="expand">展開</string>
     <string name="copied">%sをコピーしました</string>
 
+    <!-- Generator Screen -->
+    <string name="generator_symbol">記号パスワード</string>
+    <string name="generator_word">単語パスワード</string>
+    <string name="generator_passphrase">パスフレーズ</string>
+    <string name="generator_pin">PIN コード</string>
+    <string name="generated_password">生成されたパスワード</string>
+    <string name="symbol_password_generator">記号パスワードジェネレーター</string>
+    <string name="character_types">文字タイプ</string>
+    <string name="include_uppercase">大文字を含む (A-Z)</string>
+    <string name="include_lowercase">小文字を含む (a-z)</string>
+    <string name="include_numbers">数字を含む (0-9)</string>
+    <string name="include_symbols">記号を含む (!@#$%)</string>
+    <string name="passphrase_generator">パスフレーズジェネレーター</string>
+    <string name="pin_length">PIN の長さ: %d</string>
+    <string name="length_label">長さ: %d</string>
+    <string name="length_chars">長さ: %d 文字</string>
+
 </resources>

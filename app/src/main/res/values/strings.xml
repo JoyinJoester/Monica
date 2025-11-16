@@ -1066,4 +1066,21 @@
     <string name="expand">Expand</string>
     <string name="copied">Copied %s</string>
 
+    <!-- Generator Screen -->
+    <string name="generator_symbol">Symbol Password</string>
+    <string name="generator_word">Word Password</string>
+    <string name="generator_passphrase">Passphrase</string>
+    <string name="generator_pin">PIN Code</string>
+    <string name="generated_password">Generated Password</string>
+    <string name="symbol_password_generator">Symbol Password Generator</string>
+    <string name="character_types">Character Types</string>
+    <string name="include_uppercase">Include Uppercase (A-Z)</string>
+    <string name="include_lowercase">Include Lowercase (a-z)</string>
+    <string name="include_numbers">Include Numbers (0-9)</string>
+    <string name="include_symbols">Include Symbols (!@#$%)</string>
+    <string name="passphrase_generator">Passphrase Generator</string>
+    <string name="pin_length">PIN Length: %d</string>
+    <string name="length_label">Length: %d</string>
+    <string name="length_chars">Length: %d characters</string>
+
 </resources>
