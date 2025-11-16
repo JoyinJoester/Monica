@@ -1001,6 +1001,7 @@
     
 <!-- Developer Settings -->
     <string name="developer_settings">Developer Settings</string>
+    <string name="developer_settings_subtitle">Log viewing and developer debugging tools</string>
     <string name="developer_settings_back">Back</string>
     <string name="developer_log_debugging">Log Debugging</string>
     <string name="developer_view_logs">View Logs</string>

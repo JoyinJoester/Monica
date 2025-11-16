@@ -397,12 +397,12 @@ fun SettingsScreen(
             
             // 开发者设置入口
             SettingsSection(
-                title = "开发者选项"
+                title = stringResource(R.string.developer_settings)
             ) {
                 SettingsItem(
                     icon = Icons.Default.Code,
-                    title = "开发者设置",
-                    subtitle = "日志查看、开发者调试工具",
+                    title = stringResource(R.string.developer_settings),
+                    subtitle = stringResource(R.string.developer_settings_subtitle),
                     onClick = {
                         val hasActivity = activity != null
                         val biometricAvailableNow = hasActivity && biometricHelper.isBiometricAvailable()
@@ -537,19 +537,19 @@ fun SettingsScreen(
                 )
             },
             title = {
-                Text("验证身份")
+                Text(stringResource(R.string.biometric_title))
             },
             text = {
                 Column {
                     Text(
-                        "访问开发者设置需要验证主密码",
+                        stringResource(R.string.enter_master_password_confirm),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
                         value = developerPasswordInput,
                         onValueChange = { developerPasswordInput = it },
-                        label = { Text("主密码") },
+                        label = { Text(stringResource(R.string.master_password)) },
                         singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()

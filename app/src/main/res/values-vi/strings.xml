@@ -921,6 +921,7 @@
     
   <!-- Cài đặt nhà phát triển -->
     <string name="developer_settings">Cài đặt nhà phát triển</string>
+    <string name="developer_settings_subtitle">Xem nhật ký và công cụ gỡ lỗi</string>
     <string name="developer_settings_back">Quay lại</string>
     <string name="developer_log_debugging">Gỡ lỗi nhật ký</string>
     <string name="developer_view_logs">Xem nhật ký</string>

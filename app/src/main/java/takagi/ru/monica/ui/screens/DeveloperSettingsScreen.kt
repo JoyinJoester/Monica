@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.utils.BiometricAuthHelper
 import androidx.compose.ui.text.font.FontFamily
@@ -47,10 +48,10 @@ fun DeveloperSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("开发者设置") },
+                title = { Text(stringResource(R.string.developer_settings)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.developer_settings_back))
                     }
                 }
             )

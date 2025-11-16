@@ -883,6 +883,7 @@
 
     <!-- 开发者设置 -->
     <string name="developer_settings">开发者设置</string>
+    <string name="developer_settings_subtitle">日志查看、开发者调试工具</string>
     <string name="developer_settings_back">返回</string>
     <string name="developer_log_debugging">日志调试</string>
     <string name="developer_view_logs">查看日志</string>
