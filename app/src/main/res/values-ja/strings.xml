@@ -2,6 +2,8 @@
     <string name="app_name">Monica</string>
     
     <!-- General -->
+    <string name="accessibility_service_description">Monicaアクセシビリティサービスは、パスワードフィールドをより正確に検出することで、自動入力機能の向上に役立ちます。</string>
+    
     <string name="ok">OK</string>
     <string name="cancel">キャンセル</string>
     <string name="save">保存</string>
@@ -21,6 +23,19 @@
     <string name="no">いいえ</string>
     <string name="share">共有</string>
     <string name="no_results">結果が見つかりません</string>
+    
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_title">自動入力の確認</string>
+    <string name="autofill_auth_subtitle">指紋またはパスワードを使用</string>
+    <string name="autofill_auth_description">確認後に自動入力</string>
+    
+    <!-- 🔐 Password Suggestion -->
+    <string name="password_suggestion">強力なパスワードの提案</string>
+    <string name="password_suggestion_title">強力なパスワードを生成</string>
+    <string name="password_suggestion_subtitle">Monicaが安全なパスワードを作成します</string>
+    <string name="password_suggestion_accept">このパスワードを使用</string>
+    <string name="password_suggestion_decline">いいえ、結構です</string>
+    <string name="password_suggestion_copied">パスワードをコピーしました</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">マスターパスワードを設定</string>
@@ -244,7 +259,7 @@
     <string name="export_data_error">エクスポートに失敗しました</string>
     <string name="export_data_warning">CSVファイルは暗号化されていません。エクスポートしたファイルは適切に管理してください</string>
     
-    <!-- 新的导出界面 -->
+    <!-- 新しいエクスポート画面 -->
     <string name="export_select_option">エクスポートオプションを選択</string>
     <string name="export_option_all">すべてのデータをエクスポート</string>
     <string name="export_option_all_desc">すべてのパスワード、TOTP、銀行カード、証明書をCSV形式でエクスポート</string>
@@ -368,6 +383,12 @@
     <string name="password_too_short">パスワードは最低6文字必要です</string>
     
     <!-- Forgot Password -->
+    <string name="forgot_password">パスワードを忘れた場合</string>
+    <string name="forgot_password_title">アプリをリセット</string>
+    <string name="forgot_password_warning">これにより、保存されているすべてのパスワードが永久に削除され、アプリがリセットされます。この操作は元に戻せません。</string>
+    <string name="forgot_password_confirm">すべてのデータをリセットしてもよろしいですか？</string>
+    <string name="reset_all_data">すべてのデータをリセット</string>
+    <string name="data_reset_complete">すべてのデータがリセットされました。新しいマスターパスワードを設定できます。</string>
     
     <!-- Security Questions -->
     <string name="security_questions">セキュリティ質問</string>
@@ -404,17 +425,52 @@
     <string name="nav_authenticator">認証器</string>
     <string name="nav_documents">証明書</string>
     <string name="nav_bank_cards">銀行カード</string>
+    <string name="nav_notes">メモ</string>
+    <string name="nav_ledger">明細</string>
     <string name="nav_generator">生成器</string>
     <string name="nav_settings">設定</string>
     <string name="add">追加</string>
     
     <!-- Main Screen Bottom Navigation (Short) -->
-    <string name="nav_passwords_short">密碼</string>
+    <string name="nav_passwords_short">パス</string>
     <string name="nav_authenticator_short">認証</string>
-    <string name="nav_documents_short">証明書</string>
-    <string name="nav_bank_cards_short">銀行</string>
+    <string name="nav_documents_short">証明</string>
+    <string name="nav_bank_cards_short">カード</string>
+    <string name="nav_notes_short">メモ</string>
+    <string name="nav_ledger_short">明細</string>
     <string name="nav_generator_short">生成</string>
     <string name="nav_settings_short">設定</string>
+    
+    <!-- Notes -->
+    <string name="add_note_title">メモを追加</string>
+    <string name="edit_note_title">メモを編集</string>
+    <string name="note_title_label">タイトル</string>
+    <string name="note_title_placeholder">例：プロジェクトのアイデア</string>
+    <string name="note_content">内容</string>
+    <string name="note_content_placeholder">意味のあることを書いてください...</string>
+    <string name="note_tags">タグ</string>
+    <string name="note_tags_placeholder">タグ1, タグ2</string>
+    <string name="note_markdown_label">Markdown形式</string>
+    <string name="no_notes_title">メモがありません</string>
+    <string name="no_notes_description">+ ボタンをタップして最初の安全なメモを作成</string>
+    <string name="delete_note_title">メモを削除</string>
+    <string name="delete_note_message">「%s」を削除してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="search_notes">メモを検索</string>
+    <string name="batch_delete_notes_title">メモを削除</string>
+    <string name="batch_delete_notes_message">選択した%1$d件のメモを削除しますか？</string>
+    <string name="note_detail_title">メモ</string>
+    <string name="note_detail_not_found_title">メモが利用できません</string>
+    <string name="note_detail_not_found_message">お探しのメモは削除または移動された可能性があります。</string>
+    <string name="note_detail_copied">メモをクリップボードにコピーしました</string>
+    <string name="note_detail_share_title">メモを共有</string>
+    <string name="note_detail_tags_label">タグ</string>
+    <string name="note_detail_preview_tab">プレビュー</string>
+    <string name="note_detail_raw_tab">プレーンテキスト</string>
+    <string name="note_detail_preview_fullscreen">全画面プレビュー</string>
+    <string name="note_detail_preview_fullscreen_title">Markdownプレビュー</string>
+    <string name="note_detail_empty_content">このメモは空です。</string>
+    <string name="note_detail_additional_notes">追加メモ</string>
+    <string name="note_detail_updated_at">最終更新</string>
     
     <!-- Generator Screen -->
     <string name="generator_title">生成器</string>
@@ -724,9 +780,186 @@
     <string name="twofa_directory_attribution">参照：2FA Directory</string>
 
 
+    <!-- Ledger / Accounting -->
+    <string name="ledger_title">明細</string>
+    <string name="ledger_balance">残高</string>
+    <string name="ledger_income">収入</string>
+    <string name="ledger_expense">支出</string>
+    <string name="ledger_transfer">振替</string>
+    <string name="ledger_add_entry">エントリを追加</string>
+    <string name="ledger_edit_entry">エントリを編集</string>
+    <string name="ledger_entry_type">タイプ</string>
+    <string name="ledger_amount">金額</string>
+    <string name="ledger_category">カテゴリ</string>
+    <string name="ledger_category_none">カテゴリなし</string>
+    <string name="ledger_no_category_available">このタイプに利用可能なカテゴリがありません</string>
+    <string name="ledger_time">時間</string>
+    <string name="ledger_note">メモ</string>
+    <string name="ledger_select_category">カテゴリを選択</string>
+    <string name="ledger_empty">エントリがまだありません。+ をタップして追加</string>
+    <string name="ledger_payment_method">支払い方法</string>
+    <string name="ledger_payment_wechat">WeChat</string>
+    <string name="ledger_payment_alipay">Alipay</string>
+    <string name="ledger_payment_unionpay">UnionPay</string>
+    <string name="ledger_delete">削除</string>
+    <string name="ledger_delete_confirm_title">エントリを削除</string>
+    <string name="ledger_delete_confirm_message">このエントリを削除してもよろしいですか？</string>
+    <string name="ledger_cancel">キャンセル</string>
+    <string name="ledger_view_switch">表示切替</string>
+    <string name="ledger_view_daily">日次表示</string>
+    <string name="ledger_view_weekly">週次表示</string>
+    <string name="ledger_view_monthly">月次表示</string>
+    <string name="ledger_view_yearly">年次表示</string>
+    <string name="ledger_view_all">すべてのデータ</string>
+    
+    <!-- Ledger Entry Detail -->
+    <string name="ledger_entry_detail">エントリ詳細</string>
+    
     <!-- Phase 8: 生物識別自動填充 -->
     <string name="biometric_auth_failed">生体認証に失敗しました。もう一度お試しください。</string>
     <string name="biometric_auth_error">認証エラー: %s</string>
     
+    <!-- 自動入力設定 -->
+    <string name="autofill_settings_title">自動入力</string>
+    <string name="autofill_settings_refresh">ステータスを更新</string>
+    <string name="autofill_settings_back">戻る</string>
+    <string name="autofill_system_settings_title">システム設定</string>
+    <string name="autofill_system_set_provider">認証情報プロバイダーを設定</string>
+    <string name="autofill_system_set_provider_desc">システム設定でMonicaを自動入力サービスとして選択</string>
+    <string name="autofill_system_passkey_settings">パスキーとパスワード設定</string>
+    <string name="autofill_system_passkey_settings_desc">パスキー、パスワード、データサービスを管理</string>
+    <string name="autofill_system_chrome_settings">Chrome自動入力設定</string>
+    <string name="autofill_system_chrome_settings_desc">Chromeでサードパーティ入力サービスのサポートを有効化</string>
+    <string name="autofill_match_settings_title">マッチング設定</string>
+    <string name="autofill_domain_strategy_title">ドメインマッチング戦略</string>
+    <string name="autofill_fill_behavior_title">入力動作</string>
+    <string name="autofill_fill_verify_identity">入力前に本人確認</string>
+    <string name="autofill_fill_verify_identity_desc">パスワード選択後に指紋またはパスワード認証が必要</string>
+    <string name="autofill_fill_suggestions">入力候補</string>
+    <string name="autofill_fill_suggestions_desc">一致するパスワード候補を自動表示</string>
+    <string name="autofill_fill_manual_selection">手動選択</string>
+    <string name="autofill_fill_manual_selection_desc">入力するパスワードを手動で選択可能</string>
+    <string name="autofill_save_behavior_title">保存動作</string>
+    <string name="autofill_save_enable">自動保存を有効化</string>
+    <string name="autofill_save_enable_desc">フォーム入力時にパスワードの保存を自動的に促す</string>
+    <string name="autofill_save_update_duplicate">重複パスワードを自動更新</string>
+    <string name="autofill_save_update_duplicate_desc">重複するユーザー名が検出された場合、パスワードを自動更新</string>
+    <string name="autofill_save_show_notification">保存通知を表示</string>
+    <string name="autofill_save_show_notification_desc">パスワードが正常に保存された後に通知を表示</string>
+    <string name="autofill_save_smart_title">スマートタイトル生成</string>
+    <string name="autofill_save_smart_title_desc">アプリ名またはドメインからパスワードタイトルを自動生成</string>
+    <string name="autofill_save_app_info">アプリ情報を自動保存</string>
+    <string name="autofill_save_app_info_desc">アプリパッケージ名をパスワードエントリに自動記録</string>
+    <string name="autofill_save_website_info">ウェブサイト情報を自動保存</string>
+    <string name="autofill_save_website_info_desc">ウェブサイトドメインをパスワードエントリに自動記録</string>
+    <string name="autofill_blacklist_title">ブラックリスト</string>
+    <string name="autofill_blacklist_enable">ブラックリストを有効化</string>
+    <string name="autofill_blacklist_enable_desc">特定のアプリで自動入力を無効化</string>
+    <string name="autofill_blacklist_manage">ブラックリストアプリを管理</string>
+    <string name="autofill_blacklist_manage_desc">%d個のアプリを追加済み</string>
+    <string name="autofill_blacklist_dialog_title">ブラックリスト管理</string>
+    <string name="autofill_blacklist_dialog_desc">ブラックリストのアプリは自動入力を使用できません</string>
+    <string name="autofill_blacklist_dialog_done">完了</string>
+    <string name="autofill_info_card_text">自動入力にはAndroid 8.0以降が必要です。有効にすると、Monicaはアプリやウェブサイトにアクセスする際に保存されたパスワードを自動的に入力します。</string>
+    <string name="autofill_status_enabled">自動入力が有効</string>
+    <string name="autofill_status_disabled">自動入力が無効</string>
+    <string name="autofill_status_enabled_desc">Monicaがデフォルトの自動入力サービスとして設定されています</string>
+    <string name="autofill_status_disabled_desc">システム設定でMonicaを有効にしてください</string>
+    <string name="autofill_status_all_functional">すべての機能が正常</string>
+    <string name="autofill_status_enable_prompt">システム設定でMonicaを自動入力サービスとして有効にしてください</string>
+    <string name="autofill_status_go_to_settings">システム設定へ</string>
+    <string name="autofill_status_compatibility_issues">互換性の問題が検出されました:</string>
+    <string name="autofill_status_more_issues">他に%d個の問題があります...</string>
+    <string name="autofill_status_troubleshoot">トラブルシューティング</string>
+    <string name="autofill_status_summary_operational">自動入力サービスは正常に動作しています</string>
+    <string name="autofill_status_summary_not_declared">サービスが正しく宣言されていません</string>
+    <string name="autofill_status_summary_system_disabled">システムで自動入力サービスが有効になっていません</string>
+    <string name="autofill_status_summary_app_disabled">アプリ内で自動入力が有効になっていません</string>
+    <string name="autofill_status_summary_no_permissions">必要な権限がありません</string>
+    <string name="autofill_status_summary_compatibility_issues">互換性の問題が存在します</string>
+    <string name="autofill_status_summary_abnormal">サービスステータスが異常です</string>
+    <string name="autofill_domain_strategy_base_domain">ベースドメイン</string>
+    <string name="autofill_domain_strategy_base_domain_desc">ベースドメインとすべてのサブドメインをマッチング（推奨）</string>
+    <string name="autofill_domain_strategy_domain">ドメイン</string>
+    <string name="autofill_domain_strategy_domain_desc">指定されたドメインとサブドメインのみをマッチング</string>
+    <string name="autofill_domain_strategy_starts_with">前方一致</string>
+    <string name="autofill_domain_strategy_starts_with_desc">URLが指定された文字列で始まる場合にマッチング</string>
+    <string name="autofill_domain_strategy_exact_match">完全一致</string>
+    <string name="autofill_domain_strategy_exact_match_desc">URLが完全に一致する必要があります</string>
+    <string name="autofill_domain_strategy_regex">正規表現</string>
+    <string name="autofill_domain_strategy_regex_desc">正規表現を使用した高度なマッチング</string>
+    <string name="autofill_domain_strategy_never">無効</string>
+    <string name="autofill_domain_strategy_never_desc">自動入力を無効化</string>
+    <string name="autofill_domain_strategy_dialog_title">ドメインマッチング戦略を選択</string>
+    <string name="autofill_domain_strategy_dialog_close">閉じる</string>
+    <string name="autofill_troubleshoot_title">自動入力診断</string>
+    <string name="autofill_troubleshoot_device_info">デバイス情報</string>
+    <string name="autofill_troubleshoot_manufacturer">製造元</string>
+    <string name="autofill_troubleshoot_model">モデル</string>
+    <string name="autofill_troubleshoot_android_version">Androidバージョン</string>
+    <string name="autofill_troubleshoot_rom_type">ROMタイプ</string>
+    <string name="autofill_troubleshoot_inline_support">インライン候補のサポート</string>
+    <string name="autofill_troubleshoot_yes">はい</string>
+    <string name="autofill_troubleshoot_no">いいえ</string>
+    <string name="autofill_troubleshoot_service_status">サービスステータス</string>
+    <string name="autofill_troubleshoot_service_declared">サービス宣言済み</string>
+    <string name="autofill_troubleshoot_system_enabled">システムで有効</string>
+    <string name="autofill_troubleshoot_app_enabled">アプリで有効</string>
+    <string name="autofill_troubleshoot_permissions_complete">権限完了</string>
+    <string name="autofill_troubleshoot_status_normal">正常</string>
+    <string name="autofill_troubleshoot_status_abnormal">異常</string>
+    <string name="autofill_troubleshoot_statistics">統計情報</string>
+    <string name="autofill_troubleshoot_stat_total_requests">総リクエスト数</string>
+    <string name="autofill_troubleshoot_stat_successful_requests">成功したリクエスト</string>
+    <string name="autofill_troubleshoot_stat_failed_requests">失敗したリクエスト</string>
+    <string name="autofill_troubleshoot_stat_success_rate">成功率</string>
+    <string name="autofill_troubleshoot_stat_avg_response_time">平均応答時間</string>
+    <string name="autofill_troubleshoot_stat_min_response_time">最小応答時間</string>
+    <string name="autofill_troubleshoot_stat_max_response_time">最大応答時間</string>
+    <string name="autofill_troubleshoot_stat_total_logs">総ログ数</string>
+    <string name="autofill_troubleshoot_stat_error_count">エラー数</string>
+    <string name="autofill_troubleshoot_stat_warning_count">警告数</string>
+    <string name="autofill_troubleshoot_recent_requests">最近のリクエスト</string>
+    <string name="autofill_troubleshoot_request_details">フィールド: %1$d、マッチ: %2$d、データセット: %3$d</string>
+    <string name="autofill_troubleshoot_request_error">エラー: %s</string>
+    <string name="autofill_troubleshoot_detected_issues">検出された問題</string>
+    <string name="autofill_troubleshoot_issue_affected">%d件のリクエストに影響</string>
+    <string name="autofill_troubleshoot_recommendations">推奨事項</string>
+    <string name="autofill_troubleshoot_export_logs">ログをエクスポート</string>
+    <string name="autofill_troubleshoot_close">閉じる</string>
+    <string name="autofill_blacklist_app_wechat">WeChat</string>
+    <string name="autofill_blacklist_app_alipay">Alipay</string>
+    <string name="autofill_blacklist_app_unionpay">UnionPay</string>
+    <string name="autofill_blacklist_app_qq">QQ</string>
+    <string name="autofill_blacklist_app_taobao">Taobao</string>
+    <string name="autofill_blacklist_app_jd">JD</string>
+    <string name="autofill_blacklist_app_wework">WeChat Work</string>
+    <string name="autofill_blacklist_app_weibo">Weibo</string>
+
+    <!-- 開発者設定 -->
+    <string name="developer_settings">開発者設定</string>
+    <string name="developer_settings_back">戻る</string>
+    <string name="developer_log_debugging">ログデバッグ</string>
+    <string name="developer_view_logs">ログを表示</string>
+    <string name="developer_view_logs_desc">アプリケーションのLogcat出力ログを表示</string>
+    <string name="developer_clear_log_buffer">ログバッファをクリア</string>
+    <string name="developer_clear_log_buffer_desc">デバイスのログバッファをクリア</string>
+    <string name="developer_share_logs">ログを共有</string>
+    <string name="developer_share_logs_desc">最近のログをエクスポートして共有</string>
+    <string name="developer_functions">開発者機能</string>
+    <string name="developer_disable_password_verification">パスワード検証を無効化</string>
+    <string name="developer_disable_password_verification_desc">アプリ起動時のパスワード検証をスキップ（開発テスト専用）</string>
+    <string name="developer_warning">⚠️ 開発者機能はテスト専用です。本番環境では有効にしないでください</string>
+    <string name="developer_log_buffer_cleared">ログバッファをクリアしました</string>
+    <string name="developer_clear_failed">クリア失敗: %s</string>
+    <string name="developer_share_failed">共有失敗: %s</string>
+    <string name="developer_share_subject">Monica アプリログ</string>
+    <string name="developer_share_title">ログを共有</string>
+    <string name="developer_system_logs">システムログ</string>
+    <string name="developer_loading_logs">ログを読み込み中...</string>
+    <string name="developer_no_logs">ログがありません\n\nヒント: アプリで何らかの操作を実行してください</string>
+    <string name="developer_load_failed">読み込み失敗: %s\n\nログを読み取るにはデバッグ権限が必要な場合があります</string>
+    <string name="developer_refresh">更新</string>
+    <string name="developer_close">閉じる</string>
 
 </resources>

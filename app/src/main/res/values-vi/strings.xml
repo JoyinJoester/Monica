@@ -2,6 +2,8 @@
     <string name="app_name">Monica</string>
     
     <!-- General -->
+    <string name="accessibility_service_description">Dịch vụ trợ năng Monica giúp cải thiện chức năng tự động điền bằng cách phát hiện trường mật khẩu chính xác hơn.</string>
+    
     <string name="ok">OK</string>
     <string name="cancel">Hủy</string>
     <string name="save">Lưu</string>
@@ -15,6 +17,24 @@
     <string name="yes">Có</string>
     <string name="no">Không</string>
     <string name="share">Chia sẻ</string>
+    <string name="no_results">Không tìm thấy kết quả</string>
+    
+    <!-- Swipe Actions -->
+    <string name="swipe_action_select">Chọn</string>
+    <string name="swipe_action_delete">Xóa</string>
+    
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_title">Xác minh để tự động điền</string>
+    <string name="autofill_auth_subtitle">Sử dụng vân tay hoặc mật khẩu</string>
+    <string name="autofill_auth_description">Tự động điền sau khi xác minh</string>
+    
+    <!-- 🔐 Password Suggestion -->
+    <string name="password_suggestion">Gợi ý mật khẩu mạnh</string>
+    <string name="password_suggestion_title">Tạo mật khẩu mạnh</string>
+    <string name="password_suggestion_subtitle">Monica sẽ tạo mật khẩu an toàn cho bạn</string>
+    <string name="password_suggestion_accept">Sử dụng mật khẩu này</string>
+    <string name="password_suggestion_decline">Không, cảm ơn</string>
+    <string name="password_suggestion_copied">Đã sao chép mật khẩu</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">Thiết lập mật khẩu chính của bạn</string>
@@ -305,6 +325,8 @@
     <string name="language_english">English</string>
     <string name="language_chinese">中文</string>
     <string name="language_vietnamese">Tiếng Việt</string>
+    <string name="language_japanese">日本語</string>
+    <string name="cannot_open_browser">Không thể mở trình duyệt</string>
     
     <!-- Theme Options -->
     <string name="theme_system">Mặc định hệ thống</string>
@@ -383,6 +405,8 @@
     <string name="nav_documents">Giấy tờ</string>
     <string name="nav_bank_cards">Thẻ ngân hàng</string>
     <string name="nav_notes">Ghi chú</string>
+    <string name="nav_ledger">Sổ kế toán</string>
+    <string name="nav_generator">Trình tạo</string>
     <string name="nav_settings">Cài đặt</string>
     <string name="add">Thêm</string>
     
@@ -392,6 +416,8 @@
     <string name="nav_documents_short">GT</string>
     <string name="nav_bank_cards_short">Thẻ</string>
     <string name="nav_notes_short">Note</string>
+    <string name="nav_ledger_short">Sổ</string>
+    <string name="nav_generator_short">Tạo</string>
     <string name="nav_settings_short">CĐ</string>
 
     <!-- Notes -->
@@ -411,6 +437,19 @@
     <string name="note_tags">Thẻ</string>
     <string name="note_tags_placeholder">Thẻ1, Thẻ2</string>
     <string name="note_markdown_label">Định dạng Markdown</string>
+    <string name="note_detail_title">Ghi chú</string>
+    <string name="note_detail_not_found_title">Ghi chú không khả dụng</string>
+    <string name="note_detail_not_found_message">Ghi chú bạn đang tìm có thể đã bị xóa hoặc di chuyển.</string>
+    <string name="note_detail_copied">Đã sao chép ghi chú vào clipboard</string>
+    <string name="note_detail_share_title">Chia sẻ ghi chú</string>
+    <string name="note_detail_tags_label">Thẻ</string>
+    <string name="note_detail_preview_tab">Xem trước</string>
+    <string name="note_detail_raw_tab">Văn bản thuần</string>
+    <string name="note_detail_preview_fullscreen">Xem trước toàn màn hình</string>
+    <string name="note_detail_preview_fullscreen_title">Xem trước Markdown</string>
+    <string name="note_detail_empty_content">Ghi chú này trống.</string>
+    <string name="note_detail_additional_notes">Ghi chú bổ sung</string>
+    <string name="note_detail_updated_at">Cập nhật lần cuối</string>
     
     <!-- Settings Screen -->
     <string name="settings_general">Chung</string>
@@ -680,6 +719,34 @@
     <string name="pwned_passwords_attribution">Được hỗ trợ bởi Have I Been Pwned</string>
     <string name="twofa_directory_attribution">Tham khảo: 2FA Directory</string>
     
+    <!-- Generator Screen -->
+    <string name="generator_title">Trình tạo</string>
+    <string name="random_symbol_generator">Trình tạo ký hiệu ngẫu nhiên</string>
+    <string name="random_symbol_generator_tab">Ký hiệu ngẫu nhiên</string>
+    <string name="password_generator">Trình tạo cụm mật khẩu</string>
+    <string name="password_generator_tab">Cụm mật khẩu</string>
+    <string name="pin_generator">Trình tạo PIN</string>
+    <string name="pin_generator_tab">PIN</string>
+    <string name="generator_length">Độ dài</string>
+    <string name="generator_include_uppercase">Bao gồm chữ hoa (A-Z)</string>
+    <string name="generator_include_lowercase">Bao gồm chữ thường (a-z)</string>
+    <string name="generator_include_numbers">Bao gồm số (0-9)</string>
+    <string name="generator_include_symbols">Bao gồm ký hiệu (!@#$...)</string>
+    <string name="generator_exclude_similar">Loại trừ ký tự giống nhau (0,O,l,I)</string>
+    <string name="generator_exclude_ambiguous">Loại trừ ký tự mơ hồ</string>
+    <string name="generator_first_letter_uppercase">Chữ cái đầu viết hoa</string>
+    <string name="generator_include_numbers_in_password">Bao gồm số</string>
+    <string name="generator_custom_separator">Ký tự phân cách tùy chỉnh</string>
+    <string name="generator_separator_counts_towards_length">Ký tự phân cách tính vào độ dài</string>
+    <string name="generator_segment_length">Độ dài đoạn</string>
+    <string name="generator_pin_length">Độ dài PIN</string>
+    <string name="generator_generate">Tạo</string>
+    <string name="generator_result">Kết quả</string>
+    <string name="generator_copy">Sao chép</string>
+    <string name="generator_copied">Đã sao chép vào clipboard</string>
+    <string name="generator_invalid_length">Độ dài không hợp lệ</string>
+    <string name="generator_action">Tạo</string>
+    
     <!-- Ledger / Accounting -->
     <string name="ledger_title">Sổ kế toán</string>
     <string name="ledger_balance">Số dư</string>
@@ -714,4 +781,168 @@
 
     <!-- Ledger Entry Detail -->
     <string name="ledger_entry_detail">Chi tiết mục nhập</string>
+    
+    <!-- Cài đặt tự động điền - Chung -->
+    <string name="autofill_settings_title">Tự động điền</string>
+    <string name="autofill_settings_refresh">Làm mới trạng thái</string>
+    <string name="autofill_settings_back">Quay lại</string>
+    
+    <!-- Cài đặt tự động điền - Cài đặt hệ thống -->
+    <string name="autofill_system_settings_title">Cài đặt hệ thống</string>
+    <string name="autofill_system_set_provider">Đặt nhà cung cấp thông tin xác thực</string>
+    <string name="autofill_system_set_provider_desc">Chọn Monica làm dịch vụ tự động điền trong cài đặt hệ thống</string>
+    <string name="autofill_system_passkey_settings">Cài đặt Passkey và Mật khẩu</string>
+    <string name="autofill_system_passkey_settings_desc">Quản lý passkey, mật khẩu và dịch vụ dữ liệu</string>
+    <string name="autofill_system_chrome_settings">Cài đặt tự động điền Chrome</string>
+    <string name="autofill_system_chrome_settings_desc">Bật hỗ trợ dịch vụ điền của bên thứ ba trong Chrome</string>
+    
+    <!-- Cài đặt tự động điền - Cài đặt khớp -->
+    <string name="autofill_match_settings_title">Cài đặt khớp</string>
+    <string name="autofill_domain_strategy_title">Chiến lược khớp tên miền</string>
+    
+    <!-- Cài đặt tự động điền - Hành vi điền -->
+    <string name="autofill_fill_behavior_title">Hành vi điền</string>
+    <string name="autofill_fill_verify_identity">Xác minh trước khi điền</string>
+    <string name="autofill_fill_verify_identity_desc">Yêu cầu xác minh vân tay hoặc mật khẩu sau khi chọn mật khẩu</string>
+    <string name="autofill_fill_suggestions">Gợi ý điền</string>
+    <string name="autofill_fill_suggestions_desc">Tự động hiển thị gợi ý mật khẩu phù hợp</string>
+    <string name="autofill_fill_manual_selection">Chọn thủ công</string>
+    <string name="autofill_fill_manual_selection_desc">Cho phép chọn thủ công mật khẩu để điền</string>
+    
+    <!-- Cài đặt tự động điền - Hành vi lưu -->
+    <string name="autofill_save_behavior_title">Hành vi lưu</string>
+    <string name="autofill_save_enable">Bật tự động lưu</string>
+    <string name="autofill_save_enable_desc">Tự động nhắc lưu mật khẩu khi điền biểu mẫu</string>
+    <string name="autofill_save_update_duplicate">Tự động cập nhật mật khẩu trùng lặp</string>
+    <string name="autofill_save_update_duplicate_desc">Tự động cập nhật mật khẩu khi phát hiện tên người dùng trùng lặp</string>
+    <string name="autofill_save_show_notification">Hiển thị thông báo lưu</string>
+    <string name="autofill_save_show_notification_desc">Hiển thị thông báo sau khi lưu mật khẩu thành công</string>
+    <string name="autofill_save_smart_title">Tạo tiêu đề thông minh</string>
+    <string name="autofill_save_smart_title_desc">Tự động tạo tiêu đề mật khẩu từ tên ứng dụng hoặc tên miền</string>
+    <string name="autofill_save_app_info">Tự động lưu thông tin ứng dụng</string>
+    <string name="autofill_save_app_info_desc">Tự động ghi lại tên gói ứng dụng vào mục mật khẩu</string>
+    <string name="autofill_save_website_info">Tự động lưu thông tin trang web</string>
+    <string name="autofill_save_website_info_desc">Tự động ghi lại tên miền trang web vào mục mật khẩu</string>
+    
+    <!-- Cài đặt tự động điền - Danh sách đen -->
+    <string name="autofill_blacklist_title">Danh sách đen</string>
+    <string name="autofill_blacklist_enable">Bật danh sách đen</string>
+    <string name="autofill_blacklist_enable_desc">Ngăn các ứng dụng cụ thể sử dụng tự động điền</string>
+    <string name="autofill_blacklist_manage">Quản lý ứng dụng danh sách đen</string>
+    <string name="autofill_blacklist_manage_desc">Đã thêm %d ứng dụng</string>
+    <string name="autofill_blacklist_dialog_title">Quản lý danh sách đen</string>
+    <string name="autofill_blacklist_dialog_desc">Các ứng dụng trong danh sách đen sẽ không thể sử dụng tự động điền</string>
+    <string name="autofill_blacklist_dialog_done">Xong</string>
+    
+    <!-- Cài đặt tự động điền - Thẻ thông tin -->
+    <string name="autofill_info_card_text">Tự động điền yêu cầu Android 8.0 trở lên. Sau khi bật, Monica sẽ tự động điền mật khẩu đã lưu khi bạn truy cập ứng dụng và trang web.</string>
+    
+    <!-- Trạng thái tự động điền -->
+    <string name="autofill_status_enabled">Tự động điền đã bật</string>
+    <string name="autofill_status_disabled">Tự động điền đã tắt</string>
+    <string name="autofill_status_enabled_desc">Monica được đặt làm dịch vụ tự động điền mặc định</string>
+    <string name="autofill_status_disabled_desc">Vui lòng bật Monica trong cài đặt hệ thống</string>
+    <string name="autofill_status_all_functional">Tất cả tính năng hoạt động bình thường</string>
+    <string name="autofill_status_enable_prompt">Vui lòng bật Monica làm dịch vụ tự động điền trong cài đặt hệ thống</string>
+    <string name="autofill_status_go_to_settings">Đi tới cài đặt hệ thống</string>
+    <string name="autofill_status_compatibility_issues">Phát hiện vấn đề tương thích:</string>
+    <string name="autofill_status_more_issues">Còn %d vấn đề khác...</string>
+    <string name="autofill_status_troubleshoot">Khắc phục sự cố</string>
+    <string name="autofill_status_summary_operational">Dịch vụ tự động điền hoạt động bình thường</string>
+    <string name="autofill_status_summary_not_declared">Dịch vụ không được khai báo đúng cách</string>
+    <string name="autofill_status_summary_system_disabled">Dịch vụ tự động điền hệ thống chưa được bật</string>
+    <string name="autofill_status_summary_app_disabled">Tự động điền chưa được bật trong ứng dụng</string>
+    <string name="autofill_status_summary_no_permissions">Thiếu quyền cần thiết</string>
+    <string name="autofill_status_summary_compatibility_issues">Tồn tại vấn đề tương thích</string>
+    <string name="autofill_status_summary_abnormal">Trạng thái dịch vụ bất thường</string>
+    
+    <!-- Chiến lược khớp tên miền -->
+    <string name="autofill_domain_strategy_base_domain">Tên miền cơ sở</string>
+    <string name="autofill_domain_strategy_base_domain_desc">Khớp tên miền cơ sở và tất cả tên miền phụ (Khuyến nghị)</string>
+    <string name="autofill_domain_strategy_domain">Tên miền</string>
+    <string name="autofill_domain_strategy_domain_desc">Chỉ khớp tên miền được chỉ định và tên miền phụ</string>
+    <string name="autofill_domain_strategy_starts_with">Bắt đầu bằng</string>
+    <string name="autofill_domain_strategy_starts_with_desc">Khớp nếu URL bắt đầu bằng chuỗi được chỉ định</string>
+    <string name="autofill_domain_strategy_exact_match">Khớp chính xác</string>
+    <string name="autofill_domain_strategy_exact_match_desc">URL phải khớp chính xác</string>
+    <string name="autofill_domain_strategy_regex">Biểu thức chính quy</string>
+    <string name="autofill_domain_strategy_regex_desc">Sử dụng biểu thức chính quy để khớp nâng cao</string>
+    <string name="autofill_domain_strategy_never">Không bao giờ</string>
+    <string name="autofill_domain_strategy_never_desc">Vô hiệu hóa tự động điền</string>
+    <string name="autofill_domain_strategy_dialog_title">Chọn chiến lược khớp tên miền</string>
+    <string name="autofill_domain_strategy_dialog_close">Đóng</string>
+    
+    <!-- Hộp thoại khắc phục sự cố -->
+    <string name="autofill_troubleshoot_title">Chẩn đoán tự động điền</string>
+    <string name="autofill_troubleshoot_device_info">Thông tin thiết bị</string>
+    <string name="autofill_troubleshoot_manufacturer">Nhà sản xuất</string>
+    <string name="autofill_troubleshoot_model">Mẫu</string>
+    <string name="autofill_troubleshoot_android_version">Phiên bản Android</string>
+    <string name="autofill_troubleshoot_rom_type">Loại ROM</string>
+    <string name="autofill_troubleshoot_inline_support">Hỗ trợ gợi ý nội tuyến</string>
+    <string name="autofill_troubleshoot_yes">Có</string>
+    <string name="autofill_troubleshoot_no">Không</string>
+    <string name="autofill_troubleshoot_service_status">Trạng thái dịch vụ</string>
+    <string name="autofill_troubleshoot_service_declared">Dịch vụ đã khai báo</string>
+    <string name="autofill_troubleshoot_system_enabled">Hệ thống đã bật</string>
+    <string name="autofill_troubleshoot_app_enabled">Ứng dụng đã bật</string>
+    <string name="autofill_troubleshoot_permissions_complete">Quyền đầy đủ</string>
+    <string name="autofill_troubleshoot_status_normal">Bình thường</string>
+    <string name="autofill_troubleshoot_status_abnormal">Bất thường</string>
+    <string name="autofill_troubleshoot_statistics">Thống kê</string>
+    <string name="autofill_troubleshoot_stat_total_requests">Tổng số yêu cầu</string>
+    <string name="autofill_troubleshoot_stat_successful_requests">Yêu cầu thành công</string>
+    <string name="autofill_troubleshoot_stat_failed_requests">Yêu cầu thất bại</string>
+    <string name="autofill_troubleshoot_stat_success_rate">Tỷ lệ thành công</string>
+    <string name="autofill_troubleshoot_stat_avg_response_time">Thời gian phản hồi trung bình</string>
+    <string name="autofill_troubleshoot_stat_min_response_time">Thời gian phản hồi tối thiểu</string>
+    <string name="autofill_troubleshoot_stat_max_response_time">Thời gian phản hồi tối đa</string>
+    <string name="autofill_troubleshoot_stat_total_logs">Tổng số nhật ký</string>
+    <string name="autofill_troubleshoot_stat_error_count">Số lỗi</string>
+    <string name="autofill_troubleshoot_stat_warning_count">Số cảnh báo</string>
+    <string name="autofill_troubleshoot_recent_requests">Yêu cầu gần đây</string>
+    <string name="autofill_troubleshoot_request_details">Trường: %1$d, Khớp: %2$d, Bộ dữ liệu: %3$d</string>
+    <string name="autofill_troubleshoot_request_error">Lỗi: %s</string>
+    <string name="autofill_troubleshoot_detected_issues">Vấn đề đã phát hiện</string>
+    <string name="autofill_troubleshoot_issue_affected">Ảnh hưởng %d yêu cầu</string>
+    <string name="autofill_troubleshoot_recommendations">Khuyến nghị</string>
+    <string name="autofill_troubleshoot_export_logs">Xuất nhật ký</string>
+    <string name="autofill_troubleshoot_close">Đóng</string>
+    
+    <!-- Tên ứng dụng danh sách đen -->
+    <string name="autofill_blacklist_app_wechat">WeChat</string>
+    <string name="autofill_blacklist_app_alipay">Alipay</string>
+    <string name="autofill_blacklist_app_unionpay">UnionPay</string>
+    <string name="autofill_blacklist_app_qq">QQ</string>
+    <string name="autofill_blacklist_app_taobao">Taobao</string>
+    <string name="autofill_blacklist_app_jd">JD</string>
+    <string name="autofill_blacklist_app_wework">WeChat Work</string>
+    <string name="autofill_blacklist_app_weibo">Weibo</string>
+    
+  <!-- Cài đặt nhà phát triển -->
+    <string name="developer_settings">Cài đặt nhà phát triển</string>
+    <string name="developer_settings_back">Quay lại</string>
+    <string name="developer_log_debugging">Gỡ lỗi nhật ký</string>
+    <string name="developer_view_logs">Xem nhật ký</string>
+    <string name="developer_view_logs_desc">Xem nhật ký đầu ra Logcat của ứng dụng</string>
+    <string name="developer_clear_log_buffer">Xóa bộ đệm nhật ký</string>
+    <string name="developer_clear_log_buffer_desc">Xóa bộ đệm nhật ký của thiết bị</string>
+    <string name="developer_share_logs">Chia sẻ nhật ký</string>
+    <string name="developer_share_logs_desc">Xuất và chia sẻ nhật ký gần đây</string>
+    <string name="developer_functions">Chức năng nhà phát triển</string>
+    <string name="developer_disable_password_verification">Tắt xác minh mật khẩu</string>
+    <string name="developer_disable_password_verification_desc">Bỏ qua xác minh mật khẩu khi khởi động ứng dụng (chỉ dành cho kiểm thử phát triển)</string>
+    <string name="developer_warning">⚠️ Chức năng nhà phát triển chỉ dành cho kiểm thử, không bật trong môi trường sản xuất</string>
+    <string name="developer_log_buffer_cleared">Đã xóa bộ đệm nhật ký</string>
+    <string name="developer_clear_failed">Xóa thất bại: %s</string>
+    <string name="developer_share_failed">Chia sẻ thất bại: %s</string>
+    <string name="developer_share_subject">Nhật ký ứng dụng Monica</string>
+    <string name="developer_share_title">Chia sẻ nhật ký</string>
+    <string name="developer_system_logs">Nhật ký hệ thống</string>
+    <string name="developer_loading_logs">Đang tải nhật ký...</string>
+    <string name="developer_no_logs">Không có nhật ký\n\nMẹo: Đảm bảo ứng dụng đã chạy một số thao tác</string>
+    <string name="developer_load_failed">Tải thất bại: %s\n\nCó thể cần quyền gỡ lỗi để đọc nhật ký</string>
+    <string name="developer_refresh">Làm mới</string>
+    <string name="developer_close">Đóng</string>
+
 </resources>

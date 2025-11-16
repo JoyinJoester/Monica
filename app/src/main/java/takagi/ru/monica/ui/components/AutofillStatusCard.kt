@@ -8,8 +8,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.autofill.core.AutofillServiceChecker
 
 /**
@@ -28,6 +30,8 @@ fun AutofillStatusCard(
     onTroubleshootClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -64,7 +68,7 @@ fun AutofillStatusCard(
                 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = status.getSummary(),
+                        text = status.getSummary(context),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (status.isSystemEnabled) {
@@ -76,7 +80,7 @@ fun AutofillStatusCard(
                     
                     if (status.isFullyOperational()) {
                         Text(
-                            text = "所有功能正常",
+                            text = context.getString(R.string.autofill_status_all_functional),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )
@@ -89,7 +93,7 @@ fun AutofillStatusCard(
                 HorizontalDivider()
                 
                 Text(
-                    text = "请在系统设置中启用 Monica 作为自动填充服务",
+                    text = context.getString(R.string.autofill_status_enable_prompt),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
@@ -102,7 +106,7 @@ fun AutofillStatusCard(
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("前往系统设置")
+                    Text(context.getString(R.string.autofill_status_go_to_settings))
                 }
             }
             
@@ -111,7 +115,7 @@ fun AutofillStatusCard(
                 HorizontalDivider()
                 
                 Text(
-                    text = "检测到兼容性问题:",
+                    text = context.getString(R.string.autofill_status_compatibility_issues),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (status.isSystemEnabled) {
@@ -138,7 +142,7 @@ fun AutofillStatusCard(
                     
                     if (status.compatibilityIssues.size > 3) {
                         Text(
-                            text = "还有 ${status.compatibilityIssues.size - 3} 个问题...",
+                            text = context.getString(R.string.autofill_status_more_issues, status.compatibilityIssues.size - 3),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (status.isSystemEnabled) {
                                 MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
@@ -160,7 +164,7 @@ fun AutofillStatusCard(
                         onClick = onTroubleshootClick
                     ) {
                         Text(
-                            "故障排查",
+                            context.getString(R.string.autofill_status_troubleshoot),
                             color = if (status.isSystemEnabled) {
                                 MaterialTheme.colorScheme.primary
                             } else {

@@ -744,5 +744,167 @@
     <string name="biometric_auth_failed">生物识别认证失败,请重试。</string>
     <string name="biometric_auth_error">认证错误: %s</string>
     
+    <!-- 自动填充设置 - 通用 -->
+    <string name="autofill_settings_title">自动填充</string>
+    <string name="autofill_settings_refresh">刷新状态</string>
+    <string name="autofill_settings_back">返回</string>
+    
+    <!-- 自动填充设置 - 系统设置 -->
+    <string name="autofill_system_settings_title">系统设置</string>
+    <string name="autofill_system_set_provider">设置凭据提供商</string>
+    <string name="autofill_system_set_provider_desc">在系统设置中选择Monica作为自动填充服务</string>
+    <string name="autofill_system_passkey_settings">通行密钥和密码设置</string>
+    <string name="autofill_system_passkey_settings_desc">管理通行密钥、密码和数据服务</string>
+    <string name="autofill_system_chrome_settings">Chrome自动填充设置</string>
+    <string name="autofill_system_chrome_settings_desc">在Chrome中启用第三方填充服务支持</string>
+    
+    <!-- 自动填充设置 - 匹配设置 -->
+    <string name="autofill_match_settings_title">匹配设置</string>
+    <string name="autofill_domain_strategy_title">域名匹配策略</string>
+    
+    <!-- 自动填充设置 - 填充行为 -->
+    <string name="autofill_fill_behavior_title">填充行为</string>
+    <string name="autofill_fill_verify_identity">填充前验证身份</string>
+    <string name="autofill_fill_verify_identity_desc">选择密码后需要指纹或密码验证才能填充</string>
+    <string name="autofill_fill_suggestions">填充建议</string>
+    <string name="autofill_fill_suggestions_desc">自动显示匹配的密码建议</string>
+    <string name="autofill_fill_manual_selection">手动选择</string>
+    <string name="autofill_fill_manual_selection_desc">允许手动选择要填充的密码</string>
+    
+    <!-- 自动填充设置 - 保存行为 -->
+    <string name="autofill_save_behavior_title">保存行为</string>
+    <string name="autofill_save_enable">启用自动保存</string>
+    <string name="autofill_save_enable_desc">填写表单时自动提示保存密码</string>
+    <string name="autofill_save_update_duplicate">自动更新重复密码</string>
+    <string name="autofill_save_update_duplicate_desc">检测到重复用户名时自动更新密码</string>
+    <string name="autofill_save_show_notification">显示保存通知</string>
+    <string name="autofill_save_show_notification_desc">密码保存成功后显示通知提示</string>
+    <string name="autofill_save_smart_title">智能标题生成</string>
+    <string name="autofill_save_smart_title_desc">自动从应用名或域名生成密码标题</string>
+    <string name="autofill_save_app_info">自动保存应用信息</string>
+    <string name="autofill_save_app_info_desc">自动记录应用包名到密码条目</string>
+    <string name="autofill_save_website_info">自动保存网站信息</string>
+    <string name="autofill_save_website_info_desc">自动记录网站域名到密码条目</string>
+    
+    <!-- 自动填充设置 - 黑名单 -->
+    <string name="autofill_blacklist_title">黑名单</string>
+    <string name="autofill_blacklist_enable">启用黑名单</string>
+    <string name="autofill_blacklist_enable_desc">禁止特定应用使用自动填充功能</string>
+    <string name="autofill_blacklist_manage">管理黑名单应用</string>
+    <string name="autofill_blacklist_manage_desc">已添加 %d 个应用</string>
+    <string name="autofill_blacklist_dialog_title">黑名单管理</string>
+    <string name="autofill_blacklist_dialog_desc">黑名单中的应用将无法使用自动填充功能</string>
+    <string name="autofill_blacklist_dialog_done">完成</string>
+    
+    <!-- 自动填充设置 - 信息卡片 -->
+    <string name="autofill_info_card_text">自动填充功能需要Android 8.0及以上版本。启用后，Monica将在您访问应用和网站时自动填充保存的密码。</string>
+    
+    <!-- 自动填充状态 -->
+    <string name="autofill_status_enabled">自动填充已启用</string>
+    <string name="autofill_status_disabled">自动填充未启用</string>
+    <string name="autofill_status_enabled_desc">Monica已设置为默认自动填充服务</string>
+    <string name="autofill_status_disabled_desc">请在系统设置中启用Monica</string>
+    <string name="autofill_status_all_functional">所有功能正常</string>
+    <string name="autofill_status_enable_prompt">请在系统设置中启用 Monica 作为自动填充服务</string>
+    <string name="autofill_status_go_to_settings">前往系统设置</string>
+    <string name="autofill_status_compatibility_issues">检测到兼容性问题:</string>
+    <string name="autofill_status_more_issues">还有 %d 个问题...</string>
+    <string name="autofill_status_troubleshoot">故障排查</string>
+    <string name="autofill_status_summary_operational">自动填充服务运行正常</string>
+    <string name="autofill_status_summary_not_declared">服务未正确声明</string>
+    <string name="autofill_status_summary_system_disabled">系统未启用自动填充服务</string>
+    <string name="autofill_status_summary_app_disabled">应用内未启用自动填充</string>
+    <string name="autofill_status_summary_no_permissions">缺少必要权限</string>
+    <string name="autofill_status_summary_compatibility_issues">存在兼容性问题</string>
+    <string name="autofill_status_summary_abnormal">服务状态异常</string>
+    
+    <!-- 域名匹配策略 -->
+    <string name="autofill_domain_strategy_base_domain">主域名</string>
+    <string name="autofill_domain_strategy_base_domain_desc">匹配主域名及所有子域名 (推荐)</string>
+    <string name="autofill_domain_strategy_domain">域</string>
+    <string name="autofill_domain_strategy_domain_desc">仅匹配指定域名和子域名</string>
+    <string name="autofill_domain_strategy_starts_with">匹配开头</string>
+    <string name="autofill_domain_strategy_starts_with_desc">URL以指定字符串开头即匹配</string>
+    <string name="autofill_domain_strategy_exact_match">完全匹配</string>
+    <string name="autofill_domain_strategy_exact_match_desc">URL必须完全相同才匹配</string>
+    <string name="autofill_domain_strategy_regex">正则表达式</string>
+    <string name="autofill_domain_strategy_regex_desc">使用正则表达式进行高级匹配</string>
+    <string name="autofill_domain_strategy_never">从不</string>
+    <string name="autofill_domain_strategy_never_desc">禁用自动填充</string>
+    <string name="autofill_domain_strategy_dialog_title">选择域名匹配策略</string>
+    <string name="autofill_domain_strategy_dialog_close">关闭</string>
+    
+    <!-- 故障排查对话框 -->
+    <string name="autofill_troubleshoot_title">自动填充诊断</string>
+    <string name="autofill_troubleshoot_device_info">设备信息</string>
+    <string name="autofill_troubleshoot_manufacturer">制造商</string>
+    <string name="autofill_troubleshoot_model">型号</string>
+    <string name="autofill_troubleshoot_android_version">Android 版本</string>
+    <string name="autofill_troubleshoot_rom_type">ROM 类型</string>
+    <string name="autofill_troubleshoot_inline_support">内联建议支持</string>
+    <string name="autofill_troubleshoot_yes">是</string>
+    <string name="autofill_troubleshoot_no">否</string>
+    <string name="autofill_troubleshoot_service_status">服务状态</string>
+    <string name="autofill_troubleshoot_service_declared">服务已声明</string>
+    <string name="autofill_troubleshoot_system_enabled">系统已启用</string>
+    <string name="autofill_troubleshoot_app_enabled">应用已启用</string>
+    <string name="autofill_troubleshoot_permissions_complete">权限完整</string>
+    <string name="autofill_troubleshoot_status_normal">正常</string>
+    <string name="autofill_troubleshoot_status_abnormal">异常</string>
+    <string name="autofill_troubleshoot_statistics">统计信息</string>
+    <string name="autofill_troubleshoot_stat_total_requests">总请求数</string>
+    <string name="autofill_troubleshoot_stat_successful_requests">成功请求</string>
+    <string name="autofill_troubleshoot_stat_failed_requests">失败请求</string>
+    <string name="autofill_troubleshoot_stat_success_rate">成功率</string>
+    <string name="autofill_troubleshoot_stat_avg_response_time">平均响应时间</string>
+    <string name="autofill_troubleshoot_stat_min_response_time">最快响应</string>
+    <string name="autofill_troubleshoot_stat_max_response_time">最慢响应</string>
+    <string name="autofill_troubleshoot_stat_total_logs">日志条数</string>
+    <string name="autofill_troubleshoot_stat_error_count">错误数</string>
+    <string name="autofill_troubleshoot_stat_warning_count">警告数</string>
+    <string name="autofill_troubleshoot_recent_requests">最近的请求</string>
+    <string name="autofill_troubleshoot_request_details">字段: %1$d, 匹配: %2$d, 数据集: %3$d</string>
+    <string name="autofill_troubleshoot_request_error">错误: %s</string>
+    <string name="autofill_troubleshoot_detected_issues">检测到的问题</string>
+    <string name="autofill_troubleshoot_issue_affected">影响 %d 次请求</string>
+    <string name="autofill_troubleshoot_recommendations">解决建议</string>
+    <string name="autofill_troubleshoot_export_logs">导出日志</string>
+    <string name="autofill_troubleshoot_close">关闭</string>
+    
+    <!-- 黑名单应用名称 -->
+    <string name="autofill_blacklist_app_wechat">微信</string>
+    <string name="autofill_blacklist_app_alipay">支付宝</string>
+    <string name="autofill_blacklist_app_unionpay">云闪付</string>
+    <string name="autofill_blacklist_app_qq">QQ</string>
+    <string name="autofill_blacklist_app_taobao">淘宝</string>
+    <string name="autofill_blacklist_app_jd">京东</string>
+    <string name="autofill_blacklist_app_wework">企业微信</string>
+    <string name="autofill_blacklist_app_weibo">微博</string>
+
+    <!-- 开发者设置 -->
+    <string name="developer_settings">开发者设置</string>
+    <string name="developer_settings_back">返回</string>
+    <string name="developer_log_debugging">日志调试</string>
+    <string name="developer_view_logs">查看日志</string>
+    <string name="developer_view_logs_desc">查看应用的 Logcat 输出日志</string>
+    <string name="developer_clear_log_buffer">清除日志缓冲区</string>
+    <string name="developer_clear_log_buffer_desc">清除设备的日志缓冲区</string>
+    <string name="developer_share_logs">分享日志</string>
+    <string name="developer_share_logs_desc">导出并分享最近的日志</string>
+    <string name="developer_functions">开发者功能</string>
+    <string name="developer_disable_password_verification">关闭密码验证</string>
+    <string name="developer_disable_password_verification_desc">跳过应用启动时的密码验证（仅用于开发测试）</string>
+    <string name="developer_warning">⚠️ 开发者功能仅供测试使用，请勿在生产环境中启用</string>
+    <string name="developer_log_buffer_cleared">日志缓冲区已清除</string>
+    <string name="developer_clear_failed">清除失败: %s</string>
+    <string name="developer_share_failed">分享失败: %s</string>
+    <string name="developer_share_subject">Monica 应用日志</string>
+    <string name="developer_share_title">分享日志</string>
+    <string name="developer_system_logs">系统日志</string>
+    <string name="developer_loading_logs">正在加载日志...</string>
+    <string name="developer_no_logs">暂无日志\n\n提示: 确保应用已运行过一些操作</string>
+    <string name="developer_load_failed">加载失败: %s\n\n可能需要调试权限才能读取日志</string>
+    <string name="developer_refresh">刷新</string>
+    <string name="developer_close">关闭</string>
 
 </resources>

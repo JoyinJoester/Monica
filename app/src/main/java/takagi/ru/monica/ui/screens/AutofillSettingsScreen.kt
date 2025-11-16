@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -35,6 +36,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.LaunchedEffect
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import kotlinx.coroutines.launch
+import takagi.ru.monica.R
 import takagi.ru.monica.autofill.AutofillPreferences
 import takagi.ru.monica.autofill.DomainMatchStrategy
 import takagi.ru.monica.autofill.core.AutofillServiceChecker
@@ -121,7 +123,7 @@ fun AutofillSettingsScreen(
                 title = { 
                     Column {
                         Text(
-                            "自动填充",
+                            stringResource(R.string.autofill_settings_title),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -129,7 +131,7 @@ fun AutofillSettingsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.autofill_settings_back))
                     }
                 },
                 actions = {
@@ -142,7 +144,7 @@ fun AutofillSettingsScreen(
                     ) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = "刷新状态",
+                            contentDescription = stringResource(R.string.autofill_settings_refresh),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -179,14 +181,14 @@ fun AutofillSettingsScreen(
             
             // 系统设置卡片
             SectionCard(
-                title = "系统设置",
+                title = stringResource(R.string.autofill_system_settings_title),
                 icon = Icons.Outlined.Settings,
                 iconTint = MaterialTheme.colorScheme.primary
             ) {
                 AutofillSettingItem(
                     icon = Icons.Outlined.Smartphone,
-                    title = "设置凭据提供商",
-                    subtitle = "在系统设置中选择Monica作为自动填充服务",
+                    title = stringResource(R.string.autofill_system_set_provider),
+                    subtitle = stringResource(R.string.autofill_system_set_provider_desc),
                     onClick = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             val intent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
@@ -200,8 +202,8 @@ fun AutofillSettingsScreen(
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     AutofillSettingItem(
                         icon = Icons.Outlined.Key,
-                        title = "通行密钥和密码设置",
-                        subtitle = "管理通行密钥、密码和数据服务",
+                        title = stringResource(R.string.autofill_system_passkey_settings),
+                        subtitle = stringResource(R.string.autofill_system_passkey_settings_desc),
                         onClick = {
                             val intent = Intent(Settings.ACTION_SETTINGS)
                             context.startActivity(intent)
@@ -212,8 +214,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 AutofillSettingItem(
                     icon = Icons.Outlined.Language,
-                    title = "Chrome自动填充设置",
-                    subtitle = "在Chrome中启用第三方填充服务支持",
+                    title = stringResource(R.string.autofill_system_chrome_settings),
+                    subtitle = stringResource(R.string.autofill_system_chrome_settings_desc),
                     onClick = {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://passwords.google.com/options"))
                         try {
@@ -230,14 +232,14 @@ fun AutofillSettingsScreen(
             
             // 匹配设置卡片
             SectionCard(
-                title = "匹配设置",
+                title = stringResource(R.string.autofill_match_settings_title),
                 icon = Icons.Outlined.Link,
                 iconTint = MaterialTheme.colorScheme.secondary
             ) {
                 AutofillSettingItem(
                     icon = Icons.Outlined.AccountTree,
-                    title = "域名匹配策略",
-                    subtitle = DomainMatchStrategy.getDisplayName(domainMatchStrategy),
+                    title = stringResource(R.string.autofill_domain_strategy_title),
+                    subtitle = DomainMatchStrategy.getDisplayName(context, domainMatchStrategy),
                     trailingIcon = Icons.Default.ChevronRight,
                     onClick = { showStrategyDialog = true }
                 )
@@ -245,14 +247,14 @@ fun AutofillSettingsScreen(
             
             // 填充行为卡片
             SectionCard(
-                title = "填充行为",
+                title = stringResource(R.string.autofill_fill_behavior_title),
                 icon = Icons.Outlined.Input,
                 iconTint = MaterialTheme.colorScheme.tertiary
             ) {
                 SwitchSettingItem(
                     icon = Icons.Outlined.Fingerprint,
-                    title = "填充前验证身份",
-                    subtitle = "选择密码后需要指纹或密码验证才能填充",
+                    title = stringResource(R.string.autofill_fill_verify_identity),
+                    subtitle = stringResource(R.string.autofill_fill_verify_identity_desc),
                     checked = biometricQuickFillEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -264,8 +266,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.AutoAwesome,
-                    title = "填充建议",
-                    subtitle = "自动显示匹配的密码建议",
+                    title = stringResource(R.string.autofill_fill_suggestions),
+                    subtitle = stringResource(R.string.autofill_fill_suggestions_desc),
                     checked = fillSuggestionsEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -277,8 +279,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.TouchApp,
-                    title = "手动选择",
-                    subtitle = "允许手动选择要填充的密码",
+                    title = stringResource(R.string.autofill_fill_manual_selection),
+                    subtitle = stringResource(R.string.autofill_fill_manual_selection_desc),
                     checked = manualSelectionEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -290,14 +292,14 @@ fun AutofillSettingsScreen(
             
             // 保存行为卡片
             SectionCard(
-                title = "保存行为",
+                title = stringResource(R.string.autofill_save_behavior_title),
                 icon = Icons.Outlined.Save,
                 iconTint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.8f)
             ) {
                 SwitchSettingItem(
                     icon = Icons.Outlined.AddCircleOutline,
-                    title = "启用自动保存",
-                    subtitle = "填写表单时自动提示保存密码",
+                    title = stringResource(R.string.autofill_save_enable),
+                    subtitle = stringResource(R.string.autofill_save_enable_desc),
                     checked = requestSaveDataEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -309,8 +311,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.Sync,
-                    title = "自动更新重复密码",
-                    subtitle = "检测到重复用户名时自动更新密码",
+                    title = stringResource(R.string.autofill_save_update_duplicate),
+                    subtitle = stringResource(R.string.autofill_save_update_duplicate_desc),
                     checked = autoUpdateDuplicatePasswordsEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -322,8 +324,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.Notifications,
-                    title = "显示保存通知",
-                    subtitle = "密码保存成功后显示通知提示",
+                    title = stringResource(R.string.autofill_save_show_notification),
+                    subtitle = stringResource(R.string.autofill_save_show_notification_desc),
                     checked = showSaveNotificationEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -335,8 +337,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.AutoAwesome,
-                    title = "智能标题生成",
-                    subtitle = "自动从应用名或域名生成密码标题",
+                    title = stringResource(R.string.autofill_save_smart_title),
+                    subtitle = stringResource(R.string.autofill_save_smart_title_desc),
                     checked = smartTitleGenerationEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -348,8 +350,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.PhoneAndroid,
-                    title = "自动保存应用信息",
-                    subtitle = "自动记录应用包名到密码条目",
+                    title = stringResource(R.string.autofill_save_app_info),
+                    subtitle = stringResource(R.string.autofill_save_app_info_desc),
                     checked = autoSaveAppInfoEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -361,8 +363,8 @@ fun AutofillSettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
                     icon = Icons.Outlined.Public,
-                    title = "自动保存网站信息",
-                    subtitle = "自动记录网站域名到密码条目",
+                    title = stringResource(R.string.autofill_save_website_info),
+                    subtitle = stringResource(R.string.autofill_save_website_info_desc),
                     checked = autoSaveWebsiteInfoEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -374,14 +376,14 @@ fun AutofillSettingsScreen(
             
             // 黑名单卡片
             SectionCard(
-                title = "黑名单",
+                title = stringResource(R.string.autofill_blacklist_title),
                 icon = Icons.Outlined.Block,
                 iconTint = MaterialTheme.colorScheme.error
             ) {
                 SwitchSettingItem(
                     icon = Icons.Outlined.Block,
-                    title = "启用黑名单",
-                    subtitle = "禁止特定应用使用自动填充功能",
+                    title = stringResource(R.string.autofill_blacklist_enable),
+                    subtitle = stringResource(R.string.autofill_blacklist_enable_desc),
                     checked = blacklistEnabled,
                     onCheckedChange = {
                         scope.launch {
@@ -394,8 +396,8 @@ fun AutofillSettingsScreen(
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     AutofillSettingItem(
                         icon = Icons.Outlined.Apps,
-                        title = "管理黑名单应用",
-                        subtitle = "已添加 ${blacklistPackages.size} 个应用",
+                        title = stringResource(R.string.autofill_blacklist_manage),
+                        subtitle = stringResource(R.string.autofill_blacklist_manage_desc, blacklistPackages.size),
                         trailingIcon = Icons.Default.ChevronRight,
                         onClick = { showBlacklistDialog = true }
                     )
@@ -673,6 +675,8 @@ fun StrategySelectionDialog(
     onStrategySelected: (DomainMatchStrategy) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -684,7 +688,7 @@ fun StrategySelectionDialog(
         },
         title = { 
             Text(
-                "选择域名匹配策略",
+                stringResource(R.string.autofill_domain_strategy_dialog_title),
                 fontWeight = FontWeight.Bold
             ) 
         },
@@ -716,7 +720,7 @@ fun StrategySelectionDialog(
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = DomainMatchStrategy.getDisplayName(strategy),
+                                    text = DomainMatchStrategy.getDisplayName(context, strategy),
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = if (strategy == currentStrategy) 
                                         FontWeight.SemiBold 
@@ -725,7 +729,7 @@ fun StrategySelectionDialog(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = DomainMatchStrategy.getDescription(strategy),
+                                    text = DomainMatchStrategy.getDescription(context, strategy),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -737,7 +741,7 @@ fun StrategySelectionDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.autofill_domain_strategy_dialog_close))
             }
         },
         shape = RoundedCornerShape(24.dp)
@@ -755,14 +759,14 @@ fun BlacklistManagementDialog(
     
     // 预定义的常见应用
     val commonApps = listOf(
-        "com.tencent.mm" to "微信",
-        "com.eg.android.AlipayGphone" to "支付宝",
-        "com.unionpay" to "云闪付",
-        "com.tencent.mobileqq" to "QQ",
-        "com.taobao.taobao" to "淘宝",
-        "com.jingdong.app.mall" to "京东",
-        "com.tencent.wework" to "企业微信",
-        "com.sina.weibo" to "微博"
+        "com.tencent.mm" to context.getString(R.string.autofill_blacklist_app_wechat),
+        "com.eg.android.AlipayGphone" to context.getString(R.string.autofill_blacklist_app_alipay),
+        "com.unionpay" to context.getString(R.string.autofill_blacklist_app_unionpay),
+        "com.tencent.mobileqq" to context.getString(R.string.autofill_blacklist_app_qq),
+        "com.taobao.taobao" to context.getString(R.string.autofill_blacklist_app_taobao),
+        "com.jingdong.app.mall" to context.getString(R.string.autofill_blacklist_app_jd),
+        "com.tencent.wework" to context.getString(R.string.autofill_blacklist_app_wework),
+        "com.sina.weibo" to context.getString(R.string.autofill_blacklist_app_weibo)
     )
     
     AlertDialog(
@@ -777,7 +781,7 @@ fun BlacklistManagementDialog(
         },
         title = {
             Text(
-                "黑名单管理",
+                context.getString(R.string.autofill_blacklist_dialog_title),
                 fontWeight = FontWeight.Bold
             )
         },
@@ -790,7 +794,7 @@ fun BlacklistManagementDialog(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "黑名单中的应用将无法使用自动填充功能",
+                    text = context.getString(R.string.autofill_blacklist_dialog_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -874,7 +878,7 @@ fun BlacklistManagementDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("完成")
+                Text(context.getString(R.string.autofill_blacklist_dialog_done))
             }
         },
         shape = RoundedCornerShape(24.dp)
@@ -904,7 +908,7 @@ fun InfoCard() {
                 tint = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Text(
-                text = "自动填充功能需要Android 8.0及以上版本。启用后，Monica将在您访问应用和网站时自动填充保存的密码。",
+                text = stringResource(R.string.autofill_info_card_text),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.9f)
             )

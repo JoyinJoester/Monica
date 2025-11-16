@@ -1,5 +1,8 @@
 package takagi.ru.monica.autofill
 
+import android.content.Context
+import takagi.ru.monica.R
+
 /**
  * 域名匹配策略
  */
@@ -35,25 +38,25 @@ enum class DomainMatchStrategy {
     NEVER;
     
     companion object {
-        fun getDisplayName(strategy: DomainMatchStrategy): String {
+        fun getDisplayName(context: Context, strategy: DomainMatchStrategy): String {
             return when (strategy) {
-                BASE_DOMAIN -> "主域名"
-                DOMAIN -> "域"
-                STARTS_WITH -> "匹配开头"
-                EXACT_MATCH -> "完全匹配"
-                REGEX -> "正则表达式"
-                NEVER -> "从不"
+                BASE_DOMAIN -> context.getString(R.string.autofill_domain_strategy_base_domain)
+                DOMAIN -> context.getString(R.string.autofill_domain_strategy_domain)
+                STARTS_WITH -> context.getString(R.string.autofill_domain_strategy_starts_with)
+                EXACT_MATCH -> context.getString(R.string.autofill_domain_strategy_exact_match)
+                REGEX -> context.getString(R.string.autofill_domain_strategy_regex)
+                NEVER -> context.getString(R.string.autofill_domain_strategy_never)
             }
         }
         
-        fun getDescription(strategy: DomainMatchStrategy): String {
+        fun getDescription(context: Context, strategy: DomainMatchStrategy): String {
             return when (strategy) {
-                BASE_DOMAIN -> "匹配主域名及所有子域名 (推荐)"
-                DOMAIN -> "仅匹配指定域名和子域名"
-                STARTS_WITH -> "URL以指定字符串开头即匹配"
-                EXACT_MATCH -> "URL必须完全相同才匹配"
-                REGEX -> "使用正则表达式进行高级匹配"
-                NEVER -> "禁用自动填充"
+                BASE_DOMAIN -> context.getString(R.string.autofill_domain_strategy_base_domain_desc)
+                DOMAIN -> context.getString(R.string.autofill_domain_strategy_domain_desc)
+                STARTS_WITH -> context.getString(R.string.autofill_domain_strategy_starts_with_desc)
+                EXACT_MATCH -> context.getString(R.string.autofill_domain_strategy_exact_match_desc)
+                REGEX -> context.getString(R.string.autofill_domain_strategy_regex_desc)
+                NEVER -> context.getString(R.string.autofill_domain_strategy_never_desc)
             }
         }
     }

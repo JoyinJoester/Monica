@@ -56,15 +56,15 @@ class AutofillServiceChecker(private val context: Context) {
         /**
          * 获取状态摘要
          */
-        fun getSummary(): String {
+        fun getSummary(context: Context): String {
             return when {
-                isFullyOperational() -> "自动填充服务运行正常"
-                !isServiceDeclared -> "服务未正确声明"
-                !isSystemEnabled -> "系统未启用自动填充服务"
-                !isAppEnabled -> "应用内未启用自动填充"
-                !hasRequiredPermissions -> "缺少必要权限"
-                compatibilityIssues.isNotEmpty() -> "存在兼容性问题"
-                else -> "服务状态异常"
+                isFullyOperational() -> context.getString(takagi.ru.monica.R.string.autofill_status_summary_operational)
+                !isServiceDeclared -> context.getString(takagi.ru.monica.R.string.autofill_status_summary_not_declared)
+                !isSystemEnabled -> context.getString(takagi.ru.monica.R.string.autofill_status_summary_system_disabled)
+                !isAppEnabled -> context.getString(takagi.ru.monica.R.string.autofill_status_summary_app_disabled)
+                !hasRequiredPermissions -> context.getString(takagi.ru.monica.R.string.autofill_status_summary_no_permissions)
+                compatibilityIssues.isNotEmpty() -> context.getString(takagi.ru.monica.R.string.autofill_status_summary_compatibility_issues)
+                else -> context.getString(takagi.ru.monica.R.string.autofill_status_summary_abnormal)
             }
         }
     }
@@ -99,7 +99,7 @@ class AutofillServiceChecker(private val context: Context) {
             recommendations = recommendations
         )
         
-        AutofillLogger.i(TAG, "Service status check completed: ${status.getSummary()}")
+        AutofillLogger.i(TAG, "Service status check completed: ${status.getSummary(context)}")
         
         return status
     }

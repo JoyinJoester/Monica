@@ -862,4 +862,167 @@
     <string name="select_document_hint">Select a document to view details</string>
     <string name="select_bank_card_hint">Select a bank card to view details</string>
     
+    <!-- Autofill Settings - General -->
+    <string name="autofill_settings_title">Autofill</string>
+    <string name="autofill_settings_refresh">Refresh Status</string>
+    <string name="autofill_settings_back">Back</string>
+    
+    <!-- Autofill Settings - System Settings -->
+    <string name="autofill_system_settings_title">System Settings</string>
+    <string name="autofill_system_set_provider">Set Credential Provider</string>
+    <string name="autofill_system_set_provider_desc">Select Monica as autofill service in system settings</string>
+    <string name="autofill_system_passkey_settings">Passkey and Password Settings</string>
+    <string name="autofill_system_passkey_settings_desc">Manage passkeys, passwords and data services</string>
+    <string name="autofill_system_chrome_settings">Chrome Autofill Settings</string>
+    <string name="autofill_system_chrome_settings_desc">Enable third-party fill service support in Chrome</string>
+    
+    <!-- Autofill Settings - Match Settings -->
+    <string name="autofill_match_settings_title">Match Settings</string>
+    <string name="autofill_domain_strategy_title">Domain Match Strategy</string>
+    
+    <!-- Autofill Settings - Fill Behavior -->
+    <string name="autofill_fill_behavior_title">Fill Behavior</string>
+    <string name="autofill_fill_verify_identity">Verify Before Filling</string>
+    <string name="autofill_fill_verify_identity_desc">Require fingerprint or password verification after selecting password</string>
+    <string name="autofill_fill_suggestions">Fill Suggestions</string>
+    <string name="autofill_fill_suggestions_desc">Automatically show matching password suggestions</string>
+    <string name="autofill_fill_manual_selection">Manual Selection</string>
+    <string name="autofill_fill_manual_selection_desc">Allow manual selection of password to fill</string>
+    
+    <!-- Autofill Settings - Save Behavior -->
+    <string name="autofill_save_behavior_title">Save Behavior</string>
+    <string name="autofill_save_enable">Enable Auto-Save</string>
+    <string name="autofill_save_enable_desc">Automatically prompt to save passwords when filling forms</string>
+    <string name="autofill_save_update_duplicate">Auto-Update Duplicate Passwords</string>
+    <string name="autofill_save_update_duplicate_desc">Automatically update password when duplicate username detected</string>
+    <string name="autofill_save_show_notification">Show Save Notification</string>
+    <string name="autofill_save_show_notification_desc">Display notification after password is saved successfully</string>
+    <string name="autofill_save_smart_title">Smart Title Generation</string>
+    <string name="autofill_save_smart_title_desc">Automatically generate password title from app name or domain</string>
+    <string name="autofill_save_app_info">Auto-Save App Info</string>
+    <string name="autofill_save_app_info_desc">Automatically record app package name to password entry</string>
+    <string name="autofill_save_website_info">Auto-Save Website Info</string>
+    <string name="autofill_save_website_info_desc">Automatically record website domain to password entry</string>
+    
+    <!-- Autofill Settings - Blacklist -->
+    <string name="autofill_blacklist_title">Blacklist</string>
+    <string name="autofill_blacklist_enable">Enable Blacklist</string>
+    <string name="autofill_blacklist_enable_desc">Prevent specific apps from using autofill</string>
+    <string name="autofill_blacklist_manage">Manage Blacklist Apps</string>
+    <string name="autofill_blacklist_manage_desc">%d apps added</string>
+    <string name="autofill_blacklist_dialog_title">Blacklist Management</string>
+    <string name="autofill_blacklist_dialog_desc">Apps in blacklist will not be able to use autofill</string>
+    <string name="autofill_blacklist_dialog_done">Done</string>
+    
+    <!-- Autofill Settings - Info Card -->
+    <string name="autofill_info_card_text">Autofill requires Android 8.0 or higher. Once enabled, Monica will automatically fill saved passwords when you visit apps and websites.</string>
+    
+    <!-- Autofill Status -->
+    <string name="autofill_status_enabled">Autofill Enabled</string>
+    <string name="autofill_status_disabled">Autofill Disabled</string>
+    <string name="autofill_status_enabled_desc">Monica is set as default autofill service</string>
+    <string name="autofill_status_disabled_desc">Please enable Monica in system settings</string>
+    <string name="autofill_status_all_functional">All features working</string>
+    <string name="autofill_status_enable_prompt">Please enable Monica as autofill service in system settings</string>
+    <string name="autofill_status_go_to_settings">Go to System Settings</string>
+    <string name="autofill_status_compatibility_issues">Compatibility issues detected:</string>
+    <string name="autofill_status_more_issues">%d more issues...</string>
+    <string name="autofill_status_troubleshoot">Troubleshoot</string>
+    <string name="autofill_status_summary_operational">Autofill service is operational</string>
+    <string name="autofill_status_summary_not_declared">Service not properly declared</string>
+    <string name="autofill_status_summary_system_disabled">System autofill service not enabled</string>
+    <string name="autofill_status_summary_app_disabled">Autofill not enabled in app</string>
+    <string name="autofill_status_summary_no_permissions">Missing required permissions</string>
+    <string name="autofill_status_summary_compatibility_issues">Compatibility issues detected</string>
+    <string name="autofill_status_summary_abnormal">Service status abnormal</string>
+    
+    <!-- Domain Match Strategy -->
+    <string name="autofill_domain_strategy_base_domain">Base Domain</string>
+    <string name="autofill_domain_strategy_base_domain_desc">Match base domain and all subdomains (Recommended)</string>
+    <string name="autofill_domain_strategy_domain">Domain</string>
+    <string name="autofill_domain_strategy_domain_desc">Match only specified domain and subdomains</string>
+    <string name="autofill_domain_strategy_starts_with">Starts With</string>
+    <string name="autofill_domain_strategy_starts_with_desc">Match if URL starts with specified string</string>
+    <string name="autofill_domain_strategy_exact_match">Exact Match</string>
+    <string name="autofill_domain_strategy_exact_match_desc">URL must match exactly</string>
+    <string name="autofill_domain_strategy_regex">Regular Expression</string>
+    <string name="autofill_domain_strategy_regex_desc">Use regular expression for advanced matching</string>
+    <string name="autofill_domain_strategy_never">Never</string>
+    <string name="autofill_domain_strategy_never_desc">Disable autofill</string>
+    <string name="autofill_domain_strategy_dialog_title">Select Domain Match Strategy</string>
+    <string name="autofill_domain_strategy_dialog_close">Close</string>
+    
+    <!-- Troubleshoot Dialog -->
+    <string name="autofill_troubleshoot_title">Autofill Diagnostics</string>
+    <string name="autofill_troubleshoot_device_info">Device Info</string>
+    <string name="autofill_troubleshoot_manufacturer">Manufacturer</string>
+    <string name="autofill_troubleshoot_model">Model</string>
+    <string name="autofill_troubleshoot_android_version">Android Version</string>
+    <string name="autofill_troubleshoot_rom_type">ROM Type</string>
+    <string name="autofill_troubleshoot_inline_support">Inline Suggestions Support</string>
+    <string name="autofill_troubleshoot_yes">Yes</string>
+    <string name="autofill_troubleshoot_no">No</string>
+    <string name="autofill_troubleshoot_service_status">Service Status</string>
+    <string name="autofill_troubleshoot_service_declared">Service Declared</string>
+    <string name="autofill_troubleshoot_system_enabled">System Enabled</string>
+    <string name="autofill_troubleshoot_app_enabled">App Enabled</string>
+    <string name="autofill_troubleshoot_permissions_complete">Permissions Complete</string>
+    <string name="autofill_troubleshoot_status_normal">Normal</string>
+    <string name="autofill_troubleshoot_status_abnormal">Abnormal</string>
+    <string name="autofill_troubleshoot_statistics">Statistics</string>
+    <string name="autofill_troubleshoot_stat_total_requests">Total Requests</string>
+    <string name="autofill_troubleshoot_stat_successful_requests">Successful Requests</string>
+    <string name="autofill_troubleshoot_stat_failed_requests">Failed Requests</string>
+    <string name="autofill_troubleshoot_stat_success_rate">Success Rate</string>
+    <string name="autofill_troubleshoot_stat_avg_response_time">Avg Response Time</string>
+    <string name="autofill_troubleshoot_stat_min_response_time">Min Response Time</string>
+    <string name="autofill_troubleshoot_stat_max_response_time">Max Response Time</string>
+    <string name="autofill_troubleshoot_stat_total_logs">Total Logs</string>
+    <string name="autofill_troubleshoot_stat_error_count">Error Count</string>
+    <string name="autofill_troubleshoot_stat_warning_count">Warning Count</string>
+    <string name="autofill_troubleshoot_recent_requests">Recent Requests</string>
+    <string name="autofill_troubleshoot_request_details">Fields: %1$d, Matched: %2$d, Datasets: %3$d</string>
+    <string name="autofill_troubleshoot_request_error">Error: %s</string>
+    <string name="autofill_troubleshoot_detected_issues">Detected Issues</string>
+    <string name="autofill_troubleshoot_issue_affected">Affected %d requests</string>
+    <string name="autofill_troubleshoot_recommendations">Recommendations</string>
+    <string name="autofill_troubleshoot_export_logs">Export Logs</string>
+    <string name="autofill_troubleshoot_close">Close</string>
+    
+    <!-- Blacklist App Names -->
+    <string name="autofill_blacklist_app_wechat">WeChat</string>
+    <string name="autofill_blacklist_app_alipay">Alipay</string>
+    <string name="autofill_blacklist_app_unionpay">UnionPay</string>
+    <string name="autofill_blacklist_app_qq">QQ</string>
+    <string name="autofill_blacklist_app_taobao">Taobao</string>
+    <string name="autofill_blacklist_app_jd">JD</string>
+    <string name="autofill_blacklist_app_wework">WeChat Work</string>
+    <string name="autofill_blacklist_app_weibo">Weibo</string>
+    
+<!-- Developer Settings -->
+    <string name="developer_settings">Developer Settings</string>
+    <string name="developer_settings_back">Back</string>
+    <string name="developer_log_debugging">Log Debugging</string>
+    <string name="developer_view_logs">View Logs</string>
+    <string name="developer_view_logs_desc">View application Logcat output logs</string>
+    <string name="developer_clear_log_buffer">Clear Log Buffer</string>
+    <string name="developer_clear_log_buffer_desc">Clear device log buffer</string>
+    <string name="developer_share_logs">Share Logs</string>
+    <string name="developer_share_logs_desc">Export and share recent logs</string>
+    <string name="developer_functions">Developer Functions</string>
+    <string name="developer_disable_password_verification">Disable Password Verification</string>
+    <string name="developer_disable_password_verification_desc">Skip password verification on app startup (for development testing only)</string>
+    <string name="developer_warning">⚠️ Developer functions are for testing only, do not enable in production environment</string>
+    <string name="developer_log_buffer_cleared">Log buffer cleared</string>
+    <string name="developer_clear_failed">Clear failed: %s</string>
+    <string name="developer_share_failed">Share failed: %s</string>
+    <string name="developer_share_subject">Monica App Logs</string>
+    <string name="developer_share_title">Share Logs</string>
+    <string name="developer_system_logs">System Logs</string>
+    <string name="developer_loading_logs">Loading logs...</string>
+    <string name="developer_no_logs">No logs\n\nTip: Make sure the app has run some operations</string>
+    <string name="developer_load_failed">Load failed: %s\n\nDebug permissions may be required to read logs</string>
+    <string name="developer_refresh">Refresh</string>
+    <string name="developer_close">Close</string>
+
 </resources>
