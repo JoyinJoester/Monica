@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.decodeFromString
 
 private val Context.passwordHistoryDataStore: DataStore<Preferences> by preferencesDataStore(name = "password_history")
 
@@ -79,6 +81,23 @@ class PasswordHistoryManager(private val context: Context) {
     suspend fun clearHistory() {
         context.passwordHistoryDataStore.edit { preferences ->
             preferences[HISTORY_KEY] = "[]"
+        }
+    }
+
+    /**
+     * 导出当前历史为 JSON 字符串
+     */
+    suspend fun exportHistoryJson(): String {
+        val current = historyFlow.first()
+        return json.encodeToString(current)
+    }
+
+    /**
+     * 将历史记录整体导入（替换当前历史）
+     */
+    suspend fun importHistory(history: List<PasswordGenerationHistory>) {
+        context.passwordHistoryDataStore.edit { preferences ->
+            preferences[HISTORY_KEY] = json.encodeToString(history)
         }
     }
     

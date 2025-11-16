@@ -23,6 +23,7 @@
         android:label="自动填充测试"
         android:roundIcon="@android:drawable/ic_lock_lock"
         android:supportsRtl="true"
+        android:testOnly="true"
         android:theme="@style/Theme.AppCompat.Light" >
         <activity
             android:name="com.test.autofilltest.MainActivity"
