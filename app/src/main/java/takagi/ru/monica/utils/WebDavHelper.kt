@@ -1,4 +1,4 @@
-·package takagi.ru.monica.utils
+package takagi.ru.monica.utils
 
 import android.content.Context
 import android.net.Uri
@@ -11,13 +11,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
-import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.data.PasswordHistoryManager
-import takagi.ru.monica.data.PasswordGenerationHistory
-import kotlinx.serialization.decodeFromString
+import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.decodeFromString
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -401,45 +402,43 @@ class WebDavHelper(
                         ?: Exception("导出数据失败"))
                 }
                 
-                // 4. 创建ZIP文件,包含两个CSV
+                // 4. 创建ZIP文件,包含两个CSV、密码生成历史和图片
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
                     // 添加passwords.csv
                     addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
                     
                     // 添加secure_items.csv
                     addFileToZip(zipOut, secureItemsCsvFile, secureItemsCsvFile.name)
-                
-                // 添加密码生成历史（JSON）
-                try {
-                    val historyManager = PasswordHistoryManager(context)
-                    val historyJson = historyManager.exportHistoryJson()
-                    historyJsonFile.writeText(historyJson, Charsets.UTF_8)
-                    addFileToZip(zipOut, historyJsonFile, historyJsonFile.name)
-                    // 临时文件将在 finally 中删除
-                } catch (e: Exception) {
-                    android.util.Log.w("WebDavHelper", "Failed to export password generation history: ${e.message}")
-                }
-                
-                // 添加图片文件（银行卡和证件的照片）
-                try {
-                    val imageFileNames = extractAllImageFileNames(secureItems)
-                    if (imageFileNames.isNotEmpty()) {
-                        android.util.Log.d("WebDavHelper", "Backing up ${imageFileNames.size} image files")
+                    
+                    // 添加密码生成历史（JSON）
+                    try {
+                        val historyManager = PasswordHistoryManager(context)
+                        val historyJson = historyManager.exportHistoryJson()
+                        historyJsonFile.writeText(historyJson, Charsets.UTF_8)
+                        addFileToZip(zipOut, historyJsonFile, historyJsonFile.name)
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to export password generation history: ${e.message}")
+                    }
+                    
+                    // 添加图片文件（银行卡和证件的照片）
+                    try {
+                        val imageFileNames = extractAllImageFileNames(secureItems)
+                        android.util.Log.d("WebDavHelper", "Found ${imageFileNames.size} image files to backup")
                         val imageDir = File(context.filesDir, "secure_images")
                         imageFileNames.forEach { fileName ->
                             val imageFile = File(imageDir, fileName)
-                            if (imageFile.exists()) {
-                                // 在ZIP中创建 images/ 子目录存放图片
-                                addFileToZip(zipOut, imageFile, "images/$fileName")
-                            } else {
-                                android.util.Log.w("WebDavHelper", "Image file not found: $fileName")
+                            when {
+                                imageFile.exists() -> {
+                                    addFileToZip(zipOut, imageFile, "images/$fileName")
+                                }
+                                else -> {
+                                    android.util.Log.w("WebDavHelper", "Image file not found: $fileName")
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to backup images: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    android.util.Log.w("WebDavHelper", "Failed to backup images: ${e.message}")
-                }
-            }
                 }
                 
                 // 5. 如果启用加密，加密 ZIP 文件
@@ -518,6 +517,32 @@ class WebDavHelper(
     }
     
     /**
+     * 从安全项目列表中提取所有图片文件名
+     */
+    private fun extractAllImageFileNames(secureItems: List<SecureItem>): Set<String> {
+        val imageFileNames = mutableSetOf<String>()
+        val json = Json { ignoreUnknownKeys = true }
+        
+        secureItems.forEach { item ->
+            try {
+                if (!item.imagePaths.isNullOrBlank()) {
+                    val imagePathsArray = json.parseToJsonElement(item.imagePaths).jsonArray
+                    imagePathsArray.forEach { element ->
+                        val imagePath = element.jsonPrimitive.content
+                        if (imagePath.endsWith(".enc")) {
+                            imageFileNames.add(imagePath)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("WebDavHelper", "Failed to parse imagePaths for item ${item.id}: ${e.message}")
+            }
+        }
+        
+        return imageFileNames
+    }
+    
+    /**
      * 下载并恢复备份 - 返回密码、其他数据和账单
      * @param backupFile 要恢复的备份文件
      * @param decryptPassword 解密密码 (如果文件已加密)
@@ -567,7 +592,7 @@ class WebDavHelper(
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
                 
-                // 4. 解压ZIP文件并读取CSV
+                // 4. 解压ZIP文件并读取CSV、密码历史和图片
                 ZipInputStream(FileInputStream(zipFile)).use { zipIn ->
                     var entry = zipIn.nextEntry
                     while (entry != null) {
@@ -582,51 +607,6 @@ class WebDavHelper(
                                 (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_password.csv", ignoreCase = true)) -> {
                                 passwords.addAll(importPasswordsFromCSV(tempFile))
                             }
-                            // 密码生成历史文件
-                            entryName.equals("generated_history.json", ignoreCase = true) ||
-                                entryName.endsWith("_generated_history.json", ignoreCase = true) ||
-                                entryName.equals("Monica_generated_history.json", ignoreCase = true) -> {
-                                try {
-                                    val content = tempFile.readText(Charsets.UTF_8)
-                                    val json = Json { ignoreUnknownKeys = true }
-                                    val list = try {
-                                        json.decodeFromString<List<PasswordGenerationHistory>>(content)
-                                    } catch (e: Exception) {
-                                        emptyList<PasswordGenerationHistory>()
-                                    }
-                                    if (list.isNotEmpty()) {
-                                        val historyManager = PasswordHistoryManager(context)
-                                        historyManager.importHistory(list)
-                                    }
-                                } catch (e: Exception) {
-                                    android.util.Log.w("WebDavHelper", "Failed to import generated history: ${e.message}")
-                                }
-                            }
-                            // 图片文件（存储在 images/ 子目录中）
-                            entry.name.contains("/images/") || entryName.endsWith(".enc") -> {
-                                try {
-                                    // 恢复图片到 secure_images 目录
-                                    val imageDir = File(context.filesDir, "secure_images")
-                                    if (!imageDir.exists()) {
-                                        imageDir.mkdirs()
-                                    }
-                                    val imageFileName = if (entry.name.contains("/")) {
-                                        entry.name.substringAfterLast('/')
-                                    } else {
-                                        entryName
-                                    }
-                                    val imageFile = File(imageDir, imageFileName)
-                                    // 如果文件已存在，可以选择跳过或覆盖
-                                    if (!imageFile.exists() || imageFile.length() == 0L) {
-                                        tempFile.copyTo(imageFile, overwrite = true)
-                                        android.util.Log.d("WebDavHelper", "Restored image: $imageFileName")
-                                    } else {
-                                        android.util.Log.d("WebDavHelper", "Image already exists, skipping: $imageFileName")
-                                    }
-                                } catch (e: Exception) {
-                                    android.util.Log.w("WebDavHelper", "Failed to restore image: ${e.message}")
-                                }
-                            }
                             entryName.equals("secure_items.csv", ignoreCase = true) ||
                                 entryName.equals("backup.csv", ignoreCase = true) ||
                                 (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_other.csv", ignoreCase = true)) -> {
@@ -635,6 +615,33 @@ class WebDavHelper(
                                 val importResult = exportManager.importData(csvUri)
                                 if (importResult.isSuccess) {
                                     secureItems.addAll(importResult.getOrNull() ?: emptyList())
+                                }
+                            }
+                            entryName.endsWith("_generated_history.json", ignoreCase = true) -> {
+                                // 恢复密码生成历史
+                                try {
+                                    val historyJson = tempFile.readText(Charsets.UTF_8)
+                                    val json = Json { ignoreUnknownKeys = true }
+                                    val history = json.decodeFromString<List<takagi.ru.monica.data.PasswordGenerationHistory>>(historyJson)
+                                    val historyManager = PasswordHistoryManager(context)
+                                    historyManager.importHistory(history)
+                                    android.util.Log.d("WebDavHelper", "Restored ${history.size} password generation history entries")
+                                } catch (e: Exception) {
+                                    android.util.Log.w("WebDavHelper", "Failed to restore password generation history: ${e.message}")
+                                }
+                            }
+                            entry.name.contains("/images/") || entryName.endsWith(".enc") -> {
+                                // 恢复图片文件
+                                try {
+                                    val imageDir = File(context.filesDir, "secure_images")
+                                    if (!imageDir.exists()) {
+                                        imageDir.mkdirs()
+                                    }
+                                    val destFile = File(imageDir, entryName)
+                                    tempFile.copyTo(destFile, overwrite = true)
+                                    android.util.Log.d("WebDavHelper", "Restored image file: $entryName")
+                                } catch (e: Exception) {
+                                    android.util.Log.w("WebDavHelper", "Failed to restore image file $entryName: ${e.message}")
                                 }
                             }
                         }
@@ -1020,33 +1027,4 @@ private fun getSystemServiceForUser(context: Context, serviceName: String): Any?
         // 降级到普通方式
         return context.getSystemService(serviceName)
     }
-}
-
-/**
- * 从安全项中提取所有图片文件名
- */
-private fun extractAllImageFileNames(secureItems: List<SecureItem>): Set<String> {
-    val imageFileNames = mutableSetOf<String>()
-    val json = Json { ignoreUnknownKeys = true }
-    
-    secureItems.forEach { item ->
-        if (item.imagePaths.isNotEmpty()) {
-            try {
-                // imagePaths 是 JSON 数组格式: ["file1.enc", "file2.enc"]
-                val jsonElement = json.parseToJsonElement(item.imagePaths)
-                if (jsonElement is kotlinx.serialization.json.JsonArray) {
-                    jsonElement.jsonArray.forEach { element ->
-                        val fileName = element.jsonPrimitive.content
-                        if (fileName.isNotEmpty()) {
-                            imageFileNames.add(fileName)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("WebDavHelper", "Failed to parse imagePaths for item ${item.id}: ${e.message}")
-            }
-        }
-    }
-    
-    return imageFileNames
 }
