@@ -946,4 +946,44 @@
     <string name="developer_refresh">Làm mới</string>
     <string name="developer_close">Đóng</string>
 
+    <!-- Password Strength -->
+    <string name="password_strength">Độ mạnh mật khẩu:</string>
+    <string name="strength_very_weak">Rất yếu</string>
+    <string name="strength_weak">Yếu</string>
+    <string name="strength_fair">Trung bình</string>
+    <string name="strength_strong">Mạnh</string>
+    <string name="strength_very_strong">Rất mạnh</string>
+    <string name="improvement_suggestions">Đề xuất cải thiện:</string>
+    
+    <!-- Password Strength Suggestions -->
+    <string name="suggestion_enter_password">Vui lòng nhập mật khẩu</string>
+    <string name="suggestion_too_short">Mật khẩu quá ngắn, nên có ít nhất 6 ký tự</string>
+    <string name="suggestion_use_8_chars">Nên sử dụng 8 ký tự trở lên</string>
+    <string name="suggestion_use_12_chars">Nên sử dụng 12 ký tự trở lên để tăng cường bảo mật</string>
+    <string name="suggestion_add_lowercase">Thêm chữ thường (a-z)</string>
+    <string name="suggestion_add_uppercase">Thêm chữ hoa (A-Z)</string>
+    <string name="suggestion_add_digits">Thêm số (0-9)</string>
+    <string name="suggestion_add_special">Thêm ký tự đặc biệt (!@#$%^&amp;*)</string>
+    <string name="suggestion_avoid_repeating">Tránh ký tự lặp lại (ví dụ: aaa, 111)</string>
+    <string name="suggestion_avoid_sequential">Tránh ký tự liên tiếp (ví dụ: abc, 123)</string>
+    <string name="suggestion_common_password">⚠️ Đây là mật khẩu phổ biến, dễ bị bẻ khóa!</string>
+    <string name="suggestion_increase_randomness">Mật khẩu có tính dự đoán cao, nên tăng tính ngẫu nhiên</string>
+
+    <!-- Password Detail Dialog -->
+    <string name="basic_info">📝 Thông tin cơ bản</string>
+    <string name="website">Trang web</string>
+    <string name="email">Email</string>
+    <string name="phone">Số điện thoại</string>
+    <string name="personal_info">Thông tin cá nhân</string>
+    <string name="address_info">Thông tin địa chỉ</string>
+    <string name="address_line">Địa chỉ chi tiết</string>
+    <string name="state">Tỉnh/Thành</string>
+    <string name="zip_code">Mã bưu điện</string>
+    <string name="payment_info">Thông tin thanh toán</string>
+    <string name="credit_card_number">Số thẻ tín dụng</string>
+    <string name="card_holder">Chủ thẻ</string>
+    <string name="credit_card_encrypted">Thông tin thẻ tín dụng đã được mã hóa</string>
+    <string name="expand">Mở rộng</string>
+    <string name="copied">Đã sao chép %s</string>
+
 </resources>

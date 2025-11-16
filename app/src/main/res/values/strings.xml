@@ -1026,4 +1026,44 @@
     <string name="developer_refresh">Refresh</string>
     <string name="developer_close">Close</string>
 
+    <!-- Password Strength -->
+    <string name="password_strength">Password Strength:</string>
+    <string name="strength_very_weak">Very Weak</string>
+    <string name="strength_weak">Weak</string>
+    <string name="strength_fair">Fair</string>
+    <string name="strength_strong">Strong</string>
+    <string name="strength_very_strong">Very Strong</string>
+    <string name="improvement_suggestions">Improvement Suggestions:</string>
+    
+    <!-- Password Strength Suggestions -->
+    <string name="suggestion_enter_password">Please enter a password</string>
+    <string name="suggestion_too_short">Password is too short, at least 6 characters recommended</string>
+    <string name="suggestion_use_8_chars">Recommend using 8 or more characters</string>
+    <string name="suggestion_use_12_chars">Recommend using 12 or more characters for better security</string>
+    <string name="suggestion_add_lowercase">Add lowercase letters (a-z)</string>
+    <string name="suggestion_add_uppercase">Add uppercase letters (A-Z)</string>
+    <string name="suggestion_add_digits">Add digits (0-9)</string>
+    <string name="suggestion_add_special">Add special characters (!@#$%^&amp;*)</string>
+    <string name="suggestion_avoid_repeating">Avoid repeating characters (e.g. aaa, 111)</string>
+    <string name="suggestion_avoid_sequential">Avoid sequential characters (e.g. abc, 123)</string>
+    <string name="suggestion_common_password">⚠️ This is a common password, easy to crack!</string>
+    <string name="suggestion_increase_randomness">Password is too predictable, recommend increasing randomness</string>
+
+    <!-- Password Detail Dialog -->
+    <string name="basic_info">📝 Basic Information</string>
+    <string name="website">Website</string>
+    <string name="email">Email</string>
+    <string name="phone">Phone</string>
+    <string name="personal_info">Personal Information</string>
+    <string name="address_info">Address Information</string>
+    <string name="address_line">Address</string>
+    <string name="state">State/Province</string>
+    <string name="zip_code">Zip Code</string>
+    <string name="payment_info">Payment Information</string>
+    <string name="credit_card_number">Credit Card Number</string>
+    <string name="card_holder">Card Holder</string>
+    <string name="credit_card_encrypted">Credit card information is encrypted</string>
+    <string name="expand">Expand</string>
+    <string name="copied">Copied %s</string>
+
 </resources>

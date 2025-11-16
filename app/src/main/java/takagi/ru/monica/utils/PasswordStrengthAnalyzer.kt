@@ -1,5 +1,7 @@
 package takagi.ru.monica.utils
 
+import android.content.Context
+import takagi.ru.monica.R
 import kotlin.math.log2
 
 /**
@@ -99,18 +101,19 @@ object PasswordStrengthAnalyzer {
     }
 
     /**
-     * 获取强度等级的中文描述
+     * 获取强度等级的本地化描述
      * 
      * @param level 强度等级
-     * @return 中文描述
+     * @param context Android Context for string resources
+     * @return 本地化描述
      */
-    fun getStrengthLevelText(level: StrengthLevel): String {
+    fun getStrengthLevelText(level: StrengthLevel, context: Context): String {
         return when (level) {
-            StrengthLevel.VERY_WEAK -> "非常弱"
-            StrengthLevel.WEAK -> "弱"
-            StrengthLevel.FAIR -> "一般"
-            StrengthLevel.STRONG -> "强"
-            StrengthLevel.VERY_STRONG -> "非常强"
+            StrengthLevel.VERY_WEAK -> context.getString(R.string.strength_very_weak)
+            StrengthLevel.WEAK -> context.getString(R.string.strength_weak)
+            StrengthLevel.FAIR -> context.getString(R.string.strength_fair)
+            StrengthLevel.STRONG -> context.getString(R.string.strength_strong)
+            StrengthLevel.VERY_STRONG -> context.getString(R.string.strength_very_strong)
         }
     }
 
@@ -118,53 +121,54 @@ object PasswordStrengthAnalyzer {
      * 获取改进建议
      * 
      * @param password 待分析的密码
+     * @param context Android Context for string resources
      * @return 建议列表
      */
-    fun getSuggestions(password: String): List<String> {
+    fun getSuggestions(password: String, context: Context): List<String> {
         if (password.isEmpty()) {
-            return listOf("请输入密码")
+            return listOf(context.getString(R.string.suggestion_enter_password))
         }
 
         val suggestions = mutableListOf<String>()
 
         // 长度建议
         when {
-            password.length < 6 -> suggestions.add("密码太短，建议至少 6 个字符")
-            password.length < 8 -> suggestions.add("建议使用 8 个以上字符")
-            password.length < 12 -> suggestions.add("建议使用 12 个以上字符以提高安全性")
+            password.length < 6 -> suggestions.add(context.getString(R.string.suggestion_too_short))
+            password.length < 8 -> suggestions.add(context.getString(R.string.suggestion_use_8_chars))
+            password.length < 12 -> suggestions.add(context.getString(R.string.suggestion_use_12_chars))
         }
 
         // 字符类型建议
         if (!password.any { it.isLowerCase() }) {
-            suggestions.add("添加小写字母 (a-z)")
+            suggestions.add(context.getString(R.string.suggestion_add_lowercase))
         }
         if (!password.any { it.isUpperCase() }) {
-            suggestions.add("添加大写字母 (A-Z)")
+            suggestions.add(context.getString(R.string.suggestion_add_uppercase))
         }
         if (!password.any { it.isDigit() }) {
-            suggestions.add("添加数字 (0-9)")
+            suggestions.add(context.getString(R.string.suggestion_add_digits))
         }
         if (!password.any { !it.isLetterOrDigit() }) {
-            suggestions.add("添加特殊字符 (!@#$%^&*)")
+            suggestions.add(context.getString(R.string.suggestion_add_special))
         }
 
         // 复杂度建议
         if (hasRepeatingCharacters(password)) {
-            suggestions.add("避免重复字符 (如 aaa, 111)")
+            suggestions.add(context.getString(R.string.suggestion_avoid_repeating))
         }
         if (hasSequentialCharacters(password)) {
-            suggestions.add("避免连续字符 (如 abc, 123)")
+            suggestions.add(context.getString(R.string.suggestion_avoid_sequential))
         }
 
         // 常见密码警告
         if (isCommonPassword(password)) {
-            suggestions.add("⚠️ 这是常见密码，容易被破解！")
+            suggestions.add(context.getString(R.string.suggestion_common_password))
         }
 
         // 熵值建议
         val entropy = calculateEntropy(password)
         if (entropy < 50) {
-            suggestions.add("密码可预测性较高，建议增加随机性")
+            suggestions.add(context.getString(R.string.suggestion_increase_randomness))
         }
 
         return suggestions

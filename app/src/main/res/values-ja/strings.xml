@@ -962,4 +962,44 @@
     <string name="developer_refresh">更新</string>
     <string name="developer_close">閉じる</string>
 
+    <!-- Password Strength -->
+    <string name="password_strength">パスワード強度:</string>
+    <string name="strength_very_weak">非常に弱い</string>
+    <string name="strength_weak">弱い</string>
+    <string name="strength_fair">普通</string>
+    <string name="strength_strong">強い</string>
+    <string name="strength_very_strong">非常に強い</string>
+    <string name="improvement_suggestions">改善提案:</string>
+    
+    <!-- Password Strength Suggestions -->
+    <string name="suggestion_enter_password">パスワードを入力してください</string>
+    <string name="suggestion_too_short">パスワードが短すぎます。6文字以上を推奨</string>
+    <string name="suggestion_use_8_chars">8文字以上の使用を推奨</string>
+    <string name="suggestion_use_12_chars">セキュリティ向上のため12文字以上を推奨</string>
+    <string name="suggestion_add_lowercase">小文字を追加 (a-z)</string>
+    <string name="suggestion_add_uppercase">大文字を追加 (A-Z)</string>
+    <string name="suggestion_add_digits">数字を追加 (0-9)</string>
+    <string name="suggestion_add_special">特殊文字を追加 (!@#$%^&amp;*)</string>
+    <string name="suggestion_avoid_repeating">繰り返し文字を避ける (例: aaa, 111)</string>
+    <string name="suggestion_avoid_sequential">連続文字を避ける (例: abc, 123)</string>
+    <string name="suggestion_common_password">⚠️ これは一般的なパスワードで、破られやすいです！</string>
+    <string name="suggestion_increase_randomness">パスワードの予測可能性が高いため、ランダム性を高めることを推奨</string>
+
+    <!-- Password Detail Dialog -->
+    <string name="basic_info">📝 基本情報</string>
+    <string name="website">ウェブサイト</string>
+    <string name="email">メール</string>
+    <string name="phone">電話番号</string>
+    <string name="personal_info">個人情報</string>
+    <string name="address_info">住所情報</string>
+    <string name="address_line">住所</string>
+    <string name="state">都道府県</string>
+    <string name="zip_code">郵便番号</string>
+    <string name="payment_info">支払い情報</string>
+    <string name="credit_card_number">クレジットカード番号</string>
+    <string name="card_holder">カード名義人</string>
+    <string name="credit_card_encrypted">クレジットカード情報は暗号化されています</string>
+    <string name="expand">展開</string>
+    <string name="copied">%sをコピーしました</string>
+
 </resources>

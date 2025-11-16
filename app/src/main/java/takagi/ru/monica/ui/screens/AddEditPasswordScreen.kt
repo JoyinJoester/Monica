@@ -339,7 +339,7 @@ fun AddEditPasswordScreen(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                "个人信息",
+                                stringResource(R.string.personal_info),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                             )
@@ -454,7 +454,7 @@ fun AddEditPasswordScreen(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                "地址信息",
+                                stringResource(R.string.address_info),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                             )
@@ -601,7 +601,7 @@ fun AddEditPasswordScreen(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                "支付信息",
+                                stringResource(R.string.payment_info),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                             )

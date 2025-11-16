@@ -65,31 +65,31 @@ fun DeveloperSettingsScreen(
         ) {
             // 日志调试区域
             SettingsSection(
-                title = "日志调试"
+                title = stringResource(R.string.developer_log_debugging)
             ) {
                 SettingsItem(
                     icon = Icons.Default.BugReport,
-                    title = "查看日志",
-                    subtitle = "查看应用的 Logcat 输出日志",
+                    title = stringResource(R.string.developer_view_logs),
+                    subtitle = stringResource(R.string.developer_view_logs_desc),
                     onClick = { showDebugLogsDialog = true }
                 )
                 
                 SettingsItem(
                     icon = Icons.Default.DeleteSweep,
-                    title = "清除日志缓冲区",
-                    subtitle = "清除设备的日志缓冲区",
+                    title = stringResource(R.string.developer_clear_log_buffer),
+                    subtitle = stringResource(R.string.developer_clear_log_buffer_desc),
                     onClick = {
                         try {
                             Runtime.getRuntime().exec("logcat -c")
                             Toast.makeText(
                                 context,
-                                "日志缓冲区已清除",
+                                context.getString(R.string.developer_log_buffer_cleared),
                                 Toast.LENGTH_SHORT
                             ).show()
                         } catch (e: Exception) {
                             Toast.makeText(
                                 context,
-                                "清除失败: ${e.message}",
+                                context.getString(R.string.developer_clear_failed, e.message ?: ""),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -98,8 +98,8 @@ fun DeveloperSettingsScreen(
                 
                 SettingsItem(
                     icon = Icons.Default.Share,
-                    title = "分享日志",
-                    subtitle = "导出并分享最近的日志",
+                    title = stringResource(R.string.developer_share_logs),
+                    subtitle = stringResource(R.string.developer_share_logs_desc),
                     onClick = {
                         scope.launch {
                             try {
@@ -116,14 +116,14 @@ fun DeveloperSettingsScreen(
                                 val shareIntent = Intent().apply {
                                     action = Intent.ACTION_SEND
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, "Monica 应用日志")
+                                    putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.developer_share_subject))
                                     putExtra(Intent.EXTRA_TEXT, logs)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "分享日志"))
+                                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.developer_share_title)))
                             } catch (e: Exception) {
                                 Toast.makeText(
                                     context,
-                                    "分享失败: ${e.message}",
+                                    context.getString(R.string.developer_share_failed, e.message ?: ""),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -134,12 +134,12 @@ fun DeveloperSettingsScreen(
             
             // 开发者功能
             SettingsSection(
-                title = "开发者功能"
+                title = stringResource(R.string.developer_functions)
             ) {
                 SettingsItemWithSwitch(
                     icon = Icons.Default.Lock,
-                    title = "关闭密码验证",
-                    subtitle = "跳过应用启动时的密码验证（仅用于开发测试）",
+                    title = stringResource(R.string.developer_disable_password_verification),
+                    subtitle = stringResource(R.string.developer_disable_password_verification_desc),
                     checked = disablePasswordVerification,
                     onCheckedChange = { enabled ->
                         android.util.Log.d("DeveloperSettings", "Toggling password verification: $enabled")
@@ -175,7 +175,7 @@ fun DeveloperSettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "⚠️ 开发者功能仅供测试使用，请勿在生产环境中启用",
+                        text = stringResource(R.string.developer_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
@@ -203,7 +203,7 @@ fun DebugLogsDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var logs by remember { mutableStateOf("正在加载日志...") }
+    var logs by remember { mutableStateOf(context.getString(R.string.developer_loading_logs)) }
     var isLoading by remember { mutableStateOf(true) }
     
     // 加载日志
@@ -224,11 +224,11 @@ fun DebugLogsDialog(
             logs = if (output.isNotBlank()) {
                 output
             } else {
-                "暂无日志\n\n提示: 确保应用已运行过一些操作"
+                context.getString(R.string.developer_no_logs)
             }
             isLoading = false
         } catch (e: Exception) {
-            logs = "加载失败: ${e.message}\n\n可能需要调试权限才能读取日志"
+            logs = context.getString(R.string.developer_load_failed, e.message ?: "")
             isLoading = false
         }
     }
@@ -249,7 +249,7 @@ fun DebugLogsDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "系统日志",
+                    text = stringResource(R.string.developer_system_logs),
                     fontWeight = FontWeight.Bold
                 )
                 if (!isLoading) {
@@ -270,10 +270,10 @@ fun DebugLogsDialog(
                                     logs = if (output.isNotBlank()) {
                                         output
                                     } else {
-                                        "暂无日志\n\n提示: 确保应用已运行过一些操作"
+                                        context.getString(R.string.developer_no_logs)
                                     }
                                 } catch (e: Exception) {
-                                    logs = "加载失败: ${e.message}"
+                                    logs = context.getString(R.string.developer_load_failed, e.message ?: "")
                                 }
                             }
                         },
@@ -281,7 +281,7 @@ fun DebugLogsDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新",
+                            contentDescription = stringResource(R.string.developer_refresh),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -322,7 +322,7 @@ fun DebugLogsDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.developer_close))
             }
         }
     )

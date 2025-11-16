@@ -908,4 +908,44 @@
     <string name="developer_refresh">刷新</string>
     <string name="developer_close">关闭</string>
 
+    <!-- Password Strength -->
+    <string name="password_strength">密码强度:</string>
+    <string name="strength_very_weak">非常弱</string>
+    <string name="strength_weak">弱</string>
+    <string name="strength_fair">一般</string>
+    <string name="strength_strong">强</string>
+    <string name="strength_very_strong">非常强</string>
+    <string name="improvement_suggestions">改进建议:</string>
+    
+    <!-- Password Strength Suggestions -->
+    <string name="suggestion_enter_password">请输入密码</string>
+    <string name="suggestion_too_short">密码太短，建议至少 6 个字符</string>
+    <string name="suggestion_use_8_chars">建议使用 8 个以上字符</string>
+    <string name="suggestion_use_12_chars">建议使用 12 个以上字符以提高安全性</string>
+    <string name="suggestion_add_lowercase">添加小写字母 (a-z)</string>
+    <string name="suggestion_add_uppercase">添加大写字母 (A-Z)</string>
+    <string name="suggestion_add_digits">添加数字 (0-9)</string>
+    <string name="suggestion_add_special">添加特殊字符 (!@#$%^&amp;*)</string>
+    <string name="suggestion_avoid_repeating">避免重复字符 (如 aaa, 111)</string>
+    <string name="suggestion_avoid_sequential">避免连续字符 (如 abc, 123)</string>
+    <string name="suggestion_common_password">⚠️ 这是常见密码，容易被破解！</string>
+    <string name="suggestion_increase_randomness">密码可预测性较高，建议增加随机性</string>
+
+    <!-- Password Detail Dialog -->
+    <string name="basic_info">📝 基本信息</string>
+    <string name="website">网站</string>
+    <string name="email">邮箱</string>
+    <string name="phone">手机号</string>
+    <string name="personal_info">个人信息</string>
+    <string name="address_info">地址信息</string>
+    <string name="address_line">详细地址</string>
+    <string name="state">省份</string>
+    <string name="zip_code">邮编</string>
+    <string name="payment_info">支付信息</string>
+    <string name="credit_card_number">信用卡号</string>
+    <string name="card_holder">持卡人</string>
+    <string name="credit_card_encrypted">信用卡信息已加密存储</string>
+    <string name="expand">展开</string>
+    <string name="copied">已复制%s</string>
+
 </resources>

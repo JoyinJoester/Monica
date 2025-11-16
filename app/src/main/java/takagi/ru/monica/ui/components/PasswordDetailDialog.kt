@@ -24,6 +24,7 @@ import androidx.compose.ui.window.DialogProperties
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.R
 
 /**
  * 密码详情对话框
@@ -101,26 +102,26 @@ fun PasswordDetailDialog(
                             IconButton(onClick = onAddPassword) {
                                 Icon(
                                     Icons.Default.Add,
-                                    contentDescription = "添加密码",
+                                    contentDescription = context.getString(R.string.add_password),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
                         // 编辑按钮
                         IconButton(onClick = onEdit) {
-                            Icon(Icons.Default.Edit, contentDescription = "编辑")
+                            Icon(Icons.Default.Edit, contentDescription = context.getString(R.string.edit))
                         }
                         // 删除按钮
                         IconButton(onClick = onDelete) {
                             Icon(
                                 Icons.Default.Delete,
-                                contentDescription = "删除",
+                                contentDescription = context.getString(R.string.delete),
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
                         // 关闭按钮
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "关闭")
+                            Icon(Icons.Default.Close, contentDescription = context.getString(R.string.close))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -137,50 +138,51 @@ fun PasswordDetailDialog(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     // 基本信息
-                    InfoSection(title = "📝 基本信息") {
+                    InfoSection(title = context.getString(R.string.basic_info)) {
                         if (passwordEntry.website.isNotEmpty()) {
-                            InfoItem(label = "网站", value = passwordEntry.website)
+                            InfoItem(label = context.getString(R.string.website), value = passwordEntry.website)
                         }
                         if (passwordEntry.username.isNotEmpty()) {
                             InfoItemWithCopy(
-                                label = "用户名",
+                                label = context.getString(R.string.username),
                                 value = passwordEntry.username,
                                 context = context
                             )
                         }
                         if (passwordEntry.password.isNotEmpty()) {
                             PasswordItem(
-                                label = "密码",
+                                label = context.getString(R.string.password),
                                 value = passwordEntry.password,
                                 context = context
                             )
                         }
                         if (passwordEntry.notes.isNotEmpty()) {
-                            InfoItem(label = "备注", value = passwordEntry.notes)
+                            InfoItem(label = context.getString(R.string.notes), value = passwordEntry.notes)
                         }
                         if (passwordEntry.appName.isNotEmpty()) {
-                            InfoItem(label = "关联应用", value = passwordEntry.appName)
+                            InfoItem(label = context.getString(R.string.linked_app), value = passwordEntry.appName)
                         }
                     }
                     
                     // 个人信息（如果有）
                     if (hasPersonalInfo(passwordEntry)) {
                         CollapsibleInfoSection(
-                            title = "个人信息",
+                            title = context.getString(R.string.personal_info),
                             icon = MonicaIcons.General.person,
                             expanded = personalInfoExpanded,
-                            onToggle = { personalInfoExpanded = !personalInfoExpanded }
+                            onToggle = { personalInfoExpanded = !personalInfoExpanded },
+                            context = context
                         ) {
                             if (passwordEntry.email.isNotEmpty()) {
                                 InfoItemWithCopy(
-                                    label = "邮箱",
+                                    label = context.getString(R.string.email),
                                     value = passwordEntry.email,
                                     context = context
                                 )
                             }
                             if (passwordEntry.phone.isNotEmpty()) {
                                 InfoItemWithCopy(
-                                    label = "手机号",
+                                    label = context.getString(R.string.phone),
                                     value = FieldValidation.formatPhone(passwordEntry.phone),
                                     context = context
                                 )
@@ -191,13 +193,14 @@ fun PasswordDetailDialog(
                     // 地址信息（如果有）
                     if (hasAddressInfo(passwordEntry)) {
                         CollapsibleInfoSection(
-                            title = "地址信息",
+                            title = context.getString(R.string.address_info),
                             icon = Icons.Default.Home,
                             expanded = addressInfoExpanded,
-                            onToggle = { addressInfoExpanded = !addressInfoExpanded }
+                            onToggle = { addressInfoExpanded = !addressInfoExpanded },
+                            context = context
                         ) {
                             if (passwordEntry.addressLine.isNotEmpty()) {
-                                InfoItem(label = "详细地址", value = passwordEntry.addressLine)
+                                InfoItem(label = context.getString(R.string.address_line), value = passwordEntry.addressLine)
                             }
                             
                             // 城市和省份
@@ -208,12 +211,12 @@ fun PasswordDetailDialog(
                                 ) {
                                     if (passwordEntry.city.isNotEmpty()) {
                                         Box(modifier = Modifier.weight(1f)) {
-                                            InfoItem(label = "城市", value = passwordEntry.city)
+                                            InfoItem(label = context.getString(R.string.city), value = passwordEntry.city)
                                         }
                                     }
                                     if (passwordEntry.state.isNotEmpty()) {
                                         Box(modifier = Modifier.weight(1f)) {
-                                            InfoItem(label = "省份", value = passwordEntry.state)
+                                            InfoItem(label = context.getString(R.string.state), value = passwordEntry.state)
                                         }
                                     }
                                 }
@@ -227,12 +230,12 @@ fun PasswordDetailDialog(
                                 ) {
                                     if (passwordEntry.zipCode.isNotEmpty()) {
                                         Box(modifier = Modifier.weight(1f)) {
-                                            InfoItem(label = "邮编", value = passwordEntry.zipCode)
+                                            InfoItem(label = context.getString(R.string.zip_code), value = passwordEntry.zipCode)
                                         }
                                     }
                                     if (passwordEntry.country.isNotEmpty()) {
                                         Box(modifier = Modifier.weight(1f)) {
-                                            InfoItem(label = "国家", value = passwordEntry.country)
+                                            InfoItem(label = context.getString(R.string.country), value = passwordEntry.country)
                                         }
                                     }
                                 }
@@ -243,21 +246,22 @@ fun PasswordDetailDialog(
                     // 支付信息（如果有）
                     if (hasPaymentInfo(passwordEntry)) {
                         CollapsibleInfoSection(
-                            title = "支付信息",
+                            title = context.getString(R.string.payment_info),
                             icon = MonicaIcons.Data.creditCard,
                             expanded = paymentInfoExpanded,
-                            onToggle = { paymentInfoExpanded = !paymentInfoExpanded }
+                            onToggle = { paymentInfoExpanded = !paymentInfoExpanded },
+                            context = context
                         ) {
                             if (passwordEntry.creditCardNumber.isNotEmpty()) {
                                 InfoItemWithCopy(
-                                    label = "信用卡号",
+                                    label = context.getString(R.string.credit_card_number),
                                     value = FieldValidation.maskCreditCard(passwordEntry.creditCardNumber),
                                     copyValue = passwordEntry.creditCardNumber,
                                     context = context
                                 )
                             }
                             if (passwordEntry.creditCardHolder.isNotEmpty()) {
-                                InfoItem(label = "持卡人", value = passwordEntry.creditCardHolder)
+                                InfoItem(label = context.getString(R.string.card_holder), value = passwordEntry.creditCardHolder)
                             }
                             
                             // 有效期和CVV
@@ -268,13 +272,13 @@ fun PasswordDetailDialog(
                                 ) {
                                     if (passwordEntry.creditCardExpiry.isNotEmpty()) {
                                         Box(modifier = Modifier.weight(1f)) {
-                                            InfoItem(label = "有效期", value = passwordEntry.creditCardExpiry)
+                                            InfoItem(label = context.getString(R.string.expiry_date), value = passwordEntry.creditCardExpiry)
                                         }
                                     }
                                     if (passwordEntry.creditCardCVV.isNotEmpty()) {
                                         Box(modifier = Modifier.weight(1f)) {
                                             PasswordItem(
-                                                label = "CVV",
+                                                label = context.getString(R.string.cvv),
                                                 value = passwordEntry.creditCardCVV,
                                                 context = context
                                             )
@@ -297,7 +301,7 @@ fun PasswordDetailDialog(
                                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                                 )
                                 Text(
-                                    "信用卡信息已加密存储",
+                                    context.getString(R.string.credit_card_encrypted),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
@@ -353,6 +357,7 @@ private fun CollapsibleInfoSection(
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     expanded: Boolean,
     onToggle: () -> Unit,
+    context: Context,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -391,7 +396,7 @@ private fun CollapsibleInfoSection(
                 }
                 Icon(
                     if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "收起" else "展开"
+                    contentDescription = if (expanded) context.getString(R.string.collapse) else context.getString(R.string.expand)
                 )
             }
             
@@ -468,12 +473,12 @@ private fun InfoItemWithCopy(
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = ClipData.newPlainText(label, copyValue)
                     clipboard.setPrimaryClip(clip)
-                    Toast.makeText(context, "已复制${label}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
                 }
             ) {
                 Icon(
                     Icons.Default.ContentCopy,
-                    contentDescription = "复制",
+                    contentDescription = context.getString(R.string.copy),
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -518,7 +523,7 @@ private fun PasswordItem(
                 ) {
                     Icon(
                         if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (passwordVisible) "隐藏" else "显示",
+                        contentDescription = if (passwordVisible) context.getString(R.string.hide) else context.getString(R.string.show),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -528,12 +533,12 @@ private fun PasswordItem(
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText(label, value)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "已复制${label}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
                     }
                 ) {
                     Icon(
                         Icons.Default.ContentCopy,
-                        contentDescription = "复制",
+                        contentDescription = context.getString(R.string.copy),
                         modifier = Modifier.size(20.dp)
                     )
                 }

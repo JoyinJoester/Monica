@@ -46,9 +46,11 @@ fun PasswordStrengthIndicator(
     showScore: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     // 强度等级和颜色
     val level = PasswordStrengthAnalyzer.getStrengthLevel(strength)
-    val levelText = PasswordStrengthAnalyzer.getStrengthLevelText(level)
+    val levelText = PasswordStrengthAnalyzer.getStrengthLevelText(level, context)
     val color = getStrengthColor(level)
     
     // 进度动画
@@ -84,7 +86,7 @@ fun PasswordStrengthIndicator(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "密码强度:",
+                    text = context.getString(takagi.ru.monica.R.string.password_strength),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -142,12 +144,14 @@ fun PasswordSuggestionsList(
 ) {
     if (suggestions.isEmpty()) return
     
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
     Column(
         modifier = modifier.padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
-            text = "改进建议:",
+            text = context.getString(takagi.ru.monica.R.string.improvement_suggestions),
             style = MaterialTheme.typography.bodySmall.copy(
                 fontWeight = FontWeight.Bold
             ),
@@ -197,8 +201,9 @@ fun PasswordStrengthCard(
 ) {
     if (password.isEmpty()) return
     
+    val context = androidx.compose.ui.platform.LocalContext.current
     val strength = PasswordStrengthAnalyzer.calculateStrength(password)
-    val suggestions = PasswordStrengthAnalyzer.getSuggestions(password)
+    val suggestions = PasswordStrengthAnalyzer.getSuggestions(password, context)
     
     Card(
         modifier = modifier,
