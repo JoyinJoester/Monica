@@ -135,6 +135,29 @@
     <string name="how_to_get_secret_key">Cách lấy khóa bí mật?</string>
     <string name="secret_key_instructions">1. Tìm cài đặt \"Xác thực hai yếu tố\" trên trang web\n2. Chọn \"Sử dụng ứng dụng xác thực\"\n3. Sao chép khóa bí mật được hiển thị hoặc quét mã QR\n4. Dán khóa vào ô nhập phía trên</string>
     
+    <!-- OTP Types -->
+    <string name="otp_type">Loại OTP</string>
+    <string name="otp_type_totp">Dựa trên thời gian (TOTP)</string>
+    <string name="otp_type_hotp">Dựa trên bộ đếm (HOTP)</string>
+    <string name="otp_type_steam">Steam Guard</string>
+    <string name="otp_type_yandex">Yandex</string>
+    <string name="otp_type_motp">Mobile-OTP</string>
+    <string name="initial_counter">Bộ đếm ban đầu</string>
+    <string name="counter_value">Bộ đếm: %d</string>
+    <string name="generate_next">Tạo tiếp theo</string>
+    <string name="pin_code">Mã PIN</string>
+    <string name="pin_code_hint">Mã PIN cần thiết cho Mobile-OTP</string>
+    <string name="pin_code_example">Ví dụ: 1234</string>
+    <string name="enter_pin_code">Vui lòng nhập mã PIN</string>
+    <string name="steam_uses_5_chars">Steam sử dụng mã 5 ký tự</string>
+    <string name="hotp_counter_hint">Bộ đếm tăng 1 sau mỗi lần sử dụng</string>
+    <string name="motp_pin_hint">Mã PIN 4 chữ số để mã hóa Mobile-OTP</string>
+    <string name="otp_type_description_totp">Mã xác thực dựa trên thời gian, làm mới mỗi 30 giây</string>
+    <string name="otp_type_description_hotp">Mã xác thực dựa trên bộ đếm, tạo mã mới mỗi lần</string>
+    <string name="otp_type_description_steam">Mã xác thực Steam Guard 5 ký tự</string>
+    <string name="otp_type_description_yandex">Mã xác thực Yandex</string>
+    <string name="otp_type_description_motp">Mobile-OTP với bảo vệ mã PIN</string>
+    
     <!-- Bank Card -->
     <string name="add_bank_card_title">Thêm thẻ ngân hàng</string>
     <string name="edit_bank_card_title">Sửa thẻ ngân hàng</string>
@@ -578,6 +601,15 @@
     <string name="apply_custom_colors">Áp dụng màu tùy chỉnh</string>
     <string name="select_color">Chọn màu</string>
     <string name="select_from_preset_colors">Chọn từ màu có sẵn</string>
+    
+    <!-- Validator Progress Bar Style -->
+    <string name="validator_progress_bar_style">Thanh tiến trình xác thực</string>
+    <string name="progress_bar_style_linear">Tuyến tính</string>
+    <string name="progress_bar_style_wave">Sóng</string>
+    
+    <!-- Rung xác thực -->
+    <string name="validator_vibration">Rung xác thực</string>
+    <string name="validator_vibration_description">Rung khi đếm ngược sắp kết thúc</string>
     
     <!-- Support Author -->
     <string name="support_author">Ủng hộ tác giả</string>

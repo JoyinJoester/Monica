@@ -628,6 +628,15 @@
     <string name="select_color">色を選択</string>
     <string name="select_from_preset_colors">プリセットカラーから選択</string>
     
+    <!-- Validator Progress Bar Style -->
+    <string name="validator_progress_bar_style">検証プログレスバー</string>
+    <string name="progress_bar_style_linear">リニア</string>
+    <string name="progress_bar_style_wave">ウェーブ</string>
+    
+    <!-- Validator Vibration -->
+    <string name="validator_vibration">検証バイブレーション</string>
+    <string name="validator_vibration_description">カウントダウン終了時に振動</string>
+    
     <!-- Support Author -->
     <string name="support_author">作者をサポート</string>
     <string name="support_author_subtitle">ソフトウェアは完全無料、ご支援ありがとうございます</string>

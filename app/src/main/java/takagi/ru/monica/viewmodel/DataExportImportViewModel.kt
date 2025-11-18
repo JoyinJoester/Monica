@@ -481,4 +481,72 @@ class DataExportImportViewModel(
             Result.failure(e)
         }
     }
+    
+    /**
+     * 导入Steam maFile
+     */
+    suspend fun importSteamMaFile(inputUri: Uri): Result<Int> {
+        return try {
+            exportManager.importSteamMaFile(inputUri).fold(
+                onSuccess = { aegisEntry ->
+                    // 检查是否已存在相同的条目
+                    val existingItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
+                    val isDuplicate = existingItems.any { item ->
+                        try {
+                            val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                            totpData.issuer == aegisEntry.issuer && totpData.accountName == aegisEntry.name
+                        } catch (e: Exception) {
+                            false
+                        }
+                    }
+                    
+                    if (isDuplicate) {
+                        android.util.Log.d("SteamImport", "跳过重复条目: ${aegisEntry.name}")
+                        return Result.failure(Exception("该Steam Guard验证器已存在"))
+                    }
+                    
+                    // 创建新的TOTP条目（Steam类型）
+                    val totpData = TotpData(
+                        secret = aegisEntry.secret,
+                        issuer = aegisEntry.issuer,
+                        accountName = aegisEntry.name,
+                        period = 30,  // Steam固定30秒
+                        digits = 5,   // Steam固定5位
+                        algorithm = "SHA1",
+                        otpType = takagi.ru.monica.data.model.OtpType.STEAM  // 指定为Steam类型
+                    )
+                    
+                    val itemData = Json.encodeToString(totpData)
+                    val title = if (aegisEntry.name.isNotBlank()) {
+                        "Steam: ${aegisEntry.name}"
+                    } else {
+                        "Steam Guard"
+                    }
+                    
+                    val secureItem = takagi.ru.monica.data.SecureItem(
+                        id = 0,
+                        itemType = ItemType.TOTP,
+                        title = title,
+                        itemData = itemData,
+                        notes = aegisEntry.note,
+                        isFavorite = false,
+                        imagePaths = "",
+                        createdAt = Date(),
+                        updatedAt = Date()
+                    )
+                    
+                    secureItemRepository.insertItem(secureItem)
+                    android.util.Log.d("SteamImport", "成功插入Steam Guard: $title")
+                    Result.success(1)
+                },
+                onFailure = { error ->
+                    android.util.Log.e("SteamImport", "导入失败: ${error.message}", error)
+                    Result.failure(error)
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("SteamImport", "导入异常: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }

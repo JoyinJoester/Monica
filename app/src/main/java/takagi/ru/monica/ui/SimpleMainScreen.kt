@@ -1185,6 +1185,9 @@ private fun TotpListContent(
                             onToggleFavorite = { id, isFavorite ->
                                 viewModel.toggleFavorite(id, isFavorite)
                             },
+                            onGenerateNext = { id ->
+                                viewModel.incrementHotpCounter(id)
+                            },
                             onMoveUp = if (index > 0) {
                                 {
                                     // 交换当前项和上一项的sortOrder
@@ -1380,6 +1383,7 @@ private fun TotpItemCard(
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onToggleFavorite: (Long, Boolean) -> Unit,
+    onGenerateNext: ((Long) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
@@ -1399,6 +1403,7 @@ private fun TotpItemCard(
         },
         onDelete = onDelete,
         onToggleFavorite = onToggleFavorite,
+        onGenerateNext = onGenerateNext,
         onMoveUp = onMoveUp,
         onMoveDown = onMoveDown,
         isSelectionMode = isSelectionMode,

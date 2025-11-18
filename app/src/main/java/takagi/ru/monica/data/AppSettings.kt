@@ -22,6 +22,11 @@ enum class Language {
     SYSTEM, ENGLISH, CHINESE, VIETNAMESE, JAPANESE
 }
 
+enum class ProgressBarStyle {
+    LINEAR,  // 线形进度条
+    WAVE     // 波浪形进度条
+}
+
 enum class BottomNavContentTab {
     PASSWORDS,
     AUTHENTICATOR,
@@ -86,5 +91,7 @@ data class AppSettings(
     val dynamicColorEnabled: Boolean = true, // 动态颜色默认开启
     val bottomNavVisibility: BottomNavVisibility = BottomNavVisibility(),
     val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER,
-    val disablePasswordVerification: Boolean = false // 开发者选项：关闭密码验证
+    val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
+    val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.LINEAR, // 验证器进度条样式
+    val validatorVibrationEnabled: Boolean = true // 验证器震动提醒
 )

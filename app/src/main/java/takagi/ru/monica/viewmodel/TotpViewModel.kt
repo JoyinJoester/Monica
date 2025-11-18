@@ -127,4 +127,38 @@ class TotpViewModel(
             repository.updateSortOrders(items)
         }
     }
+    
+    /**
+     * HOTP专用: 增加计数器并重新生成验证码
+     * @param itemId HOTP项目ID
+     */
+    fun incrementHotpCounter(itemId: Long) {
+        viewModelScope.launch {
+            try {
+                val item = repository.getItemById(itemId) ?: return@launch
+                
+                // 解析TOTP数据
+                val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                
+                // 只处理HOTP类型
+                if (totpData.otpType != takagi.ru.monica.data.model.OtpType.HOTP) {
+                    return@launch
+                }
+                
+                // 增加计数器
+                val updatedTotpData = totpData.copy(counter = totpData.counter + 1)
+                val updatedItemData = Json.encodeToString(updatedTotpData)
+                
+                // 更新数据库
+                val updatedItem = item.copy(
+                    itemData = updatedItemData,
+                    updatedAt = Date()
+                )
+                
+                repository.updateItem(updatedItem)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 }

@@ -142,6 +142,29 @@
     <string name="how_to_get_secret_key">如何获取密钥？</string>
     <string name="secret_key_instructions">1. 在要启用2FA的网站上找到"两步验证"设置\n2. 选择"使用验证器应用"\n3. 复制显示的密钥或扫描二维码\n4. 将密钥粘贴到上方输入框</string>
     
+    <!-- OTP Types -->
+    <string name="otp_type">OTP类型</string>
+    <string name="otp_type_totp">基于时间 (TOTP)</string>
+    <string name="otp_type_hotp">基于计数器 (HOTP)</string>
+    <string name="otp_type_steam">Steam Guard</string>
+    <string name="otp_type_yandex">Yandex</string>
+    <string name="otp_type_motp">Mobile-OTP</string>
+    <string name="initial_counter">初始计数器</string>
+    <string name="counter_value">计数器: %d</string>
+    <string name="generate_next">生成下一个</string>
+    <string name="pin_code">PIN码</string>
+    <string name="pin_code_hint">Mobile-OTP所需的PIN码</string>
+    <string name="pin_code_example">例如：1234</string>
+    <string name="enter_pin_code">请输入PIN码</string>
+    <string name="steam_uses_5_chars">Steam使用5位字符码</string>
+    <string name="hotp_counter_hint">每次使用后计数器自动加1</string>
+    <string name="motp_pin_hint">4位数字PIN码，用于Mobile-OTP加密</string>
+    <string name="otp_type_description_totp">标准的基于时间验证码，每30秒刷新一次</string>
+    <string name="otp_type_description_hotp">基于计数器的验证码，每次手动生成新验证码</string>
+    <string name="otp_type_description_steam">Steam Guard使用的5位字符验证码</string>
+    <string name="otp_type_description_yandex">Yandex身份验证码</string>
+    <string name="otp_type_description_motp">带PIN码保护的Mobile-OTP验证码</string>
+    
     <!-- Bank Card -->
     <string name="add_bank_card_title">添加银行卡</string>
     <string name="edit_bank_card_title">编辑银行卡</string>
@@ -587,6 +610,15 @@
     <string name="apply_custom_colors">应用自定义颜色</string>
     <string name="select_color">选择颜色</string>
     <string name="select_from_preset_colors">从预设颜色中选择</string>
+    
+    <!-- Validator Progress Bar Style -->
+    <string name="validator_progress_bar_style">验证器进度条</string>
+    <string name="progress_bar_style_linear">线形</string>
+    <string name="progress_bar_style_wave">波浪形</string>
+    
+    <!-- 验证器震动 -->
+    <string name="validator_vibration">验证器震动</string>
+    <string name="validator_vibration_description">倒计时快结束时震动提醒</string>
     
     <!-- Support Author -->
     <string name="support_author">支持作者</string>

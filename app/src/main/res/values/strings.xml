@@ -142,6 +142,29 @@
     <string name="how_to_get_secret_key">How to get secret key?</string>
     <string name="secret_key_instructions">1. Find \"Two-Factor Authentication\" settings on the website\n2. Choose \"Use authenticator app\"\n3. Copy the displayed secret key or scan QR code\n4. Paste the key in the input box above</string>
     
+    <!-- OTP Types -->
+    <string name="otp_type">OTP Type</string>
+    <string name="otp_type_totp">Time-based (TOTP)</string>
+    <string name="otp_type_hotp">Counter-based (HOTP)</string>
+    <string name="otp_type_steam">Steam Guard</string>
+    <string name="otp_type_yandex">Yandex</string>
+    <string name="otp_type_motp">Mobile-OTP</string>
+    <string name="initial_counter">Initial Counter</string>
+    <string name="counter_value">Counter: %d</string>
+    <string name="generate_next">Generate Next</string>
+    <string name="pin_code">PIN Code</string>
+    <string name="pin_code_hint">PIN code required for Mobile-OTP</string>
+    <string name="pin_code_example">Example: 1234</string>
+    <string name="enter_pin_code">Please enter PIN code</string>
+    <string name="steam_uses_5_chars">Steam uses 5-character codes</string>
+    <string name="hotp_counter_hint">Counter increases by 1 after each use</string>
+    <string name="motp_pin_hint">4-digit PIN code for Mobile-OTP encryption</string>
+    <string name="otp_type_description_totp">Standard time-based codes, refreshes every 30 seconds</string>
+    <string name="otp_type_description_hotp">Counter-based codes, generates new code each time</string>
+    <string name="otp_type_description_steam">Steam Guard 5-character codes</string>
+    <string name="otp_type_description_yandex">Yandex authentication codes</string>
+    <string name="otp_type_description_motp">Mobile-OTP with PIN code protection</string>
+    
     <!-- Bank Card -->
     <string name="add_bank_card_title">Add Bank Card</string>
     <string name="edit_bank_card_title">Edit Bank Card</string>
@@ -600,6 +623,15 @@
     <string name="apply_custom_colors">Apply Custom Colors</string>
     <string name="select_color">Select Color</string>
     <string name="select_from_preset_colors">Select from preset colors</string>
+    
+    <!-- Validator Progress Bar Style -->
+    <string name="validator_progress_bar_style">Validator Progress Bar</string>
+    <string name="progress_bar_style_linear">Linear</string>
+    <string name="progress_bar_style_wave">Wave</string>
+    
+    <!-- Validator Vibration -->
+    <string name="validator_vibration">Validator Vibration</string>
+    <string name="validator_vibration_description">Vibrate when countdown is about to end</string>
     
     <!-- Support Author -->
     <string name="support_author">Support Author</string>

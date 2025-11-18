@@ -86,6 +86,21 @@ object FileOperationHelper {
     }
     
     /**
+     * 从Steam .maFile文件导入数据
+     * @param activity 调用的Activity
+     */
+    fun importFromMaFile(activity: Activity) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            // 使用通配符类型，允许所有文件
+            type = "*/*"
+            // 不限制MIME类型，这样.maFile文件就可以被选择
+        }
+        
+        activity.startActivityForResult(intent, REQUEST_CODE_IMPORT)
+    }
+    
+    /**
      * 获取默认导出文件名
      */
     private fun getDefaultExportFileName(): String {

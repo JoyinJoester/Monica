@@ -597,6 +597,9 @@ fun MonicaContent(
                 },
                 onImportEncryptedAegis = { uri, password ->
                     dataExportImportViewModel.importEncryptedAegisJson(uri, password)
+                },
+                onImportSteamMaFile = { uri ->
+                    dataExportImportViewModel.importSteamMaFile(uri)
                 }
             )
         }

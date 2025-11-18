@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 
 /**
@@ -39,7 +40,21 @@ fun AddEditTotpScreen(
     var accountName by remember { mutableStateOf(initialData?.accountName ?: "") }
     var period by remember { mutableStateOf(initialData?.period?.toString() ?: "30") }
     var digits by remember { mutableStateOf(initialData?.digits?.toString() ?: "6") }
+    var selectedOtpType by remember { mutableStateOf(initialData?.otpType ?: OtpType.TOTP) }
+    var counter by remember { mutableStateOf(initialData?.counter?.toString() ?: "0") }
+    var pin by remember { mutableStateOf(initialData?.pin ?: "") }
     var showAdvanced by remember { mutableStateOf(false) }
+    var expandedOtpType by remember { mutableStateOf(false) }
+    
+    // 根据OTP类型自动调整digits
+    LaunchedEffect(selectedOtpType) {
+        when (selectedOtpType) {
+            OtpType.STEAM -> digits = "5"
+            OtpType.TOTP, OtpType.HOTP, OtpType.YANDEX, OtpType.MOTP -> {
+                if (digits == "5") digits = "6"
+            }
+        }
+    }
     
     val isEditing = totpId != null && totpId > 0
     val canSave = title.isNotBlank() && secret.isNotBlank()
@@ -63,7 +78,10 @@ fun AddEditTotpScreen(
                                     accountName = accountName.trim(),
                                     period = period.toIntOrNull() ?: 30,
                                     digits = digits.toIntOrNull() ?: 6,
-                                    algorithm = "SHA1"
+                                    algorithm = "SHA1",
+                                    otpType = selectedOtpType,
+                                    counter = counter.toLongOrNull() ?: 0L,
+                                    pin = pin.trim()
                                 )
                                 onSave(title, notes, totpData)
                             }
@@ -216,35 +234,195 @@ fun AddEditTotpScreen(
             if (showAdvanced) {
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // 时间周期
-                OutlinedTextField(
-                    value = period,
-                    onValueChange = { period = it.filter { char -> char.isDigit() } },
-                    label = { Text(stringResource(R.string.time_period_seconds)) },
-                    leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    supportingText = { Text(stringResource(R.string.usually_30_seconds)) }
-                )
+                // OTP类型选择器
+                ExposedDropdownMenuBox(
+                    expanded = expandedOtpType,
+                    onExpandedChange = { expandedOtpType = it }
+                ) {
+                    OutlinedTextField(
+                        value = when (selectedOtpType) {
+                            OtpType.TOTP -> stringResource(R.string.otp_type_totp)
+                            OtpType.HOTP -> stringResource(R.string.otp_type_hotp)
+                            OtpType.STEAM -> stringResource(R.string.otp_type_steam)
+                            OtpType.YANDEX -> stringResource(R.string.otp_type_yandex)
+                            OtpType.MOTP -> stringResource(R.string.otp_type_motp)
+                        },
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.otp_type)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedOtpType) },
+                        leadingIcon = { Icon(Icons.Default.Category, contentDescription = null) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                    )
+                    
+                    ExposedDropdownMenu(
+                        expanded = expandedOtpType,
+                        onDismissRequest = { expandedOtpType = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(stringResource(R.string.otp_type_totp))
+                                    Text(
+                                        stringResource(R.string.otp_type_description_totp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                selectedOtpType = OtpType.TOTP
+                                expandedOtpType = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(stringResource(R.string.otp_type_hotp))
+                                    Text(
+                                        stringResource(R.string.otp_type_description_hotp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                selectedOtpType = OtpType.HOTP
+                                expandedOtpType = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(stringResource(R.string.otp_type_steam))
+                                    Text(
+                                        stringResource(R.string.otp_type_description_steam),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                selectedOtpType = OtpType.STEAM
+                                expandedOtpType = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(stringResource(R.string.otp_type_yandex))
+                                    Text(
+                                        stringResource(R.string.otp_type_description_yandex),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                selectedOtpType = OtpType.YANDEX
+                                expandedOtpType = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(stringResource(R.string.otp_type_motp))
+                                    Text(
+                                        stringResource(R.string.otp_type_description_motp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                selectedOtpType = OtpType.MOTP
+                                expandedOtpType = false
+                            }
+                        )
+                    }
+                }
                 
                 Spacer(modifier = Modifier.height(16.dp))
+                
+                // HOTP特有: 初始计数器
+                if (selectedOtpType == OtpType.HOTP) {
+                    OutlinedTextField(
+                        value = counter,
+                        onValueChange = { counter = it.filter { char -> char.isDigit() } },
+                        label = { Text(stringResource(R.string.initial_counter)) },
+                        leadingIcon = { Icon(Icons.Default.Numbers, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        supportingText = { Text(stringResource(R.string.hotp_counter_hint)) }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                
+                // mOTP特有: PIN码
+                if (selectedOtpType == OtpType.MOTP) {
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { if (it.length <= 4 && it.all { char -> char.isDigit() }) pin = it },
+                        label = { Text(stringResource(R.string.pin_code)) },
+                        placeholder = { Text(stringResource(R.string.pin_code_example)) },
+                        leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        supportingText = { Text(stringResource(R.string.motp_pin_hint)) },
+                        isError = pin.isEmpty()
+                    )
+                    if (pin.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.enter_pin_code),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                
+                // 时间周期 (HOTP不需要)
+                if (selectedOtpType != OtpType.HOTP) {
+                    OutlinedTextField(
+                        value = period,
+                        onValueChange = { period = it.filter { char -> char.isDigit() } },
+                        label = { Text(stringResource(R.string.time_period_seconds)) },
+                        leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        supportingText = { Text(stringResource(R.string.usually_30_seconds)) }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
                 
                 // 验证码位数
                 OutlinedTextField(
                     value = digits,
                     onValueChange = { 
                         val newValue = it.filter { char -> char.isDigit() }
-                        if (newValue.isEmpty() || newValue.toInt() in 6..8) {
+                        if (newValue.isEmpty() || newValue.toInt() in 5..8) {
                             digits = newValue
                         }
                     },
                     label = { Text(stringResource(R.string.code_digits)) },
-                    leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.Default.Dialpad, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    enabled = selectedOtpType != OtpType.STEAM,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    supportingText = { Text(stringResource(R.string.usually_6_digits)) }
+                    supportingText = { 
+                        Text(
+                            if (selectedOtpType == OtpType.STEAM) 
+                                stringResource(R.string.steam_uses_5_chars)
+                            else 
+                                stringResource(R.string.usually_6_digits)
+                        )
+                    }
                 )
             }
             

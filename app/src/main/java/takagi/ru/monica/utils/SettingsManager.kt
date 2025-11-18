@@ -42,6 +42,8 @@ class SettingsManager(private val context: Context) {
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
+        private val VALIDATOR_PROGRESS_BAR_STYLE_KEY = stringPreferencesKey("validator_progress_bar_style")
+        private val VALIDATOR_VIBRATION_ENABLED_KEY = booleanPreferencesKey("validator_vibration_enabled")
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -81,7 +83,15 @@ class SettingsManager(private val context: Context) {
                 generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false    // 生成器功能默认关闭
             ),
             bottomNavOrder = sanitizedOrder,
-            disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false
+            disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
+            validatorProgressBarStyle = runCatching {
+                val styleString = preferences[VALIDATOR_PROGRESS_BAR_STYLE_KEY] ?: takagi.ru.monica.data.ProgressBarStyle.LINEAR.name
+                android.util.Log.d("SettingsManager", "Loading progress bar style from DataStore: $styleString")
+                val style = takagi.ru.monica.data.ProgressBarStyle.valueOf(styleString)
+                android.util.Log.d("SettingsManager", "Parsed progress bar style: $style")
+                style
+            }.getOrDefault(takagi.ru.monica.data.ProgressBarStyle.LINEAR),
+            validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true
         )
     }
     
@@ -157,6 +167,20 @@ class SettingsManager(private val context: Context) {
     suspend fun updateDisablePasswordVerification(disabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[DISABLE_PASSWORD_VERIFICATION_KEY] = disabled
+        }
+    }
+
+    suspend fun updateValidatorProgressBarStyle(style: takagi.ru.monica.data.ProgressBarStyle) {
+        android.util.Log.d("SettingsManager", "Saving progress bar style: ${style.name}")
+        dataStore.edit { preferences ->
+            preferences[VALIDATOR_PROGRESS_BAR_STYLE_KEY] = style.name
+        }
+        android.util.Log.d("SettingsManager", "Progress bar style saved to DataStore")
+    }
+
+    suspend fun updateValidatorVibrationEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = enabled
         }
     }
 }

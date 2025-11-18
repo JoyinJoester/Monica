@@ -33,6 +33,7 @@ fun TotpListScreen(
     onSearchQueryChange: (String) -> Unit,
     onItemClick: (Long) -> Unit,
     onDeleteItem: (SecureItem) -> Unit,
+    onGenerateNext: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -83,6 +84,7 @@ fun TotpListScreen(
                         onDelete = {
                             itemToDelete = item
                         },
+                        onGenerateNext = onGenerateNext,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

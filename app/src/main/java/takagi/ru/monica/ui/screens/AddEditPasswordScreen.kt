@@ -52,6 +52,15 @@ fun AddEditPasswordScreen(
     val scrollState = rememberScrollState()
     val passwordGenerator = remember { PasswordGenerator() }
     
+    // 获取设置以读取进度条样式
+    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    
+    // 调试日志：打印当前进度条样式
+    LaunchedEffect(settings.validatorProgressBarStyle) {
+        android.util.Log.d("AddEditPasswordScreen", "Current progress bar style: ${settings.validatorProgressBarStyle}")
+    }
+    
     var title by remember { mutableStateOf("") }
     var website by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
@@ -283,6 +292,7 @@ fun AddEditPasswordScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 PasswordStrengthIndicator(
                     strength = passwordStrength,
+                    style = settings.validatorProgressBarStyle,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

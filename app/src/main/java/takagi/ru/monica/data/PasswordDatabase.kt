@@ -14,7 +14,7 @@ import androidx.room.TypeConverters
         PasswordEntry::class,
         SecureItem::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -243,6 +243,17 @@ abstract class PasswordDatabase : RoomDatabase() {
                 database.execSQL("DROP TABLE IF EXISTS passkeys")
             }
         }
+        
+        // Migration 14 → 15 - 扩展OTP支持 (HOTP/Steam/Yandex/mOTP)
+        private val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 由于TotpData使用JSON存储在itemData字段中,
+                // 新增的otpType、counter、pin字段通过Kotlin序列化的默认值机制自动处理
+                // otpType默认为TOTP,确保向后兼容
+                // 不需要修改数据库结构
+                // 现有TOTP记录在反序列化时自动获得默认值: otpType=TOTP, counter=0, pin=""
+            }
+        }
 
 
         fun getDatabase(context: Context): PasswordDatabase {
@@ -265,7 +276,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_10_11,
                         MIGRATION_11_12,  // 删除记账功能
                         MIGRATION_12_13,
-                        MIGRATION_13_14
+                        MIGRATION_13_14,
+                        MIGRATION_14_15   // 扩展OTP支持
                     )
                     .build()
                 INSTANCE = instance

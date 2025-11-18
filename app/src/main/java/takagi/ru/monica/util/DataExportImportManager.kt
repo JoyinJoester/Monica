@@ -794,4 +794,91 @@ class DataExportImportManager(private val context: Context) {
             Result.failure(Exception("导出失败：${e.message ?: "未知错误"}"))
         }
     }
+    
+    /**
+     * 从Steam maFile导入验证器数据
+     * @param inputUri 输入文件的URI
+     * @return 导入的AegisEntry
+     */
+    suspend fun importSteamMaFile(
+        inputUri: Uri
+    ): Result<AegisEntry> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("无法读取文件，请检查文件是否存在"))
+        
+            inputStream.use { input ->
+                val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+                val content = reader.readText()
+                
+                // 解析JSON
+                val json = Json { ignoreUnknownKeys = true }
+                val root = json.parseToJsonElement(content).jsonObject
+                
+                // 提取Steam Guard所需字段
+                val sharedSecret = root["shared_secret"]?.jsonPrimitive?.content
+                    ?: return@withContext Result.failure(Exception("无效的Steam maFile格式：缺少shared_secret"))
+                
+                val accountName = root["account_name"]?.jsonPrimitive?.content ?: ""
+                
+                // 检查secret是否为Base64编码
+                val secret = try {
+                    // Steam的shared_secret是Base64编码的，需要转换为Base32供TOTP使用
+                    val decodedBytes = android.util.Base64.decode(sharedSecret, android.util.Base64.DEFAULT)
+                    // 将字节转换为Base32编码（标准Base32字符集：A-Z, 2-7）
+                    base32Encode(decodedBytes)
+                } catch (e: Exception) {
+                    android.util.Log.e("SteamImport", "解码shared_secret失败", e)
+                    return@withContext Result.failure(Exception("无效的Steam shared_secret格式"))
+                }
+                
+                // 创建AegisEntry
+                val entry = AegisEntry(
+                    uuid = java.util.UUID.randomUUID().toString(),
+                    name = accountName.ifBlank { "Steam Guard" },
+                    issuer = "Steam",
+                    note = "",
+                    secret = secret,
+                    algorithm = "SHA1",
+                    digits = 5,  // Steam使用5位验证码
+                    period = 30
+                )
+                
+                Result.success(entry)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SteamImport", "导入失败", e)
+            Result.failure(Exception("导入失败：${e.message ?: "未知错误"}"))
+        }
+    }
+    
+    /**
+     * Base32编码（用于将Steam的Base64密钥转换为TOTP标准的Base32格式）
+     */
+    private fun base32Encode(data: ByteArray): String {
+        val base32Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        val result = StringBuilder()
+        
+        var buffer = 0
+        var bitsLeft = 0
+        
+        for (byte in data) {
+            buffer = (buffer shl 8) or (byte.toInt() and 0xFF)
+            bitsLeft += 8
+            
+            while (bitsLeft >= 5) {
+                val index = (buffer shr (bitsLeft - 5)) and 0x1F
+                result.append(base32Chars[index])
+                bitsLeft -= 5
+            }
+        }
+        
+        // 处理剩余的位
+        if (bitsLeft > 0) {
+            val index = (buffer shl (5 - bitsLeft)) and 0x1F
+            result.append(base32Chars[index])
+        }
+        
+        return result.toString()
+    }
 }

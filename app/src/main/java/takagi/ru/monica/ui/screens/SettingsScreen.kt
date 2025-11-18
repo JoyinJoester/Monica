@@ -362,6 +362,17 @@ fun SettingsScreen(
                         viewModel.updateDynamicColorEnabled(!enabled)
                     }
                 )
+                
+                // 4. 验证器震动提醒
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.Vibration,
+                    title = context.getString(R.string.validator_vibration),
+                    subtitle = context.getString(R.string.validator_vibration_description),
+                    checked = settings.validatorVibrationEnabled,
+                    onCheckedChange = { enabled ->
+                        viewModel.updateValidatorVibrationEnabled(enabled)
+                    }
+                )
             }
             
             // About Settings
@@ -1151,6 +1162,13 @@ private fun getColorSchemeDisplayName(colorScheme: takagi.ru.monica.data.ColorSc
     }
 }
 
+private fun getProgressBarStyleDisplayName(style: takagi.ru.monica.data.ProgressBarStyle, context: android.content.Context): String {
+    return when (style) {
+        takagi.ru.monica.data.ProgressBarStyle.LINEAR -> context.getString(R.string.progress_bar_style_linear)
+        takagi.ru.monica.data.ProgressBarStyle.WAVE -> context.getString(R.string.progress_bar_style_wave)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomNavSettingsScreen(
@@ -1230,5 +1248,46 @@ fun BottomNavSettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+}
+
+@Composable
+fun ProgressBarStyleDialog(
+    currentStyle: takagi.ru.monica.data.ProgressBarStyle,
+    onStyleSelected: (takagi.ru.monica.data.ProgressBarStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(context.getString(R.string.validator_progress_bar_style)) },
+        text = {
+            Column {
+                takagi.ru.monica.data.ProgressBarStyle.values().forEach { style ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = style == currentStyle,
+                            onClick = { 
+                                android.util.Log.d("ProgressBarStyleDialog", "User selected style: $style")
+                                onStyleSelected(style)
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(getProgressBarStyleDisplayName(style, context))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(context.getString(R.string.ok))
+            }
+        }
+    )
 }
 

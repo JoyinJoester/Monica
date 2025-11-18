@@ -29,7 +29,8 @@ fun ImportDataScreen(
     onNavigateBack: () -> Unit,
     onImport: suspend (Uri) -> Result<Int>,  // 普通数据导入
     onImportAegis: suspend (Uri) -> Result<Int>,  // Aegis JSON导入
-    onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>  // 加密的Aegis JSON导入
+    onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>,  // 加密的Aegis JSON导入
+    onImportSteamMaFile: suspend (Uri) -> Result<Int>  // Steam maFile导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -39,7 +40,7 @@ fun ImportDataScreen(
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isImporting by remember { mutableStateOf(false) }
-    var importType by remember { mutableStateOf("normal") } // "normal" 或 "aegis"
+    var importType by remember { mutableStateOf("normal") } // "normal"、"aegis" 或 "steam"
     var showPasswordDialog by remember { mutableStateOf(false) }
     var aegisPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
@@ -176,6 +177,17 @@ fun ImportDataScreen(
                         .weight(1f)
                         .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                 )
+                FilterChip(
+                    selected = importType == "steam",
+                    onClick = { importType = "steam" },
+                    label = { Text("Steam Guard") },
+                    leadingIcon = if (importType == "steam") {
+                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
+                    } else null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                )
             }
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -188,6 +200,7 @@ fun ImportDataScreen(
                         // 根据导入类型选择不同的文件过滤器
                         when (importType) {
                             "aegis" -> FileOperationHelper.importFromJson(act)
+                            "steam" -> FileOperationHelper.importFromMaFile(act) // Steam maFile使用专用方法
                             else -> FileOperationHelper.importFromCsv(act) // normal 类型使用 CSV
                         }
                     } ?: run {
@@ -232,6 +245,7 @@ fun ImportDataScreen(
                             Text(
                                 when (importType) {
                                     "aegis" -> stringResource(R.string.import_data_file_hint_json)
+                                    "steam" -> "选择Steam .maFile文件"
                                     else -> stringResource(R.string.import_data_file_hint_csv)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -256,27 +270,34 @@ fun ImportDataScreen(
                         scope.launch {
                             isImporting = true
                             try {
-                                // 如果是Aegis导入类型，先检查是否为加密文件
-                                if (importType == "aegis") {
-                                    // 异步检查是否为加密文件
-                                    val isEncryptedResult = DataExportImportManager(context).isEncryptedAegisFile(uri)
-                                    val isEncrypted = isEncryptedResult.getOrDefault(false)
-                                    if (isEncrypted) {
-                                        // 是加密文件，显示密码输入对话框
-                                        isImporting = false
-                                        showPasswordDialog = true
-                                        passwordError = null
-                                        aegisPassword = ""
-                                        return@launch
-                                    } else {
-                                        // 不是加密文件，直接导入
-                                        val result = onImportAegis(uri)
+                                when (importType) {
+                                    "aegis" -> {
+                                        // Aegis导入类型，先检查是否为加密文件
+                                        val isEncryptedResult = DataExportImportManager(context).isEncryptedAegisFile(uri)
+                                        val isEncrypted = isEncryptedResult.getOrDefault(false)
+                                        if (isEncrypted) {
+                                            // 是加密文件，显示密码输入对话框
+                                            isImporting = false
+                                            showPasswordDialog = true
+                                            passwordError = null
+                                            aegisPassword = ""
+                                            return@launch
+                                        } else {
+                                            // 不是加密文件，直接导入
+                                            val result = onImportAegis(uri)
+                                            handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                        }
+                                    }
+                                    "steam" -> {
+                                        // Steam maFile导入
+                                        val result = onImportSteamMaFile(uri)
                                         handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
                                     }
-                                } else {
-                                    // 普通导入
-                                    val result = onImport(uri)
-                                    handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                    else -> {
+                                        // 普通CSV导入
+                                        val result = onImport(uri)
+                                        handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                    }
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("ImportDataScreen", "导入异常", e)
@@ -437,6 +458,7 @@ private suspend fun handleImportResult(
     result.onSuccess { count ->
         val message = when (importType) {
             "aegis" -> "成功导入 $count 个TOTP验证器"
+            "steam" -> "成功导入 Steam Guard 验证器"
             else -> context.getString(R.string.import_data_success_normal, count)
         }
         snackbarHostState.showSnackbar(message)

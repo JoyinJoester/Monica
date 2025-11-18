@@ -4,16 +4,19 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-10-25T04:11:10.688393300Z">
+        <DropdownSelection timestamp="2025-11-17T12:47:54.692499700Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\joyins\.android\avd\Medium_Phone_API_32_1.avd" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\joyins\.android\avd\Pixel_Fold_API_35.avd" />
             </handle>
           </Target>
         </DropdownSelection>
         <DialogSelection />
       </SelectionState>
       <SelectionState runConfigName="test-app">
+        <option name="selectionMode" value="DROPDOWN" />
+      </SelectionState>
+      <SelectionState runConfigName="Monica-wear">
         <option name="selectionMode" value="DROPDOWN" />
       </SelectionState>
     </selectionStates>

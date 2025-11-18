@@ -1,25 +1,33 @@
 package takagi.ru.monica.util
 
 import android.net.Uri
+import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 
 /**
- * TOTP URI 解析工具
+ * OTP URI 解析工具
  * 
  * 支持标准的 otpauth:// URI 格式
+ * 支持类型: totp, hotp
  * 例如: otpauth://totp/Example:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example
+ * 例如: otpauth://hotp/Example:user@example.com?secret=JBSWY3DPEHPK3PXP&counter=0
  */
 object TotpUriParser {
     
     /**
      * 解析 otpauth:// URI
      * 
-     * @param uri TOTP URI字符串
+     * @param uri OTP URI字符串 (支持 totp 和 hotp)
      * @return 解析结果，包含TotpData、账户名和标签
      */
     fun parseUri(uri: String): TotpParseResult? {
         try {
-            if (!uri.startsWith("otpauth://totp/", ignoreCase = true)) {
+            // 检查URI格式
+            val lowerUri = uri.lowercase()
+            val isTotp = lowerUri.startsWith("otpauth://totp/")
+            val isHotp = lowerUri.startsWith("otpauth://hotp/")
+            
+            if (!isTotp && !isHotp) {
                 return null
             }
             
@@ -34,6 +42,9 @@ object TotpUriParser {
             val digits = parsedUri.getQueryParameter("digits")?.toIntOrNull() ?: 6
             val period = parsedUri.getQueryParameter("period")?.toIntOrNull() ?: 30
             
+            // HOTP特有参数
+            val counter = parsedUri.getQueryParameter("counter")?.toLongOrNull() ?: 0L
+            
             // 解析路径以获取标签和账户名
             // 格式: otpauth://totp/Label?...
             // 或: otpauth://totp/Issuer:AccountName?...
@@ -47,13 +58,25 @@ object TotpUriParser {
                 issuer
             }
             
+            // 检测特殊服务提供商并设置相应的OTP类型
+            val otpType = detectOtpType(isHotp, finalIssuer, parsedUri)
+            
+            // 根据检测到的类型调整参数
+            val finalDigits = when (otpType) {
+                OtpType.STEAM -> 5  // Steam固定5位
+                else -> digits
+            }
+            
             val totpData = TotpData(
                 secret = secret,
                 issuer = finalIssuer,
                 accountName = accountName,
                 period = period,
-                digits = digits,
-                algorithm = algorithm
+                digits = finalDigits,
+                algorithm = algorithm,
+                otpType = otpType,
+                counter = counter,
+                pin = ""  // PIN码需要用户额外输入
             )
             
             return TotpParseResult(
@@ -65,6 +88,33 @@ object TotpUriParser {
             e.printStackTrace()
             return null
         }
+    }
+    
+    /**
+     * 检测OTP类型
+     * 根据URI类型、issuer名称和特殊参数判断
+     */
+    private fun detectOtpType(isHotp: Boolean, issuer: String, uri: Uri): OtpType {
+        // 优先检查是否是HOTP
+        if (isHotp) {
+            return OtpType.HOTP
+        }
+        
+        // 检查issuer中是否包含特殊服务提供商名称
+        val issuerLower = issuer.lowercase()
+        when {
+            issuerLower.contains("steam") -> return OtpType.STEAM
+            issuerLower.contains("yandex") -> return OtpType.YANDEX
+        }
+        
+        // 检查是否有Steam特殊参数
+        val encoder = uri.getQueryParameter("encoder")?.lowercase()
+        if (encoder == "steam") {
+            return OtpType.STEAM
+        }
+        
+        // 默认为TOTP
+        return OtpType.TOTP
     }
     
     /**
@@ -85,7 +135,58 @@ object TotpUriParser {
     }
     
     /**
-     * 生成TOTP URI
+     * 生成OTP URI
+     * 
+     * @param label 标签（通常是 "Issuer:AccountName"）
+     * @param totpData OTP数据
+     * @return otpauth:// URI字符串
+     */
+    fun generateUri(label: String, totpData: TotpData): String {
+        val encodedLabel = Uri.encode(label)
+        
+        // 根据OTP类型选择authority
+        val authority = when (totpData.otpType) {
+            OtpType.HOTP -> "hotp"
+            else -> "totp"
+        }
+        
+        val builder = Uri.Builder()
+            .scheme("otpauth")
+            .authority(authority)
+            .appendPath(encodedLabel)
+            .appendQueryParameter("secret", totpData.secret)
+        
+        if (totpData.issuer.isNotBlank()) {
+            builder.appendQueryParameter("issuer", totpData.issuer)
+        }
+        
+        // HOTP需要counter参数
+        if (totpData.otpType == OtpType.HOTP) {
+            builder.appendQueryParameter("counter", totpData.counter.toString())
+        }
+        
+        if (totpData.period != 30 && totpData.otpType != OtpType.HOTP) {
+            builder.appendQueryParameter("period", totpData.period.toString())
+        }
+        
+        if (totpData.digits != 6) {
+            builder.appendQueryParameter("digits", totpData.digits.toString())
+        }
+        
+        if (totpData.algorithm != "SHA1") {
+            builder.appendQueryParameter("algorithm", totpData.algorithm)
+        }
+        
+        // Steam特殊标记
+        if (totpData.otpType == OtpType.STEAM) {
+            builder.appendQueryParameter("encoder", "steam")
+        }
+        
+        return builder.build().toString()
+    }
+    
+    /**
+     * 生成OTP URI (兼容旧版本API)
      * 
      * @param label 标签（通常是 "Issuer:AccountName"）
      * @param secret Base32编码的密钥
@@ -96,6 +197,8 @@ object TotpUriParser {
      * @param algorithm 算法
      * @return otpauth:// URI字符串
      */
+    @Deprecated("使用 generateUri(label, totpData) 代替",
+        ReplaceWith("generateUri(label, TotpData(secret, issuer, accountName, period, digits, algorithm))"))
     fun generateUri(
         label: String,
         secret: String,

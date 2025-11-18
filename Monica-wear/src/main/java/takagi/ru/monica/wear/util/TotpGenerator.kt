@@ -1,0 +1,270 @@
+package takagi.ru.monica.wear.util
+
+import takagi.ru.monica.wear.data.model.OtpType
+import takagi.ru.monica.wear.data.model.TotpData
+import java.nio.ByteBuffer
+import java.security.MessageDigest
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import kotlin.math.pow
+
+/**
+ * 通用OTP生成器 (Wear版本)
+ * 支持多种OTP算法：TOTP (RFC 6238)、HOTP (RFC 4226)、Steam Guard、Yandex、Mobile-OTP
+ * 复用主应用的算法实现
+ */
+object TotpGenerator {
+    
+    /**
+     * 通用OTP生成方法 - 根据TotpData配置自动选择算法
+     * @param totpData OTP配置数据
+     * @param currentCounter 可选的当前计数器值(用于HOTP,如果不提供则使用totpData中的counter)
+     * @return 生成的OTP验证码
+     */
+    fun generateOtp(totpData: TotpData, currentCounter: Long? = null): String {
+        return when (totpData.otpType) {
+            OtpType.TOTP -> generateTotp(
+                secret = totpData.secret,
+                period = totpData.period,
+                digits = totpData.digits,
+                algorithm = totpData.algorithm
+            )
+            OtpType.HOTP -> generateHotp(
+                secret = totpData.secret,
+                counter = currentCounter ?: totpData.counter,
+                digits = totpData.digits,
+                algorithm = totpData.algorithm
+            )
+            OtpType.STEAM -> generateSteamCode(
+                secret = totpData.secret,
+                timeSeconds = System.currentTimeMillis() / 1000
+            )
+            OtpType.YANDEX -> generateYandexCode(
+                secret = totpData.secret,
+                pin = totpData.pin,
+                timeSeconds = System.currentTimeMillis() / 1000
+            )
+            OtpType.MOTP -> generateMobileOtp(
+                secret = totpData.secret,
+                pin = totpData.pin,
+                timeSeconds = System.currentTimeMillis() / 1000
+            )
+        }
+    }
+    
+    /**
+     * 生成TOTP验证码
+     * @param secret Base32编码的密钥
+     * @param timeSeconds 当前时间（秒）
+     * @param period 时间周期（默认30秒）
+     * @param digits 验证码位数（默认6位）
+     * @param algorithm HMAC算法（SHA1, SHA256, SHA512）
+     * @return TOTP验证码
+     */
+    fun generateTotp(
+        secret: String,
+        timeSeconds: Long = System.currentTimeMillis() / 1000,
+        period: Int = 30,
+        digits: Int = 6,
+        algorithm: String = "SHA1"
+    ): String {
+        try {
+            // 计算时间步长
+            val timeStep = timeSeconds / period
+            
+            // 解码Base32密钥
+            val key = decodeBase32(secret)
+            
+            // 生成HMAC
+            val hmac = generateHmac(key, timeStep, algorithm)
+            
+            // 截断HMAC生成验证码
+            return truncateHmac(hmac, digits)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return "000000"
+        }
+    }
+    
+    /**
+     * 计算当前验证码的剩余有效时间（秒）
+     */
+    fun getRemainingSeconds(period: Int = 30): Int {
+        val currentSeconds = System.currentTimeMillis() / 1000
+        return period - (currentSeconds % period).toInt()
+    }
+    
+    /**
+     * 获取当前时间步长的进度（0.0 - 1.0）
+     */
+    fun getProgress(period: Int = 30): Float {
+        val remaining = getRemainingSeconds(period)
+        return 1.0f - (remaining.toFloat() / period)
+    }
+    
+    /**
+     * 生成HMAC
+     */
+    private fun generateHmac(key: ByteArray, counter: Long, algorithm: String): ByteArray {
+        val algorithmName = "Hmac$algorithm"
+        val mac = Mac.getInstance(algorithmName)
+        val secretKey = SecretKeySpec(key, algorithmName)
+        mac.init(secretKey)
+        
+        // 将counter转换为8字节数组（大端序）
+        val buffer = ByteBuffer.allocate(8)
+        buffer.putLong(counter)
+        
+        return mac.doFinal(buffer.array())
+    }
+    
+    /**
+     * 截断HMAC生成验证码
+     */
+    private fun truncateHmac(hmac: ByteArray, digits: Int): String {
+        // 动态截断
+        val offset = (hmac[hmac.size - 1].toInt() and 0x0F)
+        
+        val binary = ((hmac[offset].toInt() and 0x7F) shl 24) or
+                ((hmac[offset + 1].toInt() and 0xFF) shl 16) or
+                ((hmac[offset + 2].toInt() and 0xFF) shl 8) or
+                (hmac[offset + 3].toInt() and 0xFF)
+        
+        val otp = binary % 10.0.pow(digits).toInt()
+        
+        // 格式化为指定位数的字符串（前导零）
+        return String.format("%0${digits}d", otp)
+    }
+    
+    /**
+     * Base32解码
+     */
+    private fun decodeBase32(encoded: String): ByteArray {
+        // 移除空格和分隔符
+        val clean = encoded.replace(Regex("[\\s\\-]"), "").uppercase()
+        
+        // Base32字符集
+        val base32Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        
+        val output = mutableListOf<Byte>()
+        var buffer = 0
+        var bitsLeft = 0
+        
+        for (char in clean) {
+            val value = base32Chars.indexOf(char)
+            if (value == -1) continue
+            
+            buffer = (buffer shl 5) or value
+            bitsLeft += 5
+            
+            if (bitsLeft >= 8) {
+                output.add(((buffer shr (bitsLeft - 8)) and 0xFF).toByte())
+                bitsLeft -= 8
+            }
+        }
+        
+        return output.toByteArray()
+    }
+    
+    /**
+     * 生成HOTP验证码 (RFC 4226)
+     * 基于计数器的一次性密码算法
+     */
+    fun generateHotp(
+        secret: String,
+        counter: Long,
+        digits: Int = 6,
+        algorithm: String = "SHA1"
+    ): String {
+        return try {
+            val key = decodeBase32(secret)
+            val hmac = generateHmac(key, counter, algorithm)
+            truncateHmac(hmac, digits)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "000000"
+        }
+    }
+    
+    /**
+     * 生成Steam Guard验证码
+     * Steam使用特殊的5位字符码（而非数字）
+     */
+    fun generateSteamCode(
+        secret: String,
+        timeSeconds: Long = System.currentTimeMillis() / 1000
+    ): String {
+        return try {
+            val timeStep = timeSeconds / 30
+            val key = decodeBase32(secret)
+            val hmac = generateHmac(key, timeStep, "SHA1")
+            
+            val steamChars = "23456789BCDFGHJKMNPQRTVWXY"
+            val offset = (hmac[hmac.size - 1].toInt() and 0x0F)
+            
+            var fullCode = ((hmac[offset].toInt() and 0x7F) shl 24) or
+                    ((hmac[offset + 1].toInt() and 0xFF) shl 16) or
+                    ((hmac[offset + 2].toInt() and 0xFF) shl 8) or
+                    (hmac[offset + 3].toInt() and 0xFF)
+            
+            val code = StringBuilder()
+            for (i in 0 until 5) {
+                code.append(steamChars[fullCode % steamChars.length])
+                fullCode /= steamChars.length
+            }
+            
+            code.toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "2345B"
+        }
+    }
+    
+    /**
+     * 生成Yandex OTP验证码
+     * Yandex使用标准TOTP算法
+     */
+    fun generateYandexCode(
+        secret: String,
+        pin: String = "",
+        timeSeconds: Long = System.currentTimeMillis() / 1000
+    ): String {
+        return generateTotp(
+            secret = secret,
+            timeSeconds = timeSeconds,
+            period = 30,
+            digits = 6,
+            algorithm = "SHA1"
+        )
+    }
+    
+    /**
+     * 生成Mobile-OTP (mOTP)验证码
+     * mOTP算法: MD5(epoch + secret + pin)，取前6位数字
+     */
+    fun generateMobileOtp(
+        secret: String,
+        pin: String,
+        timeSeconds: Long = System.currentTimeMillis() / 1000
+    ): String {
+        return try {
+            val epoch = timeSeconds / 10
+            val data = "$epoch$secret$pin"
+            
+            val md = MessageDigest.getInstance("MD5")
+            val digest = md.digest(data.toByteArray())
+            
+            val hexString = digest.joinToString("") { "%02x".format(it) }
+            val digits = hexString.filter { it.isDigit() }
+            
+            if (digits.length >= 6) {
+                digits.substring(0, 6)
+            } else {
+                digits.padEnd(6, '0')
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "000000"
+        }
+    }
+}

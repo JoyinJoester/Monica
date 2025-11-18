@@ -92,4 +92,18 @@ class SettingsViewModel(
             settingsManager.updateDisablePasswordVerification(disabled)
         }
     }
+
+    fun updateValidatorProgressBarStyle(style: takagi.ru.monica.data.ProgressBarStyle) {
+        android.util.Log.d("SettingsViewModel", "Updating progress bar style to: $style")
+        viewModelScope.launch {
+            settingsManager.updateValidatorProgressBarStyle(style)
+            android.util.Log.d("SettingsViewModel", "Progress bar style updated successfully")
+        }
+    }
+
+    fun updateValidatorVibrationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateValidatorVibrationEnabled(enabled)
+        }
+    }
 }

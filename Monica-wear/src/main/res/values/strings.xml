@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Monica Wear</string>
+    
+    <!-- 通用 -->
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="back">返回</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    
+    <!-- TOTP -->
+    <string name="totp_empty_title">暂无验证器</string>
+    <string name="totp_empty_subtitle">请在设置中同步数据</string>
+    <string name="totp_click_to_copy">点击复制</string>
+    <string name="totp_code_copied">验证码已复制</string>
+    
+    <!-- 搜索 -->
+    <string name="search_hint">搜索验证器...</string>
+    <string name="search_no_results">未找到匹配项</string>
+    
+    <!-- 设置 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_sync_status">同步状态</string>
+    <string name="settings_sync_now">点击同步</string>
+    <string name="settings_last_sync">上次同步: %s</string>
+    <string name="settings_webdav_config">WebDAV 配置</string>
+    <string name="settings_webdav_subtitle">配置云端同步</string>
+    <string name="settings_change_password">修改主密码</string>
+    <string name="settings_change_password_subtitle">更改解密密码</string>
+    <string name="settings_biometric">生物识别</string>
+    <string name="settings_biometric_subtitle">使用指纹或面部解锁</string>
+    <string name="settings_clear_data">清除所有数据</string>
+    <string name="settings_clear_data_subtitle">删除本地所有验证器</string>
+    <string name="settings_version">版本 %s</string>
+    
+    <!-- 同步 -->
+    <string name="sync_success">同步成功</string>
+    <string name="sync_error">同步失败: %s</string>
+    <string name="sync_in_progress">正在同步...</string>
+    
+    <!-- 错误 -->
+    <string name="error_generic">发生错误</string>
+    <string name="error_network">网络错误</string>
+    <string name="error_auth">认证失败</string>
+</resources>

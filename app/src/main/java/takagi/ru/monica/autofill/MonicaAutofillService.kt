@@ -612,6 +612,7 @@ class MonicaAutofillService : AutofillService() {
         val maxDirectShow = 3
         passwords.take(maxDirectShow).forEachIndexed { index, password ->
             val datasetBuilder = Dataset.Builder()
+            var hasFilledField = false
             
             // 创建RemoteViews显示 (传统下拉菜单)
             val presentation = createPresentationView(password, packageName, index, enhancedCollection)
@@ -653,12 +654,14 @@ class MonicaAutofillService : AutofillService() {
                         presentation as RemoteViews,
                         inlinePresentation as InlinePresentation
                     )
+                    hasFilledField = true
                 } else {
                     datasetBuilder.setValue(
                         usernameId,
                         AutofillValue.forText(usernameValue),
                         presentation as RemoteViews
                     )
+                    hasFilledField = true
                 }
             }
             
@@ -683,12 +686,14 @@ class MonicaAutofillService : AutofillService() {
                                 presentation as RemoteViews,
                                 inlinePresentation as InlinePresentation
                             )
+                            hasFilledField = true
                         } else {
                             datasetBuilder.setValue(
                                 emailId,
                                 AutofillValue.forText(emailValue),
                                 presentation as RemoteViews
                             )
+                            hasFilledField = true
                         }
                     }
                 }
@@ -708,12 +713,14 @@ class MonicaAutofillService : AutofillService() {
                             presentation as RemoteViews,
                             inlinePresentation as InlinePresentation
                         )
+                        hasFilledField = true
                     } else {
                         datasetBuilder.setValue(
                             phoneId,
                             AutofillValue.forText(password.phone),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                     android.util.Log.d("MonicaAutofill", "📱 Phone field filled: $formattedPhone")
                 }
@@ -730,12 +737,14 @@ class MonicaAutofillService : AutofillService() {
                         presentation as RemoteViews,
                         inlinePresentation as InlinePresentation
                     )
+                    hasFilledField = true
                 } else {
                     datasetBuilder.setValue(
                         passwordId,
                         AutofillValue.forText(password.password),
                         presentation as RemoteViews
                     )
+                    hasFilledField = true
                 }
             }
             
@@ -749,6 +758,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(password.addressLine),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                         android.util.Log.d("MonicaAutofill", "🏠 Address line filled")
                     }
                 }
@@ -761,6 +771,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(password.city),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                 }
                 
@@ -772,6 +783,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(password.state),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                 }
                 
@@ -783,6 +795,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(password.zipCode),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                 }
                 
@@ -794,6 +807,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(password.country),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                 }
             }
@@ -810,6 +824,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(cardNumber),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                         android.util.Log.d("MonicaAutofill", "💳 Credit card number filled")
                     }
                 }
@@ -822,6 +837,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(password.creditCardHolder),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                 }
                 
@@ -833,6 +849,7 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(password.creditCardExpiry),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                 }
                 
@@ -846,11 +863,21 @@ class MonicaAutofillService : AutofillService() {
                             AutofillValue.forText(cvv),
                             presentation as RemoteViews
                         )
+                        hasFilledField = true
                     }
                 }
             }
             
-            responseBuilder.addDataset(datasetBuilder.build())
+            // 只有在至少填充了一个字段时才构建dataset
+            if (hasFilledField) {
+                try {
+                    responseBuilder.addDataset(datasetBuilder.build())
+                } catch (e: IllegalStateException) {
+                    android.util.Log.w("MonicaAutofill", "⚠️ Skipping dataset for '${password.title}' - no fields filled")
+                }
+            } else {
+                android.util.Log.w("MonicaAutofill", "⚠️ Skipping dataset for '${password.title}' - no fields filled")
+            }
         }
         
         return responseBuilder.build()
@@ -968,6 +995,7 @@ class MonicaAutofillService : AutofillService() {
             
             // 6. 创建密码建议 Dataset
             val datasetBuilder = Dataset.Builder()
+            var hasFilledField = false
             
             // 创建 RemoteViews 显示
             val presentation = createPasswordSuggestionView(packageName)
@@ -975,12 +1003,20 @@ class MonicaAutofillService : AutofillService() {
             // 为所有密码字段设置认证 Intent (空值,仅用于触发认证)
             for (autofillId in passwordAutofillIds) {
                 datasetBuilder.setValue(autofillId, null as AutofillValue?, presentation)
+                hasFilledField = true
             }
             
             // 设置认证 Intent
             datasetBuilder.setAuthentication(pendingIntent.intentSender)
             
-            responseBuilder.addDataset(datasetBuilder.build())
+            // 只有在至少填充了一个字段时才构建dataset
+            if (hasFilledField) {
+                try {
+                    responseBuilder.addDataset(datasetBuilder.build())
+                } catch (e: IllegalStateException) {
+                    android.util.Log.w("MonicaAutofill", "⚠️ Skipping password suggestion dataset - no fields filled")
+                }
+            }
             
             // 7. 添加 SaveInfo (确保用户使用建议密码后能自动保存)
             val saveInfo = takagi.ru.monica.autofill.core.SaveInfoBuilder.build(parsedStructure)
@@ -1273,7 +1309,7 @@ class MonicaAutofillService : AutofillService() {
                 android.util.Log.d("MonicaAutofill", "✓ Password filled (accuracy: ${item.accuracy})")
             }
             
-            // 5. 填充新密码字段（用于注册/修改密码场景）
+            // 5. 填充新密码字段(用于注册/修改密码场景)
             newPasswordItems.forEach { item ->
                 if (inlinePresentation != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     @Suppress("NewApi")
@@ -1290,6 +1326,7 @@ class MonicaAutofillService : AutofillService() {
                         presentation as RemoteViews
                     )
                 }
+                hasFilledAnyField = true
                 android.util.Log.d("MonicaAutofill", "✓ New password filled (accuracy: ${item.accuracy})")
             }
             
@@ -1314,6 +1351,7 @@ class MonicaAutofillService : AutofillService() {
                         AutofillValue.forText(value),
                         presentation as RemoteViews
                     )
+                    hasFilledAnyField = true
                     android.util.Log.d("MonicaAutofill", "✓ Credit card field filled: ${item.hint}")
                 }
             }
@@ -1336,6 +1374,7 @@ class MonicaAutofillService : AutofillService() {
                         AutofillValue.forText(value),
                         presentation as RemoteViews
                     )
+                    hasFilledAnyField = true
                     android.util.Log.d("MonicaAutofill", "✓ Address field filled: ${item.hint}")
                 }
             }
