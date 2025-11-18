@@ -539,7 +539,7 @@ private fun AboutSection(
             )
             
             Text(
-                text = "版本 1.0.9",
+                text = "版本 1.1.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )

@@ -99,8 +99,31 @@ fun WebDavBackupScreen(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 配置信息卡片 (如果已配置)
+            if (isConfigured) {
+                webDavHelper.getCurrentConfig()?.let { config ->
+                    WebDavConfigSummaryCard(
+                        config = config,
+                        onEdit = {
+                            isConfigured = false
+                            serverUrl = config.serverUrl
+                            username = config.username
+                        },
+                        onClear = {
+                            webDavHelper.clearConfig()
+                            isConfigured = false
+                            serverUrl = ""
+                            username = ""
+                            password = ""
+                            backupList = emptyList()
+                        }
+                    )
+                }
+            }
+            
             // 配置卡片
-            Card(
+            if (!isConfigured) {
+                Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -292,6 +315,7 @@ fun WebDavBackupScreen(
                         )
                     }
                 }
+            }
             }
             
             // 自动备份设置卡片 (仅在配置成功后显示)
@@ -802,6 +826,132 @@ private fun BackupItem(
                 }
             }
         )
+    }
+}
+
+/**
+ * WebDAV 配置信息卡片
+ */
+@Composable
+fun WebDavConfigSummaryCard(
+    config: WebDavHelper.WebDavConfig,
+    onEdit: () -> Unit,
+    onClear: () -> Unit
+) {
+    val context = LocalContext.current
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "WebDAV 配置",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = onEdit) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "编辑配置",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    IconButton(onClick = onClear) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "清除配置",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+            
+            Divider()
+            
+            ConfigInfoRow(
+                label = "服务器",
+                value = config.serverUrl,
+                icon = Icons.Default.CloudUpload
+            )
+            
+            ConfigInfoRow(
+                label = "用户名",
+                value = config.username,
+                icon = Icons.Default.Person
+            )
+        }
+    }
+}
+
+/**
+ * 配置信息行组件
+ */
+@Composable
+fun ConfigInfoRow(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    val context = LocalContext.current
+    val clipboardManager = remember { 
+        context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager 
+    }
+    
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Column {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+        
+        IconButton(
+            onClick = {
+                val clip = android.content.ClipData.newPlainText(label, value)
+                clipboardManager.setPrimaryClip(clip)
+                Toast.makeText(context, "已复制 $label", Toast.LENGTH_SHORT).show()
+            }
+        ) {
+            Icon(
+                Icons.Default.ContentCopy,
+                contentDescription = "复制 $label",
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 

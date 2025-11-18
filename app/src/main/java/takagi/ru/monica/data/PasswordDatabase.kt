@@ -14,7 +14,7 @@ import androidx.room.TypeConverters
         PasswordEntry::class,
         SecureItem::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -255,6 +255,13 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 15 → 16 - 空迁移(版本号占位)
+        private val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 此版本暂无数据库结构变更
+            }
+        }
+
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -277,7 +284,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_11_12,  // 删除记账功能
                         MIGRATION_12_13,
                         MIGRATION_13_14,
-                        MIGRATION_14_15   // 扩展OTP支持
+                        MIGRATION_14_15,  // 扩展OTP支持
+                        MIGRATION_15_16   // 版本占位
                     )
                     .build()
                 INSTANCE = instance

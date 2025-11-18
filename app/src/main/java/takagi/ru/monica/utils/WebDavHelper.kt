@@ -125,6 +125,22 @@ class WebDavHelper(
     }
     
     /**
+     * 获取当前配置信息
+     */
+    data class WebDavConfig(
+        val serverUrl: String,
+        val username: String
+    )
+    
+    fun getCurrentConfig(): WebDavConfig? {
+        return if (isConfigured()) {
+            WebDavConfig(serverUrl, username)
+        } else {
+            null
+        }
+    }
+    
+    /**
      * 清除配置
      */
     fun clearConfig() {
