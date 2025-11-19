@@ -77,4 +77,5 @@ sealed class Screen(val route: String) {
     object CustomColorSettings : Screen("custom_color_settings")
     object Generator : Screen("generator")  // 添加生成器页面路由
     object DeveloperSettings : Screen("developer_settings")  // 添加开发者设置页面路由
+    object PermissionManagement : Screen("permission_management")  // 权限管理页面路由
 }

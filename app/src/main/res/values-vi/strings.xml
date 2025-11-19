@@ -1035,4 +1035,68 @@
     <string name="length_label">Độ dài: %d</string>
     <string name="length_chars">Độ dài: %d ký tự</string>
 
+    <!-- Permission Management -->
+    <string name="permission_management_title">Quản lý quyền</string>
+    <string name="permission_management_subtitle">Quản lý quyền ứng dụng</string>
+    <string name="permission_management_description">Xem và quản lý quyền được Monica sử dụng</string>
+    <string name="help">Trợ giúp</string>
+
+    <!-- Permission Categories -->
+    <string name="permission_category_security">Quyền bảo mật</string>
+    <string name="permission_category_storage">Quyền lưu trữ</string>
+    <string name="permission_category_network">Quyền mạng</string>
+    <string name="permission_category_device">Quyền thiết bị</string>
+    <string name="permission_category_location">Quyền vị trí</string>
+
+    <!-- Permission Importance -->
+    <string name="permission_importance_required">Bắt buộc</string>
+    <string name="permission_importance_recommended">Khuyến nghị</string>
+    <string name="permission_importance_optional">Tùy chọn</string>
+
+    <!-- Permission Status -->
+    <string name="permission_status_granted">Đã cấp</string>
+    <string name="permission_status_denied">Chưa cấp</string>
+    <string name="permission_status_unavailable">Không khả dụng</string>
+    <string name="permission_status_unknown">Không rõ</string>
+
+    <!-- Permission Names -->
+    <string name="permission_biometric_name">Xác thực sinh trắc học</string>
+    <string name="permission_camera_name">Máy ảnh</string>
+    <string name="permission_storage_name">Truy cập bộ nhớ</string>
+    <string name="permission_internet_name">Truy cập Internet</string>
+    <string name="permission_network_state_name">Trạng thái mạng</string>
+    <string name="permission_vibrate_name">Rung</string>
+    <string name="permission_phone_state_name">Trạng thái điện thoại</string>
+    <string name="permission_location_name">Vị trí</string>
+    <string name="permission_autofill_name">Dịch vụ tự động điền</string>
+
+    <!-- Permission Descriptions -->
+    <string name="permission_biometric_description">Dùng cho: Mở khóa bằng vân tay/khuôn mặt</string>
+    <string name="permission_camera_description">Dùng cho: Quét mã QR cho xác thực TOTP</string>
+    <string name="permission_storage_description">Dùng cho: Lưu dữ liệu xuất và hình ảnh</string>
+    <string name="permission_internet_description">Dùng cho: Sao lưu và đồng bộ WebDAV</string>
+    <string name="permission_network_state_description">Dùng cho: Kiểm tra kết nối mạng</string>
+    <string name="permission_vibrate_description">Dùng cho: Phản hồi xúc giác cho xác thực</string>
+    <string name="permission_phone_state_description">Dùng cho: Nhận dạng thiết bị</string>
+    <string name="permission_location_description">Dùng cho: Tính năng dựa trên vị trí (tùy chọn)</string>
+    <string name="permission_autofill_description">Dùng cho: Tự động điền mật khẩu trong ứng dụng và trình duyệt</string>
+
+    <!-- Permission Stats -->
+    <string name="permission_stats_title">Tóm tắt quyền</string>
+    <string name="permission_stats_required">Quyền bắt buộc: %1$d / %2$d đã cấp</string>
+    <string name="permission_stats_total">Tổng quyền: %1$d / %2$d đã cấp</string>
+
+    <!-- Permission Actions -->
+    <string name="permission_revoke_hint">Để thu hồi quyền này, hãy vào Cài đặt > Ứng dụng > Monica > Quyền</string>
+    <string name="permission_grant_hint">Nhấn để mở cài đặt hệ thống và cấp quyền này</string>
+    <string name="cannot_open_settings">Không thể mở cài đặt hệ thống</string>
+
+    <!-- Permission Help Dialog -->
+    <string name="permission_help_title">Về quyền</string>
+    <string name="permission_help_content">Màn hình này hiển thị tất cả quyền được Monica sử dụng. Nhấn vào quyền để quản lý trong cài đặt hệ thống.\n\n• Bắt buộc: Cần thiết cho chức năng cốt lõi\n• Khuyến nghị: Nâng cao trải nghiệm người dùng\n• Tùy chọn: Cho các tính năng bổ sung</string>
+
+    <!-- Permission Info Card -->
+    <string name="permission_info_title">Quản lý quyền</string>
+    <string name="permission_info_message">Tại đây bạn có thể xem tất cả quyền được Monica sử dụng và trạng thái hiện tại của chúng. Nhấn vào bất kỳ quyền nào để quản lý trong cài đặt hệ thống.</string>
+
 </resources>

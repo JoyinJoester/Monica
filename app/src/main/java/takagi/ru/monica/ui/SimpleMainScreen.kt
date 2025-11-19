@@ -38,8 +38,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.utils.BiometricHelper
@@ -92,6 +94,33 @@ fun SimpleMainScreen(
 ) {
     val defaultTabKey = remember(initialTab) { indexToDefaultTabKey(initialTab) }
     var selectedTabKey by rememberSaveable { mutableStateOf(defaultTabKey) }
+    
+    // 双击返回退出相关状态
+    var backPressedOnce by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // 处理返回键 - 需要按两次才能退出
+    BackHandler {
+        if (backPressedOnce) {
+            // 第二次按返回键,退出应用
+            (context as? android.app.Activity)?.finish()
+        } else {
+            // 第一次按返回键,显示提示
+            backPressedOnce = true
+            Toast.makeText(
+                context,
+                context.getString(R.string.press_back_again_to_exit),
+                Toast.LENGTH_SHORT
+            ).show()
+            
+            // 2秒后重置状态
+            scope.launch {
+                delay(2000)
+                backPressedOnce = false
+            }
+        }
+    }
     
     // 密码列表的选择模式状态
     var isPasswordSelectionMode by remember { mutableStateOf(false) }

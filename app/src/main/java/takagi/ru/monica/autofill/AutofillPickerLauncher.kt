@@ -3,11 +3,13 @@ package takagi.ru.monica.autofill
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.autofill.Dataset
 import android.service.autofill.FillResponse
 import android.service.autofill.SaveInfo
 import android.widget.RemoteViews
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.flow.first
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
@@ -78,13 +80,14 @@ object AutofillPickerLauncher {
                 else -> "点击填充"
             }
             
+            // 创建卡片样式的 presentation
             val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
                 setTextViewText(R.id.text_title, displayTitle)
                 setTextViewText(R.id.text_username, displaySubtitle)
-                // 使用Material Design 3风格的钥匙图标
                 setImageViewResource(R.id.icon_app, R.drawable.ic_key)
             }
             
+            // 创建 Dataset.Builder
             val datasetBuilder = Dataset.Builder(presentation)
             var fieldCount = 0
             
@@ -145,7 +148,7 @@ object AutofillPickerLauncher {
                 android.util.Log.d("AutofillPicker", "  Dataset authentication configured for: ${password.title}")
             }
             
-            // 填充字段 - 不再传递 presentation 参数,使用整体的 dataset presentation
+            // 填充字段 - 如果有内联建议，需要传入到 setValue
             parsedStructure.items.forEach { item ->
                 when (item.hint) {
                     EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
@@ -161,6 +164,7 @@ object AutofillPickerLauncher {
                             }
                             android.util.Log.d("AutofillPicker", "  Setting username field: ${item.hint}")
                             android.util.Log.d("AutofillPicker", "  Username value: '${decryptedUsername}' (length: ${decryptedUsername.length})")
+                            
                             datasetBuilder.setValue(
                                 item.id,
                                 android.view.autofill.AutofillValue.forText(decryptedUsername)
@@ -180,7 +184,8 @@ object AutofillPickerLauncher {
                             android.util.Log.d("AutofillPicker", "  Setting password field: ${item.hint}")
                             android.util.Log.d("AutofillPicker", "  Encrypted password: '${password.password}' (length: ${password.password.length})")
                             android.util.Log.d("AutofillPicker", "  Decrypted password: '${decryptedPassword}' (length: ${decryptedPassword.length})")
-                            android.util.Log.d("AutofillPicker", "  Password title: '${password.title}'")
+                            android.util.Log.d("AutofillPicker", "  Password title: '${password.title}')")
+                            
                             datasetBuilder.setValue(
                                 item.id,
                                 android.view.autofill.AutofillValue.forText(decryptedPassword)

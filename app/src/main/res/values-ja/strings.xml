@@ -1028,4 +1028,68 @@
     <string name="length_label">長さ: %d</string>
     <string name="length_chars">長さ: %d 文字</string>
 
+    <!-- Permission Management -->
+    <string name="permission_management_title">権限管理</string>
+    <string name="permission_management_subtitle">アプリの権限を管理</string>
+    <string name="permission_management_description">Monicaが使用する権限を表示・管理</string>
+    <string name="help">ヘルプ</string>
+
+    <!-- Permission Categories -->
+    <string name="permission_category_security">セキュリティ権限</string>
+    <string name="permission_category_storage">ストレージ権限</string>
+    <string name="permission_category_network">ネットワーク権限</string>
+    <string name="permission_category_device">デバイス権限</string>
+    <string name="permission_category_location">位置情報権限</string>
+
+    <!-- Permission Importance -->
+    <string name="permission_importance_required">必須</string>
+    <string name="permission_importance_recommended">推奨</string>
+    <string name="permission_importance_optional">オプション</string>
+
+    <!-- Permission Status -->
+    <string name="permission_status_granted">許可済み</string>
+    <string name="permission_status_denied">未許可</string>
+    <string name="permission_status_unavailable">利用不可</string>
+    <string name="permission_status_unknown">不明</string>
+
+    <!-- Permission Names -->
+    <string name="permission_biometric_name">生体認証</string>
+    <string name="permission_camera_name">カメラ</string>
+    <string name="permission_storage_name">ストレージアクセス</string>
+    <string name="permission_internet_name">インターネットアクセス</string>
+    <string name="permission_network_state_name">ネットワーク状態</string>
+    <string name="permission_vibrate_name">バイブレーション</string>
+    <string name="permission_phone_state_name">電話状態</string>
+    <string name="permission_location_name">位置情報</string>
+    <string name="permission_autofill_name">自動入力サービス</string>
+
+    <!-- Permission Descriptions -->
+    <string name="permission_biometric_description">用途：指紋/顔認証によるロック解除</string>
+    <string name="permission_camera_description">用途：TOTP認証用のQRコードスキャン</string>
+    <string name="permission_storage_description">用途：エクスポートデータと画像の保存</string>
+    <string name="permission_internet_description">用途：WebDavバックアップと同期</string>
+    <string name="permission_network_state_description">用途：ネットワーク接続の確認</string>
+    <string name="permission_vibrate_description">用途：認証時の触覚フィードバック</string>
+    <string name="permission_phone_state_description">用途：デバイス識別</string>
+    <string name="permission_location_description">用途：位置情報ベースの機能（オプション）</string>
+    <string name="permission_autofill_description">用途：アプリとブラウザでのパスワード自動入力</string>
+
+    <!-- Permission Stats -->
+    <string name="permission_stats_title">権限の概要</string>
+    <string name="permission_stats_required">必須権限：%1$d / %2$d 許可済み</string>
+    <string name="permission_stats_total">全権限：%1$d / %2$d 許可済み</string>
+
+    <!-- Permission Actions -->
+    <string name="permission_revoke_hint">この権限を取り消すには、設定 > アプリ > Monica > 権限 に移動してください</string>
+    <string name="permission_grant_hint">タップしてシステム設定を開き、この権限を許可してください</string>
+    <string name="cannot_open_settings">システム設定を開けません</string>
+
+    <!-- Permission Help Dialog -->
+    <string name="permission_help_title">権限について</string>
+    <string name="permission_help_content">この画面にはMonicaが使用するすべての権限が表示されます。権限をタップすると、システム設定で管理できます。\n\n• 必須：コア機能に不可欠\n• 推奨：ユーザー体験を向上\n• オプション：追加機能用</string>
+
+    <!-- Permission Info Card -->
+    <string name="permission_info_title">権限管理</string>
+    <string name="permission_info_message">ここでMonicaが使用するすべての権限とその現在の状態を確認できます。任意の権限をタップすると、システム設定で管理できます。</string>
+
 </resources>

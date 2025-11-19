@@ -12,6 +12,8 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordHistoryManager
+import takagi.ru.monica.data.BackupPreferences
+import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -54,6 +56,14 @@ class WebDavHelper(
         private const val KEY_AUTO_BACKUP_ENABLED = "auto_backup_enabled"
         private const val KEY_LAST_BACKUP_TIME = "last_backup_time"
         private const val PASSWORD_META_MARKER = "[MonicaMeta]"
+        
+        // Backup preferences keys
+        private const val KEY_BACKUP_INCLUDE_PASSWORDS = "backup_include_passwords"
+        private const val KEY_BACKUP_INCLUDE_AUTHENTICATORS = "backup_include_authenticators"
+        private const val KEY_BACKUP_INCLUDE_DOCUMENTS = "backup_include_documents"
+        private const val KEY_BACKUP_INCLUDE_BANK_CARDS = "backup_include_bank_cards"
+        private const val KEY_BACKUP_INCLUDE_GENERATOR_HISTORY = "backup_include_generator_history"
+        private const val KEY_BACKUP_INCLUDE_IMAGES = "backup_include_images"
     }
     
     // 加密相关
@@ -275,6 +285,39 @@ class WebDavHelper(
     }
     
     /**
+     * 保存备份偏好设置
+     */
+    fun saveBackupPreferences(preferences: BackupPreferences) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putBoolean(KEY_BACKUP_INCLUDE_PASSWORDS, preferences.includePasswords)
+            putBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, preferences.includeAuthenticators)
+            putBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, preferences.includeDocuments)
+            putBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, preferences.includeBankCards)
+            putBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, preferences.includeGeneratorHistory)
+            putBoolean(KEY_BACKUP_INCLUDE_IMAGES, preferences.includeImages)
+            apply()
+        }
+        android.util.Log.d("WebDavHelper", "Saved backup preferences: $preferences")
+    }
+    
+    /**
+     * 获取备份偏好设置
+     * 默认所有类型都启用
+     */
+    fun getBackupPreferences(): BackupPreferences {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return BackupPreferences(
+            includePasswords = prefs.getBoolean(KEY_BACKUP_INCLUDE_PASSWORDS, true),
+            includeAuthenticators = prefs.getBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, true),
+            includeDocuments = prefs.getBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, true),
+            includeBankCards = prefs.getBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, true),
+            includeGeneratorHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, true),
+            includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true)
+        )
+    }
+    
+    /**
      * 测试连接
      */
     suspend fun testConnection(): Result<Boolean> = withContext(Dispatchers.IO) {
@@ -385,13 +428,24 @@ class WebDavHelper(
      * 创建并上传备份
      * @param passwords 所有密码条目
      * @param secureItems 所有其他安全数据项(TOTP、银行卡、证件)
+     * @param preferences 备份偏好设置，控制包含哪些内容类型
      * @return 备份文件名
      */
     suspend fun createAndUploadBackup(
         passwords: List<PasswordEntry>,
-        secureItems: List<SecureItem>
+        secureItems: List<SecureItem>,
+        preferences: BackupPreferences = getBackupPreferences()
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
+            // 验证：检查是否至少启用了一种内容类型
+            if (!preferences.hasAnyEnabled()) {
+                android.util.Log.w("WebDavHelper", "Backup cancelled: no content types selected")
+                return@withContext Result.failure(Exception("请至少选择一种备份内容"))
+            }
+            
+            // 记录备份偏好设置
+            android.util.Log.d("WebDavHelper", "Creating backup with preferences: $preferences")
+            
             // 1. 创建临时CSV文件
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val passwordsCsvFile = File(context.cacheDir, "Monica_${timestamp}_password.csv")
@@ -405,55 +459,93 @@ class WebDavHelper(
             }
             
             try {
-                // 2. 导出密码数据到CSV
-                exportPasswordsToCSV(passwords, passwordsCsvFile)
+                // 2. 根据偏好设置过滤密码数据
+                val filteredPasswords = if (preferences.includePasswords) passwords else emptyList()
+                android.util.Log.d("WebDavHelper", "Passwords: ${passwords.size} total, ${filteredPasswords.size} included")
                 
-                // 3. 导出其他数据到CSV
-                val exportManager = DataExportImportManager(context)
-                val csvUri = Uri.fromFile(secureItemsCsvFile)
-                val exportResult = exportManager.exportData(secureItems, csvUri)
-                
-                if (exportResult.isFailure) {
-                    return@withContext Result.failure(exportResult.exceptionOrNull() 
-                        ?: Exception("导出数据失败"))
+                // 3. 根据偏好设置过滤安全项目
+                val filteredSecureItems = secureItems.filter { item ->
+                    when (item.itemType) {
+                        ItemType.TOTP -> preferences.includeAuthenticators
+                        ItemType.DOCUMENT -> preferences.includeDocuments
+                        ItemType.BANK_CARD -> preferences.includeBankCards
+                        else -> true // 其他类型默认包含
+                    }
                 }
                 
-                // 4. 创建ZIP文件,包含两个CSV、密码生成历史和图片
+                // 记录各类型的数量
+                val totpCount = secureItems.count { it.itemType == ItemType.TOTP }
+                val docCount = secureItems.count { it.itemType == ItemType.DOCUMENT }
+                val cardCount = secureItems.count { it.itemType == ItemType.BANK_CARD }
+                val filteredTotpCount = filteredSecureItems.count { it.itemType == ItemType.TOTP }
+                val filteredDocCount = filteredSecureItems.count { it.itemType == ItemType.DOCUMENT }
+                val filteredCardCount = filteredSecureItems.count { it.itemType == ItemType.BANK_CARD }
+                
+                android.util.Log.d("WebDavHelper", "TOTP: $totpCount total, $filteredTotpCount included")
+                android.util.Log.d("WebDavHelper", "Documents: $docCount total, $filteredDocCount included")
+                android.util.Log.d("WebDavHelper", "Bank Cards: $cardCount total, $filteredCardCount included")
+                
+                // 4. 导出密码数据到CSV（如果启用）
+                if (preferences.includePasswords && filteredPasswords.isNotEmpty()) {
+                    exportPasswordsToCSV(filteredPasswords, passwordsCsvFile)
+                }
+                
+                // 5. 导出其他数据到CSV（如果有过滤后的项目）
+                if (filteredSecureItems.isNotEmpty()) {
+                    val exportManager = DataExportImportManager(context)
+                    val csvUri = Uri.fromFile(secureItemsCsvFile)
+                    val exportResult = exportManager.exportData(filteredSecureItems, csvUri)
+                    
+                    if (exportResult.isFailure) {
+                        return@withContext Result.failure(exportResult.exceptionOrNull() 
+                            ?: Exception("导出数据失败"))
+                    }
+                }
+                
+                // 6. 创建ZIP文件,根据偏好设置包含相应内容
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
-                    // 添加passwords.csv
-                    addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
-                    
-                    // 添加secure_items.csv
-                    addFileToZip(zipOut, secureItemsCsvFile, secureItemsCsvFile.name)
-                    
-                    // 添加密码生成历史（JSON）
-                    try {
-                        val historyManager = PasswordHistoryManager(context)
-                        val historyJson = historyManager.exportHistoryJson()
-                        historyJsonFile.writeText(historyJson, Charsets.UTF_8)
-                        addFileToZip(zipOut, historyJsonFile, historyJsonFile.name)
-                    } catch (e: Exception) {
-                        android.util.Log.w("WebDavHelper", "Failed to export password generation history: ${e.message}")
+                    // 添加passwords.csv（如果启用且文件存在）
+                    if (preferences.includePasswords && passwordsCsvFile.exists()) {
+                        addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
                     }
                     
-                    // 添加图片文件（银行卡和证件的照片）
-                    try {
-                        val imageFileNames = extractAllImageFileNames(secureItems)
-                        android.util.Log.d("WebDavHelper", "Found ${imageFileNames.size} image files to backup")
-                        val imageDir = File(context.filesDir, "secure_images")
-                        imageFileNames.forEach { fileName ->
-                            val imageFile = File(imageDir, fileName)
-                            when {
-                                imageFile.exists() -> {
-                                    addFileToZip(zipOut, imageFile, "images/$fileName")
-                                }
-                                else -> {
-                                    android.util.Log.w("WebDavHelper", "Image file not found: $fileName")
+                    // 添加secure_items.csv（如果文件存在）
+                    if (secureItemsCsvFile.exists()) {
+                        addFileToZip(zipOut, secureItemsCsvFile, secureItemsCsvFile.name)
+                    }
+                    
+                    // 添加密码生成历史（JSON）- 如果启用
+                    if (preferences.includeGeneratorHistory) {
+                        try {
+                            val historyManager = PasswordHistoryManager(context)
+                            val historyJson = historyManager.exportHistoryJson()
+                            historyJsonFile.writeText(historyJson, Charsets.UTF_8)
+                            addFileToZip(zipOut, historyJsonFile, historyJsonFile.name)
+                        } catch (e: Exception) {
+                            android.util.Log.w("WebDavHelper", "Failed to export password generation history: ${e.message}")
+                        }
+                    }
+                    
+                    // 添加图片文件（银行卡和证件的照片）- 如果启用
+                    if (preferences.includeImages) {
+                        try {
+                            val imageFileNames = extractAllImageFileNames(filteredSecureItems)
+                            android.util.Log.d("WebDavHelper", "Found ${imageFileNames.size} image files to backup")
+                            val imageDir = File(context.filesDir, "secure_images")
+                            imageFileNames.forEach { fileName ->
+                                val imageFile = File(imageDir, fileName)
+                                when {
+                                    imageFile.exists() -> {
+                                        addFileToZip(zipOut, imageFile, "images/$fileName")
+                                    }
+                                    else -> {
+                                        android.util.Log.w("WebDavHelper", "Image file not found: $fileName")
+                                    }
                                 }
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.w("WebDavHelper", "Failed to backup images: ${e.message}")
                         }
-                    } catch (e: Exception) {
-                        android.util.Log.w("WebDavHelper", "Failed to backup images: ${e.message}")
                     }
                 }
                 
