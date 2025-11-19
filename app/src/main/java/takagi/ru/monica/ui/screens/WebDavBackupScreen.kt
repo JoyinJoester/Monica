@@ -58,6 +58,13 @@ fun WebDavBackupScreen(
     var autoBackupEnabled by remember { mutableStateOf(false) }
     var lastBackupTime by remember { mutableStateOf(0L) }
     
+    // 选择性备份状态
+    var backupPreferences by remember { mutableStateOf(takagi.ru.monica.data.BackupPreferences()) }
+    var passwordCount by remember { mutableStateOf(0) }
+    var authenticatorCount by remember { mutableStateOf(0) }
+    var documentCount by remember { mutableStateOf(0) }
+    var bankCardCount by remember { mutableStateOf(0) }
+    
     val webDavHelper = remember { WebDavHelper(context) }
     val autoBackupManager = remember { AutoBackupManager(context) }
     
@@ -77,6 +84,16 @@ fun WebDavBackupScreen(
         // 加载自动备份状态
         autoBackupEnabled = webDavHelper.isAutoBackupEnabled()
         lastBackupTime = webDavHelper.getLastBackupTime()
+        
+        // 加载备份偏好设置
+        backupPreferences = webDavHelper.getBackupPreferences()
+        
+        // 加载各类型的数量
+        passwordCount = passwordRepository.getAllPasswordEntries().first().size
+        val allSecureItems = secureItemRepository.getAllItems().first()
+        authenticatorCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
+        documentCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
+        bankCardCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
     }
     
     Scaffold(
@@ -438,6 +455,19 @@ fun WebDavBackupScreen(
                         }
                     }
                 }
+                
+                // 选择性备份设置卡片
+                takagi.ru.monica.ui.components.SelectiveBackupCard(
+                    preferences = backupPreferences,
+                    onPreferencesChange = { newPreferences ->
+                        backupPreferences = newPreferences
+                        webDavHelper.saveBackupPreferences(newPreferences)
+                    },
+                    passwordCount = passwordCount,
+                    authenticatorCount = authenticatorCount,
+                    documentCount = documentCount,
+                    bankCardCount = bankCardCount
+                )
             }
             
             // 备份列表(仅在配置成功后显示)
@@ -445,6 +475,16 @@ fun WebDavBackupScreen(
                 // 创建备份按钮
                 Button(
                     onClick = {
+                        // 验证：检查是否至少选择了一种内容类型
+                        if (!backupPreferences.hasAnyEnabled()) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.backup_validation_error),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@Button
+                        }
+                        
                         isLoading = true
                         errorMessage = ""
                         coroutineScope.launch {
@@ -454,16 +494,37 @@ fun WebDavBackupScreen(
                                 // 获取所有其他数据(TOTP、银行卡、证件)
                                 val allSecureItems = secureItemRepository.getAllItems().first()
                                 
-                                // 创建并上传备份
-                                val result = webDavHelper.createAndUploadBackup(allPasswords, allSecureItems)
+                                // 创建并上传备份（使用偏好设置）
+                                val result = webDavHelper.createAndUploadBackup(
+                                    allPasswords, 
+                                    allSecureItems,
+                                    backupPreferences
+                                )
                                 
                                 if (result.isSuccess) {
                                     // 更新上次备份时间
                                     lastBackupTime = webDavHelper.getLastBackupTime()
                                     
+                                    // 计算实际备份的数量
+                                    val backedUpPasswords = if (backupPreferences.includePasswords) allPasswords.size else 0
+                                    val backedUpTotp = if (backupPreferences.includeAuthenticators) 
+                                        allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP } else 0
+                                    val backedUpDocs = if (backupPreferences.includeDocuments) 
+                                        allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT } else 0
+                                    val backedUpCards = if (backupPreferences.includeBankCards) 
+                                        allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD } else 0
+                                    
+                                    val message = buildString {
+                                        append("备份成功: ${result.getOrNull()}\n")
+                                        if (backedUpPasswords > 0) append("密码: $backedUpPasswords 个\n")
+                                        if (backedUpTotp > 0) append("验证器: $backedUpTotp 个\n")
+                                        if (backedUpDocs > 0) append("证件: $backedUpDocs 个\n")
+                                        if (backedUpCards > 0) append("银行卡: $backedUpCards 个")
+                                    }
+                                    
                                     Toast.makeText(
                                         context,
-                                        "备份成功: ${result.getOrNull()}\n已备份 ${allPasswords.size} 个密码、${allSecureItems.size} 个其他数据",
+                                        message,
                                         Toast.LENGTH_LONG
                                     ).show()
                                     

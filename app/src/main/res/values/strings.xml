@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name">Monica</string>
     
+    <!-- General -->
+    <string name="press_back_again_to_exit">Press back again to exit</string>
+    
     <!-- Accessibility Service -->
     <string name="accessibility_service_description">Monica Accessibility Service helps improve autofill functionality by detecting password fields more accurately.</string>
     
@@ -732,6 +735,7 @@
     <string name="autofill_cancel">Cancel</string>
     <string name="autofill_never_for_site">Never save for this website</string>
     <string name="autofill_saved_via">Saved via autofill</string>
+    <string name="autofill_manager_icon">Password Manager Icon</string>
     <string name="linked_app">Linked App</string>
     <string name="select_app">Select App</string>
     <string name="app_package_name">App Package Name</string>
@@ -1114,5 +1118,82 @@
     <string name="pin_length">PIN Length: %d</string>
     <string name="length_label">Length: %d</string>
     <string name="length_chars">Length: %d characters</string>
+
+    <!-- Permission Management -->
+    <string name="permission_management_title">Permission Management</string>
+    <string name="permission_management_subtitle">Manage app permissions</string>
+    <string name="permission_management_description">View and manage permissions used by Monica</string>
+    <string name="help">Help</string>
+
+    <!-- Permission Categories -->
+    <string name="permission_category_security">Security Permissions</string>
+    <string name="permission_category_storage">Storage Permissions</string>
+    <string name="permission_category_network">Network Permissions</string>
+    <string name="permission_category_device">Device Permissions</string>
+    <string name="permission_category_location">Location Permissions</string>
+
+    <!-- Permission Importance -->
+    <string name="permission_importance_required">Required</string>
+    <string name="permission_importance_recommended">Recommended</string>
+    <string name="permission_importance_optional">Optional</string>
+
+    <!-- Permission Status -->
+    <string name="permission_status_granted">Granted</string>
+    <string name="permission_status_denied">Not Granted</string>
+    <string name="permission_status_unavailable">Unavailable</string>
+    <string name="permission_status_unknown">Unknown</string>
+
+    <!-- Permission Names -->
+    <string name="permission_biometric_name">Biometric Authentication</string>
+    <string name="permission_camera_name">Camera</string>
+    <string name="permission_storage_name">Storage Access</string>
+    <string name="permission_internet_name">Internet Access</string>
+    <string name="permission_network_state_name">Network State</string>
+    <string name="permission_vibrate_name">Vibration</string>
+    <string name="permission_phone_state_name">Phone State</string>
+    <string name="permission_location_name">Location</string>
+    <string name="permission_autofill_name">Autofill Service</string>
+
+    <!-- Permission Descriptions -->
+    <string name="permission_biometric_description">Used for: Fingerprint/Face unlock</string>
+    <string name="permission_camera_description">Used for: QR code scanning for TOTP authenticator</string>
+    <string name="permission_storage_description">Used for: Saving exported data and images</string>
+    <string name="permission_internet_description">Used for: WebDAV backup and sync</string>
+    <string name="permission_network_state_description">Used for: Checking network connectivity</string>
+    <string name="permission_vibrate_description">Used for: Haptic feedback for authenticator</string>
+    <string name="permission_phone_state_description">Used for: Device identification</string>
+    <string name="permission_location_description">Used for: Location-based features (optional)</string>
+    <string name="permission_autofill_description">Used for: Auto-filling passwords in apps and browsers</string>
+
+    <!-- Permission Stats -->
+    <string name="permission_stats_title">Permission Summary</string>
+    <string name="permission_stats_required">Required permissions: %1$d / %2$d granted</string>
+    <string name="permission_stats_total">Total permissions: %1$d / %2$d granted</string>
+
+    <!-- Permission Actions -->
+    <string name="permission_revoke_hint">To revoke this permission, go to Settings > Apps > Monica > Permissions</string>
+    <string name="permission_grant_hint">Tap to open system settings and grant this permission</string>
+    <string name="cannot_open_settings">Cannot open system settings</string>
+
+    <!-- Permission Help Dialog -->
+    <string name="permission_help_title">About Permissions</string>
+    <string name="permission_help_content">This screen shows all permissions used by Monica. Tap on a permission to manage it in system settings.\n\n• Required: Essential for core functionality\n• Recommended: Enhances user experience\n• Optional: For additional features</string>
+
+    <!-- Permission Info Card -->
+    <string name="permission_info_title">Permission Management</string>
+    <string name="permission_info_message">Here you can view all permissions used by Monica and their current status. Tap any permission to manage it in system settings.</string>
+
+    <!-- Selective Backup -->
+    <string name="selective_backup_title">Backup Content Selection</string>
+    <string name="selective_backup_summary">%1$d of %2$d types selected</string>
+    <string name="selective_backup_description">Choose which types of data to include in your backup</string>
+    <string name="backup_content_passwords">Passwords</string>
+    <string name="backup_content_authenticators">Authenticators (TOTP)</string>
+    <string name="backup_content_documents">Documents</string>
+    <string name="backup_content_bank_cards">Bank Cards</string>
+    <string name="backup_content_generator_history">Password Generator History</string>
+    <string name="backup_content_images">Images</string>
+    <string name="deselect_all">Deselect All</string>
+    <string name="backup_validation_error">Please select at least one content type</string>
 
 </resources>

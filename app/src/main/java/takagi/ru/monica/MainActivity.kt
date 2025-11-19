@@ -72,6 +72,7 @@ import takagi.ru.monica.ui.screens.SecurityAnalysisScreen
 import takagi.ru.monica.ui.screens.SecurityQuestionsSetupScreen
 import takagi.ru.monica.ui.screens.SecurityQuestionsVerificationScreen
 import takagi.ru.monica.ui.screens.SettingsScreen
+import takagi.ru.monica.ui.screens.PermissionManagementScreen
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
@@ -371,6 +372,9 @@ fun MonicaContent(
                 onNavigateToDeveloperSettings = {
                     navController.navigate(Screen.DeveloperSettings.route)
                 },
+                onNavigateToPermissionManagement = {
+                    navController.navigate(Screen.PermissionManagement.route)
+                },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
                     // 清空所有数据
                     android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards")
@@ -562,9 +566,7 @@ fun MonicaContent(
         composable(Screen.ExportData.route) {
             takagi.ru.monica.ui.screens.ExportDataScreen(
                 onNavigateBack = {
-                    navController.navigate(Screen.Main.createRoute(tab = 4)) {
-                        popUpTo(Screen.Main.routePattern) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 },
                 onExportAll = { uri ->
                     dataExportImportViewModel.exportData(uri)
@@ -585,9 +587,7 @@ fun MonicaContent(
         composable(Screen.ImportData.route) {
             takagi.ru.monica.ui.screens.ImportDataScreen(
                 onNavigateBack = {
-                    navController.navigate(Screen.Main.createRoute(tab = 4)) {
-                        popUpTo(Screen.Main.routePattern) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 },
                 onImport = { uri ->
                     dataExportImportViewModel.importData(uri)
@@ -607,9 +607,7 @@ fun MonicaContent(
         composable(Screen.ChangePassword.route) {
             takagi.ru.monica.ui.screens.ChangePasswordScreen(
                 onNavigateBack = {
-                    navController.navigate(Screen.Main.createRoute(tab = 4)) {
-                        popUpTo(Screen.Main.routePattern) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 },
                 onPasswordChanged = { currentPassword, newPassword ->
                     // TODO: 实现修改密码逻辑
@@ -622,14 +620,10 @@ fun MonicaContent(
             SecurityQuestionsSetupScreen(
                 securityManager = securityManager,
                 onNavigateBack = {
-                    navController.navigate(Screen.Main.createRoute(tab = 4)) {
-                        popUpTo(Screen.Main.routePattern) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 },
                 onSetupComplete = {
-                    navController.navigate(Screen.Main.createRoute(tab = 4)) {
-                        popUpTo(Screen.Main.routePattern) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 }
             )
         }
@@ -659,6 +653,18 @@ fun MonicaContent(
                 },
                 onNavigateToBottomNavSettings = {
                     navController.navigate(Screen.BottomNavSettings.route)
+                },
+                onNavigateToColorScheme = {
+                    navController.navigate(Screen.ColorSchemeSelection.route)
+                },
+                onSecurityAnalysis = {
+                    navController.navigate(Screen.SecurityAnalysis.route)
+                },
+                onNavigateToDeveloperSettings = {
+                    navController.navigate(Screen.DeveloperSettings.route)
+                },
+                onNavigateToPermissionManagement = {
+                    navController.navigate(Screen.PermissionManagement.route)
                 },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
                     // 清空所有数据
@@ -795,9 +801,7 @@ fun MonicaContent(
         composable(Screen.SupportAuthor.route) {
             SupportAuthorScreen(
                 onNavigateBack = {
-                    navController.navigate(Screen.Main.createRoute(tab = 4)) {
-                        popUpTo(Screen.Main.routePattern) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 },
                 onRequestPermission = onPermissionRequested
             )
@@ -878,6 +882,15 @@ fun MonicaContent(
                     navController.popBackStack()
                 },
                 passwordViewModel = viewModel
+            )
+        }
+        
+        // 权限管理页面
+        composable(Screen.PermissionManagement.route) {
+            PermissionManagementScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
             )
         }
     }

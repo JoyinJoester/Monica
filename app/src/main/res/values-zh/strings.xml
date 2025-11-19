@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name">Monica</string>
     
+    <!-- General -->
+    <string name="press_back_again_to_exit">再按一次退出应用</string>
+    
     <!-- Accessibility Service -->
     <string name="accessibility_service_description">Monica 无障碍服务有助于提高自动填充功能,更准确地检测密码字段。</string>
     
@@ -996,5 +999,82 @@
     <string name="pin_length">PIN码长度: %d</string>
     <string name="length_label">长度: %d</string>
     <string name="length_chars">长度: %d 字符</string>
+
+    <!-- Permission Management -->
+    <string name="permission_management_title">权限管理</string>
+    <string name="permission_management_subtitle">管理应用权限</string>
+    <string name="permission_management_description">查看和管理Monica使用的权限</string>
+    <string name="help">帮助</string>
+
+    <!-- Permission Categories -->
+    <string name="permission_category_security">安全权限</string>
+    <string name="permission_category_storage">存储权限</string>
+    <string name="permission_category_network">网络权限</string>
+    <string name="permission_category_device">设备权限</string>
+    <string name="permission_category_location">位置权限</string>
+
+    <!-- Permission Importance -->
+    <string name="permission_importance_required">必需</string>
+    <string name="permission_importance_recommended">推荐</string>
+    <string name="permission_importance_optional">可选</string>
+
+    <!-- Permission Status -->
+    <string name="permission_status_granted">已授予</string>
+    <string name="permission_status_denied">未授予</string>
+    <string name="permission_status_unavailable">不可用</string>
+    <string name="permission_status_unknown">未知</string>
+
+    <!-- Permission Names -->
+    <string name="permission_biometric_name">生物识别认证</string>
+    <string name="permission_camera_name">相机</string>
+    <string name="permission_storage_name">存储访问</string>
+    <string name="permission_internet_name">互联网访问</string>
+    <string name="permission_network_state_name">网络状态</string>
+    <string name="permission_vibrate_name">振动</string>
+    <string name="permission_phone_state_name">手机状态</string>
+    <string name="permission_location_name">位置</string>
+    <string name="permission_autofill_name">自动填充服务</string>
+
+    <!-- Permission Descriptions -->
+    <string name="permission_biometric_description">用于：指纹/面部解锁</string>
+    <string name="permission_camera_description">用于：扫描TOTP验证器的二维码</string>
+    <string name="permission_storage_description">用于：保存导出的数据和图片</string>
+    <string name="permission_internet_description">用于：WebDAV备份和同步</string>
+    <string name="permission_network_state_description">用于：检查网络连接状态</string>
+    <string name="permission_vibrate_description">用于：验证器的触觉反馈</string>
+    <string name="permission_phone_state_description">用于：设备识别</string>
+    <string name="permission_location_description">用于：基于位置的功能（可选）</string>
+    <string name="permission_autofill_description">用于：在应用和浏览器中自动填充密码</string>
+
+    <!-- Permission Stats -->
+    <string name="permission_stats_title">权限摘要</string>
+    <string name="permission_stats_required">必需权限：已授予 %1$d / %2$d</string>
+    <string name="permission_stats_total">总权限：已授予 %1$d / %2$d</string>
+
+    <!-- Permission Actions -->
+    <string name="permission_revoke_hint">要撤销此权限，请前往 设置 > 应用 > Monica > 权限</string>
+    <string name="permission_grant_hint">点击打开系统设置并授予此权限</string>
+    <string name="cannot_open_settings">无法打开系统设置</string>
+
+    <!-- Permission Help Dialog -->
+    <string name="permission_help_title">关于权限</string>
+    <string name="permission_help_content">此界面显示Monica使用的所有权限。点击权限可在系统设置中管理。\n\n• 必需：核心功能所必需\n• 推荐：增强用户体验\n• 可选：用于附加功能</string>
+
+    <!-- Permission Info Card -->
+    <string name="permission_info_title">权限管理</string>
+    <string name="permission_info_message">在这里您可以查看Monica使用的所有权限及其当前状态。点击任何权限可在系统设置中管理。</string>
+
+    <!-- 选择性备份 -->
+    <string name="selective_backup_title">备份内容选择</string>
+    <string name="selective_backup_summary">已选择 %1$d / %2$d 种类型</string>
+    <string name="selective_backup_description">选择要包含在备份中的数据类型</string>
+    <string name="backup_content_passwords">密码</string>
+    <string name="backup_content_authenticators">验证器 (TOTP)</string>
+    <string name="backup_content_documents">证件</string>
+    <string name="backup_content_bank_cards">银行卡</string>
+    <string name="backup_content_generator_history">密码生成历史</string>
+    <string name="backup_content_images">图片</string>
+    <string name="deselect_all">全不选</string>
+    <string name="backup_validation_error">请至少选择一种备份内容</string>
 
 </resources>

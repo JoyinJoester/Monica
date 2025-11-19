@@ -54,6 +54,7 @@ fun SettingsScreen(
     onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
     onNavigateToDeveloperSettings: () -> Unit = {},
+    onNavigateToPermissionManagement: () -> Unit = {},
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
     val context = LocalContext.current
@@ -266,6 +267,13 @@ fun SettingsScreen(
                     title = context.getString(R.string.security_questions),
                     subtitle = context.getString(R.string.security_questions_description),
                     onClick = onSecurityQuestions
+                )
+                
+                SettingsItem(
+                    icon = Icons.Default.AdminPanelSettings,
+                    title = context.getString(R.string.permission_management_title),
+                    subtitle = context.getString(R.string.permission_management_subtitle),
+                    onClick = onNavigateToPermissionManagement
                 )
                 
                 SettingsItem(
