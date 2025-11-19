@@ -59,6 +59,7 @@ fun TotpCodeCard(
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
     onGenerateNext: ((Long) -> Unit)? = null,
+    onShowQrCode: ((SecureItem) -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false
 ) {
@@ -259,6 +260,23 @@ fun TotpCodeCard(
                                         leadingIcon = {
                                             Icon(
                                                 Icons.Default.KeyboardArrowDown,
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+                                }
+
+                                // 显示二维码选项
+                                if (onShowQrCode != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("显示二维码") },
+                                        onClick = {
+                                            expanded = false
+                                            onShowQrCode(item)
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.QrCode,
                                                 contentDescription = null
                                             )
                                         }

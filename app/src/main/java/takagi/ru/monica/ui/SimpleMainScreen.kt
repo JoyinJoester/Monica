@@ -55,6 +55,8 @@ import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
 
+import takagi.ru.monica.ui.components.QrCodeDialog
+
 /**
  * 带有底部导航的主屏幕
  */
@@ -84,6 +86,7 @@ fun SimpleMainScreen(
     onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
     onNavigateToDeveloperSettings: () -> Unit = {},
+    onNavigateToPermissionManagement: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
@@ -389,6 +392,7 @@ fun SimpleMainScreen(
                         onNavigateToColorScheme = onNavigateToColorScheme,
                         onSecurityAnalysis = onSecurityAnalysis,
                         onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
+                        onNavigateToPermissionManagement = onNavigateToPermissionManagement,
                         onClearAllData = onClearAllData,
                         showTopBar = false  // 在标签页中不显示顶栏
                     )
@@ -1040,6 +1044,9 @@ private fun TotpListContent(
     // 待删除项ID集合（用于隐藏即将删除的项）
     var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
     
+    // QR码显示状态
+    var itemToShowQr by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
+    
     // 过滤掉待删除的项
     val filteredTotpItems = remember(totpItems, deletedItemIds) {
         totpItems.filter { it.id !in deletedItemIds }
@@ -1210,6 +1217,9 @@ private fun TotpListContent(
                                     ))
                                 }
                             } else null,
+                            onShowQrCode = {
+                                itemToShowQr = item
+                            },
                             isSelectionMode = isSelectionMode,
                             isSelected = selectedItems.contains(item.id)
                         )
@@ -1218,6 +1228,14 @@ private fun TotpListContent(
                 }
             }
         }
+    }
+    
+    // QR码对话框
+    itemToShowQr?.let { item ->
+        QrCodeDialog(
+            item = item,
+            onDismiss = { itemToShowQr = null }
+        )
     }
     
     // 单项删除确认对话框(支持指纹和密码验证)
@@ -1386,6 +1404,7 @@ private fun TotpItemCard(
     onGenerateNext: ((Long) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
+    onShowQrCode: ((takagi.ru.monica.data.SecureItem) -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false
 ) {
@@ -1406,6 +1425,7 @@ private fun TotpItemCard(
         onGenerateNext = onGenerateNext,
         onMoveUp = onMoveUp,
         onMoveDown = onMoveDown,
+        onShowQrCode = onShowQrCode,
         isSelectionMode = isSelectionMode,
         isSelected = isSelected
     )

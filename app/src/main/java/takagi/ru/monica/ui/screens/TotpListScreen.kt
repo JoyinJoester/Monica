@@ -21,6 +21,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.ui.components.TotpCodeCard
+import takagi.ru.monica.ui.components.QrCodeDialog
 
 /**
  * TOTP验证器列表页面
@@ -38,6 +39,7 @@ fun TotpListScreen(
 ) {
     val context = LocalContext.current
     var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
+    var itemToShowQr by remember { mutableStateOf<SecureItem?>(null) }
     
     Column(modifier = modifier.fillMaxSize()) {
         // 搜索框
@@ -85,6 +87,9 @@ fun TotpListScreen(
                             itemToDelete = item
                         },
                         onGenerateNext = onGenerateNext,
+                        onShowQrCode = {
+                            itemToShowQr = item
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -92,6 +97,14 @@ fun TotpListScreen(
         }
     }
     
+    // QR码对话框
+    itemToShowQr?.let { item ->
+        QrCodeDialog(
+            item = item,
+            onDismiss = { itemToShowQr = null }
+        )
+    }
+
     // 删除确认对话框
     itemToDelete?.let { item ->
         AlertDialog(

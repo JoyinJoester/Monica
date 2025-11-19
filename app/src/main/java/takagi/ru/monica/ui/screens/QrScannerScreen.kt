@@ -1,9 +1,16 @@
 package takagi.ru.monica.ui.screens
 
 import android.Manifest
+import android.content.Context
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,12 +23,15 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
 import com.journeyapps.barcodescanner.BarcodeCallback
 import com.journeyapps.barcodescanner.BarcodeResult
 import com.journeyapps.barcodescanner.DecoratedBarcodeView
 import com.journeyapps.barcodescanner.DefaultDecoderFactory
 import com.google.zxing.BarcodeFormat
 import takagi.ru.monica.R
+import java.io.IOException
 
 
 /**
@@ -137,6 +147,22 @@ private fun QrCodeScanner(
     val context = LocalContext.current
     var hasScanned by remember { mutableStateOf(false) }
     
+    // 图片选择器
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            processImage(context, uri) { result ->
+                if (!hasScanned && result != null) {
+                    hasScanned = true
+                    onQrCodeScanned(result)
+                } else if (result == null) {
+                    Toast.makeText(context, "未发现二维码", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { ctx ->
@@ -195,5 +221,41 @@ private fun QrCodeScanner(
                 )
             }
         }
+        
+        // 相册选择按钮
+        FloatingActionButton(
+            onClick = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(32.dp)
+        ) {
+            Icon(
+                Icons.Default.Image,
+                contentDescription = "从相册选择"
+            )
+        }
+    }
+}
+
+private fun processImage(context: Context, uri: Uri, onResult: (String?) -> Unit) {
+    try {
+        val image = InputImage.fromFilePath(context, uri)
+        val scanner = BarcodeScanning.getClient()
+        
+        scanner.process(image)
+            .addOnSuccessListener { barcodes ->
+                val qrCode = barcodes.firstOrNull()?.rawValue
+                onResult(qrCode)
+            }
+            .addOnFailureListener {
+                onResult(null)
+            }
+    } catch (e: IOException) {
+        e.printStackTrace()
+        onResult(null)
     }
 }
