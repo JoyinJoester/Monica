@@ -46,6 +46,8 @@ class AutofillPreferences(private val context: Context) {
         // 黑名单配置
         private val KEY_BLACKLIST_ENABLED = booleanPreferencesKey("blacklist_enabled")
         private val KEY_BLACKLIST_PACKAGES = stringSetPreferencesKey("blacklist_packages")
+        // 填充组件外观: 是否使用横幅（方案2）
+        private val KEY_FILL_COMPONENT_USE_BANNER = booleanPreferencesKey("fill_component_use_banner")
         
         // 默认黑名单应用
         val DEFAULT_BLACKLIST_PACKAGES = setOf(
@@ -186,6 +188,20 @@ class AutofillPreferences(private val context: Context) {
      */
     val isPasswordSuggestionEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[KEY_PASSWORD_SUGGESTION_ENABLED] ?: true
+    }
+
+    /**
+     * 填充组件外观: 是否使用横幅（方案2）。
+     * 默认 false（方案1）。
+     */
+    val isFillComponentBannerEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_FILL_COMPONENT_USE_BANNER] ?: false
+    }
+
+    suspend fun setFillComponentBannerEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_FILL_COMPONENT_USE_BANNER] = enabled
+        }
     }
     
     suspend fun setPasswordSuggestionEnabled(enabled: Boolean) {

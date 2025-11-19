@@ -50,10 +50,14 @@ class AutoBackupWorker(
             val passwords = passwordRepo.getAllPasswordEntries().first()
             val secureItems = secureItemRepo.getAllItems().first()
             
-            android.util.Log.d("AutoBackupWorker", "Creating backup with ${passwords.size} passwords and ${secureItems.size} secure items")
+            // 加载备份偏好设置
+            val backupPreferences = webDavHelper.getBackupPreferences()
             
-            // 创建并上传备份
-            val backupResult = webDavHelper.createAndUploadBackup(passwords, secureItems)
+            android.util.Log.d("AutoBackupWorker", "Creating backup with ${passwords.size} passwords and ${secureItems.size} secure items")
+            android.util.Log.d("AutoBackupWorker", "Backup preferences: $backupPreferences")
+            
+            // 创建并上传备份（使用偏好设置）
+            val backupResult = webDavHelper.createAndUploadBackup(passwords, secureItems, backupPreferences)
             
             return if (backupResult.isSuccess) {
                 android.util.Log.d("AutoBackupWorker", "Auto backup completed successfully: ${backupResult.getOrNull()}")
