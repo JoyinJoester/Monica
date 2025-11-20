@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Cloud
@@ -19,8 +20,10 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
@@ -33,41 +36,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.wear.R
 import takagi.ru.monica.wear.security.WearSecurityManager
 import takagi.ru.monica.wear.ui.components.ChangeLockDialog
+import takagi.ru.monica.wear.viewmodel.ColorScheme as WearColorScheme
 import takagi.ru.monica.wear.viewmodel.SettingsViewModel
 import takagi.ru.monica.wear.viewmodel.SyncState
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * 深色主题配置
- */
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF90CAF9),
-    secondary = Color(0xFF81C784),
-    tertiary = Color(0xFFFFCC80),
-    background = Color(0xFF121212),
-    surface = Color(0xFF1E1E1E),
-    surfaceVariant = Color(0xFF2C2C2C),
-    error = Color(0xFFCF6679),
-    onPrimary = Color(0xFF000000),
-    onSecondary = Color(0xFF000000),
-    onTertiary = Color(0xFF000000),
-    onBackground = Color(0xFFE0E0E0),
-    onSurface = Color(0xFFE0E0E0),
-    onSurfaceVariant = Color(0xFFB0B0B0),
-    onError = Color(0xFF000000),
-    primaryContainer = Color(0xFF1565C0),
-    secondaryContainer = Color(0xFF2E7D32),
-    errorContainer = Color(0xFFB71C1C),
-    onPrimaryContainer = Color(0xFFE3F2FD),
-    onSecondaryContainer = Color(0xFFE8F5E9),
-    onErrorContainer = Color(0xFFFFCDD2)
-)
+// Theme colors are now defined in ui/theme/Color.kt and applied in MainActivity via MonicaWearTheme
 
 /**
  * 设置界面 - Material 3 设计（深色主题）
@@ -79,59 +61,114 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     securityManager: takagi.ru.monica.wear.security.WearSecurityManager? = null,
     onBack: () -> Unit,
+    onLanguageChanged: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
     val syncState by viewModel.syncState.collectAsState()
     val lastSyncTime by viewModel.lastSyncTime.collectAsState()
     val isWebDavConfigured by viewModel.isWebDavConfigured.collectAsState()
+    val currentColorScheme: WearColorScheme by viewModel.currentColorScheme.collectAsState()
+    val useOledBlack by viewModel.useOledBlack.collectAsState()
+    val currentLanguage by viewModel.currentLanguage.collectAsState()
     
     var showWebDavDialog by remember { mutableStateOf(false) }
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showChangeLockDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var showAddTotpDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
     
-    // 使用深色主题
-    MaterialTheme(colorScheme = DarkColorScheme) {
-        SettingsScreenContent(
-            scrollState = scrollState,
-            syncState = syncState,
-            lastSyncTime = lastSyncTime,
-            isWebDavConfigured = isWebDavConfigured,
-            securityManager = securityManager,
-            onBack = onBack,
-            onSyncClick = { viewModel.syncNow() },
-            onWebDavClick = { showWebDavDialog = true },
-            onClearDataClick = { showClearDataDialog = true },
-            onChangeLockClick = { showChangeLockDialog = true },
-            modifier = modifier
+    SettingsScreenContent(
+        scrollState = scrollState,
+        syncState = syncState,
+        lastSyncTime = lastSyncTime,
+        isWebDavConfigured = isWebDavConfigured,
+        currentColorScheme = currentColorScheme,
+        useOledBlack = useOledBlack,
+        currentLanguage = currentLanguage,
+        securityManager = securityManager,
+        onSyncClick = { viewModel.syncNow() },
+        onWebDavClick = { showWebDavDialog = true },
+        onAddTotpClick = { showAddTotpDialog = true },
+        onThemeClick = { showThemeDialog = true },
+        onOledBlackToggle = { viewModel.setOledBlack(it) },
+        onLanguageClick = { showLanguageDialog = true },
+        onClearDataClick = { showClearDataDialog = true },
+        onChangeLockClick = { showChangeLockDialog = true },
+        modifier = modifier
+    )
+    
+    // WebDAV配置对话框
+    if (showWebDavDialog) {
+        WebDavConfigDialog(
+            viewModel = viewModel,
+            onDismiss = { showWebDavDialog = false }
         )
-        
-        // WebDAV配置对话框
-        if (showWebDavDialog) {
-            WebDavConfigDialog(
-                viewModel = viewModel,
-                onDismiss = { showWebDavDialog = false }
-            )
-        }
-        
-        // 清除数据确认对话框
-        if (showClearDataDialog) {
-            ClearDataConfirmDialog(
-                onConfirm = {
-                    viewModel.clearAllData()
-                    showClearDataDialog = false
-                },
-                onDismiss = { showClearDataDialog = false }
-            )
-        }
-        
-        // 修改锁定方式对话框
-        if (showChangeLockDialog && securityManager != null) {
-            ChangeLockDialog(
-                securityManager = securityManager,
-                onDismiss = { showChangeLockDialog = false }
-            )
-        }
+    }
+
+    // 配色方案选择对话框
+    if (showThemeDialog) {
+        ColorSchemeSelectionDialog(
+            currentColorScheme = currentColorScheme,
+            onColorSchemeSelected = { scheme ->
+                viewModel.setColorScheme(scheme)
+                showThemeDialog = false
+            },
+            onDismiss = { showThemeDialog = false }
+        )
+    }
+    
+    // 语言选择对话框
+    if (showLanguageDialog) {
+        LanguageSelectionDialog(
+            currentLanguage = currentLanguage,
+            onLanguageSelected = { language ->
+                viewModel.setLanguage(language)
+                showLanguageDialog = false
+                // 触发语言变更回调，重新创建 Activity
+                onLanguageChanged()
+            },
+            onDismiss = { showLanguageDialog = false }
+        )
+    }
+
+    // 添加验证器对话框
+    if (showAddTotpDialog) {
+        AddTotpDialog(
+            onDismiss = { showAddTotpDialog = false },
+            onConfirm = { secret, issuer, accountName, onResult ->
+                viewModel.addTotpItem(
+                    secret = secret,
+                    issuer = issuer,
+                    accountName = accountName
+                ) { success, error ->
+                    onResult(success, error)
+                    if (success) {
+                        showAddTotpDialog = false
+                    }
+                }
+            }
+        )
+    }
+    
+    // 清除数据确认对话框
+    if (showClearDataDialog) {
+        ClearDataConfirmDialog(
+            onConfirm = {
+                viewModel.clearAllData()
+                showClearDataDialog = false
+            },
+            onDismiss = { showClearDataDialog = false }
+        )
+    }
+    
+    // 修改锁定方式对话框
+    if (showChangeLockDialog && securityManager != null) {
+        ChangeLockDialog(
+            securityManager = securityManager,
+            onDismiss = { showChangeLockDialog = false }
+        )
     }
 }
 
@@ -145,63 +182,147 @@ private fun SettingsScreenContent(
     syncState: SyncState,
     lastSyncTime: String,
     isWebDavConfigured: Boolean,
+    currentColorScheme: WearColorScheme,
+    useOledBlack: Boolean,
+    currentLanguage: takagi.ru.monica.wear.viewmodel.AppLanguage,
     securityManager: takagi.ru.monica.wear.security.WearSecurityManager?,
-    onBack: () -> Unit,
     onSyncClick: () -> Unit,
     onWebDavClick: () -> Unit,
+    onAddTotpClick: () -> Unit,
+    onThemeClick: () -> Unit,
+    onOledBlackToggle: (Boolean) -> Unit,
+    onLanguageClick: () -> Unit,
     onClearDataClick: () -> Unit,
     onChangeLockClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "设置",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(scrollState)
+            .padding(horizontal = 16.dp, vertical = 24.dp), // 增加顶部 padding
+        verticalArrangement = Arrangement.spacedBy(20.dp) // 增加间距
+    ) {
+        // 标题区域
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // 同步状态卡片
-            SyncStatusCard(
-                syncState = syncState,
-                lastSyncTime = lastSyncTime,
-                onSyncClick = onSyncClick,
-                isConfigured = isWebDavConfigured
+            Text(
+                text = stringResource(R.string.settings_title),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
             )
             
-            // 云端同步分组
-            SettingsSection(title = "云端同步") {
+            // 可选：添加一个小的返回按钮，虽然通常物理返回键或手势就够了
+            // 但为了明确导航，保留一个小的图标也不错
+            /* IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+            } */
+        }
+
+        // 同步状态卡片
+        SyncStatusCard(
+            syncState = syncState,
+            lastSyncTime = lastSyncTime,
+            onSyncClick = onSyncClick,
+            isConfigured = isWebDavConfigured
+        )
+        
+        // 云端同步分组
+        SettingsSection(title = stringResource(R.string.settings_section_sync)) {
+            SettingsItem(
+                icon = Icons.Default.Cloud,
+                title = stringResource(R.string.settings_webdav_config),
+                subtitle = stringResource(if (isWebDavConfigured) R.string.settings_webdav_configured else R.string.settings_webdav_not_configured),
+                onClick = onWebDavClick,
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+        }
+
+        // 验证器管理分组
+        SettingsSection(title = stringResource(R.string.settings_section_authenticator)) {
+            SettingsItem(
+                icon = Icons.Default.Add,
+                title = stringResource(R.string.settings_add_totp),
+                subtitle = stringResource(R.string.settings_add_totp_subtitle),
+                onClick = onAddTotpClick,
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+        }
+
+        // 外观设置分组
+        SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
+            SettingsItem(
+                icon = Icons.Default.Palette,
+                title = stringResource(R.string.settings_color_scheme),
+                subtitle = stringResource(currentColorScheme.displayNameResId),
+                onClick = onThemeClick,
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+            
+            SettingsItem(
+                icon = Icons.Default.Palette,
+                title = stringResource(R.string.settings_oled_black),
+                subtitle = stringResource(if (useOledBlack) R.string.settings_oled_black_enabled else R.string.settings_oled_black_disabled),
+                onClick = { onOledBlackToggle(!useOledBlack) },
+                trailingContent = {
+                    Switch(
+                        checked = useOledBlack,
+                        onCheckedChange = onOledBlackToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.primary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    )
+                }
+            )
+            
+            SettingsItem(
+                icon = Icons.Default.Language,
+                title = stringResource(R.string.settings_language),
+                subtitle = stringResource(currentLanguage.displayNameResId),
+                onClick = onLanguageClick,
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+        }
+        
+        // 安全设置分组
+        if (securityManager != null) {
+            SettingsSection(title = stringResource(R.string.settings_section_security)) {
+                // 重新设置PIN码
                 SettingsItem(
-                    icon = Icons.Default.Cloud,
-                    title = "WebDAV 配置",
-                    subtitle = if (isWebDavConfigured) "已配置" else "未配置",
-                    onClick = onWebDavClick,
+                    icon = Icons.Default.Key,
+                    title = stringResource(R.string.settings_reset_pin),
+                    subtitle = stringResource(R.string.settings_reset_pin_subtitle),
+                    onClick = onChangeLockClick,
                     trailingContent = {
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
@@ -211,52 +332,33 @@ private fun SettingsScreenContent(
                     }
                 )
             }
-            
-            // 安全设置分组
-            if (securityManager != null) {
-                SettingsSection(title = "安全设置") {
-                    // 重新设置PIN码
-                    SettingsItem(
-                        icon = Icons.Default.Key,
-                        title = "重新设置PIN码",
-                        subtitle = "修改6位数字密码",
-                        onClick = onChangeLockClick,
-                        trailingContent = {
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+        }
+        
+        // 数据管理分组
+        SettingsSection(title = stringResource(R.string.settings_section_data)) {
+            SettingsItem(
+                icon = Icons.Default.DeleteForever,
+                title = stringResource(R.string.settings_clear_data),
+                subtitle = stringResource(R.string.settings_clear_data_subtitle),
+                onClick = onClearDataClick,
+                isDestructive = true,
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
                     )
                 }
-            }
-            
-            // 数据管理分组
-            SettingsSection(title = "数据管理") {
-                SettingsItem(
-                    icon = Icons.Default.DeleteForever,
-                    title = "清除所有数据",
-                    subtitle = "删除本地所有验证器",
-                    onClick = onClearDataClick,
-                    isDestructive = true,
-                    trailingContent = {
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 关于信息
-            AboutSection()
-            
-            Spacer(modifier = Modifier.height(16.dp))
+            )
         }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // 关于信息
+        AboutSection()
+        
+        // 底部留白，防止被圆角屏幕遮挡
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
@@ -307,14 +409,14 @@ private fun SyncStatusCard(
     modifier: Modifier = Modifier
 ) {
     val containerColor = when (syncState) {
-        SyncState.Success -> MaterialTheme.colorScheme.primaryContainer
+        is SyncState.Success -> MaterialTheme.colorScheme.primaryContainer
         is SyncState.Error -> MaterialTheme.colorScheme.errorContainer
         SyncState.Syncing -> MaterialTheme.colorScheme.secondaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     
     val contentColor = when (syncState) {
-        SyncState.Success -> MaterialTheme.colorScheme.onPrimaryContainer
+        is SyncState.Success -> MaterialTheme.colorScheme.onPrimaryContainer
         is SyncState.Error -> MaterialTheme.colorScheme.onErrorContainer
         SyncState.Syncing -> MaterialTheme.colorScheme.onSecondaryContainer
         else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -353,7 +455,7 @@ private fun SyncStatusCard(
                 ) {
                     Icon(
                         imageVector = when (syncState) {
-                            SyncState.Success -> Icons.Default.CheckCircle
+                            is SyncState.Success -> Icons.Default.CheckCircle
                             is SyncState.Error -> Icons.Default.Error
                             SyncState.Syncing -> Icons.Default.Sync
                             else -> Icons.Default.CloudOff
@@ -364,12 +466,12 @@ private fun SyncStatusCard(
                     )
                     
                     Text(
-                        text = when (syncState) {
-                            SyncState.Idle -> if (isConfigured) "云端同步" else "未配置同步"
-                            SyncState.Syncing -> "同步中..."
-                            SyncState.Success -> "同步成功"
-                            is SyncState.Error -> "同步失败"
-                        },
+                        text = stringResource(when (syncState) {
+                            SyncState.Idle -> if (isConfigured) R.string.sync_status_idle else R.string.sync_status_idle_not_configured
+                            SyncState.Syncing -> R.string.sync_status_syncing
+                            is SyncState.Success -> R.string.sync_status_success
+                            is SyncState.Error -> R.string.sync_status_failed
+                        }),
                         style = MaterialTheme.typography.titleMedium,
                         color = contentColor,
                         fontWeight = FontWeight.Bold
@@ -402,29 +504,45 @@ private fun SyncStatusCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "上次同步: $lastSyncTime",
+                            text = stringResource(R.string.sync_last_time, lastSyncTime),
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor.copy(alpha = 0.7f)
                         )
                     }
                 }
                 
-                if (syncState is SyncState.Error) {
-                    Text(
-                        text = syncState.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = contentColor,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(contentColor.copy(alpha = 0.1f))
-                            .padding(8.dp)
-                    )
+                // 显示同步结果消息
+                when (syncState) {
+                    is SyncState.Success -> {
+                        Text(
+                            text = syncState.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(contentColor.copy(alpha = 0.1f))
+                                .padding(8.dp)
+                        )
+                    }
+                    is SyncState.Error -> {
+                        Text(
+                            text = syncState.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(contentColor.copy(alpha = 0.1f))
+                                .padding(8.dp)
+                        )
+                    }
+                    else -> {}
                 }
                 
                 if (syncState != SyncState.Syncing) {
                     Text(
-                        text = "点击立即同步",
+                        text = stringResource(R.string.sync_tap_to_sync),
                         style = MaterialTheme.typography.labelMedium,
                         color = contentColor.copy(alpha = 0.8f),
                         modifier = Modifier.align(Alignment.End)
@@ -432,7 +550,7 @@ private fun SyncStatusCard(
                 }
             } else {
                 Text(
-                    text = "请先配置 WebDAV 连接",
+                    text = stringResource(R.string.sync_configure_first),
                     style = MaterialTheme.typography.bodyMedium,
                     color = contentColor.copy(alpha = 0.7f)
                 )
@@ -532,14 +650,14 @@ private fun AboutSection(
             )
             
             Text(
-                text = "Monica Wear",
+                text = stringResource(R.string.settings_about_app),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold
             )
             
             Text(
-                text = "版本 1.1.0",
+                text = stringResource(R.string.settings_version),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
@@ -550,7 +668,7 @@ private fun AboutSection(
             )
             
             Text(
-                text = "基于 Monica 的轻量版本\n专为小屏设备优化的 TOTP 验证器",
+                text = stringResource(R.string.settings_about_description),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
@@ -568,6 +686,7 @@ private fun WebDavConfigDialog(
     viewModel: SettingsViewModel,
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var serverUrl by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -586,7 +705,7 @@ private fun WebDavConfigDialog(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )
-                Text("WebDAV 配置")
+                Text(stringResource(R.string.webdav_config_title))
             }
         },
         text = {
@@ -596,8 +715,8 @@ private fun WebDavConfigDialog(
                 OutlinedTextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it },
-                    label = { Text("服务器地址") },
-                    placeholder = { Text("https://example.com/webdav") },
+                    label = { Text(stringResource(R.string.webdav_server_url)) },
+                    placeholder = { Text(stringResource(R.string.webdav_server_url_hint)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = {
@@ -608,7 +727,7 @@ private fun WebDavConfigDialog(
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("用户名") },
+                    label = { Text(stringResource(R.string.webdav_username)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = {
@@ -619,7 +738,7 @@ private fun WebDavConfigDialog(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("密码") },
+                    label = { Text(stringResource(R.string.webdav_password)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = {
@@ -645,7 +764,7 @@ private fun WebDavConfigDialog(
                         if (success) {
                             onDismiss()
                         } else {
-                            errorMessage = error ?: "配置失败"
+                            errorMessage = error ?: context.getString(R.string.webdav_config_failed)
                         }
                     }
                 },
@@ -657,13 +776,13 @@ private fun WebDavConfigDialog(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("保存")
+                    Text(stringResource(R.string.common_save))
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
@@ -782,13 +901,13 @@ private fun ClearDataConfirmDialog(
         },
         title = {
             Text(
-                text = "清除所有数据",
+                text = stringResource(R.string.dialog_clear_data_title),
                 color = MaterialTheme.colorScheme.error
             )
         },
         text = {
             Text(
-                text = "此操作将删除所有本地验证器数据，且无法恢复。确定要继续吗？",
+                text = stringResource(R.string.dialog_clear_data_message),
                 style = MaterialTheme.typography.bodyMedium
             )
         },
@@ -799,13 +918,286 @@ private fun ClearDataConfirmDialog(
                     containerColor = MaterialTheme.colorScheme.error
                 )
             ) {
-                Text("确认删除")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
 }
+
+/**
+ * 配色方案选择对话框
+ */
+@Composable
+private fun ColorSchemeSelectionDialog(
+    currentColorScheme: WearColorScheme,
+    onColorSchemeSelected: (WearColorScheme) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Palette,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(stringResource(R.string.dialog_color_scheme_title))
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                WearColorScheme.values().forEach { scheme ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onColorSchemeSelected(scheme) }
+                            .background(
+                                if (scheme == currentColorScheme) 
+                                    MaterialTheme.colorScheme.primaryContainer 
+                                else 
+                                    Color.Transparent
+                            )
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        RadioButton(
+                            selected = scheme == currentColorScheme,
+                            onClick = null // Handled by Row click
+                        )
+                        Column {
+                            Text(
+                                text = stringResource(scheme.displayNameResId),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = stringResource(scheme.descriptionResId),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        }
+    )
+}
+
+/**
+ * 语言选择对话框
+ */
+@Composable
+private fun LanguageSelectionDialog(
+    currentLanguage: takagi.ru.monica.wear.viewmodel.AppLanguage,
+    onLanguageSelected: (takagi.ru.monica.wear.viewmodel.AppLanguage) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(stringResource(R.string.dialog_language_title))
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                takagi.ru.monica.wear.viewmodel.AppLanguage.values().forEach { language ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onLanguageSelected(language) }
+                            .background(
+                                if (language == currentLanguage) 
+                                    MaterialTheme.colorScheme.primaryContainer 
+                                else 
+                                    Color.Transparent
+                            )
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        RadioButton(
+                            selected = language == currentLanguage,
+                            onClick = null // Handled by Row click
+                        )
+                        Text(
+                            text = stringResource(language.displayNameResId),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        }
+    )
+}
+
+/**
+ * 添加 TOTP 验证器对话框
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddTotpDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (secret: String, issuer: String, accountName: String, onResult: (Boolean, String?) -> Unit) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var secret by remember { mutableStateOf("") }
+    var issuer by remember { mutableStateOf("") }
+    var accountName by remember { mutableStateOf("") }
+    var secretError by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(stringResource(R.string.totp_add_title))
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 密钥输入
+                OutlinedTextField(
+                    value = secret,
+                    onValueChange = { 
+                        secret = it
+                        secretError = null
+                        errorMessage = null
+                    },
+                    label = { Text(stringResource(R.string.dialog_totp_secret)) },
+                    placeholder = { Text(stringResource(R.string.dialog_totp_secret_hint)) },
+                    isError = secretError != null,
+                    supportingText = secretError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isLoading
+                )
+
+                // 发行方输入
+                OutlinedTextField(
+                    value = issuer,
+                    onValueChange = { 
+                        issuer = it
+                        errorMessage = null
+                    },
+                    label = { Text(stringResource(R.string.dialog_totp_issuer)) },
+                    placeholder = { Text(stringResource(R.string.dialog_totp_issuer_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isLoading
+                )
+
+                // 账户名输入
+                OutlinedTextField(
+                    value = accountName,
+                    onValueChange = { 
+                        accountName = it
+                        errorMessage = null
+                    },
+                    label = { Text(stringResource(R.string.dialog_totp_account)) },
+                    placeholder = { Text(stringResource(R.string.dialog_totp_account_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isLoading
+                )
+
+                // 错误提示
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    when {
+                        secret.isBlank() -> secretError = context.getString(R.string.dialog_totp_secret_error)
+                        else -> {
+                            isLoading = true
+                            errorMessage = null
+                            onConfirm(secret, issuer, accountName) { success, error ->
+                                isLoading = false
+                                if (!success) {
+                                    errorMessage = error ?: context.getString(R.string.totp_add_failed)
+                                }
+                            }
+                        }
+                    }
+                },
+                enabled = !isLoading
+            ) {
+                Text(stringResource(R.string.common_save))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isLoading
+            ) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        }
+    )
+}
+
+
+

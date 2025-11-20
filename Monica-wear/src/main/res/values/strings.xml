@@ -3,44 +3,134 @@
     <string name="app_name">Monica Wear</string>
     
     <!-- 通用 -->
-    <string name="ok">确定</string>
-    <string name="cancel">取消</string>
-    <string name="back">返回</string>
-    <string name="save">保存</string>
-    <string name="delete">删除</string>
+    <string name="common_ok">确定</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_back">返回</string>
+    <string name="common_save">保存</string>
+    <string name="common_delete">删除</string>
+    <string name="common_confirm">确认</string>
+    <string name="common_edit">编辑</string>
+    <string name="common_add">添加</string>
     
     <!-- TOTP -->
     <string name="totp_empty_title">暂无验证器</string>
     <string name="totp_empty_subtitle">请在设置中同步数据</string>
     <string name="totp_click_to_copy">点击复制</string>
     <string name="totp_code_copied">验证码已复制</string>
+    <string name="totp_seconds_refresh">秒后刷新</string>
+    <string name="totp_add_title">添加验证器</string>
+    <string name="totp_edit_title">编辑验证器</string>
+    <string name="totp_delete_success">删除成功</string>
+    <string name="totp_delete_failed">删除失败</string>
+    <string name="totp_update_success">更新成功</string>
+    <string name="totp_update_failed">更新失败</string>
+    <string name="totp_add_failed">添加失败</string>
     
     <!-- 搜索 -->
-    <string name="search_hint">搜索验证器...</string>
+    <string name="search_title">搜索验证器</string>
+    <string name="search_hint">输入名称搜索...</string>
     <string name="search_no_results">未找到匹配项</string>
+    <string name="search_add_button">添加验证器</string>
     
     <!-- 设置 -->
     <string name="settings_title">设置</string>
-    <string name="settings_sync_status">同步状态</string>
-    <string name="settings_sync_now">点击同步</string>
-    <string name="settings_last_sync">上次同步: %s</string>
+    <string name="settings_section_sync">云端同步</string>
+    <string name="settings_section_authenticator">验证器管理</string>
+    <string name="settings_section_appearance">外观</string>
+    <string name="settings_section_security">安全设置</string>
+    <string name="settings_section_data">数据管理</string>
+    
     <string name="settings_webdav_config">WebDAV 配置</string>
-    <string name="settings_webdav_subtitle">配置云端同步</string>
-    <string name="settings_change_password">修改主密码</string>
-    <string name="settings_change_password_subtitle">更改解密密码</string>
-    <string name="settings_biometric">生物识别</string>
-    <string name="settings_biometric_subtitle">使用指纹或面部解锁</string>
+    <string name="settings_webdav_configured">已配置</string>
+    <string name="settings_webdav_not_configured">未配置</string>
+    
+    <string name="settings_add_totp">添加验证器</string>
+    <string name="settings_add_totp_subtitle">手动添加新的验证器</string>
+    
+    <string name="settings_color_scheme">配色方案</string>
+    <string name="settings_oled_black">OLED 绝对黑色</string>
+    <string name="settings_oled_black_enabled">已启用 - 省电模式</string>
+    <string name="settings_oled_black_disabled">已禁用 - 深灰背景</string>
+    
+    <string name="settings_language">语言</string>
+    <string name="settings_language_subtitle">选择应用显示语言</string>
+    
+    <string name="settings_reset_pin">重新设置PIN码</string>
+    <string name="settings_reset_pin_subtitle">修改6位数字密码</string>
+    
     <string name="settings_clear_data">清除所有数据</string>
     <string name="settings_clear_data_subtitle">删除本地所有验证器</string>
-    <string name="settings_version">版本 %s</string>
+    
+    <string name="settings_about_app">Monica Wear</string>
+    <string name="settings_version">版本 1.1.1</string>
+    <string name="settings_about_description">基于 Monica 的轻量版本\n专为小屏设备优化的 TOTP 验证器</string>
     
     <!-- 同步 -->
-    <string name="sync_success">同步成功</string>
-    <string name="sync_error">同步失败: %s</string>
-    <string name="sync_in_progress">正在同步...</string>
+    <string name="sync_status_idle">云端同步</string>
+    <string name="sync_status_idle_not_configured">未配置同步</string>
+    <string name="sync_status_syncing">同步中...</string>
+    <string name="sync_status_success">同步成功</string>
+    <string name="sync_status_failed">同步失败</string>
+    <string name="sync_last_time">上次同步: %s</string>
+    <string name="sync_tap_to_sync">点击立即同步</string>
+    <string name="sync_configure_first">请先配置 WebDAV 连接</string>
+    <string name="sync_error_not_configured">WebDAV 未配置</string>
+    <string name="sync_error_network">同步失败，请检查网络连接</string>
+    <string name="sync_error_with_message">同步出错: %s</string>
+    
+    <!-- WebDAV -->
+    <string name="webdav_config_title">WebDAV 配置</string>
+    <string name="webdav_server_url">服务器地址</string>
+    <string name="webdav_server_url_hint">https://example.com/webdav</string>
+    <string name="webdav_username">用户名</string>
+    <string name="webdav_password">密码</string>
+    <string name="webdav_config_failed">配置失败</string>
+    <string name="webdav_test_failed">连接测试失败，请检查服务器地址和凭据</string>
+    <string name="webdav_empty_title">未绑定 WebDAV</string>
+    <string name="webdav_empty_subtitle">请先配置 WebDAV 以同步数据</string>
+    <string name="webdav_empty_button">去配置</string>
+    
+    <!-- 对话框 -->
+    <string name="dialog_clear_data_title">确认清除数据</string>
+    <string name="dialog_clear_data_message">确定要删除所有本地验证器吗？此操作不可恢复。</string>
+    
+    <string name="dialog_color_scheme_title">选择配色方案</string>
+    
+    <string name="dialog_language_title">选择语言</string>
+    <string name="language_system_default">跟随系统</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_japanese">日本語</string>
+    
+    <string name="dialog_totp_secret">密钥</string>
+    <string name="dialog_totp_secret_hint">Base32编码的密钥</string>
+    <string name="dialog_totp_secret_error">密钥不能为空</string>
+    <string name="dialog_totp_issuer">发行方</string>
+    <string name="dialog_totp_issuer_hint">如：Google, GitHub</string>
+    <string name="dialog_totp_account">账户名</string>
+    <string name="dialog_totp_account_hint">如：user@example.com</string>
+    
+    <string name="dialog_menu_edit">编辑</string>
+    <string name="dialog_menu_delete">删除</string>
+    <string name="dialog_menu_more">更多选项</string>
+    
+    <!-- 配色方案 -->
+    <string name="color_scheme_ocean_blue">海洋蓝</string>
+    <string name="color_scheme_ocean_blue_desc">清新的蓝色调</string>
+    <string name="color_scheme_sunset_orange">日落橙</string>
+    <string name="color_scheme_sunset_orange_desc">温暖的橙色调</string>
+    <string name="color_scheme_forest_green">森林绿</string>
+    <string name="color_scheme_forest_green_desc">自然的绿色调</string>
+    <string name="color_scheme_tech_purple">科技紫</string>
+    <string name="color_scheme_tech_purple_desc">科技感的紫色调</string>
+    <string name="color_scheme_black_mamba">黑曼巴</string>
+    <string name="color_scheme_black_mamba_desc">湖人紫金配色</string>
+    <string name="color_scheme_grey_style">小黑紫</string>
+    <string name="color_scheme_grey_style_desc">高级灰配色</string>
     
     <!-- 错误 -->
     <string name="error_generic">发生错误</string>
     <string name="error_network">网络错误</string>
     <string name="error_auth">认证失败</string>
+    <string name="error_with_message">错误: %s</string>
 </resources>

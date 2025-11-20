@@ -524,7 +524,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.1.0</string>
+    <string name="settings_version_number">V1.1.1</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -1196,4 +1196,14 @@
     <string name="deselect_all">Deselect All</string>
     <string name="backup_validation_error">Please select at least one content type</string>
 
+    <!-- Support Author Page -->
+    <string name="support_author_page_title">Support the Author</string>
+    <string name="support_author_page_description">If you find Monica useful, please consider supporting the development:</string>
+    <string name="other_support_ways">Other Support Ways</string>
+    <string name="support_via_kofi">Support on Ko-fi</string>
+    <string name="support_via_afdian">Support on Afdian</string>
+    <string name="open_link">Open Link</string>
+    
+    <!-- Error opening link -->
+    <string name="error_opening_link">Error opening link</string>
 </resources>

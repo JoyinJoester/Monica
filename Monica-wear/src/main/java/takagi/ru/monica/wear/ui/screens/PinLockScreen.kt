@@ -36,7 +36,7 @@ fun PinLockScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1B21))
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -48,7 +48,7 @@ fun PinLockScreen(
                 isFirstTime && isConfirming -> "确认PIN码"
                 else -> "输入PIN码"
             },
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold
         )
@@ -59,7 +59,7 @@ fun PinLockScreen(
         if (isFirstTime && !isConfirming) {
             Text(
                 text = "请输入6位数字",
-                color = Color.White.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center
             )
@@ -78,7 +78,10 @@ fun PinLockScreen(
                     modifier = Modifier
                         .size(12.dp)
                         .background(
-                            color = if (index < currentPin.length) Color.White else Color.White.copy(alpha = 0.3f),
+                            color = if (index < currentPin.length) 
+                                MaterialTheme.colorScheme.primary 
+                            else 
+                                MaterialTheme.colorScheme.surfaceVariant,
                             shape = CircleShape
                         )
                 )
@@ -90,7 +93,7 @@ fun PinLockScreen(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = errorMessage,
-                color = Color(0xFFEF4444),
+                color = MaterialTheme.colorScheme.error,
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center
             )
@@ -182,12 +185,12 @@ fun PinLockScreen(
                     },
                     modifier = Modifier.size(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF374151)
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 ) {
                     Text(
                         text = "←",
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 16.sp
                     )
                 }
@@ -227,15 +230,18 @@ fun PinLockScreen(
                     modifier = Modifier.size(56.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if ((if (isConfirming) confirmPin else pin).length == 6) 
-                            Color(0xFF60A5FA) 
+                            MaterialTheme.colorScheme.primaryContainer 
                         else 
-                            Color(0xFF374151)
+                            MaterialTheme.colorScheme.surfaceVariant
                     ),
                     enabled = (if (isConfirming) confirmPin else pin).length == 6
                 ) {
                     Text(
                         text = "✓",
-                        color = Color.White,
+                        color = if ((if (isConfirming) confirmPin else pin).length == 6)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -257,12 +263,12 @@ private fun NumberButton(
         onClick = onClick,
         modifier = Modifier.size(56.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF374151)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Text(
             text = number,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium
         )

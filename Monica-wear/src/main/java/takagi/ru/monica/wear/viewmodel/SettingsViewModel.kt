@@ -2,15 +2,24 @@ package takagi.ru.monica.wear.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import takagi.ru.monica.wear.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import takagi.ru.monica.wear.data.ItemType
+import takagi.ru.monica.wear.data.PasswordDatabase
+import takagi.ru.monica.wear.data.SecureItem
+import takagi.ru.monica.wear.data.model.OtpType
+import takagi.ru.monica.wear.data.model.TotpData
 import takagi.ru.monica.wear.utils.WearWebDavHelper
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -20,8 +29,30 @@ import java.util.*
 sealed class SyncState {
     object Idle : SyncState()
     object Syncing : SyncState()
-    object Success : SyncState()
+    data class Success(val message: String = "同步成功") : SyncState()
     data class Error(val message: String) : SyncState()
+}
+
+/**
+ * 配色方案
+ */
+enum class ColorScheme(val displayNameResId: Int, val descriptionResId: Int) {
+    OCEAN_BLUE(R.string.color_scheme_ocean_blue, R.string.color_scheme_ocean_blue_desc),
+    SUNSET_ORANGE(R.string.color_scheme_sunset_orange, R.string.color_scheme_sunset_orange_desc),
+    FOREST_GREEN(R.string.color_scheme_forest_green, R.string.color_scheme_forest_green_desc),
+    TECH_PURPLE(R.string.color_scheme_tech_purple, R.string.color_scheme_tech_purple_desc),
+    BLACK_MAMBA(R.string.color_scheme_black_mamba, R.string.color_scheme_black_mamba_desc),
+    GREY_STYLE(R.string.color_scheme_grey_style, R.string.color_scheme_grey_style_desc)
+}
+
+/**
+ * 应用语言
+ */
+enum class AppLanguage(val displayNameResId: Int, val localeTag: String?) {
+    SYSTEM_DEFAULT(R.string.language_system_default, null),
+    CHINESE(R.string.language_chinese, "zh"),
+    ENGLISH(R.string.language_english, "en"),
+    JAPANESE(R.string.language_japanese, "ja")
 }
 
 /**
@@ -34,6 +65,9 @@ class SettingsViewModel(
     
     private val webDavHelper = WearWebDavHelper(application)
     private val TAG = "SettingsViewModel"
+    private val prefs: SharedPreferences = application.getSharedPreferences("monica_wear_prefs", Context.MODE_PRIVATE)
+    private val database = PasswordDatabase.getDatabase(application)
+    private val json = Json { ignoreUnknownKeys = true }
     
     // 同步状态
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
@@ -51,7 +85,28 @@ class SettingsViewModel(
     private val _biometricEnabled = MutableStateFlow(false)
     val biometricEnabled: StateFlow<Boolean> = _biometricEnabled.asStateFlow()
     
+    // 当前配色方案
+    private val _currentColorScheme = MutableStateFlow(ColorScheme.OCEAN_BLUE)
+    val currentColorScheme: StateFlow<ColorScheme> = _currentColorScheme.asStateFlow()
+    
+    // OLED 绝对黑色开关
+    private val _useOledBlack = MutableStateFlow(true)
+    val useOledBlack: StateFlow<Boolean> = _useOledBlack.asStateFlow()
+    
+    // 当前语言
+    private val _currentLanguage = MutableStateFlow(AppLanguage.SYSTEM_DEFAULT)
+    val currentLanguage: StateFlow<AppLanguage> = _currentLanguage.asStateFlow()
+
     init {
+        // 加载配色方案设置
+        loadColorScheme()
+        
+        // 加载语言设置
+        loadLanguage()
+        
+        // 加载 OLED 黑色设置
+        loadOledBlackSetting()
+
         // 检查WebDAV配置状态
         _isWebDavConfigured.value = webDavHelper.isConfigured()
         
@@ -61,6 +116,64 @@ class SettingsViewModel(
         Log.d(TAG, "SettingsViewModel initialized, WebDAV configured: ${_isWebDavConfigured.value}")
     }
     
+    private fun loadColorScheme() {
+        val schemeName = prefs.getString("color_scheme", null)
+        
+        // 迁移旧的主题设置
+        if (schemeName == null) {
+            val oldTheme = prefs.getString("app_theme", "Classic")
+            _currentColorScheme.value = when (oldTheme) {
+                "Classic" -> ColorScheme.OCEAN_BLUE
+                "Modern" -> ColorScheme.TECH_PURPLE
+                else -> ColorScheme.OCEAN_BLUE
+            }
+            // 保存迁移后的设置
+            prefs.edit().putString("color_scheme", _currentColorScheme.value.name).apply()
+        } else {
+            _currentColorScheme.value = try {
+                ColorScheme.valueOf(schemeName)
+            } catch (e: Exception) {
+                ColorScheme.OCEAN_BLUE
+            }
+        }
+    }
+    
+    fun setColorScheme(scheme: ColorScheme) {
+        _currentColorScheme.value = scheme
+        prefs.edit().putString("color_scheme", scheme.name).apply()
+    }
+    
+    private fun loadOledBlackSetting() {
+        _useOledBlack.value = prefs.getBoolean("use_oled_black", true)
+    }
+    
+    fun setOledBlack(enabled: Boolean) {
+        _useOledBlack.value = enabled
+        prefs.edit().putBoolean("use_oled_black", enabled).apply()
+    }
+    
+    private fun loadLanguage() {
+        val languageName = prefs.getString("app_language", null)
+        _currentLanguage.value = if (languageName != null) {
+            try {
+                AppLanguage.valueOf(languageName)
+            } catch (e: Exception) {
+                AppLanguage.SYSTEM_DEFAULT
+            }
+        } else {
+            AppLanguage.SYSTEM_DEFAULT
+        }
+    }
+    
+    fun setLanguage(language: AppLanguage) {
+        _currentLanguage.value = language
+        prefs.edit().putString("app_language", language.name).apply()
+    }
+    
+    fun getCurrentLanguageDisplayName(): Int {
+        return _currentLanguage.value.displayNameResId
+    }
+
     /**
      * 配置WebDAV连接
      */
@@ -90,16 +203,16 @@ class SettingsViewModel(
                     // 连接失败，清除配置
                     webDavHelper.clearConfig()
                     _isWebDavConfigured.value = false
-                    _syncState.value = SyncState.Error("连接测试失败")
+                    _syncState.value = SyncState.Error(getApplication<Application>().getString(R.string.webdav_test_failed))
                     Log.e(TAG, "WebDAV connection test failed")
-                    callback(false, "连接测试失败，请检查服务器地址和凭据")
+                    callback(false, getApplication<Application>().getString(R.string.webdav_test_failed))
                 }
             } catch (e: Exception) {
                 webDavHelper.clearConfig()
                 _isWebDavConfigured.value = false
-                _syncState.value = SyncState.Error("配置失败: ${e.message}")
+                _syncState.value = SyncState.Error(getApplication<Application>().getString(R.string.webdav_config_failed) + ": ${e.message}")
                 Log.e(TAG, "Error configuring WebDAV", e)
-                callback(false, "配置失败: ${e.message}")
+                callback(false, getApplication<Application>().getString(R.string.webdav_config_failed) + ": ${e.message}")
             }
         }
     }
@@ -117,7 +230,7 @@ class SettingsViewModel(
      */
     fun syncNow() {
         if (!webDavHelper.isConfigured()) {
-            _syncState.value = SyncState.Error("WebDAV 未配置")
+            _syncState.value = SyncState.Error(getApplication<Application>().getString(R.string.sync_error_not_configured))
             Log.w(TAG, "Sync requested but WebDAV not configured")
             return
         }
@@ -135,24 +248,24 @@ class SettingsViewModel(
                 val result = webDavHelper.downloadAndImportLatestBackup()
                 
                 if (result.isSuccess) {
-                    val importedCount = result.getOrDefault(0)
-                    _syncState.value = SyncState.Success
+                    val message = result.getOrDefault(getApplication<Application>().getString(R.string.sync_status_success))
+                    _syncState.value = SyncState.Success(message)
                     loadLastSyncTime()
-                    Log.d(TAG, "Manual sync completed successfully, imported $importedCount items")
+                    Log.d(TAG, "Manual sync completed: $message")
                     
                     // 3秒后恢复为Idle状态
                     kotlinx.coroutines.delay(3000)
-                    if (_syncState.value == SyncState.Success) {
+                    if (_syncState.value is SyncState.Success) {
                         _syncState.value = SyncState.Idle
                     }
                 } else {
                     val error = result.exceptionOrNull()
-                    val errorMessage = error?.message ?: "同步失败，请检查网络连接"
+                    val errorMessage = error?.message ?: getApplication<Application>().getString(R.string.sync_error_network)
                     _syncState.value = SyncState.Error(errorMessage)
                     Log.e(TAG, "Manual sync failed: ${error?.message}", error)
                 }
             } catch (e: Exception) {
-                _syncState.value = SyncState.Error("同步出错: ${e.message}")
+                _syncState.value = SyncState.Error(getApplication<Application>().getString(R.string.sync_error_with_message, e.message ?: ""))
                 Log.e(TAG, "Error during manual sync", e)
             }
         }
@@ -213,8 +326,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 Log.d(TAG, "Clearing all data")
-                // TODO: 实现清除所有数据功能
-                // 需要调用 Repository 删除所有 TOTP 数据
+                database.secureItemDao().deleteAll()
                 webDavHelper.clearConfig()
                 _isWebDavConfigured.value = false
                 _lastSyncTime.value = ""
@@ -222,6 +334,58 @@ class SettingsViewModel(
                 Log.d(TAG, "All data cleared")
             } catch (e: Exception) {
                 Log.e(TAG, "Error clearing data", e)
+            }
+        }
+    }
+
+    /**
+     * 添加新的 TOTP 验证器
+     */
+    fun addTotpItem(
+        secret: String,
+        issuer: String,
+        accountName: String,
+        callback: (success: Boolean, error: String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                // 验证密钥格式
+                if (secret.isBlank()) {
+                    callback(false, getApplication<Application>().getString(R.string.dialog_totp_secret_error))
+                    return@launch
+                }
+
+                // 创建 TOTP 数据
+                val totpData = TotpData(
+                    secret = secret.trim().replace(" ", "").uppercase(),
+                    issuer = issuer.trim(),
+                    accountName = accountName.trim(),
+                    period = 30,
+                    digits = 6,
+                    algorithm = "SHA1",
+                    otpType = OtpType.TOTP
+                )
+
+                // 创建 SecureItem
+                val item = SecureItem(
+                    id = 0, // Room 自动生成
+                    title = if (issuer.isNotBlank()) issuer else accountName,
+                    itemType = ItemType.TOTP,
+                    itemData = json.encodeToString(TotpData.serializer(), totpData),
+                    notes = "",
+                    isFavorite = false,
+                    sortOrder = 0,
+                    createdAt = Date(System.currentTimeMillis()),
+                    updatedAt = Date(System.currentTimeMillis())
+                )
+
+                // 插入数据库
+                database.secureItemDao().insertItem(item)
+                Log.d(TAG, "TOTP item added: $issuer")
+                callback(true, null)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add TOTP item: ${e.message}")
+                callback(false, getApplication<Application>().getString(R.string.totp_add_failed) + ": ${e.message}")
             }
         }
     }

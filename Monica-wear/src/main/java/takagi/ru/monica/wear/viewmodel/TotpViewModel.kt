@@ -20,6 +20,7 @@ import takagi.ru.monica.wear.data.SecureItem
 import takagi.ru.monica.wear.data.model.TotpData
 import takagi.ru.monica.wear.repository.TotpRepository
 import takagi.ru.monica.wear.util.TotpGenerator
+import takagi.ru.monica.wear.utils.WearWebDavHelper
 
 /**
  * TOTP项目状态
@@ -48,7 +49,12 @@ class TotpViewModel(
     }
     
     private val json = Json { ignoreUnknownKeys = true }
+    private val webDavHelper = WearWebDavHelper(context)
     
+    // WebDAV是否已配置
+    private val _isWebDavConfigured = MutableStateFlow(false)
+    val isWebDavConfigured: StateFlow<Boolean> = _isWebDavConfigured.asStateFlow()
+
     // 震动服务
     private val vibrator: Vibrator? by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -89,6 +95,9 @@ class TotpViewModel(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
     init {
+        // 检查WebDAV配置
+        checkWebDavConfig()
+
         // 监听完整列表变化
         viewModelScope.launch {
             rawAllItems.collect { items ->
@@ -129,6 +138,12 @@ class TotpViewModel(
                     _searchResults.value = emptyList()
                 }
             }
+        }
+    }
+    
+    fun checkWebDavConfig() {
+        viewModelScope.launch {
+            _isWebDavConfigured.value = webDavHelper.isConfigured()
         }
     }
     
@@ -268,6 +283,60 @@ class TotpViewModel(
      */
     fun clearSearch() {
         _searchQuery.value = ""
+    }
+    
+    /**
+     * 删除TOTP项目
+     */
+    fun deleteTotpItem(item: TotpItemState, callback: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.deleteItem(item.item)
+                Log.d(TAG, "TOTP item deleted: id=${item.item.id}")
+                callback(true, null)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete TOTP item", e)
+                callback(false, "删除失败: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * 更新TOTP项目
+     */
+    fun updateTotpItem(
+        item: TotpItemState,
+        secret: String,
+        issuer: String,
+        accountName: String,
+        callback: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val totpData = TotpData(
+                    secret = secret.trim().replace(" ", "").uppercase(),
+                    issuer = issuer.trim(),
+                    accountName = accountName.trim(),
+                    period = 30,
+                    digits = 6,
+                    algorithm = "SHA1",
+                    otpType = takagi.ru.monica.wear.data.model.OtpType.TOTP
+                )
+                
+                val updatedItem = item.item.copy(
+                    title = if (issuer.isNotBlank()) issuer else accountName,
+                    itemData = json.encodeToString(TotpData.serializer(), totpData),
+                    updatedAt = java.util.Date(System.currentTimeMillis())
+                )
+                
+                repository.updateItem(updatedItem)
+                Log.d(TAG, "TOTP item updated: id=${item.item.id}")
+                callback(true, null)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update TOTP item", e)
+                callback(false, "更新失败: ${e.message}")
+            }
+        }
     }
     
     override fun onCleared() {

@@ -26,7 +26,10 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.OpenInNew
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import java.io.IOException
@@ -81,6 +84,15 @@ fun SupportAuthorScreen(
         }
     }
     
+    fun openLink(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, context.getString(R.string.error_opening_link), Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // 加载assets中的图片
     LaunchedEffect(Unit) {
         hasStoragePermission = ContextCompat.checkSelfPermission(context, storagePermission) == PackageManager.PERMISSION_GRANTED
@@ -249,6 +261,56 @@ fun SupportAuthorScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
+                    }
+                }
+            }
+
+            // 其他支持方式卡片
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.other_support_ways),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Ko-fi 按钮
+                    OutlinedButton(
+                        onClick = { openLink("https://ko-fi.com/joyinjoester") },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.support_via_kofi))
+                    }
+
+                    // Afdian 按钮
+                    OutlinedButton(
+                        onClick = { openLink("https://afdian.com/a/JoyinJoester/plan") },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.support_via_afdian))
                     }
                 }
             }

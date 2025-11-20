@@ -507,7 +507,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">V1.1.0</string>
+    <string name="settings_version_number">V1.1.1</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1077,4 +1077,12 @@
     <string name="deselect_all">全不选</string>
     <string name="backup_validation_error">请至少选择一种备份内容</string>
 
+    <!-- Support Author Page -->
+    <string name="support_author_page_title">支持作者</string>
+    <string name="support_author_page_description">感谢您使用 Monica！如果您觉得这个应用对您有帮助，欢迎通过以下方式支持作者的后续开发工作：</string>
+    <string name="support_via_kofi">在 Ko-fi 上支持</string>
+    <string name="support_via_afdian">在爱发电上支持</string>
+    <string name="open_link">打开链接</string>
+    <string name="error_opening_link">打开链接失败</string>
+    <string name="other_support_ways">其他支持方式</string>
 </resources>

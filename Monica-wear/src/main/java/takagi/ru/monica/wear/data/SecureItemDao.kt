@@ -13,6 +13,10 @@ interface SecureItemDao {
     @Query("SELECT * FROM secure_items WHERE itemType = :type ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getItemsByType(type: ItemType): Flow<List<SecureItem>>
     
+    // 同步获取项目 (用于导入时的去重检查)
+    @Query("SELECT * FROM secure_items WHERE itemType = :type")
+    suspend fun getItemsByTypeSync(type: ItemType): List<SecureItem>
+    
     // 根据类型搜索 (用于搜索功能)
     @Query("SELECT * FROM secure_items WHERE itemType = :type AND (title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%' OR itemData LIKE '%' || :query || '%') ORDER BY isFavorite DESC, updatedAt DESC")
     fun searchItemsByType(type: ItemType, query: String): Flow<List<SecureItem>>
@@ -28,6 +32,18 @@ interface SecureItemDao {
     // 批量插入 (用于同步导入)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<SecureItem>)
+    
+    // 删除单个项目
+    @Delete
+    suspend fun deleteItem(item: SecureItem)
+    
+    // 根据ID删除项目
+    @Query("DELETE FROM secure_items WHERE id = :id")
+    suspend fun deleteItemById(id: Long)
+    
+    // 更新项目
+    @Update
+    suspend fun updateItem(item: SecureItem)
     
     // 删除所有项目 (用于同步前清空)
     @Query("DELETE FROM secure_items")

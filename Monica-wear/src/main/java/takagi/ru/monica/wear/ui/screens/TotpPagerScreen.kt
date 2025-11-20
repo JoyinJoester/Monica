@@ -1,5 +1,8 @@
 package takagi.ru.monica.wear.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -7,12 +10,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.wear.R
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material3.*
+import androidx.compose.ui.text.style.TextAlign
 import takagi.ru.monica.wear.ui.components.TotpCard
 import takagi.ru.monica.wear.ui.components.SearchOverlay
 import takagi.ru.monica.wear.viewmodel.TotpViewModel
@@ -31,13 +38,16 @@ import kotlin.math.abs
 @Composable
 fun TotpPagerScreen(
     viewModel: TotpViewModel,
+    settingsViewModel: takagi.ru.monica.wear.viewmodel.SettingsViewModel,
     onShowSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val allItems by viewModel.allTotpItems.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val isWebDavConfigured by viewModel.isWebDavConfigured.collectAsState()
     
     // 搜索状态
     var showSearch by remember { mutableStateOf(false) }
@@ -45,6 +55,7 @@ fun TotpPagerScreen(
     // 启动TOTP更新
     LaunchedEffect(Unit) {
         viewModel.startTotpUpdates()
+        viewModel.checkWebDavConfig()
     }
     
     // 停止TOTP更新（当组件销毁时）
@@ -64,8 +75,8 @@ fun TotpPagerScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
-            allItems.isEmpty() -> {
-                // 空状态（支持下滑打开设置）
+            allItems.isEmpty() && !isWebDavConfigured -> {
+                // 未绑定 WebDAV 且无数据的空状态（支持上滑打开搜索/添加，下滑打开设置）
                 var dragOffset by remember { mutableStateOf(0f) }
                 Box(
                     modifier = Modifier
@@ -73,9 +84,36 @@ fun TotpPagerScreen(
                         .pointerInput(Unit) {
                             detectVerticalDragGestures(
                                 onDragEnd = {
-                                    // 下滑打开设置
-                                    if (dragOffset > 50f) {
-                                        onShowSettings()
+                                    when {
+                                        dragOffset < -50f -> showSearch = true  // 上滑打开搜索
+                                        dragOffset > 50f -> onShowSettings()    // 下滑打开设置
+                                    }
+                                    dragOffset = 0f
+                                },
+                                onVerticalDrag = { _, dragAmount ->
+                                    dragOffset += dragAmount
+                                }
+                            )
+                        }
+                ) {
+                    WebDavEmptyState(
+                        onGoToSettings = onShowSettings,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+            }
+            allItems.isEmpty() -> {
+                // 已配置 WebDAV 但暂无数据的空状态（支持上滑打开搜索/添加，下滑打开设置）
+                var dragOffset by remember { mutableStateOf(0f) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragEnd = {
+                                    when {
+                                        dragOffset < -50f -> showSearch = true  // 上滑打开搜索
+                                        dragOffset > 50f -> onShowSettings()    // 下滑打开设置
                                     }
                                     dragOffset = 0f
                                 },
@@ -93,6 +131,8 @@ fun TotpPagerScreen(
             else -> {
                 // TOTP分页器（带搜索功能）
                 TotpPagerWithSearch(
+                    viewModel = viewModel,
+                    settingsViewModel = settingsViewModel,
                     allItems = allItems,
                     searchResults = searchResults,
                     searchQuery = searchQuery,
@@ -109,6 +149,69 @@ fun TotpPagerScreen(
                 )
             }
         }
+        
+        // 搜索覆盖层 - 在所有状态下都可用（包括空状态）
+        AnimatedVisibility(
+            visible = showSearch,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            SearchOverlay(
+                searchQuery = searchQuery,
+                searchResults = if (searchQuery.isBlank()) allItems else searchResults,
+                onSearchQueryChange = { query -> viewModel.searchTotpItems(query) },
+                onResultClick = { selectedItem ->
+                    // 关闭搜索，如果有数据会自动显示
+                    showSearch = false
+                    viewModel.clearSearch()
+                },
+                onDismiss = {
+                    showSearch = false
+                    viewModel.clearSearch()
+                },
+                onAddTotp = { secret, issuer, accountName, onResult ->
+                    settingsViewModel.addTotpItem(secret, issuer, accountName, onResult)
+                },
+                onEditTotp = { item, secret, issuer, accountName, onResult ->
+                    viewModel.updateTotpItem(item, secret, issuer, accountName) { success, error ->
+                        if (success) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.totp_update_success),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            onResult(true, null)
+                        } else {
+                            android.widget.Toast.makeText(
+                                context,
+                                error ?: context.getString(R.string.totp_update_failed),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            onResult(false, error)
+                        }
+                    }
+                },
+                onDeleteTotp = { item ->
+                    viewModel.deleteTotpItem(item) { success, error ->
+                        if (success) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.totp_delete_success),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            android.widget.Toast.makeText(
+                                context,
+                                error ?: context.getString(R.string.totp_delete_failed),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 
@@ -118,6 +221,8 @@ fun TotpPagerScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TotpPagerWithSearch(
+    viewModel: TotpViewModel,
+    settingsViewModel: takagi.ru.monica.wear.viewmodel.SettingsViewModel,
     allItems: List<takagi.ru.monica.wear.viewmodel.TotpItemState>,
     searchResults: List<takagi.ru.monica.wear.viewmodel.TotpItemState>,
     searchQuery: String,
@@ -148,8 +253,8 @@ private fun TotpPagerWithSearch(
                             onDragEnd = {
                                 // 检测手势方向
                                 when {
-                                    dragOffset < -100 -> onSwipeDown() // 下滑
-                                    dragOffset > 100 -> onSwipeUp()    // 上滑
+                                    dragOffset < -100 -> onSwipeDown() // 上滑 (负值) -> 打开搜索
+                                    dragOffset > 100 -> onSwipeUp()    // 下滑 (正值) -> 打开设置
                                 }
                                 dragOffset = 0f
                             },
@@ -178,8 +283,13 @@ private fun TotpPagerWithSearch(
             )
         }
         
-        // 搜索覆盖层
-        if (showSearch) {
+        // 搜索覆盖层 (带动画) - 用于有数据时的搜索和跳转
+        AnimatedVisibility(
+            visible = showSearch,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier.fillMaxSize()
+        ) {
             SearchOverlay(
                 searchQuery = searchQuery,
                 searchResults = if (searchQuery.isBlank()) allItems else searchResults,
@@ -195,6 +305,10 @@ private fun TotpPagerWithSearch(
                     onSearchDismiss()
                 },
                 onDismiss = onSearchDismiss,
+                onAddTotp = { secret, issuer, accountName, onResult ->
+                    // 调用SettingsViewModel添加TOTP
+                    settingsViewModel.addTotpItem(secret, issuer, accountName, onResult)
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -251,15 +365,54 @@ private fun EmptyState(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "暂无验证器",
+            text = stringResource(R.string.totp_empty_title),
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.bodyLarge
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "请在设置中同步数据",
+            text = stringResource(R.string.totp_empty_subtitle),
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
             style = MaterialTheme.typography.bodySmall
         )
+    }
+}
+
+/**
+ * 未绑定 WebDAV 空状态组件
+ */
+@Composable
+private fun WebDavEmptyState(
+    onGoToSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.CloudOff,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.webdav_empty_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.webdav_empty_subtitle),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onGoToSettings) {
+            Text(stringResource(R.string.webdav_empty_button))
+        }
     }
 }

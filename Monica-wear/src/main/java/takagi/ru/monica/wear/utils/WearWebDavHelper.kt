@@ -281,8 +281,9 @@ class WearWebDavHelper(private val context: Context) {
     /**
      * 下载并导入最新的备份
      * 只下载，不上传
+     * @return Result包含Pair<导入数量, 跳过数量>和消息
      */
-    suspend fun downloadAndImportLatestBackup(): Result<Int> = withContext(Dispatchers.IO) {
+    suspend fun downloadAndImportLatestBackup(): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
                 Log.e(TAG, "Sardine client is null")
@@ -396,7 +397,7 @@ class WearWebDavHelper(private val context: Context) {
             
             // 4. 解压并导入TOTP数据
             Log.d(TAG, "Importing TOTP data from zip...")
-            val importedCount = importTotpFromZip(zipFile)
+            val (importedCount, skippedCount) = importTotpFromZip(zipFile)
             
             // 5. 清理临时文件
             zipFile.delete()
@@ -404,8 +405,20 @@ class WearWebDavHelper(private val context: Context) {
             // 6. 更新同步时间
             updateLastSyncTime()
             
-            Log.d(TAG, "Import completed: $importedCount TOTP items")
-            Result.success(importedCount)
+            // 7. 生成结果消息
+            val message = when {
+                importedCount > 0 && skippedCount > 0 -> 
+                    "同步成功：导入 $importedCount 个新项目，跳过 $skippedCount 个重复项"
+                importedCount > 0 && skippedCount == 0 -> 
+                    "同步成功：导入 $importedCount 个新项目"
+                importedCount == 0 && skippedCount > 0 -> 
+                    "同步成功：所有项目已是最新"
+                else -> 
+                    "同步成功：备份中没有验证器数据"
+            }
+            
+            Log.d(TAG, "Import completed: imported=$importedCount, skipped=$skippedCount")
+            Result.success(message)
             
         } catch (e: Exception) {
             Log.e(TAG, "Download and import failed", e)
@@ -424,8 +437,9 @@ class WearWebDavHelper(private val context: Context) {
     
     /**
      * 从ZIP文件导入TOTP数据
+     * @return Pair<导入数量, 跳过数量>
      */
-    private suspend fun importTotpFromZip(zipFile: File): Int = withContext(Dispatchers.IO) {
+    private suspend fun importTotpFromZip(zipFile: File): Pair<Int, Int> = withContext(Dispatchers.IO) {
         val allTotpItems = mutableListOf<SecureItem>()
         
         ZipInputStream(zipFile.inputStream()).use { zip ->
@@ -458,12 +472,12 @@ class WearWebDavHelper(private val context: Context) {
         
         if (allTotpItems.isEmpty()) {
             Log.w(TAG, "Zip file did not contain any TOTP data")
-            return@withContext 0
+            return@withContext Pair(0, 0)
         }
         
-        totpRepository.importTotpItems(allTotpItems)
-        Log.d(TAG, "Imported ${allTotpItems.size} TOTP entries into local database")
-        allTotpItems.size
+        val (importedCount, skippedCount) = totpRepository.importTotpItems(allTotpItems)
+        Log.d(TAG, "Imported $importedCount TOTP entries, skipped $skippedCount duplicates")
+        Pair(importedCount, skippedCount)
     }
     
     private fun isSecureItemsEntry(entryName: String): Boolean {
