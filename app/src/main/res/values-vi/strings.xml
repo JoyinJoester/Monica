@@ -73,11 +73,26 @@
     <string name="add_password">Thêm mật khẩu</string>
     <string name="clear_search">Xóa tìm kiếm</string>
     <string name="logout_confirmation">Bạn có chắc chắn muốn đăng xuất?</string>
-    <string name="copy_username">Sao chép tên người dùng</string>
-    <string name="copy_password">Sao chép mật khẩu</string>
+    <string name="copy_username">Sao chép TK</string>
+    <string name="copy_password">Sao chép MK</string>
     <string name="copy">Sao chép</string>
     <string name="username_copied">Tên người dùng đã được sao chép vào clipboard</string>
     <string name="password_copied">Mật khẩu đã được sao chép vào clipboard</string>
+    
+    <!-- Form Fields -->
+    <string name="field_email">Email</string>
+    <string name="field_phone">SĐT</string>
+    <string name="field_address">Địa chỉ</string>
+    <string name="field_address_placeholder">Đường, số nhà, v.v.</string>
+    <string name="field_city">Thành phố</string>
+    <string name="field_state">Tỉnh</string>
+    <string name="field_postal_code">Mã BC</string>
+    <string name="field_country">Quốc gia</string>
+    <string name="field_card_number">Số thẻ</string>
+    <string name="field_card_valid">✓ Hợp lệ</string>
+    <string name="field_cardholder">Chủ thẻ</string>
+    <string name="field_expiry">Hết hạn</string>
+    <string name="field_cvv">CVV</string>
     
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">Thêm mật khẩu</string>
@@ -227,6 +242,30 @@
     <string name="document_encryption_notice">Tất cả thông tin tài liệu và ảnh được mã hóa và lưu trữ cục bộ trên thiết bị của bạn</string>
     <string name="document_photo_front">Ảnh %s (Mặt trước)</string>
     <string name="document_photo_back">Ảnh %s (Mặt sau, Tùy chọn)</string>
+    
+    <!-- Document Card Labels -->
+    <string name="document_number_label">Số giấy tờ</string>
+    <string name="holder_label">Người giữ</string>
+    <string name="valid_until">Có hiệu lực đến</string>
+    
+    <!-- Bank Card Labels -->
+    <string name="cardholder_label">Chủ thẻ</string>
+    <string name="expiry_label">Hết hạn</string>
+    
+    <!-- Menu Actions -->
+    <string name="move_up">Di chuyển lên</string>
+    <string name="move_down">Di chuyển xuống</string>
+    
+    <!-- Content Descriptions -->
+    <string name="favorite">Yêu thích</string>
+    <string name="more_options">Thêm tùy chọn</string>
+    
+    <!-- Document Type Names -->
+    <string name="document_type_id_card">Căn cước công dân</string>
+    <string name="document_type_passport">Hộ chiếu</string>
+    <string name="document_type_driver_license">Giấy phép lái xe</string>
+    <string name="document_type_social_security">Thẻ bảo hiểm xã hội</string>
+    <string name="document_type_other">Tài liệu khác</string>
     
     <!-- TOTP List -->
     <string name="search_authenticator">Tìm kiếm xác thực</string>
@@ -568,7 +607,6 @@
     <string name="support_author_thanks_message">Cảm ơn bạn đã sử dụng Monica Password Manager. Sự ủng hộ của bạn có ý nghĩa rất lớn!</string>
     
     <!-- Common -->
-    <string name="favorite">Yêu thích</string>
     <string name="search_passwords_hint">Tìm kiếm mật khẩu</string>
     <string name="return_text">Quay lại</string>
     <string name="confirm">Xác nhận</string>
@@ -663,6 +701,20 @@
     <string name="webdav_backup_in_progress">Đang sao lưu…</string>
     <string name="webdav_backup_success">Sao lưu thành công</string>
     <string name="webdav_backup_failed">Sao lưu thất bại: %s</string>
+    <string name="webdav_clear_config">Xóa cấu hình</string>
+    <string name="webdav_config_cleared">Đã xóa cấu hình WebDAV</string>
+    <string name="webdav_network_unreachable">Không thể kết nối mạng, vui lòng kiểm tra kết nối mạng</string>
+    <string name="webdav_connection_timeout">Hết thời gian kết nối, vui lòng kiểm tra địa chỉ máy chủ và kết nối mạng</string>
+    <string name="webdav_auth_failed">Xác thực thất bại, vui lòng kiểm tra tên người dùng và mật khẩu</string>
+    <string name="webdav_path_not_found">Không tìm thấy đường dẫn máy chủ, vui lòng kiểm tra địa chỉ máy chủ</string>
+    <string name="webdav_backup_trigger_failed">Không thể kích hoạt sao lưu: %s</string>
+    <string name="webdav_create_backup_failed">Không thể tạo bản sao lưu</string>
+    <string name="webdav_create_new_backup">Tạo bản sao lưu mới</string>
+    <string name="webdav_backup_success_detail">Sao lưu thành công: %s</string>
+    <string name="webdav_backup_passwords">Mật khẩu: %d</string>
+    <string name="webdav_backup_authenticators">Trình xác thực: %d</string>
+    <string name="webdav_backup_documents">Tài liệu: %d</string>
+    <string name="webdav_backup_bank_cards">Thẻ ngân hàng: %d</string>
     
     <!-- Selection Mode -->
     <string name="selected_items">%d mục đã chọn</string>
@@ -710,10 +762,8 @@
     <string name="clear_all_data_subtitle">Xóa tất cả mật khẩu, xác thực, thẻ ngân hàng và tài liệu</string>
     <string name="clear_all_data_confirm">Xác nhận xóa tất cả dữ liệu?</string>
     <string name="clear_all_data_warning">Thao tác này sẽ xóa vĩnh viễn tất cả mật khẩu, xác thực, thẻ ngân hàng và tài liệu, và không thể khôi phục được.\n\nKhuyến nghị xuất bản sao lưu trước khi xóa!</string>
-    <string name="enter_master_password_to_confirm">Vui lòng nhập mật khẩu chính để xác nhận</string>
     <string name="clearing_data">Đang xóa dữ liệu…</string>
     <string name="password_incorrect">Mật khẩu không đúng</string>
-    <string name="select_data_types_to_clear">Chọn loại dữ liệu cần xóa:</string>
     <string name="data_type_passwords">Mật khẩu</string>
     <string name="data_type_totp">Xác thực</string>
     <string name="data_type_ledger">Sổ kế toán</string>
@@ -1019,12 +1069,26 @@
     <string name="copied">Đã sao chép %s</string>
 
     <!-- Generator Screen -->
-    <string name="generator_symbol">Mật khẩu ký hiệu</string>
-    <string name="generator_word">Mật khẩu từ</string>
-    <string name="generator_passphrase">Cụm mật khẩu</string>
-    <string name="generator_pin">Mã PIN</string>
+    <string name="generator_symbol">Ký hiệu</string>
+    <string name="generator_word">Từ</string>
+    <string name="generator_passphrase">Cụm từ</string>
+    <string name="generator_pin">PIN</string>
     <string name="generated_password">Mật khẩu đã tạo</string>
     <string name="symbol_password_generator">Trình tạo mật khẩu ký hiệu</string>
+    <string name="history">Lịch sử</string>
+    <string name="no_history">Chưa có lịch sử</string>
+    <string name="clear_history">Xóa lịch sử</string>
+    <string name="copied_to_clipboard">Đã sao chép vào clipboard</string>
+    <string name="copy_password_desc">Sao chép mật khẩu</string>
+    <string name="saved_from_generator_history">Đã lưu từ lịch sử trình tạo mật khẩu\nThời gian tạo: %s</string>
+    <string name="word_count">Số từ: %d</string>
+    <string name="delimiter">Ký tự phân cách</string>
+    <string name="delimiter_placeholder">Ví dụ: - hoặc _ hoặc . hoặc khoảng trắng</string>
+    <string name="capitalize_first_letter">Viết hoa chữ cái đầu</string>
+    <string name="add_number_at_end">Thêm số ở cuối</string>
+    <string name="custom_word_optional">Từ tùy chỉnh (Tùy chọn)</string>
+    <string name="custom_word_placeholder">Từ tùy chỉnh để bao gồm trong cụm từ</string>
+    <string name="generator_history_description">Mật khẩu được tạo và sử dụng qua tự động điền sẽ xuất hiện ở đây</string>
     <string name="character_types">Loại ký tự</string>
     <string name="include_uppercase">Bao gồm chữ hoa (A-Z)</string>
     <string name="include_lowercase">Bao gồm chữ thường (a-z)</string>
@@ -1034,6 +1098,39 @@
     <string name="pin_length">Độ dài PIN: %d</string>
     <string name="length_label">Độ dài: %d</string>
     <string name="length_chars">Độ dài: %d ký tự</string>
+    
+    <!-- Generator - Minimum Characters -->
+    <string name="minimum_characters_requirement">Yêu cầu ký tự tối thiểu</string>
+    <string name="min_uppercase">Tối thiểu chữ hoa: %d</string>
+    <string name="min_lowercase">Tối thiểu chữ thường: %d</string>
+    <string name="min_numbers">Tối thiểu số: %d</string>
+    <string name="min_symbols">Tối thiểu ký hiệu: %d</string>
+    
+    <!-- Generator - Actions -->
+    <string name="regenerate">Tạo lại</string>
+    <string name="save_to_vault">Lưu vào kho</string>
+    <string name="already_in_vault">Đã có trong kho</string>
+    <string name="saved_to_vault">Đã lưu vào kho</string>
+    <string name="username_label">Tên người dùng: %s</string>
+    
+    <!-- Generator History Filter -->
+    <string name="filter_history">Lọc lịch sử</string>
+    <string name="history_type_symbol">Mật khẩu ký hiệu</string>
+    <string name="history_type_password">Mật khẩu từ</string>
+    <string name="history_type_passphrase">Cụm mật khẩu</string>
+    <string name="history_type_pin">Mã PIN</string>
+    <string name="history_type_autofill">Mật khẩu tự động điền</string>
+    <string name="select_history_types">Chọn loại lịch sử</string>
+    <string name="history_filter_description">Chọn loại mật khẩu hiển thị trong lịch sử</string>
+    
+    <!-- Clear All Data -->
+    <string name="select_data_types_to_clear">Chọn loại dữ liệu cần xóa:</string>
+    <string name="clear_passwords">Mật khẩu</string>
+    <string name="clear_authenticators">Xác thực</string>
+    <string name="clear_documents">Giấy tờ</string>
+    <string name="clear_bank_cards">Thẻ ngân hàng</string>
+    <string name="clear_generator_history">Lịch sử tạo</string>
+    <string name="enter_master_password_to_confirm">Nhập mật khẩu chính để xác nhận</string>
 
     <!-- Permission Management -->
     <string name="permission_management_title">Quản lý quyền</string>

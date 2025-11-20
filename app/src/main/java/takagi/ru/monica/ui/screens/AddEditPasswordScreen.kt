@@ -373,7 +373,7 @@ fun AddEditPasswordScreen(
                             OutlinedTextField(
                                 value = email,
                                 onValueChange = { email = it },
-                                label = { Text("邮箱") },
+                                label = { Text(stringResource(R.string.field_email)) },
                                 placeholder = { Text("user@example.com") },
                                 leadingIcon = {
                                     Icon(MonicaIcons.General.email, contentDescription = null)
@@ -404,7 +404,7 @@ fun AddEditPasswordScreen(
                                         phone = it
                                     }
                                 },
-                                label = { Text("手机号") },
+                                label = { Text(stringResource(R.string.field_phone)) },
                                 placeholder = { Text("13800000000") },
                                 leadingIcon = {
                                     Icon(MonicaIcons.General.phone, contentDescription = null)
@@ -488,8 +488,8 @@ fun AddEditPasswordScreen(
                             OutlinedTextField(
                                 value = addressLine,
                                 onValueChange = { addressLine = it },
-                                label = { Text("详细地址") },
-                                placeholder = { Text("街道、门牌号等") },
+                                label = { Text(stringResource(R.string.field_address)) },
+                                placeholder = { Text(stringResource(R.string.field_address_placeholder)) },
                                 leadingIcon = {
                                     Icon(Icons.Default.Home, contentDescription = null)
                                 },
@@ -506,8 +506,8 @@ fun AddEditPasswordScreen(
                                 OutlinedTextField(
                                     value = city,
                                     onValueChange = { city = it },
-                                    label = { Text("城市") },
-                                    placeholder = { Text("北京") },
+                                    label = { Text(stringResource(R.string.field_city)) },
+                                    placeholder = { Text("Beijing") },
                                     leadingIcon = {
                                         Icon(Icons.Default.LocationCity, contentDescription = null)
                                     },
@@ -519,8 +519,8 @@ fun AddEditPasswordScreen(
                                 OutlinedTextField(
                                     value = state,
                                     onValueChange = { state = it },
-                                    label = { Text("省份") },
-                                    placeholder = { Text("北京市") },
+                                    label = { Text(stringResource(R.string.field_state)) },
+                                    placeholder = { Text("Beijing") },
                                     leadingIcon = {
                                         Icon(MonicaIcons.General.location, contentDescription = null)
                                     },
@@ -543,7 +543,7 @@ fun AddEditPasswordScreen(
                                             zipCode = it
                                         }
                                     },
-                                    label = { Text("邮编") },
+                                    label = { Text(stringResource(R.string.field_postal_code)) },
                                     placeholder = { Text("100000") },
                                     leadingIcon = {
                                         Icon(Icons.Default.Markunread, contentDescription = null)
@@ -569,8 +569,8 @@ fun AddEditPasswordScreen(
                                 OutlinedTextField(
                                     value = country,
                                     onValueChange = { country = it },
-                                    label = { Text("国家") },
-                                    placeholder = { Text("中国") },
+                                    label = { Text(stringResource(R.string.field_country)) },
+                                    placeholder = { Text("China") },
                                     leadingIcon = {
                                         Icon(Icons.Default.Public, contentDescription = null)
                                     },
@@ -640,7 +640,7 @@ fun AddEditPasswordScreen(
                                         creditCardNumber = it
                                     }
                                 },
-                                label = { Text("信用卡号") },
+                                label = { Text(stringResource(R.string.field_card_number)) },
                                 placeholder = { Text("1234 5678 9012 3456") },
                                 leadingIcon = {
                                     Icon(MonicaIcons.Data.creditCard, contentDescription = null)
@@ -671,7 +671,7 @@ fun AddEditPasswordScreen(
                                             )
                                         } else {
                                             Text(
-                                                "✓ 卡号有效",
+                                                stringResource(R.string.field_card_valid),
                                                 color = Color(0xFF4CAF50)
                                             )
                                         }
@@ -683,7 +683,7 @@ fun AddEditPasswordScreen(
                             OutlinedTextField(
                                 value = creditCardHolder,
                                 onValueChange = { creditCardHolder = it },
-                                label = { Text("持卡人姓名") },
+                                label = { Text(stringResource(R.string.field_cardholder)) },
                                 placeholder = { Text("ZHANG SAN") },
                                 leadingIcon = {
                                     Icon(MonicaIcons.General.person, contentDescription = null)
@@ -709,7 +709,7 @@ fun AddEditPasswordScreen(
                                             else -> "${digits.substring(0, 2)}/${digits.substring(2, 4)}"
                                         }
                                     },
-                                    label = { Text("有效期") },
+                                    label = { Text(stringResource(R.string.field_expiry)) },
                                     placeholder = { Text("MM/YY") },
                                     leadingIcon = {
                                         Icon(MonicaIcons.General.calendar, contentDescription = null)
@@ -740,7 +740,7 @@ fun AddEditPasswordScreen(
                                             creditCardCVV = it
                                         }
                                     },
-                                    label = { Text("CVV") },
+                                    label = { Text(stringResource(R.string.field_cvv)) },
                                     placeholder = { Text("123") },
                                     leadingIcon = {
                                         Icon(MonicaIcons.Security.lock, contentDescription = null)
@@ -805,15 +805,27 @@ fun AddEditPasswordScreen(
                                 clipboard.setPrimaryClip(clip)
                                 Toast.makeText(context, context.getString(R.string.username_copied), Toast.LENGTH_SHORT).show()
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.copy_username))
+                            Row(
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.copy_username),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
                         }
                     }
                     
@@ -826,15 +838,27 @@ fun AddEditPasswordScreen(
                                 clipboard.setPrimaryClip(clip)
                                 Toast.makeText(context, context.getString(R.string.password_copied), Toast.LENGTH_SHORT).show()
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Lock,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.copy_password))
+                            Row(
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.copy_password),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
                         }
                     }
                 }

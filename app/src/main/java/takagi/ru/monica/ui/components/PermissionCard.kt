@@ -87,15 +87,24 @@ fun PermissionCard(
             // 权限信息
             Column(modifier = Modifier.weight(1f)) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = permissionName,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .padding(end = 8.dp),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                     // 重要性标签
-                    PermissionImportanceChip(importance = permission.importance)
+                    PermissionImportanceChip(
+                        importance = permission.importance,
+                        modifier = Modifier.wrapContentWidth()
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -103,7 +112,9 @@ fun PermissionCard(
                 Text(
                     text = stringResource(permission.descriptionResId),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
@@ -120,7 +131,10 @@ fun PermissionCard(
  * Permission importance chip
  */
 @Composable
-fun PermissionImportanceChip(importance: PermissionImportance) {
+fun PermissionImportanceChip(
+    importance: PermissionImportance,
+    modifier: Modifier = Modifier
+) {
     val (color, containerColor) = when (importance) {
         PermissionImportance.REQUIRED ->
             MaterialTheme.colorScheme.onPrimary to MaterialTheme.colorScheme.primary
@@ -131,6 +145,9 @@ fun PermissionImportanceChip(importance: PermissionImportance) {
     }
 
     Surface(
+        modifier = modifier
+            .wrapContentWidth()
+            .heightIn(min = 20.dp),
         shape = MaterialTheme.shapes.small,
         color = containerColor
     ) {
@@ -138,7 +155,10 @@ fun PermissionImportanceChip(importance: PermissionImportance) {
             text = stringResource(importance.labelResId),
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             style = MaterialTheme.typography.labelSmall,
-            color = color
+            color = color,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            softWrap = false
         )
     }
 }

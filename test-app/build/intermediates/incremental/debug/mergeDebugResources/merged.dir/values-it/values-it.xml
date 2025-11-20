@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:ns2="http://schemas.android.com/tools">
+    <plurals name="mtrl_badge_content_description">
+    <item quantity="one">%d nuova notifica</item>
+    <item quantity="other">%d nuove notifiche</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"Portami a casa"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"Torna indietro"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"Altre opzioni"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"Fine"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"Mostra tutto"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"Scelta di un\'app"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"OFF"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"ON"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"ALT +"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"CTRL +"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"CANC"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"INVIO"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"FUNZIONE +"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"META +"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"MAIUSC +"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"SPAZIO"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"SYM +"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"MENU +"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"Cerca…"</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"Cancella query"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"Query di ricerca"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"Cerca"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"Invia query"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"Ricerca vocale"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"Condividi con"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"Condividi tramite <ns1:g id="APPLICATION_NAME">%s</ns1:g>"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"Comprimi"</string>
+    <string name="bottomsheet_action_collapse">Comprimi riquadro inferiore</string>
+    <string name="bottomsheet_action_expand">Espandi riquadro inferiore</string>
+    <string name="bottomsheet_action_expand_halfway">Espandi a metà</string>
+    <string name="bottomsheet_drag_handle_clicked">Doppio tocco su punto di trascinamento</string>
+    <string name="bottomsheet_drag_handle_content_description">Punto di trascinamento</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"Rispondi"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Video"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"Rifiuta"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"Riaggancia"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"Chiamata in arrivo"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"Chiamata in corso"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"Applicazione filtro a chiamata in arrivo"</string>
+    <string name="character_counter_content_description">%1$d caratteri inserirti su %2$d</string>
+    <string name="character_counter_overflowed_content_description">Sono presenti %2$d caratteri in più rispetto al limite di %1$d</string>
+    <string name="clear_text_end_icon_content_description">Cancella testo</string>
+    <string msgid="406453423630273620" name="close_drawer">"Chiudi il menu di navigazione"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"Chiudi il foglio"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"Valore non valido"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"Finestra popup"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"Menu a discesa"</string>
+    <string name="error_icon_content_description">Errore</string>
+    <string name="exposed_dropdown_menu_content_description">Mostra il menu a discesa</string>
+    <string name="icon_content_description">Icona della finestra di dialogo</string>
+    <string msgid="6827826412747255547" name="in_progress">"In corso"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"Elemento parzialmente selezionato"</string>
+    <string name="item_view_role_description">Scheda</string>
+    <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Comprimi il riquadro inferiore"</string>
+    <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"Chiudi il riquadro inferiore"</string>
+    <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"Punto di trascinamento"</string>
+    <string msgid="6670819569745899763" name="m3c_bottom_sheet_expand_description">"Espandi il riquadro inferiore"</string>
+    <string msgid="3010635850035863127" name="m3c_bottom_sheet_pane_title">"Riquadro inferiore"</string>
+    <string msgid="8166741421776570875" name="m3c_date_input_headline">"Data inserita"</string>
+    <string msgid="229313757840775812" name="m3c_date_input_headline_description">"Data inserita: %1$s"</string>
+    <string msgid="6116910750161463197" name="m3c_date_input_invalid_for_pattern">"La data non corrisponde al pattern previsto: %1$s"</string>
+    <string msgid="2521768508935305279" name="m3c_date_input_invalid_not_allowed">"Data non consentita: %1$s"</string>
+    <string msgid="7052898923934555305" name="m3c_date_input_invalid_year_range">"La data non rientra nell\'intervallo di anni previsto (%1$s-%2$s)"</string>
+    <string msgid="2895559812010326913" name="m3c_date_input_label">"Data"</string>
+    <string msgid="1237013946323089826" name="m3c_date_input_no_input_description">"Nessuna selezione"</string>
+    <string msgid="7306227249789210568" name="m3c_date_input_title">"Seleziona data"</string>
+    <string msgid="7605002211875882969" name="m3c_date_picker_headline">"Data selezionata"</string>
+    <string msgid="3664277305226978227" name="m3c_date_picker_headline_description">"Selezione attuale: %1$s"</string>
+    <string msgid="8436650776581492840" name="m3c_date_picker_navigate_to_year_description">"Vai all\'anno %1$s"</string>
+    <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"Nessuna selezione"</string>
+    <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"Scorri per visualizzare gli anni precedenti"</string>
+    <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"Scorri per visualizzare gli anni successivi"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"Passa alla modalità di immissione calendario"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"Scorri per selezionare un anno o tocca per tornare alla selezione di un giorno"</string>
+    <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"Passa alla modalità di immissione testo"</string>
+    <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"Passa al mese successivo"</string>
+    <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"Passa al mese precedente"</string>
+    <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"Passa alla selezione di un anno"</string>
+    <string msgid="7430790972741451689" name="m3c_date_picker_title">"Seleziona data"</string>
+    <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"Oggi"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"Selettore dell\'anno visibile"</string>
+    <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"Intervallo di date inserito non valido"</string>
+    <string msgid="3148384720560189467" name="m3c_date_range_input_title">"Inserisci date"</string>
+    <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"Nell\'intervallo"</string>
+    <string msgid="4947636797751277713" name="m3c_date_range_picker_end_headline">"Data di fine"</string>
+    <string msgid="602077859540990149" name="m3c_date_range_picker_scroll_to_next_month">"Scorri per visualizzare il mese successivo"</string>
+    <string msgid="4592174524846109496" name="m3c_date_range_picker_scroll_to_previous_month">"Scorri per visualizzare il mese precedente"</string>
+    <string msgid="4665981448952749820" name="m3c_date_range_picker_start_headline">"Data di inizio"</string>
+    <string msgid="3134165431120340385" name="m3c_date_range_picker_title">"Seleziona date"</string>
+    <string msgid="7617233117134790350" name="m3c_dialog">"Finestra di dialogo"</string>
+    <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"Compresso"</string>
+    <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"Espanso"</string>
+    <string msgid="6152806324422087846" name="m3c_search_bar_search">"Cerca"</string>
+    <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"Chiudi"</string>
+    <string msgid="7655536806087401899" name="m3c_suggestions_available">"Suggerimenti sotto"</string>
+    <string msgid="2786685010796619560" name="m3c_time_picker_am">"AM"</string>
+    <string msgid="2349193472625211372" name="m3c_time_picker_hour">"Ora"</string>
+    <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d ore"</string>
+    <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"Seleziona l\'ora"</string>
+    <string msgid="3458167507790628988" name="m3c_time_picker_hour_suffix">"%1$d in punto"</string>
+    <string msgid="6973808109666874069" name="m3c_time_picker_hour_text_field">"per l\'ora"</string>
+    <string msgid="4313071914266462005" name="m3c_time_picker_minute">"Minuto"</string>
+    <string msgid="4699133535056739733" name="m3c_time_picker_minute_selection">"Seleziona i minuti"</string>
+    <string msgid="5064177921781937179" name="m3c_time_picker_minute_suffix">"%1$d minuti"</string>
+    <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"per i minuti"</string>
+    <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"Seleziona AM o PM"</string>
+    <string msgid="6616362054113087709" name="m3c_time_picker_pm">"PM"</string>
+    <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"Mostra descrizione comando"</string>
+    <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"Descrizione comando"</string>
+    <string name="material_clock_toggle_content_description">Seleziona AM o PM</string>
+    <string name="material_hour_24h_suffix">%1$s ore</string>
+    <string name="material_hour_selection">Seleziona l\'ora</string>
+    <string name="material_hour_suffix">%1$s in punto</string>
+    <string name="material_minute_selection">Seleziona i minuti</string>
+    <string name="material_minute_suffix">%1$s minuti</string>
+    <string name="material_timepicker_am">am</string>
+    <string name="material_timepicker_clock_mode_description">Passa alla modalità orologio per inserire l\'ora.</string>
+    <string name="material_timepicker_hour">Ora</string>
+    <string name="material_timepicker_minute">Minuto</string>
+    <string name="material_timepicker_pm">pm</string>
+    <string name="material_timepicker_select_time">Seleziona l\'ora</string>
+    <string name="material_timepicker_text_input_mode_description">Passa alla modalità di immissione testo per inserire l\'ora.</string>
+    <string name="mtrl_badge_numberless_content_description">Nuova notifica</string>
+    <string name="mtrl_chip_close_icon_content_description">Rimuovi %1$s</string>
+    <string name="mtrl_exceed_max_badge_number_content_description" ns2:ignore="PluralsCandidate">Più di %1$d nuove notifiche</string>
+    <string name="mtrl_picker_a11y_next_month">Passa al mese successivo</string>
+    <string name="mtrl_picker_a11y_prev_month">Passa al mese precedente</string>
+    <string name="mtrl_picker_announce_current_range_selection">Selezione della data di inizio: %1$s. Selezione della data di fine: %2$s</string>
+    <string name="mtrl_picker_announce_current_selection">Selezione attuale: %1$s</string>
+    <string name="mtrl_picker_announce_current_selection_none">Nessuna selezione</string>
+    <string name="mtrl_picker_cancel">Annulla</string>
+    <string name="mtrl_picker_confirm">OK</string>
+    <string name="mtrl_picker_date_header_selected">%1$s</string>
+    <string name="mtrl_picker_date_header_title">Seleziona data</string>
+    <string name="mtrl_picker_date_header_unselected">Data selezionata</string>
+    <string name="mtrl_picker_day_of_week_column_header">Colonna dei giorni: %1$s</string>
+    <string name="mtrl_picker_end_date_description">Data di fine: %1$s</string>
+    <string name="mtrl_picker_invalid_format">Formato non valido.</string>
+    <string name="mtrl_picker_invalid_format_example">Esempio: %1$s</string>
+    <string name="mtrl_picker_invalid_format_use">Usa: %1$s</string>
+    <string name="mtrl_picker_invalid_range">Intervallo non valido.</string>
+    <string name="mtrl_picker_navigate_to_current_year_description">Vai all\'anno corrente %1$d</string>
+    <string name="mtrl_picker_navigate_to_year_description">Vai all\'anno %1$d</string>
+    <string name="mtrl_picker_out_of_range">Non compresa nell\'intervallo: %1$s</string>
+    <string name="mtrl_picker_range_header_only_end_selected">Data di inizio - %1$s</string>
+    <string name="mtrl_picker_range_header_only_start_selected">%1$s - Data di fine</string>
+    <string name="mtrl_picker_range_header_selected">%1$s - %2$s</string>
+    <string name="mtrl_picker_range_header_title">Seleziona intervallo</string>
+    <string name="mtrl_picker_range_header_unselected">Data di inizio - Data di fine</string>
+    <string name="mtrl_picker_save">Salva</string>
+    <string name="mtrl_picker_start_date_description">Data di inizio: %1$s</string>
+    <string name="mtrl_picker_text_input_date_hint">Data</string>
+    <string name="mtrl_picker_text_input_date_range_end_hint">Data di fine</string>
+    <string name="mtrl_picker_text_input_date_range_start_hint">Data di inizio</string>
+    <string name="mtrl_picker_text_input_day_abbr">g</string>
+    <string name="mtrl_picker_text_input_month_abbr">m</string>
+    <string name="mtrl_picker_text_input_year_abbr">a</string>
+    <string name="mtrl_picker_today_description">Oggi %1$s</string>
+    <string name="mtrl_picker_toggle_to_calendar_input_mode">Passa alla modalità di immissione Calendario</string>
+    <string name="mtrl_picker_toggle_to_day_selection">Tocca per passare alla visualizzazione Calendario</string>
+    <string name="mtrl_picker_toggle_to_text_input_mode">Passa alla modalità di immissione Testo</string>
+    <string name="mtrl_picker_toggle_to_year_selection">Tocca per passare alla visualizzazione Anno</string>
+    <string name="mtrl_timepicker_cancel">Annulla</string>
+    <string name="mtrl_timepicker_confirm">OK</string>
+    <string msgid="542007171693138492" name="navigation_menu">"Menu di navigazione"</string>
+    <string msgid="6610465462668679431" name="not_selected">"Opzione non selezionata"</string>
+    <string msgid="875452955155264703" name="off">"Off"</string>
+    <string msgid="8655164131929253426" name="on">"On"</string>
+    <string name="password_toggle_content_description">Mostra password</string>
+    <string msgid="5941395253238309765" name="range_end">"Fine intervallo"</string>
+    <string msgid="7097486360902471446" name="range_start">"Inizio intervallo"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"Cerca"</string>
+    <string msgid="6043586758067023" name="selected">"Elemento selezionato"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"Opzione"</string>
+    <string msgid="1672349317127674378" name="tab">"Scheda"</string>
+    <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> percento."</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"Descrizione comando"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"Mostra descrizione comando"</string>
+</resources>

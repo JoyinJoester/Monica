@@ -61,6 +61,13 @@ fun BankCardCard(
     }
     val hasBillingAddress = remember(billingAddress) { !billingAddress.isEmpty() }
     
+    // 获取对应容器的文字颜色
+    val contentColor = when (cardData.cardType) {
+        CardType.CREDIT -> MaterialTheme.colorScheme.onPrimaryContainer
+        CardType.DEBIT -> MaterialTheme.colorScheme.onSecondaryContainer
+        CardType.PREPAID -> MaterialTheme.colorScheme.onTertiaryContainer
+    }
+    
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -89,13 +96,14 @@ fun BankCardCard(
                     Text(
                         text = item.title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = contentColor
                     )
                     if (cardData.bankName.isNotBlank()) {
                         Text(
                             text = cardData.bankName,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            color = contentColor.copy(alpha = 0.7f)
                         )
                     }
                 }
@@ -104,7 +112,7 @@ fun BankCardCard(
                     if (item.isFavorite) {
                         Icon(
                             Icons.Default.Favorite,
-                            contentDescription = "收藏",
+                            contentDescription = stringResource(R.string.favorite),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -119,7 +127,7 @@ fun BankCardCard(
                             IconButton(onClick = { expanded = true }) {
                                 Icon(
                                     Icons.Default.MoreVert,
-                                    contentDescription = "更多"
+                                    contentDescription = stringResource(R.string.more_options)
                                 )
                             }
                             
@@ -148,7 +156,7 @@ fun BankCardCard(
                                 // 上移选项
                                 if (onMoveUp != null) {
                                     DropdownMenuItem(
-                                        text = { Text("上移") },
+                                        text = { Text(stringResource(R.string.move_up)) },
                                         onClick = {
                                             expanded = false
                                             onMoveUp()
@@ -165,7 +173,7 @@ fun BankCardCard(
                                 // 下移选项
                                 if (onMoveDown != null) {
                                     DropdownMenuItem(
-                                        text = { Text("下移") },
+                                        text = { Text(stringResource(R.string.move_down)) },
                                         onClick = {
                                             expanded = false
                                             onMoveDown()
@@ -180,7 +188,7 @@ fun BankCardCard(
                                 }
                                 
                                 DropdownMenuItem(
-                                    text = { Text("删除") },
+                                    text = { Text(stringResource(R.string.delete)) },
                                     onClick = {
                                         expanded = false
                                         onDelete()
@@ -212,7 +220,7 @@ fun BankCardCard(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 2.sp,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = contentColor
                 )
                 
                 // 卡类型图标
@@ -223,7 +231,8 @@ fun BankCardCard(
                         CardType.PREPAID -> Icons.Default.CardGiftcard
                     },
                     contentDescription = cardData.cardType.name,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp),
+                    tint = contentColor
                 )
             }
             
@@ -237,16 +246,16 @@ fun BankCardCard(
                 if (cardData.cardholderName.isNotBlank()) {
                     Column {
                         Text(
-                            text = "持卡人",
+                            text = stringResource(R.string.cardholder_label),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = contentColor.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = cardData.cardholderName,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = contentColor
                         )
                     }
                 }
@@ -254,16 +263,16 @@ fun BankCardCard(
                 if (cardData.expiryMonth.isNotBlank() && cardData.expiryYear.isNotBlank()) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "有效期",
+                            text = stringResource(R.string.expiry_label),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = contentColor.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = "${cardData.expiryMonth}/${cardData.expiryYear}",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = contentColor
                         )
                     }
                 }
@@ -275,13 +284,13 @@ fun BankCardCard(
                     Text(
                         text = stringResource(R.string.billing_address),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        color = contentColor.copy(alpha = 0.7f),
                         fontWeight = FontWeight.Medium
                     )
                     Text(
                         text = billingAddress.formatForDisplay(),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = contentColor
                     )
                 }
             }

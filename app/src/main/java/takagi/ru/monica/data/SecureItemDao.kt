@@ -74,4 +74,16 @@ interface SecureItemDao {
      */
     @Query("SELECT * FROM secure_items WHERE itemType = :itemType AND title = :title LIMIT 1")
     suspend fun findDuplicateItem(itemType: ItemType, title: String): SecureItem?
+    
+    /**
+     * 删除指定类型的所有项目
+     */
+    @Query("DELETE FROM secure_items WHERE itemType = :type")
+    suspend fun deleteAllItemsByType(type: ItemType)
+    
+    /**
+     * 删除所有安全项目
+     */
+    @Query("DELETE FROM secure_items")
+    suspend fun deleteAllItems()
 }

@@ -84,6 +84,21 @@
     <string name="username_copied">Username copied to clipboard</string>
     <string name="password_copied">Password copied to clipboard</string>
     
+    <!-- Form Fields -->
+    <string name="field_email">Email</string>
+    <string name="field_phone">Phone</string>
+    <string name="field_address">Address</string>
+    <string name="field_address_placeholder">Street, house number, etc.</string>
+    <string name="field_city">City</string>
+    <string name="field_state">State</string>
+    <string name="field_postal_code">Postal</string>
+    <string name="field_country">Country</string>
+    <string name="field_card_number">Card No.</string>
+    <string name="field_card_valid">✓ Valid</string>
+    <string name="field_cardholder">Cardholder</string>
+    <string name="field_expiry">Expiry</string>
+    <string name="field_cvv">CVV</string>
+    
     <!-- Password Group Actions -->
     <string name="collapse">Collapse</string>
     <string name="collapse_group">Collapse %d passwords</string>
@@ -237,6 +252,30 @@
     <string name="document_encryption_notice">All document information and photos are encrypted and stored locally on your device</string>
     <string name="document_photo_front">%s Photo (Front)</string>
     <string name="document_photo_back">%s Photo (Back, Optional)</string>
+    
+    <!-- Document Card Labels -->
+    <string name="document_number_label">Document Number</string>
+    <string name="holder_label">Holder</string>
+    <string name="valid_until">Valid Until</string>
+    
+    <!-- Bank Card Labels -->
+    <string name="cardholder_label">Cardholder</string>
+    <string name="expiry_label">Expiry</string>
+    
+    <!-- Menu Actions -->
+    <string name="move_up">Move Up</string>
+    <string name="move_down">Move Down</string>
+    
+    <!-- Content Descriptions -->
+    <string name="favorite">Favorite</string>
+    <string name="more_options">More Options</string>
+    
+    <!-- Document Type Names -->
+    <string name="document_type_id_card">ID Card</string>
+    <string name="document_type_passport">Passport</string>
+    <string name="document_type_driver_license">Driver\'s License</string>
+    <string name="document_type_social_security">Social Security Card</string>
+    <string name="document_type_other">Other Document</string>
     
     <!-- TOTP List -->
     <string name="search_authenticator">Search authenticator</string>
@@ -593,7 +632,6 @@
     <string name="support_author_thanks_message">Thank you for using Monica Password Manager. Your support means a lot!</string>
     
     <!-- Common -->
-    <string name="favorite">Favorite</string>
     <string name="search_passwords_hint">Search passwords</string>
     <string name="return_text">Return</string>
     <string name="confirm">Confirm</string>
@@ -692,6 +730,20 @@
     <string name="webdav_backup_in_progress">Backup in progress…</string>
     <string name="webdav_backup_success">Backup completed successfully</string>
     <string name="webdav_backup_failed">Backup failed: %s</string>
+    <string name="webdav_clear_config">Clear Configuration</string>
+    <string name="webdav_config_cleared">WebDAV configuration cleared</string>
+    <string name="webdav_network_unreachable">Network unreachable, please check network connection</string>
+    <string name="webdav_connection_timeout">Connection timeout, please check server address and network connection</string>
+    <string name="webdav_auth_failed">Authentication failed, please check username and password</string>
+    <string name="webdav_path_not_found">Server path not found, please check server address</string>
+    <string name="webdav_backup_trigger_failed">Failed to trigger backup: %s</string>
+    <string name="webdav_create_backup_failed">Failed to create backup</string>
+    <string name="webdav_create_new_backup">Create New Backup</string>
+    <string name="webdav_backup_success_detail">Backup successful: %s</string>
+    <string name="webdav_backup_passwords">Passwords: %d</string>
+    <string name="webdav_backup_authenticators">Authenticators: %d</string>
+    <string name="webdav_backup_documents">Documents: %d</string>
+    <string name="webdav_backup_bank_cards">Bank Cards: %d</string>
     
     <!-- Selection Mode -->
     <string name="selected_items">%d items selected</string>
@@ -749,15 +801,14 @@
     <string name="clear_all_data_subtitle">Delete all passwords, authenticators, bank cards and documents</string>
     <string name="clear_all_data_confirm">Confirm Clear All Data?</string>
     <string name="clear_all_data_warning">This will permanently delete all passwords, authenticators, bank cards and documents, and cannot be recovered.\n\nIt is recommended to export a backup before clearing!</string>
-    <string name="enter_master_password_to_confirm">Please enter your master password to confirm</string>
     <string name="clearing_data">Clearing data…</string>
     <string name="password_incorrect">Password incorrect</string>
-    <string name="select_data_types_to_clear">Select data types to clear:</string>
     <string name="data_type_passwords">Passwords</string>
     <string name="data_type_totp">Authenticators</string>
     <string name="data_type_ledger">Ledger</string>
     <string name="data_type_documents">Documents</string>
     <string name="data_type_bank_cards">Bank Cards</string>
+    <string name="data_type_generator_history">Password generation history</string>
     
     <!-- Security Analysis -->
     <string name="security_analysis">Security Analysis</string>
@@ -1103,12 +1154,26 @@
     <string name="copied">Copied %s</string>
 
     <!-- Generator Screen -->
-    <string name="generator_symbol">Symbol Password</string>
-    <string name="generator_word">Word Password</string>
-    <string name="generator_passphrase">Passphrase</string>
-    <string name="generator_pin">PIN Code</string>
+    <string name="generator_symbol">Symbol</string>
+    <string name="generator_word">Word</string>
+    <string name="generator_passphrase">Phrase</string>
+    <string name="generator_pin">PIN</string>
     <string name="generated_password">Generated Password</string>
     <string name="symbol_password_generator">Symbol Password Generator</string>
+    <string name="history">History</string>
+    <string name="no_history">No history yet</string>
+    <string name="clear_history">Clear History</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="copy_password_desc">Copy password</string>
+    <string name="saved_from_generator_history">Saved from password generator history\nGenerated at: %s</string>
+    <string name="word_count">Word Count: %d</string>
+    <string name="delimiter">Delimiter</string>
+    <string name="delimiter_placeholder">e.g.: - or _ or . or space</string>
+    <string name="capitalize_first_letter">Capitalize First Letter</string>
+    <string name="add_number_at_end">Add Number at End</string>
+    <string name="custom_word_optional">Custom Word (Optional)</string>
+    <string name="custom_word_placeholder">Custom word to include in phrase</string>
+    <string name="generator_history_description">Passwords generated and used through autofill will appear here</string>
     <string name="character_types">Character Types</string>
     <string name="include_uppercase">Include Uppercase (A-Z)</string>
     <string name="include_lowercase">Include Lowercase (a-z)</string>
@@ -1118,6 +1183,39 @@
     <string name="pin_length">PIN Length: %d</string>
     <string name="length_label">Length: %d</string>
     <string name="length_chars">Length: %d characters</string>
+    
+    <!-- Generator - Minimum Characters -->
+    <string name="minimum_characters_requirement">Minimum Character Requirements</string>
+    <string name="min_uppercase">Minimum Uppercase: %d</string>
+    <string name="min_lowercase">Minimum Lowercase: %d</string>
+    <string name="min_numbers">Minimum Numbers: %d</string>
+    <string name="min_symbols">Minimum Symbols: %d</string>
+    
+    <!-- Generator - Actions -->
+    <string name="regenerate">Regenerate</string>
+    <string name="save_to_vault">Save to Vault</string>
+    <string name="already_in_vault">Already in Vault</string>
+    <string name="saved_to_vault">Saved to Vault</string>
+    <string name="username_label">Username: %s</string>
+    
+    <!-- Generator History Filter -->
+    <string name="filter_history">Filter History</string>
+    <string name="history_type_symbol">Symbol Password</string>
+    <string name="history_type_password">Word Password</string>
+    <string name="history_type_passphrase">Passphrase</string>
+    <string name="history_type_pin">PIN Code</string>
+    <string name="history_type_autofill">Autofill Password</string>
+    <string name="select_history_types">Select History Types</string>
+    <string name="history_filter_description">Choose which types of passwords to display in history</string>
+    
+    <!-- Clear All Data -->
+    <string name="select_data_types_to_clear">Select data types to clear:</string>
+    <string name="clear_passwords">Passwords</string>
+    <string name="clear_authenticators">Authenticators</string>
+    <string name="clear_documents">Documents</string>
+    <string name="clear_bank_cards">Bank Cards</string>
+    <string name="clear_generator_history">Generator History</string>
+    <string name="enter_master_password_to_confirm">Enter master password to confirm</string>
 
     <!-- Permission Management -->
     <string name="permission_management_title">Permission Management</string>

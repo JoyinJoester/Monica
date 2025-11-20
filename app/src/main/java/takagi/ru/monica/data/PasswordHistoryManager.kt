@@ -48,7 +48,8 @@ class PasswordHistoryManager(private val context: Context) {
         password: String, 
         packageName: String = "", 
         domain: String = "",
-        username: String = ""
+        username: String = "",
+        type: String = "AUTOFILL"
     ) {
         context.passwordHistoryDataStore.edit { preferences ->
             val currentHistoryJson = preferences[HISTORY_KEY] ?: "[]"
@@ -64,7 +65,8 @@ class PasswordHistoryManager(private val context: Context) {
                 timestamp = System.currentTimeMillis(),
                 packageName = packageName,
                 domain = domain,
-                username = username
+                username = username,
+                type = type
             )
             
             // 添加到列表头部，并限制数量

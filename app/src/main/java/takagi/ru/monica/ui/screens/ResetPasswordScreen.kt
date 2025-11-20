@@ -97,7 +97,13 @@ fun ResetPasswordScreen(
                         currentPassword = it
                         errorMessage = ""
                     },
-                    label = { Text(context.getString(R.string.current_password)) },
+                    label = { 
+                        Text(
+                            text = context.getString(R.string.current_password),
+                            maxLines = 2,
+                            style = MaterialTheme.typography.bodySmall
+                        ) 
+                    },
                     placeholder = { Text(context.getString(R.string.enter_current_password)) },
                     leadingIcon = {
                         Icon(Icons.Default.Lock, contentDescription = null)
@@ -136,7 +142,13 @@ fun ResetPasswordScreen(
                         errorMessage = context.getString(R.string.error_password_must_be_numeric)
                     }
                 },
-                label = { Text(context.getString(R.string.new_password)) },
+                label = { 
+                    Text(
+                        text = context.getString(R.string.new_password),
+                        maxLines = 2,
+                        style = MaterialTheme.typography.bodySmall
+                    ) 
+                },
                 placeholder = { Text(context.getString(R.string.enter_new_password)) },
                 leadingIcon = {
                     Icon(Icons.Default.VpnKey, contentDescription = null)
@@ -182,7 +194,13 @@ fun ResetPasswordScreen(
                         errorMessage = context.getString(R.string.error_password_must_be_numeric)
                     }
                 },
-                label = { Text(context.getString(R.string.confirm_new_password)) },
+                label = { 
+                    Text(
+                        text = context.getString(R.string.confirm_new_password),
+                        maxLines = 2,
+                        style = MaterialTheme.typography.bodySmall
+                    ) 
+                },
                 placeholder = { Text(context.getString(R.string.enter_confirm_password)) },
                 leadingIcon = {
                     Icon(Icons.Default.VpnKey, contentDescription = null)

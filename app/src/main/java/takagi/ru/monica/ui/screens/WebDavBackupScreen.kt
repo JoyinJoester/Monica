@@ -251,19 +251,19 @@ fun WebDavBackupScreen(
                                                 // 提供更友好的错误信息
                                                 val userFriendlyMessage = when {
                                                     e.message?.contains("网络不可达") == true -> 
-                                                        "网络不可达，请检查网络连接"
+                                                        context.getString(R.string.webdav_network_unreachable)
                                                     e.message?.contains("连接超时") == true -> 
-                                                        "连接超时，请检查服务器地址和网络连接"
+                                                        context.getString(R.string.webdav_connection_timeout)
                                                     e.message?.contains("认证失败") == true -> 
-                                                        "认证失败，请检查用户名和密码"
+                                                        context.getString(R.string.webdav_auth_failed)
                                                     e.message?.contains("服务器路径未找到") == true -> 
-                                                        "服务器路径未找到，请检查服务器地址"
-                                                    else -> e.message ?: "连接失败"
+                                                        context.getString(R.string.webdav_path_not_found)
+                                                    else -> e.message ?: context.getString(R.string.webdav_connection_failed, "")
                                                 }
                                                 errorMessage = userFriendlyMessage
                                                 Toast.makeText(
                                                     context,
-                                                    "连接失败: $userFriendlyMessage",
+                                                    context.getString(R.string.webdav_connection_failed, userFriendlyMessage),
                                                     Toast.LENGTH_LONG
                                                 ).show()
                                             }
@@ -307,7 +307,7 @@ fun WebDavBackupScreen(
                                     backupList = emptyList()
                                     Toast.makeText(
                                         context,
-                                        "已清除WebDAV配置",
+                                        context.getString(R.string.webdav_config_cleared),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 },
@@ -318,7 +318,7 @@ fun WebDavBackupScreen(
                             ) {
                                 Icon(Icons.Default.Delete, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("清除配置")
+                                Text(stringResource(R.string.webdav_clear_config))
                             }
                         }
                     }
@@ -440,7 +440,7 @@ fun WebDavBackupScreen(
                                     } catch (e: Exception) {
                                         Toast.makeText(
                                             context,
-                                            "触发备份失败: ${e.message}",
+                                            context.getString(R.string.webdav_backup_trigger_failed, e.message ?: ""),
                                             Toast.LENGTH_LONG
                                         ).show()
                                     }
@@ -515,11 +515,11 @@ fun WebDavBackupScreen(
                                         allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD } else 0
                                     
                                     val message = buildString {
-                                        append("备份成功: ${result.getOrNull()}\n")
-                                        if (backedUpPasswords > 0) append("密码: $backedUpPasswords 个\n")
-                                        if (backedUpTotp > 0) append("验证器: $backedUpTotp 个\n")
-                                        if (backedUpDocs > 0) append("证件: $backedUpDocs 个\n")
-                                        if (backedUpCards > 0) append("银行卡: $backedUpCards 个")
+                                        append(context.getString(R.string.webdav_backup_success_detail, result.getOrNull() ?: "") + "\n")
+                                        if (backedUpPasswords > 0) append(context.getString(R.string.webdav_backup_passwords, backedUpPasswords) + "\n")
+                                        if (backedUpTotp > 0) append(context.getString(R.string.webdav_backup_authenticators, backedUpTotp) + "\n")
+                                        if (backedUpDocs > 0) append(context.getString(R.string.webdav_backup_documents, backedUpDocs) + "\n")
+                                        if (backedUpCards > 0) append(context.getString(R.string.webdav_backup_bank_cards, backedUpCards))
                                     }
                                     
                                     Toast.makeText(
@@ -536,20 +536,20 @@ fun WebDavBackupScreen(
                                     }
                                 } else {
                                     isLoading = false
-                                    val error = result.exceptionOrNull()?.message ?: "未知错误"
+                                    val error = result.exceptionOrNull()?.message ?: context.getString(R.string.webdav_create_backup_failed)
                                     errorMessage = error
                                     Toast.makeText(
                                         context,
-                                        "备份失败: $error",
+                                        context.getString(R.string.webdav_backup_failed, error),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
                             } catch (e: Exception) {
                                 isLoading = false
-                                errorMessage = e.message ?: "创建备份失败"
+                                errorMessage = e.message ?: context.getString(R.string.webdav_create_backup_failed)
                                 Toast.makeText(
                                     context,
-                                    "创建备份失败: ${e.message}",
+                                    context.getString(R.string.webdav_backup_failed, e.message ?: ""),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -560,7 +560,7 @@ fun WebDavBackupScreen(
                 ) {
                     Icon(Icons.Default.CloudUpload, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("创建新备份")
+                    Text(stringResource(R.string.webdav_create_new_backup))
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -924,14 +924,14 @@ fun WebDavConfigSummaryCard(
                     IconButton(onClick = onEdit) {
                         Icon(
                             Icons.Default.Edit,
-                            contentDescription = "编辑配置",
+                            contentDescription = stringResource(R.string.webdav_reconfigure),
                             tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                     IconButton(onClick = onClear) {
                         Icon(
                             Icons.Default.Delete,
-                            contentDescription = "清除配置",
+                            contentDescription = stringResource(R.string.webdav_clear_config),
                             tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }

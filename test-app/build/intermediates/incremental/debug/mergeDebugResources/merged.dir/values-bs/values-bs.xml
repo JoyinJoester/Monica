@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:ns2="http://schemas.android.com/tools">
+    <plurals name="mtrl_badge_content_description">
+    <item quantity="one">%d novo obavještenje</item>
+    <item quantity="few">%d nova obavještenja</item>
+    <item quantity="other">%d novih obavještenja</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"Vratite se na početnu stranicu"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"Idi gore"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"Više opcija"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"Gotovo"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"Prikaži sve"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"Odaberite aplikaciju"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"ISKLJUČENO"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"UKLJUČENO"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"delete"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"enter"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Function+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"razmak"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menu+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"Pretražite..."</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"Obriši upit"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"Pretraži upit"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"Pretraži"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"Pošalji upit"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"Glasovno pretraživanje"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"Dijeli sa"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"Dijeli putem aplikacije <ns1:g id="APPLICATION_NAME">%s</ns1:g>"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"Suzi"</string>
+    <string name="bottomsheet_action_collapse">Sužavanje donje tabele</string>
+    <string name="bottomsheet_action_expand">Proširivanje donje tabele</string>
+    <string name="bottomsheet_action_expand_halfway">Proširivanje dopola</string>
+    <string name="bottomsheet_drag_handle_clicked">Ručica za prevlačenje je dvaput dodirnuta</string>
+    <string name="bottomsheet_drag_handle_content_description">Ručica za prevlačenje</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"Odgovori"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Video"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"Odbaci"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"Prekini vezu"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"Dolazni poziv"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"Poziv u toku"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"Filtriranje dolaznog poziva"</string>
+    <string name="character_counter_content_description">Uneseno znakova: %1$d od %2$d</string>
+    <string name="character_counter_overflowed_content_description">Ograničenje broja znakova premašuje %1$d od %2$d</string>
+    <string name="clear_text_end_icon_content_description">Obriši tekst</string>
+    <string msgid="406453423630273620" name="close_drawer">"Zatvaranje navigacionog menija"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"Zatvaranje tabele"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"Pogrešan unos"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"Skočni prozor"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"Padajući meni"</string>
+    <string name="error_icon_content_description">Greška</string>
+    <string name="exposed_dropdown_menu_content_description">Prikaži padajući meni</string>
+    <string name="icon_content_description">ikona dijaloškog okvira</string>
+    <string msgid="6827826412747255547" name="in_progress">"U toku"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"Djelimično označeno"</string>
+    <string name="item_view_role_description">Kartica</string>
+    <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Sužavanje donje tabele"</string>
+    <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"Odbacivanje donje tabele"</string>
+    <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"Ručica za prevlačenje"</string>
+    <string msgid="6670819569745899763" name="m3c_bottom_sheet_expand_description">"Proširivanje donje tabele"</string>
+    <string msgid="3010635850035863127" name="m3c_bottom_sheet_pane_title">"Donja tabela"</string>
+    <string msgid="8166741421776570875" name="m3c_date_input_headline">"Unesen je datum"</string>
+    <string msgid="229313757840775812" name="m3c_date_input_headline_description">"Unesen je datum: %1$s"</string>
+    <string msgid="6116910750161463197" name="m3c_date_input_invalid_for_pattern">"Datumi se ne podudaraju s očekivanim obrascem: %1$s"</string>
+    <string msgid="2521768508935305279" name="m3c_date_input_invalid_not_allowed">"Datum nije dozvoljen: %1$s"</string>
+    <string msgid="7052898923934555305" name="m3c_date_input_invalid_year_range">"Datum je izvan očekivanog raspona %1$s – %2$s"</string>
+    <string msgid="2895559812010326913" name="m3c_date_input_label">"Datum"</string>
+    <string msgid="1237013946323089826" name="m3c_date_input_no_input_description">"Ništa"</string>
+    <string msgid="7306227249789210568" name="m3c_date_input_title">"Odabir datuma"</string>
+    <string msgid="7605002211875882969" name="m3c_date_picker_headline">"Odabrani datum"</string>
+    <string msgid="3664277305226978227" name="m3c_date_picker_headline_description">"Trenutni odabir: %1$s"</string>
+    <string msgid="8436650776581492840" name="m3c_date_picker_navigate_to_year_description">"Odlazak na %1$s. godinu"</string>
+    <string msgid="5811000998184572395" name="m3c_date_picker_no_selection_description">"Ništa"</string>
+    <string msgid="7813882352367152251" name="m3c_date_picker_scroll_to_earlier_years">"Kliznite da se prikažu ranije godine"</string>
+    <string msgid="5727367015496556177" name="m3c_date_picker_scroll_to_later_years">"Kliznite da se prikažu kasnije godine"</string>
+    <string msgid="1804346892470238807" name="m3c_date_picker_switch_to_calendar_mode">"Prebacivanje na način rada unosa kalendara"</string>
+    <string msgid="395627960681594326" name="m3c_date_picker_switch_to_day_selection">"Prevucite da odaberete godinu ili dodirnite da se vratite na odabir dana"</string>
+    <string msgid="2219746470065162704" name="m3c_date_picker_switch_to_input_mode">"Prebacivanje na način rada unosa teksta"</string>
+    <string msgid="7142101321095356500" name="m3c_date_picker_switch_to_next_month">"Promjena na sljedeći mjesec"</string>
+    <string msgid="228438865139394590" name="m3c_date_picker_switch_to_previous_month">"Promjena na prethodni mjesec"</string>
+    <string msgid="791651718641787594" name="m3c_date_picker_switch_to_year_selection">"Prebacivanje na odabir godine"</string>
+    <string msgid="7430790972741451689" name="m3c_date_picker_title">"Odabir datuma"</string>
+    <string msgid="3199387177749801575" name="m3c_date_picker_today_description">"Danas"</string>
+    <string msgid="2068382232816991922" name="m3c_date_picker_year_picker_pane_title">"Birač godine je vidljiv"</string>
+    <string msgid="3190049423327661366" name="m3c_date_range_input_invalid_range_input">"Nevažeći unos raspona datuma"</string>
+    <string msgid="3148384720560189467" name="m3c_date_range_input_title">"Unos datuma"</string>
+    <string msgid="2138321128465719402" name="m3c_date_range_picker_day_in_range">"U rasponu"</string>
+    <string msgid="4947636797751277713" name="m3c_date_range_picker_end_headline">"Datum završetka"</string>
+    <string msgid="602077859540990149" name="m3c_date_range_picker_scroll_to_next_month">"Kliznite da se prikaže sljedeći mjesec"</string>
+    <string msgid="4592174524846109496" name="m3c_date_range_picker_scroll_to_previous_month">"Kliznite da se prikaže prethodni mjesec"</string>
+    <string msgid="4665981448952749820" name="m3c_date_range_picker_start_headline">"Datum početka"</string>
+    <string msgid="3134165431120340385" name="m3c_date_range_picker_title">"Odabir datuma"</string>
+    <string msgid="7617233117134790350" name="m3c_dialog">"Dijaloški okvir"</string>
+    <string msgid="3177828188723359358" name="m3c_dropdown_menu_collapsed">"Suženo"</string>
+    <string msgid="2360841780724299882" name="m3c_dropdown_menu_expanded">"Prošireno"</string>
+    <string msgid="6152806324422087846" name="m3c_search_bar_search">"Pretraživanje"</string>
+    <string msgid="6152755701819882931" name="m3c_snackbar_dismiss">"Odbacivanje"</string>
+    <string msgid="7655536806087401899" name="m3c_suggestions_available">"Prijedlozi su u nastavku"</string>
+    <string msgid="2786685010796619560" name="m3c_time_picker_am">"prijepodne"</string>
+    <string msgid="2349193472625211372" name="m3c_time_picker_hour">"Sat"</string>
+    <string msgid="9179527532316922345" name="m3c_time_picker_hour_24h_suffix">"%1$d h"</string>
+    <string msgid="8876759303332837035" name="m3c_time_picker_hour_selection">"Odaberite sate"</string>
+    <string msgid="3458167507790628988" name="m3c_time_picker_hour_suffix">"%1$d h"</string>
+    <string msgid="6973808109666874069" name="m3c_time_picker_hour_text_field">"za sat"</string>
+    <string msgid="4313071914266462005" name="m3c_time_picker_minute">"Minuta"</string>
+    <string msgid="4699133535056739733" name="m3c_time_picker_minute_selection">"Odaberite minute"</string>
+    <string msgid="5064177921781937179" name="m3c_time_picker_minute_suffix">"%1$d min"</string>
+    <string msgid="7661234488295443182" name="m3c_time_picker_minute_text_field">"za minute"</string>
+    <string msgid="5865171949528594571" name="m3c_time_picker_period_toggle_description">"Odaberite prijepodne ili poslijepodne"</string>
+    <string msgid="6616362054113087709" name="m3c_time_picker_pm">"poslijepodne"</string>
+    <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"Prikaz skočnog opisa"</string>
+    <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"Skočni opis"</string>
+    <string name="material_clock_toggle_content_description">Odaberite prijepodne ili poslijepodne</string>
+    <string name="material_hour_24h_suffix">%1$s h</string>
+    <string name="material_hour_selection">Odaberite sat</string>
+    <string name="material_hour_suffix">%1$s h</string>
+    <string name="material_minute_selection">Odaberite minute</string>
+    <string name="material_minute_suffix">%1$s min</string>
+    <string name="material_timepicker_am">AM</string>
+    <string name="material_timepicker_clock_mode_description">Prebacite u način rada kao sat za unos vremena.</string>
+    <string name="material_timepicker_hour">Sat</string>
+    <string name="material_timepicker_minute">Minuta</string>
+    <string name="material_timepicker_pm">PM</string>
+    <string name="material_timepicker_select_time">Odabir vremena</string>
+    <string name="material_timepicker_text_input_mode_description">Prebacite u način unosa teksta za unos vremena.</string>
+    <string name="mtrl_badge_numberless_content_description">Novo obavještenje</string>
+    <string name="mtrl_chip_close_icon_content_description">Uklonite %1$s</string>
+    <string name="mtrl_exceed_max_badge_number_content_description" ns2:ignore="PluralsCandidate">Broj novih obavještenja: više od %1$d</string>
+    <string name="mtrl_picker_a11y_next_month">Promijeni na sljedeći mjesec</string>
+    <string name="mtrl_picker_a11y_prev_month">Promijeni na prethodni mjesec</string>
+    <string name="mtrl_picker_announce_current_range_selection">Odabir datuma početka: %1$s – Odabir datuma završetka: %2$s</string>
+    <string name="mtrl_picker_announce_current_selection">Trenutni izbor: %1$s</string>
+    <string name="mtrl_picker_announce_current_selection_none">ništa</string>
+    <string name="mtrl_picker_cancel">Otkaži</string>
+    <string name="mtrl_picker_confirm">Uredu</string>
+    <string name="mtrl_picker_date_header_selected">%1$s</string>
+    <string name="mtrl_picker_date_header_title">Odaberite datum</string>
+    <string name="mtrl_picker_date_header_unselected">Odabrani datum</string>
+    <string name="mtrl_picker_day_of_week_column_header">Kolona za dane: %1$s</string>
+    <string name="mtrl_picker_end_date_description">Datum završetka %1$s</string>
+    <string name="mtrl_picker_invalid_format">Nevažeći format.</string>
+    <string name="mtrl_picker_invalid_format_example">Primjer: %1$s</string>
+    <string name="mtrl_picker_invalid_format_use">Koristi: %1$s</string>
+    <string name="mtrl_picker_invalid_range">Nevažeći opseg.</string>
+    <string name="mtrl_picker_navigate_to_current_year_description">Odlazak na trenutnu godinu %1$d</string>
+    <string name="mtrl_picker_navigate_to_year_description">Odlazak na %1$d. godinu</string>
+    <string name="mtrl_picker_out_of_range">Izvan opsega: %1$s</string>
+    <string name="mtrl_picker_range_header_only_end_selected">Datum početka – %1$s</string>
+    <string name="mtrl_picker_range_header_only_start_selected">%1$s – Datum završetka</string>
+    <string name="mtrl_picker_range_header_selected">%1$s – %2$s</string>
+    <string name="mtrl_picker_range_header_title">Odaberite raspon</string>
+    <string name="mtrl_picker_range_header_unselected">Datum početka – Datum završetka</string>
+    <string name="mtrl_picker_save">Sačuvaj</string>
+    <string name="mtrl_picker_start_date_description">Datum početka %1$s</string>
+    <string name="mtrl_picker_text_input_date_hint">Datum</string>
+    <string name="mtrl_picker_text_input_date_range_end_hint">Datum završetka</string>
+    <string name="mtrl_picker_text_input_date_range_start_hint">Datum početka</string>
+    <string name="mtrl_picker_text_input_day_abbr">d</string>
+    <string name="mtrl_picker_text_input_month_abbr">m</string>
+    <string name="mtrl_picker_text_input_year_abbr">g</string>
+    <string name="mtrl_picker_today_description">Danas %1$s</string>
+    <string name="mtrl_picker_toggle_to_calendar_input_mode">Prebacivanje na način unosa kalendara</string>
+    <string name="mtrl_picker_toggle_to_day_selection">Prebacivanje dodirom na prikaz Kalendara</string>
+    <string name="mtrl_picker_toggle_to_text_input_mode">Prebacivanje na način unosa teksta</string>
+    <string name="mtrl_picker_toggle_to_year_selection">Prebacivanje dodirom na prikaz godine</string>
+    <string name="mtrl_timepicker_cancel">Otkaži</string>
+    <string name="mtrl_timepicker_confirm">Uredu</string>
+    <string msgid="542007171693138492" name="navigation_menu">"Meni za navigaciju"</string>
+    <string msgid="6610465462668679431" name="not_selected">"Nije odabrano"</string>
+    <string msgid="875452955155264703" name="off">"Isključeno"</string>
+    <string msgid="8655164131929253426" name="on">"Uključeno"</string>
+    <string name="password_toggle_content_description">Prikaži lozinku</string>
+    <string msgid="5941395253238309765" name="range_end">"Kraj raspona"</string>
+    <string msgid="7097486360902471446" name="range_start">"Početak raspona"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"Pretražite"</string>
+    <string msgid="6043586758067023" name="selected">"Odabrano"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"Promijeni"</string>
+    <string msgid="1672349317127674378" name="tab">"Kartica"</string>
+    <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> posto."</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"skočni opis"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"prikaži skočni opis"</string>
+</resources>

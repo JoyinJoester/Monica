@@ -84,6 +84,21 @@
     <string name="username_copied">用户名已复制到剪贴板</string>
     <string name="password_copied">密码已复制到剪贴板</string>
     
+    <!-- Form Fields -->
+    <string name="field_email">邮箱</string>
+    <string name="field_phone">手机号</string>
+    <string name="field_address">详细地址</string>
+    <string name="field_address_placeholder">街道、门牌号等</string>
+    <string name="field_city">城市</string>
+    <string name="field_state">省份</string>
+    <string name="field_postal_code">邮编</string>
+    <string name="field_country">国家</string>
+    <string name="field_card_number">信用卡号</string>
+    <string name="field_card_valid">✓ 卡号有效</string>
+    <string name="field_cardholder">持卡人姓名</string>
+    <string name="field_expiry">有效期</string>
+    <string name="field_cvv">CVV</string>
+    
     <!-- Password Group Actions -->
     <string name="collapse">收起</string>
     <string name="collapse_group">收起 %d 个密码</string>
@@ -237,6 +252,30 @@
     <string name="document_encryption_notice">所有证件信息和照片将加密存储在本地设备</string>
     <string name="document_photo_front">%s照片（正面）</string>
     <string name="document_photo_back">%s照片（反面，可选）</string>
+    
+    <!-- Document Card Labels -->
+    <string name="document_number_label">证件号码</string>
+    <string name="holder_label">持有人</string>
+    <string name="valid_until">有效期至</string>
+    
+    <!-- Bank Card Labels -->
+    <string name="cardholder_label">持卡人</string>
+    <string name="expiry_label">有效期</string>
+    
+    <!-- Menu Actions -->
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
+    
+    <!-- Content Descriptions -->
+    <string name="favorite">收藏</string>
+    <string name="more_options">更多</string>
+    
+    <!-- Document Type Names -->
+    <string name="document_type_id_card">身份证</string>
+    <string name="document_type_passport">护照</string>
+    <string name="document_type_driver_license">驾驶证</string>
+    <string name="document_type_social_security">社保卡</string>
+    <string name="document_type_other">其他证件</string>
     
     <!-- TOTP List -->
     <string name="search_authenticator">搜索验证器</string>
@@ -580,7 +619,6 @@
     <string name="support_author_thanks_message">感谢您使用Monica密码管理器。您的支持对我们意义重大！</string>
     
     <!-- Common -->
-    <string name="favorite">收藏</string>
     <string name="search_passwords_hint">搜索密码</string>
     <string name="return_text">返回</string>
     <string name="confirm">确定</string>
@@ -679,6 +717,20 @@
     <string name="webdav_backup_in_progress">正在备份…</string>
     <string name="webdav_backup_success">备份成功</string>
     <string name="webdav_backup_failed">备份失败: %s</string>
+    <string name="webdav_clear_config">清除配置</string>
+    <string name="webdav_config_cleared">已清除WebDAV配置</string>
+    <string name="webdav_network_unreachable">网络不可达，请检查网络连接</string>
+    <string name="webdav_connection_timeout">连接超时，请检查服务器地址和网络连接</string>
+    <string name="webdav_auth_failed">认证失败，请检查用户名和密码</string>
+    <string name="webdav_path_not_found">服务器路径未找到，请检查服务器地址</string>
+    <string name="webdav_backup_trigger_failed">触发备份失败: %s</string>
+    <string name="webdav_create_backup_failed">创建备份失败</string>
+    <string name="webdav_create_new_backup">创建新备份</string>
+    <string name="webdav_backup_success_detail">备份成功: %s</string>
+    <string name="webdav_backup_passwords">密码: %d 个</string>
+    <string name="webdav_backup_authenticators">验证器: %d 个</string>
+    <string name="webdav_backup_documents">证件: %d 个</string>
+    <string name="webdav_backup_bank_cards">银行卡: %d 个</string>
     
     <!-- Selection Mode -->
     <string name="selected_items">已选择 %d 项</string>
@@ -733,15 +785,14 @@
     <string name="clear_all_data_subtitle">删除所有密码、验证器、银行卡和证件数据</string>
     <string name="clear_all_data_confirm">确认清空所有数据?</string>
     <string name="clear_all_data_warning">此操作将永久删除所有密码、验证器、银行卡和证件数据，且无法恢复。\n\n建议在清空前先导出备份!</string>
-    <string name="enter_master_password_to_confirm">请输入主密码确认</string>
     <string name="clearing_data">正在清空数据…</string>
     <string name="password_incorrect">密码错误</string>
-    <string name="select_data_types_to_clear">选择要清除的数据类型:</string>
     <string name="data_type_passwords">密码</string>
     <string name="data_type_totp">验证器</string>
     <string name="data_type_ledger">账单</string>
     <string name="data_type_documents">证件</string>
     <string name="data_type_bank_cards">银行卡</string>
+    <string name="data_type_generator_history">密码生成历史记录</string>
     
     <!-- Security Analysis -->
     <string name="security_analysis">安全分析</string>
@@ -984,12 +1035,26 @@
     <string name="copied">已复制%s</string>
 
     <!-- Generator Screen -->
-    <string name="generator_symbol">符号密码</string>
-    <string name="generator_word">单词密码</string>
-    <string name="generator_passphrase">密码短语</string>
-    <string name="generator_pin">PIN码</string>
+    <string name="generator_symbol">符号</string>
+    <string name="generator_word">单词</string>
+    <string name="generator_passphrase">短语</string>
+    <string name="generator_pin">PIN</string>
     <string name="generated_password">生成的密码</string>
     <string name="symbol_password_generator">符号密码生成器</string>
+    <string name="history">历史记录</string>
+    <string name="no_history">暂无历史记录</string>
+    <string name="clear_history">清空历史记录</string>
+    <string name="copied_to_clipboard">已复制到剪贴板</string>
+    <string name="copy_password_desc">复制密码</string>
+    <string name="saved_from_generator_history">从密码生成器历史记录保存\n生成时间: %s</string>
+    <string name="word_count">单词数量: %d</string>
+    <string name="delimiter">分隔符</string>
+    <string name="delimiter_placeholder">例如: - 或 _ 或 . 或空格</string>
+    <string name="capitalize_first_letter">首字母大写</string>
+    <string name="add_number_at_end">在末尾添加数字</string>
+    <string name="custom_word_optional">自定义单词（可选）</string>
+    <string name="custom_word_placeholder">将包含在短语中的自定义单词</string>
+    <string name="generator_history_description">通过自动填充生成并使用的密码将显示在这里</string>
     <string name="character_types">字符类型</string>
     <string name="include_uppercase">包含大写字母 (A-Z)</string>
     <string name="include_lowercase">包含小写字母 (a-z)</string>
@@ -999,6 +1064,39 @@
     <string name="pin_length">PIN码长度: %d</string>
     <string name="length_label">长度: %d</string>
     <string name="length_chars">长度: %d 字符</string>
+    
+    <!-- Generator - Minimum Characters -->
+    <string name="minimum_characters_requirement">最小字符数要求</string>
+    <string name="min_uppercase">最少大写字母: %d</string>
+    <string name="min_lowercase">最少小写字母: %d</string>
+    <string name="min_numbers">最少数字: %d</string>
+    <string name="min_symbols">最少符号: %d</string>
+    
+    <!-- Generator - Actions -->
+    <string name="regenerate">重新生成</string>
+    <string name="save_to_vault">保存到密码库</string>
+    <string name="already_in_vault">已存在于密码库</string>
+    <string name="saved_to_vault">已保存到密码库</string>
+    <string name="username_label">用户名: %s</string>
+    
+    <!-- Generator History Filter -->
+    <string name="filter_history">筛选历史</string>
+    <string name="history_type_symbol">符号密码</string>
+    <string name="history_type_password">单词密码</string>
+    <string name="history_type_passphrase">密码短语</string>
+    <string name="history_type_pin">PIN码</string>
+    <string name="history_type_autofill">自动填充密码</string>
+    <string name="select_history_types">选择历史记录类型</string>
+    <string name="history_filter_description">选择要在历史记录中显示的密码类型</string>
+    
+    <!-- Clear All Data -->
+    <string name="select_data_types_to_clear">选择要清除的数据类型：</string>
+    <string name="clear_passwords">密码</string>
+    <string name="clear_authenticators">验证器</string>
+    <string name="clear_documents">证件</string>
+    <string name="clear_bank_cards">银行卡</string>
+    <string name="clear_generator_history">生成历史记录</string>
+    <string name="enter_master_password_to_confirm">请输入主密码确认</string>
 
     <!-- Permission Management -->
     <string name="permission_management_title">权限管理</string>

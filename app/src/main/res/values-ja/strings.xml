@@ -80,6 +80,21 @@
     <string name="username_copied">ユーザー名をクリップボードにコピーしました</string>
     <string name="password_copied">パスワードをクリップボードにコピーしました</string>
     
+    <!-- Form Fields -->
+    <string name="field_email">メール</string>
+    <string name="field_phone">電話</string>
+    <string name="field_address">住所</string>
+    <string name="field_address_placeholder">番地、建物名など</string>
+    <string name="field_city">市区</string>
+    <string name="field_state">都道府県</string>
+    <string name="field_postal_code">郵便</string>
+    <string name="field_country">国</string>
+    <string name="field_card_number">カード番号</string>
+    <string name="field_card_valid">✓ 有効</string>
+    <string name="field_cardholder">名義人</string>
+    <string name="field_expiry">期限</string>
+    <string name="field_cvv">CVV</string>
+    
     <!-- Password Group Actions -->
     <string name="collapse">折りたたむ</string>
     <string name="collapse_group">%d 件のパスワードを折りたたむ</string>
@@ -210,6 +225,30 @@
     <string name="document_encryption_notice">すべての証明書情報と写真は、ローカルデバイスに暗号化して保存されます</string>
     <string name="document_photo_front">%s写真（表面）</string>
     <string name="document_photo_back">%s写真（裏面、任意）</string>
+    
+    <!-- Document Card Labels -->
+    <string name="document_number_label">証明書番号</string>
+    <string name="holder_label">所持者</string>
+    <string name="valid_until">有効期限</string>
+    
+    <!-- Bank Card Labels -->
+    <string name="cardholder_label">カード名義人</string>
+    <string name="expiry_label">有効期限</string>
+    
+    <!-- Menu Actions -->
+    <string name="move_up">上に移動</string>
+    <string name="move_down">下に移動</string>
+    
+    <!-- Content Descriptions -->
+    <string name="favorite">お気に入り</string>
+    <string name="more_options">その他</string>
+    
+    <!-- Document Type Names -->
+    <string name="document_type_id_card">身分証明書</string>
+    <string name="document_type_passport">パスポート</string>
+    <string name="document_type_driver_license">運転免許証</string>
+    <string name="document_type_social_security">保険証</string>
+    <string name="document_type_other">その他の証明書</string>
     
     <!-- TOTP List -->
     <string name="search_authenticator">認証器を検索</string>
@@ -594,7 +633,6 @@
     <string name="support_author_thanks_message">Monicaパスワードマネージャーをご利用いただきありがとうございます。あなたのサポートは私たちにとって大きな意味があります！</string>
     
     <!-- Common -->
-    <string name="favorite">お気に入り</string>
     <string name="search_passwords_hint">パスワードを検索</string>
     <string name="return_text">戻る</string>
     <string name="confirm">確定</string>
@@ -693,6 +731,20 @@
     <string name="webdav_backup_in_progress">バックアップ中…</string>
     <string name="webdav_backup_success">バックアップが完了しました</string>
     <string name="webdav_backup_failed">バックアップ失敗: %s</string>
+    <string name="webdav_clear_config">設定をクリア</string>
+    <string name="webdav_config_cleared">WebDAV設定をクリアしました</string>
+    <string name="webdav_network_unreachable">ネットワークに到達できません。ネットワーク接続を確認してください</string>
+    <string name="webdav_connection_timeout">接続タイムアウト。サーバーアドレスとネットワーク接続を確認してください</string>
+    <string name="webdav_auth_failed">認証失敗。ユーザー名とパスワードを確認してください</string>
+    <string name="webdav_path_not_found">サーバーパスが見つかりません。サーバーアドレスを確認してください</string>
+    <string name="webdav_backup_trigger_failed">バックアップのトリガーに失敗しました: %s</string>
+    <string name="webdav_create_backup_failed">バックアップの作成に失敗しました</string>
+    <string name="webdav_create_new_backup">新しいバックアップを作成</string>
+    <string name="webdav_backup_success_detail">バックアップ成功: %s</string>
+    <string name="webdav_backup_passwords">パスワード: %d 件</string>
+    <string name="webdav_backup_authenticators">認証アプリ: %d 件</string>
+    <string name="webdav_backup_documents">証明書: %d 件</string>
+    <string name="webdav_backup_bank_cards">銀行カード: %d 枚</string>
     
     <!-- Selection Mode -->
     <string name="selected_items">%d 件選択済み</string>
@@ -747,15 +799,14 @@
     <string name="clear_all_data_subtitle">すべてのパスワード、認証器、銀行カード、証明書データを削除</string>
     <string name="clear_all_data_confirm">すべてのデータをクリアしてもよろしいですか?</string>
     <string name="clear_all_data_warning">この操作により、すべてのパスワード、認証器、銀行カード、証明書データが永久に削除され、復元できなくなります。\n\nクリアする前にエクスポートでバックアップすることをお勧めします!</string>
-    <string name="enter_master_password_to_confirm">確認のためマスターパスワードを入力してください</string>
     <string name="clearing_data">データをクリア中…</string>
     <string name="password_incorrect">パスワードが正しくありません</string>
-    <string name="select_data_types_to_clear">クリアするデータタイプを選択:</string>
     <string name="data_type_passwords">パスワード</string>
     <string name="data_type_totp">認証器</string>
     <string name="data_type_ledger">明細</string>
     <string name="data_type_documents">証明書</string>
     <string name="data_type_bank_cards">銀行カード</string>
+    <string name="data_type_generator_history">パスワード生成履歴</string>
     
     <!-- Security Analysis -->
     <string name="security_analysis">セキュリティ分析</string>
@@ -1012,12 +1063,26 @@
     <string name="copied">%sをコピーしました</string>
 
     <!-- Generator Screen -->
-    <string name="generator_symbol">記号パスワード</string>
-    <string name="generator_word">単語パスワード</string>
-    <string name="generator_passphrase">パスフレーズ</string>
-    <string name="generator_pin">PIN コード</string>
+    <string name="generator_symbol">記号</string>
+    <string name="generator_word">単語</string>
+    <string name="generator_passphrase">フレーズ</string>
+    <string name="generator_pin">PIN</string>
     <string name="generated_password">生成されたパスワード</string>
     <string name="symbol_password_generator">記号パスワードジェネレーター</string>
+    <string name="history">履歴</string>
+    <string name="no_history">履歴がありません</string>
+    <string name="clear_history">履歴をクリア</string>
+    <string name="copied_to_clipboard">クリップボードにコピーしました</string>
+    <string name="copy_password_desc">パスワードをコピー</string>
+    <string name="saved_from_generator_history">パスワードジェネレーター履歴から保存\n生成日時: %s</string>
+    <string name="word_count">単語数: %d</string>
+    <string name="delimiter">区切り文字</string>
+    <string name="delimiter_placeholder">例: - または _ または . またはスペース</string>
+    <string name="capitalize_first_letter">最初の文字を大文字にする</string>
+    <string name="add_number_at_end">末尾に数字を追加</string>
+    <string name="custom_word_optional">カスタム単語（任意）</string>
+    <string name="custom_word_placeholder">フレーズに含めるカスタム単語</string>
+    <string name="generator_history_description">オートフィルで生成・使用されたパスワードがここに表示されます</string>
     <string name="character_types">文字タイプ</string>
     <string name="include_uppercase">大文字を含む (A-Z)</string>
     <string name="include_lowercase">小文字を含む (a-z)</string>
@@ -1027,6 +1092,39 @@
     <string name="pin_length">PIN の長さ: %d</string>
     <string name="length_label">長さ: %d</string>
     <string name="length_chars">長さ: %d 文字</string>
+    
+    <!-- Generator - Minimum Characters -->
+    <string name="minimum_characters_requirement">最小文字数要件</string>
+    <string name="min_uppercase">最少大文字: %d</string>
+    <string name="min_lowercase">最少小文字: %d</string>
+    <string name="min_numbers">最少数字: %d</string>
+    <string name="min_symbols">最少記号: %d</string>
+    
+    <!-- Generator - Actions -->
+    <string name="regenerate">再生成</string>
+    <string name="save_to_vault">パスワード庫に保存</string>
+    <string name="already_in_vault">パスワード庫に存在</string>
+    <string name="saved_to_vault">パスワード庫に保存済み</string>
+    <string name="username_label">ユーザー名: %s</string>
+    
+    <!-- Generator History Filter -->
+    <string name="filter_history">履歴をフィルター</string>
+    <string name="history_type_symbol">記号パスワード</string>
+    <string name="history_type_password">単語パスワード</string>
+    <string name="history_type_passphrase">パスフレーズ</string>
+    <string name="history_type_pin">PINコード</string>
+    <string name="history_type_autofill">自動入力パスワード</string>
+    <string name="select_history_types">履歴タイプを選択</string>
+    <string name="history_filter_description">履歴に表示するパスワードタイプを選択</string>
+    
+    <!-- Clear All Data -->
+    <string name="select_data_types_to_clear">削除するデータタイプを選択：</string>
+    <string name="clear_passwords">パスワード</string>
+    <string name="clear_authenticators">認証器</string>
+    <string name="clear_documents">証明書</string>
+    <string name="clear_bank_cards">銀行カード</string>
+    <string name="clear_generator_history">生成履歴</string>
+    <string name="enter_master_password_to_confirm">マスターパスワードを入力して確認</string>
 
     <!-- Permission Management -->
     <string name="permission_management_title">権限管理</string>

@@ -78,4 +78,32 @@ class SecureItemRepository(
     suspend fun isDuplicateItem(itemType: ItemType, title: String): Boolean {
         return secureItemDao.findDuplicateItem(itemType, title) != null
     }
+    
+    /**
+     * 删除指定类型的所有项目
+     */
+    suspend fun deleteAllItemsByType(type: ItemType) {
+        secureItemDao.deleteAllItemsByType(type)
+    }
+    
+    /**
+     * 删除所有TOTP认证器
+     */
+    suspend fun deleteAllTotpEntries() {
+        secureItemDao.deleteAllItemsByType(ItemType.TOTP)
+    }
+    
+    /**
+     * 删除所有文档
+     */
+    suspend fun deleteAllDocuments() {
+        secureItemDao.deleteAllItemsByType(ItemType.DOCUMENT)
+    }
+    
+    /**
+     * 删除所有银行卡
+     */
+    suspend fun deleteAllBankCards() {
+        secureItemDao.deleteAllItemsByType(ItemType.BANK_CARD)
+    }
 }

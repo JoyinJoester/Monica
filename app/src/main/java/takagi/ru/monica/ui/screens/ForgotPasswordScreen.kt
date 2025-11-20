@@ -1,6 +1,8 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -24,6 +26,13 @@ fun ForgotPasswordScreen(
     var showConfirmDialog by remember { mutableStateOf(false) }
     var isResetting by remember { mutableStateOf(false) }
     
+    // 数据类型选择状态
+    var clearPasswords by remember { mutableStateOf(true) }
+    var clearAuthenticators by remember { mutableStateOf(true) }
+    var clearDocuments by remember { mutableStateOf(true) }
+    var clearBankCards by remember { mutableStateOf(true) }
+    var clearGeneratorHistory by remember { mutableStateOf(true) }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -40,10 +49,13 @@ fun ForgotPasswordScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Spacer(modifier = Modifier.weight(1f))
+            
             // Warning Icon
             Icon(
                 imageVector = Icons.Default.Warning,
@@ -52,16 +64,12 @@ fun ForgotPasswordScreen(
                 modifier = Modifier.size(64.dp)
             )
             
-            Spacer(modifier = Modifier.height(24.dp))
-            
             // Title
             Text(
                 text = context.getString(R.string.forgot_password_title),
                 style = MaterialTheme.typography.headlineMedium,
                 textAlign = TextAlign.Center
             )
-            
-            Spacer(modifier = Modifier.height(16.dp))
             
             // Warning Message
             Card(
@@ -81,7 +89,109 @@ fun ForgotPasswordScreen(
                 }
             }
             
-            Spacer(modifier = Modifier.height(32.dp))
+            // 数据类型选择
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = context.getString(R.string.select_data_types_to_clear),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    
+                    // 密码
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Checkbox(
+                            checked = clearPasswords,
+                            onCheckedChange = { clearPasswords = it }
+                        )
+                        Text(
+                            text = context.getString(R.string.clear_passwords),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                    
+                    // 验证器
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Checkbox(
+                            checked = clearAuthenticators,
+                            onCheckedChange = { clearAuthenticators = it }
+                        )
+                        Text(
+                            text = context.getString(R.string.clear_authenticators),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                    
+                    // 证件
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Checkbox(
+                            checked = clearDocuments,
+                            onCheckedChange = { clearDocuments = it }
+                        )
+                        Text(
+                            text = context.getString(R.string.clear_documents),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                    
+                    // 银行卡
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Checkbox(
+                            checked = clearBankCards,
+                            onCheckedChange = { clearBankCards = it }
+                        )
+                        Text(
+                            text = context.getString(R.string.clear_bank_cards),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                    
+                    // 生成历史记录 - 第5个选项！
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Checkbox(
+                            checked = clearGeneratorHistory,
+                            onCheckedChange = { clearGeneratorHistory = it }
+                        )
+                        Text(
+                            text = context.getString(R.string.clear_generator_history),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+            }
+            
+            // 至少选择一个数据类型的验证
+            val hasSelection = clearPasswords || clearAuthenticators || clearDocuments || 
+                              clearBankCards || clearGeneratorHistory
             
             // Reset Button
             Button(
@@ -90,7 +200,7 @@ fun ForgotPasswordScreen(
                     containerColor = MaterialTheme.colorScheme.error
                 ),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isResetting
+                enabled = !isResetting && hasSelection
             ) {
                 if (isResetting) {
                     CircularProgressIndicator(
@@ -106,8 +216,6 @@ fun ForgotPasswordScreen(
                 )
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
             // Cancel Button
             OutlinedButton(
                 onClick = onNavigateBack,
@@ -116,11 +224,16 @@ fun ForgotPasswordScreen(
             ) {
                 Text(context.getString(R.string.cancel))
             }
+            
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
     
-    // Confirmation Dialog
+    // Confirmation Dialog with Password Input
     if (showConfirmDialog) {
+        var passwordInput by remember { mutableStateOf("") }
+        var passwordError by remember { mutableStateOf(false) }
+        
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             icon = {
@@ -137,23 +250,58 @@ fun ForgotPasswordScreen(
                 )
             },
             text = {
-                Text(
-                    text = context.getString(R.string.forgot_password_warning),
-                    textAlign = TextAlign.Center
-                )
+                Column {
+                    Text(
+                        text = context.getString(R.string.forgot_password_warning),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { 
+                            passwordInput = it
+                            passwordError = false
+                        },
+                        label = { Text(context.getString(R.string.enter_master_password_to_confirm)) },
+                        isError = passwordError,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    
+                    if (passwordError) {
+                        Text(
+                            text = context.getString(R.string.error_invalid_password),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showConfirmDialog = false
-                        isResetting = true
-                        
-                        // Reset all application data
-                        viewModel.resetAllData()
-                        
-                        // Show completion and navigate back
-                        isResetting = false
-                        onResetComplete()
+                        // 验证密码
+                        if (viewModel.verifyMasterPassword(passwordInput)) {
+                            showConfirmDialog = false
+                            isResetting = true
+                            
+                            // Reset selected data types
+                            viewModel.resetAllData(
+                                clearPasswords = clearPasswords,
+                                clearTotp = clearAuthenticators,
+                                clearDocuments = clearDocuments,
+                                clearBankCards = clearBankCards,
+                                clearGeneratorHistory = clearGeneratorHistory
+                            )
+                            
+                            // Show completion and navigate back
+                            isResetting = false
+                            onResetComplete()
+                        } else {
+                            passwordError = true
+                        }
                     },
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error

@@ -52,6 +52,9 @@ fun DocumentCard(
         )
     }
     
+    // 获取对应容器的文字颜色
+    val contentColor = getDocumentCardContentColor(documentData.documentType, isSelected)
+    
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -98,12 +101,13 @@ fun DocumentCard(
                     Text(
                         text = item.title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = contentColor
                     )
                     Text(
                         text = getDocumentTypeName(documentData.documentType),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        color = contentColor.copy(alpha = 0.7f)
                     )
                 }
                 
@@ -119,14 +123,14 @@ fun DocumentCard(
                         },
                         contentDescription = documentData.documentType.name,
                         modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        tint = contentColor.copy(alpha = 0.6f)
                     )
                     
                     if (item.isFavorite) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             Icons.Default.Favorite,
-                            contentDescription = "收藏",
+                            contentDescription = stringResource(R.string.favorite),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -140,7 +144,7 @@ fun DocumentCard(
                             IconButton(onClick = { expanded = true }) {
                                 Icon(
                                     Icons.Default.MoreVert,
-                                    contentDescription = "更多"
+                                    contentDescription = stringResource(R.string.more_options)
                                 )
                             }
                             
@@ -169,7 +173,7 @@ fun DocumentCard(
                                 // 上移选项
                                 if (onMoveUp != null) {
                                     DropdownMenuItem(
-                                        text = { Text("上移") },
+                                        text = { Text(stringResource(R.string.move_up)) },
                                         onClick = {
                                             expanded = false
                                             onMoveUp()
@@ -186,7 +190,7 @@ fun DocumentCard(
                                 // 下移选项
                                 if (onMoveDown != null) {
                                     DropdownMenuItem(
-                                        text = { Text("下移") },
+                                        text = { Text(stringResource(R.string.move_down)) },
                                         onClick = {
                                             expanded = false
                                             onMoveDown()
@@ -201,7 +205,7 @@ fun DocumentCard(
                                 }
                                 
                                 DropdownMenuItem(
-                                    text = { Text("删除") },
+                                    text = { Text(stringResource(R.string.delete)) },
                                     onClick = {
                                         expanded = false
                                         onDelete()
@@ -224,16 +228,16 @@ fun DocumentCard(
             
             // 证件号码（脱敏）
             Text(
-                text = "证件号码",
+                text = stringResource(R.string.document_number_label),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                color = contentColor.copy(alpha = 0.7f),
                 fontWeight = FontWeight.Medium
             )
             Text(
                 text = maskDocumentNumber(documentData.documentNumber, documentData.documentType),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = contentColor
             )
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -246,16 +250,16 @@ fun DocumentCard(
                 if (documentData.fullName.isNotBlank()) {
                     Column {
                         Text(
-                            text = "持有人",
+                            text = stringResource(R.string.holder_label),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = contentColor.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = documentData.fullName,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = contentColor
                         )
                     }
                 }
@@ -263,16 +267,16 @@ fun DocumentCard(
                 if (documentData.expiryDate.isNotBlank()) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "有效期至",
+                            text = stringResource(R.string.valid_until),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = contentColor.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Medium
                         )
                         Text(
                             text = documentData.expiryDate,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = contentColor
                         )
                     }
                 }
@@ -344,12 +348,32 @@ private fun maskDocumentNumber(number: String, type: DocumentType): String {
 /**
  * 获取证件类型名称
  */
+@Composable
 private fun getDocumentTypeName(type: DocumentType): String {
     return when (type) {
-        DocumentType.ID_CARD -> "身份证"
-        DocumentType.PASSPORT -> "护照"
-        DocumentType.DRIVER_LICENSE -> "驾驶证"
-        DocumentType.SOCIAL_SECURITY -> "社保卡"
-        DocumentType.OTHER -> "其他证件"
+        DocumentType.ID_CARD -> stringResource(R.string.document_type_id_card)
+        DocumentType.PASSPORT -> stringResource(R.string.document_type_passport)
+        DocumentType.DRIVER_LICENSE -> stringResource(R.string.document_type_driver_license)
+        DocumentType.SOCIAL_SECURITY -> stringResource(R.string.document_type_social_security)
+        DocumentType.OTHER -> stringResource(R.string.document_type_other)
+    }
+}
+
+/**
+ * 获取证件卡片的内容颜色
+ * 根据证件类型和选择状态返回对应的onXxxContainer颜色
+ */
+@Composable
+private fun getDocumentCardContentColor(type: DocumentType, isSelected: Boolean): androidx.compose.ui.graphics.Color {
+    return if (isSelected) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        when (type) {
+            DocumentType.ID_CARD -> MaterialTheme.colorScheme.onPrimaryContainer
+            DocumentType.PASSPORT -> MaterialTheme.colorScheme.onSecondaryContainer
+            DocumentType.DRIVER_LICENSE -> MaterialTheme.colorScheme.onTertiaryContainer
+            DocumentType.SOCIAL_SECURITY -> MaterialTheme.colorScheme.onSurfaceVariant
+            DocumentType.OTHER -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
     }
 }

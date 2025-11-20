@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,7 +49,6 @@ fun SettingsScreen(
     onSupportAuthor: () -> Unit,
     onExportData: () -> Unit = {},
     onImportData: () -> Unit = {},
-    onClearAllData: (Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _ -> },
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
@@ -55,6 +56,7 @@ fun SettingsScreen(
     onSecurityAnalysis: () -> Unit = {},
     onNavigateToDeveloperSettings: () -> Unit = {},
     onNavigateToPermissionManagement: () -> Unit = {},
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _ -> },
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
     val context = LocalContext.current
@@ -618,62 +620,106 @@ fun SettingsScreen(
         var clearTotp by remember { mutableStateOf(true) }
         var clearDocuments by remember { mutableStateOf(true) }
         var clearBankCards by remember { mutableStateOf(true) }
-        
-        AlertDialog(
-            onDismissRequest = { 
-                showClearDataDialog = false
-                clearDataPasswordInput = ""
-            },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = {
-                Text(context.getString(R.string.clear_all_data_confirm))
-            },
-            text = {
-                Column {
-                    Text(
-                        context.getString(R.string.clear_all_data_warning),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+        var clearGeneratorHistory by remember { mutableStateOf(true) }
+
+        val dismissDialog = {
+            showClearDataDialog = false
+            clearDataPasswordInput = ""
+        }
+
+        BasicAlertDialog(
+            onDismissRequest = dismissDialog
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                tonalElevation = 6.dp,
+                shadowElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                    .padding(24.dp)
+                    .widthIn(min = 280.dp, max = 420.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.errorContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 数据类型选择复选框
+
                     Text(
-                        context.getString(R.string.select_data_types_to_clear),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        text = context.getString(R.string.clear_all_data_confirm),
+                        style = MaterialTheme.typography.headlineSmall
                     )
-                    
-                    CheckboxRow(
-                        checked = clearPasswords,
-                        onCheckedChange = { clearPasswords = it },
-                        label = context.getString(R.string.data_type_passwords)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = context.getString(R.string.clear_all_data_warning),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
-                    CheckboxRow(
-                        checked = clearTotp,
-                        onCheckedChange = { clearTotp = it },
-                        label = context.getString(R.string.data_type_totp)
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Text(
+                        text = context.getString(R.string.select_data_types_to_clear),
+                        style = MaterialTheme.typography.titleSmall
                     )
-                    
-                    CheckboxRow(
-                        checked = clearDocuments,
-                        onCheckedChange = { clearDocuments = it },
-                        label = context.getString(R.string.data_type_documents)
-                    )
-                    
-                    CheckboxRow(
-                        checked = clearBankCards,
-                        onCheckedChange = { clearBankCards = it },
-                        label = context.getString(R.string.data_type_bank_cards)
-                    )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                            CheckboxRow(
+                                checked = clearPasswords,
+                                onCheckedChange = { clearPasswords = it },
+                                label = context.getString(R.string.data_type_passwords)
+                            )
+                            Divider()
+                            CheckboxRow(
+                                checked = clearTotp,
+                                onCheckedChange = { clearTotp = it },
+                                label = context.getString(R.string.data_type_totp)
+                            )
+                            Divider()
+                            CheckboxRow(
+                                checked = clearDocuments,
+                                onCheckedChange = { clearDocuments = it },
+                                label = context.getString(R.string.data_type_documents)
+                            )
+                            Divider()
+                            CheckboxRow(
+                                checked = clearBankCards,
+                                onCheckedChange = { clearBankCards = it },
+                                label = context.getString(R.string.data_type_bank_cards)
+                            )
+                            Divider()
+                            CheckboxRow(
+                                checked = clearGeneratorHistory,
+                                onCheckedChange = { clearGeneratorHistory = it },
+                                label = context.getString(R.string.data_type_generator_history)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
                     OutlinedTextField(
                         value = clearDataPasswordInput,
                         onValueChange = { clearDataPasswordInput = it },
@@ -682,62 +728,63 @@ fun SettingsScreen(
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        android.util.Log.d("SettingsScreen", "Confirm button clicked, starting verification")
-                        coroutineScope.launch {
-                            android.util.Log.d("SettingsScreen", "Verifying password: ${clearDataPasswordInput.isNotEmpty()}")
-                            val securityManager = takagi.ru.monica.security.SecurityManager(context)
-                            if (securityManager.verifyMasterPassword(clearDataPasswordInput)) {
-                                android.util.Log.d("SettingsScreen", "Password verified, calling onClearAllData")
-                                showClearDataDialog = false
-                                clearDataPasswordInput = ""
-                                onClearAllData(
-                                    clearPasswords,
-                                    clearTotp,
-                                    clearDocuments,
-                                    clearBankCards
-                                )
-                                android.widget.Toast.makeText(
-                                    context,
-                                    context.getString(R.string.clearing_data),
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
-                            } else {
-                                // 密码错误
-                                android.util.Log.d("SettingsScreen", "Password verification failed")
-                                android.widget.Toast.makeText(
-                                    context,
-                                    context.getString(R.string.password_incorrect),
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
-                                clearDataPasswordInput = ""
-                                // 保持对话框打开,让用户重试
-                            }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = dismissDialog) {
+                            Text(context.getString(R.string.cancel))
                         }
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    enabled = clearDataPasswordInput.isNotEmpty()
-                ) {
-                    Text(context.getString(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showClearDataDialog = false
-                        clearDataPasswordInput = ""
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Button(
+                            onClick = {
+                                android.util.Log.d("SettingsScreen", "Confirm button clicked, starting verification")
+                                coroutineScope.launch {
+                                    android.util.Log.d("SettingsScreen", "Verifying password: ${clearDataPasswordInput.isNotEmpty()}")
+                                    val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                                    if (securityManager.verifyMasterPassword(clearDataPasswordInput)) {
+                                        android.util.Log.d("SettingsScreen", "Password verified, calling onClearAllData")
+                                        dismissDialog()
+                                        onClearAllData(
+                                            clearPasswords,
+                                            clearTotp,
+                                            clearDocuments,
+                                            clearBankCards,
+                                            clearGeneratorHistory
+                                        )
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(R.string.clearing_data),
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        android.util.Log.d("SettingsScreen", "Password verification failed")
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(R.string.password_incorrect),
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                        clearDataPasswordInput = ""
+                                    }
+                                }
+                            },
+                            enabled = clearDataPasswordInput.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) {
+                            Text(context.getString(R.string.confirm))
+                        }
                     }
-                ) {
-                    Text(context.getString(R.string.cancel))
                 }
             }
-        )
+        }
     }
 }
 

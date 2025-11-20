@@ -89,7 +89,7 @@ fun SimpleMainScreen(
     onSecurityAnalysis: () -> Unit = {},
     onNavigateToDeveloperSettings: () -> Unit = {},
     onNavigateToPermissionManagement: () -> Unit = {},
-    onClearAllData: (Boolean, Boolean, Boolean, Boolean) -> Unit,
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
     val defaultTabKey = remember(initialTab) { indexToDefaultTabKey(initialTab) }

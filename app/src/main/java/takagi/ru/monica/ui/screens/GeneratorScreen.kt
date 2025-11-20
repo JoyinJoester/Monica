@@ -12,7 +12,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
@@ -46,6 +48,8 @@ import takagi.ru.monica.viewmodel.GeneratorType
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.HistoryFilterPreferences
+import takagi.ru.monica.data.HistoryFilterSettings
 import java.util.Date
 import kotlin.random.Random
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,15 +61,16 @@ import androidx.compose.material3.rememberModalBottomSheetState
 
 /**
  * 将密码转换为彩色文本
- * 数字:蓝色，符号:红色，字母:白色
+ * 数字:蓝色，符号:红色，字母:主题自适应颜色
  */
 @Composable
 fun colorizePassword(password: String): AnnotatedString {
+    val letterColor = MaterialTheme.colorScheme.onSurface
     return buildAnnotatedString {
         password.forEach { char ->
             val color = when {
                 char.isDigit() -> Color(0xFF2196F3) // 蓝色
-                char.isLetter() -> Color.White // 白色
+                char.isLetter() -> letterColor // 主题自适应颜色
                 else -> Color(0xFFE91E63) // 红色 (符号)
             }
             withStyle(style = SpanStyle(color = color)) {
@@ -88,8 +93,18 @@ fun GeneratorScreen(
     
     // 历史记录状态
     var showHistorySheet by remember { mutableStateOf(false) }
+    var showFilterSheet by remember { mutableStateOf(false) }
     val historyManager = remember { PasswordHistoryManager(context) }
     val historyList by historyManager.historyFlow.collectAsState(initial = emptyList())
+    
+    // 过滤设置
+    val filterPreferences = remember { HistoryFilterPreferences(context) }
+    val filterSettings by filterPreferences.filterSettings.collectAsState(initial = HistoryFilterSettings())
+    
+    // 根据过滤设置过滤历史记录
+    val filteredHistoryList = remember(historyList, filterSettings) {
+        historyList.filter { filterSettings.shouldShow(it.type) }
+    }
     
     // 从ViewModel收集状态
     val selectedGenerator by viewModel.selectedGenerator.collectAsState()
@@ -178,6 +193,15 @@ fun GeneratorScreen(
                     symbolsMin = symbolsMin
                 )
                 viewModel.updateSymbolResult(result)
+                // 保存到历史记录
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = context.getString(R.string.random_symbol_generator),
+                        type = "SYMBOL"
+                    )
+                }
             }
             GeneratorType.PASSWORD -> {
                 val result = generatePassword(
@@ -194,7 +218,8 @@ fun GeneratorScreen(
                     historyManager.addHistory(
                         password = result,
                         packageName = "generator",
-                        domain = "密码生成器"
+                        domain = context.getString(R.string.password_generator),
+                        type = "PASSWORD"
                     )
                 }
             }
@@ -208,10 +233,28 @@ fun GeneratorScreen(
                     customWord = passphraseCustomWord.takeIf { it.isNotEmpty() }
                 )
                 viewModel.updatePassphraseResult(result)
+                // 保存到历史记录
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = context.getString(R.string.passphrase_generator),
+                        type = "PASSPHRASE"
+                    )
+                }
             }
             GeneratorType.PIN -> {
                 val result = PasswordGenerator.generatePinCode(pinLength)
                 viewModel.updatePinResult(result)
+                // 保存到历史记录
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = context.getString(R.string.pin_generator),
+                        type = "PIN"
+                    )
+                }
             }
         }
     }
@@ -244,7 +287,7 @@ fun GeneratorScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.History,
-                        contentDescription = "历史记录",
+                        contentDescription = stringResource(R.string.history),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -324,7 +367,7 @@ fun GeneratorScreen(
                         result = currentResult,
                         onCopy = { text ->
                             copyToClipboard(context, text)
-                            Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
                         }
                     )
                 }
@@ -394,13 +437,13 @@ fun GeneratorScreen(
                             )
                             
                             CheckboxWithText(
-                                text = "排除相似字符 (0, O, l, 1)",
+                                text = stringResource(R.string.generator_exclude_similar),
                                 checked = excludeSimilar,
                                 onCheckedChange = { viewModel.updateExcludeSimilar(it) }
                             )
                             
                             CheckboxWithText(
-                                text = "排除容易混淆的字符",
+                                text = stringResource(R.string.generator_exclude_ambiguous),
                                 checked = excludeAmbiguous,
                                 onCheckedChange = { viewModel.updateExcludeAmbiguous(it) }
                             )
@@ -410,7 +453,7 @@ fun GeneratorScreen(
                         
                         // 最小字符数要求
                         Text(
-                            text = "最小字符数要求",
+                            text = stringResource(R.string.minimum_characters_requirement),
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
@@ -418,7 +461,7 @@ fun GeneratorScreen(
                         Column {
                             // 大写字母最小数量
                             Text(
-                                text = "最少大写字母: $uppercaseMin",
+                                text = stringResource(R.string.min_uppercase, uppercaseMin),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Slider(
@@ -432,7 +475,7 @@ fun GeneratorScreen(
                             
                             // 小写字母最小数量
                             Text(
-                                text = "最少小写字母: $lowercaseMin",
+                                text = stringResource(R.string.min_lowercase, lowercaseMin),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Slider(
@@ -446,7 +489,7 @@ fun GeneratorScreen(
                             
                             // 数字最小数量
                             Text(
-                                text = "最少数字: $numbersMin",
+                                text = stringResource(R.string.min_numbers, numbersMin),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Slider(
@@ -460,7 +503,7 @@ fun GeneratorScreen(
                             
                             // 符号最小数量
                             Text(
-                                text = "最少符号: $symbolsMin",
+                                text = stringResource(R.string.min_symbols, symbolsMin),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Slider(
@@ -566,7 +609,7 @@ fun GeneratorScreen(
                         
                         // 单词数量滑块
                         Text(
-                            text = "单词数量: $passphraseWordCount",
+                            text = stringResource(R.string.word_count, passphraseWordCount),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Slider(
@@ -583,8 +626,8 @@ fun GeneratorScreen(
                         OutlinedTextField(
                             value = passphraseDelimiter,
                             onValueChange = { viewModel.updatePassphraseDelimiter(it) },
-                            label = { Text("分隔符") },
-                            placeholder = { Text("例如: - 或 _ 或 . 或空格") },
+                            label = { Text(stringResource(R.string.delimiter)) },
+                            placeholder = { Text(stringResource(R.string.delimiter_placeholder)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
@@ -593,13 +636,13 @@ fun GeneratorScreen(
                         
                         // 选项设置
                         CheckboxWithText(
-                            text = "首字母大写",
+                            text = stringResource(R.string.capitalize_first_letter),
                             checked = passphraseCapitalize,
                             onCheckedChange = { viewModel.updatePassphraseCapitalize(it) }
                         )
                         
                         CheckboxWithText(
-                            text = "在末尾添加数字",
+                            text = stringResource(R.string.add_number_at_end),
                             checked = passphraseIncludeNumber,
                             onCheckedChange = { viewModel.updatePassphraseIncludeNumber(it) }
                         )
@@ -610,8 +653,8 @@ fun GeneratorScreen(
                         OutlinedTextField(
                             value = passphraseCustomWord,
                             onValueChange = { viewModel.updatePassphraseCustomWord(it) },
-                            label = { Text("自定义单词（可选）") },
-                            placeholder = { Text("将包含在短语中的自定义单词") },
+                            label = { Text(stringResource(R.string.custom_word_optional)) },
+                            placeholder = { Text(stringResource(R.string.custom_word_placeholder)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
@@ -671,6 +714,15 @@ fun GeneratorScreen(
                             symbolsMin = symbolsMin
                         )
                         viewModel.updateSymbolResult(result)
+                        // 保存到历史记录
+                        scope.launch {
+                            historyManager.addHistory(
+                                password = result,
+                                packageName = "generator",
+                                domain = context.getString(R.string.random_symbol_generator),
+                                type = "SYMBOL"
+                            )
+                        }
                     }
                     GeneratorType.PASSWORD -> {
                         val result = generatePassword(
@@ -682,6 +734,15 @@ fun GeneratorScreen(
                             segmentLength = segmentLength
                         )
                         viewModel.updatePasswordResult(result)
+                        // 保存到历史记录
+                        scope.launch {
+                            historyManager.addHistory(
+                                password = result,
+                                packageName = "generator",
+                                domain = context.getString(R.string.password_generator),
+                                type = "PASSWORD"
+                            )
+                        }
                     }
                     GeneratorType.PASSPHRASE -> {
                         val result = PasswordGenerator.generatePassphrase(
@@ -693,10 +754,28 @@ fun GeneratorScreen(
                             customWord = passphraseCustomWord.takeIf { it.isNotEmpty() }
                         )
                         viewModel.updatePassphraseResult(result)
+                        // 保存到历史记录
+                        scope.launch {
+                            historyManager.addHistory(
+                                password = result,
+                                packageName = "generator",
+                                domain = context.getString(R.string.passphrase_generator),
+                                type = "PASSPHRASE"
+                            )
+                        }
                     }
                     GeneratorType.PIN -> {
                         val result = PasswordGenerator.generatePinCode(pinLength)
                         viewModel.updatePinResult(result)
+                        // 保存到历史记录
+                        scope.launch {
+                            historyManager.addHistory(
+                                password = result,
+                                packageName = "generator",
+                                domain = context.getString(R.string.pin_generator),
+                                type = "PIN"
+                            )
+                        }
                     }
                 }
             },
@@ -719,7 +798,7 @@ fun GeneratorScreen(
             
             Icon(
                 imageVector = Icons.Default.Refresh,
-                contentDescription = "重新生成",
+                contentDescription = stringResource(R.string.regenerate),
                 modifier = Modifier
                     .size(24.dp)
                     .graphicsLayer { rotationZ = rotation }
@@ -738,13 +817,31 @@ fun GeneratorScreen(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                Text(
-                    text = "密码生成历史",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+                // 标题和过滤按钮
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.history),
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    
+                    IconButton(
+                        onClick = { showFilterSheet = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = stringResource(R.string.filter_history),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
                 
-                if (historyList.isEmpty()) {
+                if (filteredHistoryList.isEmpty()) {
                     // 空状态
                     Box(
                         modifier = Modifier
@@ -763,12 +860,12 @@ fun GeneratorScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                             Text(
-                                text = "暂无历史记录",
+                                text = stringResource(R.string.no_history),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "通过自动填充生成并使用的密码将显示在这里",
+                                text = stringResource(R.string.generator_history_description),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center
@@ -781,7 +878,7 @@ fun GeneratorScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(historyList) { historyItem ->
+                        items(filteredHistoryList) { historyItem ->
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
@@ -793,7 +890,7 @@ fun GeneratorScreen(
                                         .fillMaxWidth()
                                         .padding(16.dp)
                                 ) {
-                                    // 密码显示
+                                    // 密码显示和操作按钮
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -813,28 +910,41 @@ fun GeneratorScreen(
                                         ) {
                                             Icon(
                                                 imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
+                                                contentDescription = if (passwordVisible) context.getString(R.string.hide_password) else context.getString(R.string.show_password),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         
                                         var copied by remember { mutableStateOf(false) }
                                         
-                                        FilledTonalIconButton(
+                                        // 复制按钮
+                                        IconButton(
                                             onClick = {
                                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                                 val clip = ClipData.newPlainText("password", historyItem.password)
                                                 clipboard.setPrimaryClip(clip)
                                                 copied = true
-                                            },
-                                            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                                containerColor = if (copied) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                                                contentColor = if (copied) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
+                                            }
                                         ) {
                                             Icon(
                                                 imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
-                                                contentDescription = "复制密码"
+                                                contentDescription = stringResource(R.string.copy_password_desc),
+                                                tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        
+                                        // 删除按钮
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    historyManager.deleteHistory(historyItem.timestamp)
+                                                }
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = stringResource(R.string.delete),
+                                                tint = MaterialTheme.colorScheme.error
                                             )
                                         }
                                     }
@@ -877,7 +987,7 @@ fun GeneratorScreen(
                                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                                             )
                                             Text(
-                                                text = "用户名: ${historyItem.username}",
+                                                text = stringResource(R.string.username_label, historyItem.username),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
                                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
@@ -925,17 +1035,20 @@ fun GeneratorScreen(
                                                         website = historyItem.domain,
                                                         username = historyItem.username,
                                                         password = historyItem.password,
-                                                        notes = "从密码生成器历史记录保存\n生成时间: ${java.text.SimpleDateFormat(
-                                                            "yyyy-MM-dd HH:mm:ss",
-                                                            java.util.Locale.getDefault()
-                                                        ).format(java.util.Date(historyItem.timestamp))}",
+                                                        notes = context.getString(
+                                                            R.string.saved_from_generator_history,
+                                                            java.text.SimpleDateFormat(
+                                                                "yyyy-MM-dd HH:mm:ss",
+                                                                java.util.Locale.getDefault()
+                                                            ).format(java.util.Date(historyItem.timestamp))
+                                                        ),
                                                         appPackageName = historyItem.packageName,
                                                         createdAt = Date(),
                                                         updatedAt = Date()
                                                     )
                                                     passwordViewModel.addPasswordEntry(entry)
                                                     saved = true
-                                                    Toast.makeText(context, "已保存到密码库", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, context.getString(R.string.saved_to_vault), Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         },
@@ -953,9 +1066,9 @@ fun GeneratorScreen(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            if (alreadyExists) "已存在于密码库"
-                                            else if (saved) "已保存到密码库"
-                                            else "保存到密码库"
+                                            if (alreadyExists) stringResource(R.string.already_in_vault)
+                                            else if (saved) stringResource(R.string.saved_to_vault)
+                                            else stringResource(R.string.save_to_vault)
                                         )
                                     }
                                 }
@@ -978,8 +1091,106 @@ fun GeneratorScreen(
                             contentColor = MaterialTheme.colorScheme.onErrorContainer
                         )
                     ) {
-                        Text("清空历史记录")
+                        Text(stringResource(R.string.clear_history))
                     }
+                }
+            }
+        }
+    }
+    
+    // 过滤设置弹窗
+    if (showFilterSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilterSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.select_history_types),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Text(
+                    text = stringResource(R.string.history_filter_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                // 过滤选项
+                CheckboxWithText(
+                    text = stringResource(R.string.history_type_symbol),
+                    checked = filterSettings.showSymbol,
+                    onCheckedChange = { 
+                        scope.launch {
+                            filterPreferences.updateFilterSettings(
+                                filterSettings.copy(showSymbol = it)
+                            )
+                        }
+                    }
+                )
+                
+                CheckboxWithText(
+                    text = stringResource(R.string.history_type_password),
+                    checked = filterSettings.showPassword,
+                    onCheckedChange = { 
+                        scope.launch {
+                            filterPreferences.updateFilterSettings(
+                                filterSettings.copy(showPassword = it)
+                            )
+                        }
+                    }
+                )
+                
+                CheckboxWithText(
+                    text = stringResource(R.string.history_type_passphrase),
+                    checked = filterSettings.showPassphrase,
+                    onCheckedChange = { 
+                        scope.launch {
+                            filterPreferences.updateFilterSettings(
+                                filterSettings.copy(showPassphrase = it)
+                            )
+                        }
+                    }
+                )
+                
+                CheckboxWithText(
+                    text = stringResource(R.string.history_type_pin),
+                    checked = filterSettings.showPin,
+                    onCheckedChange = { 
+                        scope.launch {
+                            filterPreferences.updateFilterSettings(
+                                filterSettings.copy(showPin = it)
+                            )
+                        }
+                    }
+                )
+                
+                CheckboxWithText(
+                    text = stringResource(R.string.history_type_autofill),
+                    checked = filterSettings.showAutofill,
+                    onCheckedChange = { 
+                        scope.launch {
+                            filterPreferences.updateFilterSettings(
+                                filterSettings.copy(showAutofill = it)
+                            )
+                        }
+                    }
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // 关闭按钮
+                Button(
+                    onClick = { showFilterSheet = false },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.close))
                 }
             }
         }
@@ -1306,17 +1517,20 @@ private fun FilterChipTab(
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp)
         ) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = if (isSelected) 
                     MaterialTheme.colorScheme.onPrimary 
                 else 
                     MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
+                maxLines = 1,
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -1351,7 +1565,7 @@ private fun ResultCard(
         targetValue = if (showCopied) 
             Color(0xFF4CAF50) 
         else 
-            MaterialTheme.colorScheme.secondary,
+            MaterialTheme.colorScheme.secondaryContainer,
         animationSpec = tween(durationMillis = 300),
         label = "button_color"
     )
@@ -1379,7 +1593,8 @@ private fun ResultCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Key,
@@ -1391,9 +1606,12 @@ private fun ResultCard(
                         text = stringResource(R.string.generated_password),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1
                     )
                 }
+                
+                Spacer(modifier = Modifier.width(8.dp))
                 
                 FilledTonalButton(
                     onClick = {
@@ -1402,7 +1620,8 @@ private fun ResultCard(
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
                         containerColor = buttonColor
-                    )
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     // 图标动画切换
                     AnimatedContent(
@@ -1423,7 +1642,7 @@ private fun ResultCard(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = if (copied) "已复制" else "复制",
+                                text = if (copied) stringResource(R.string.copied) else stringResource(R.string.copy),
                                 style = MaterialTheme.typography.labelLarge
                             )
                         }

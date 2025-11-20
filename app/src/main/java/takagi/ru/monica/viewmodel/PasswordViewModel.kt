@@ -1,9 +1,13 @@
 package takagi.ru.monica.viewmodel
 
+import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -14,8 +18,12 @@ import java.util.Date
  */
 class PasswordViewModel(
     private val repository: PasswordRepository,
-    private val securityManager: SecurityManager
+    private val securityManager: SecurityManager,
+    private val secureItemRepository: SecureItemRepository? = null,
+    context: Context? = null
 ) : ViewModel() {
+    
+    private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
     
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -124,18 +132,57 @@ class PasswordViewModel(
     }
     
     /**
-     * Reset all application data - used for forgot password scenario
+     * Verify master password
      */
-    fun resetAllData() {
+    fun verifyMasterPassword(password: String): Boolean {
+        return securityManager.verifyMasterPassword(password)
+    }
+    
+    /**
+     * Reset all application data - used for forgot password scenario
+     * Supports selective clearing of different data categories
+     */
+    fun resetAllData(
+        clearPasswords: Boolean = true,
+        clearTotp: Boolean = true,
+        clearDocuments: Boolean = true,
+        clearBankCards: Boolean = true,
+        clearGeneratorHistory: Boolean = true
+    ) {
         viewModelScope.launch {
-            // Clear all password entries
-            repository.deleteAllPasswordEntries()
-            
-            // Clear security data (master password, etc.)
-            securityManager.clearSecurityData()
-            
-            // Reset authentication state
-            _isAuthenticated.value = false
+            try {
+                // Clear selected data categories
+                if (clearPasswords) {
+                    repository.deleteAllPasswordEntries()
+                }
+                
+                if (secureItemRepository != null) {
+                    if (clearTotp) {
+                        secureItemRepository.deleteAllTotpEntries()
+                    }
+                    
+                    if (clearDocuments) {
+                        secureItemRepository.deleteAllDocuments()
+                    }
+                    
+                    if (clearBankCards) {
+                        secureItemRepository.deleteAllBankCards()
+                    }
+                }
+                
+                if (clearGeneratorHistory && passwordHistoryManager != null) {
+                    passwordHistoryManager.clearHistory()
+                }
+                
+                // Always clear security data when resetting
+                securityManager.clearSecurityData()
+                
+                // Reset authentication state
+                _isAuthenticated.value = false
+            } catch (e: Exception) {
+                // Handle error - log it
+                Log.e("PasswordViewModel", "Error clearing data", e)
+            }
         }
     }
     

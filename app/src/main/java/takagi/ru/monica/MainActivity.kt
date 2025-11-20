@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.navigation.Screen
 import takagi.ru.monica.repository.PasswordRepository
@@ -204,7 +205,7 @@ fun MonicaApp(
     }
 
     val viewModel: PasswordViewModel = viewModel {
-        PasswordViewModel(repository, securityManager)
+        PasswordViewModel(repository, securityManager, secureItemRepository, navController.context)
     }
     val totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel = viewModel {
         takagi.ru.monica.viewmodel.TotpViewModel(secureItemRepository)
@@ -218,6 +219,8 @@ fun MonicaApp(
     val dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel = viewModel {
         takagi.ru.monica.viewmodel.DataExportImportViewModel(secureItemRepository, repository, navController.context)
     }
+
+    val passwordHistoryManager = remember { PasswordHistoryManager(navController.context) }
     val settingsViewModel: SettingsViewModel = viewModel {
         SettingsViewModel(settingsManager)
     }
@@ -261,6 +264,7 @@ fun MonicaApp(
                 securityManager = securityManager,
                 repository = repository,
                 secureItemRepository = secureItemRepository,
+                passwordHistoryManager = passwordHistoryManager,
                 onPermissionRequested = { permission, callback ->
                     pendingSupportPermissionCallback = callback
                     sharedSupportPermissionLauncher.launch(permission)
@@ -283,6 +287,7 @@ fun MonicaContent(
     securityManager: SecurityManager,
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
+    passwordHistoryManager: PasswordHistoryManager,
     onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
@@ -375,9 +380,12 @@ fun MonicaContent(
                 onNavigateToPermissionManagement = {
                     navController.navigate(Screen.PermissionManagement.route)
                 },
-                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
+                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
-                    android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards")
+                    android.util.Log.d(
+                        "MainActivity",
+                        "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards, generatorHistory=$clearGeneratorHistory"
+                    )
                     scope.launch {
                         try {
                             // 根据选项清空PasswordEntry表
@@ -402,6 +410,10 @@ fun MonicaContent(
                                         secureItemRepository.deleteItem(item)
                                     }
                                 }
+                            }
+
+                            if (clearGeneratorHistory) {
+                                passwordHistoryManager.clearHistory()
                             }
                             
                             // 显示成功消息
@@ -666,9 +678,12 @@ fun MonicaContent(
                 onNavigateToPermissionManagement = {
                     navController.navigate(Screen.PermissionManagement.route)
                 },
-                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean ->
+                onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
-                    android.util.Log.d("MainActivity", "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards")
+                    android.util.Log.d(
+                        "MainActivity",
+                        "onClearAllData called with options: passwords=$clearPasswords, totp=$clearTotp, documents=$clearDocuments, bankCards=$clearBankCards, generatorHistory=$clearGeneratorHistory"
+                    )
                     scope.launch {
                         try {
                             // 根据选项清空PasswordEntry表
@@ -693,6 +708,10 @@ fun MonicaContent(
                                         secureItemRepository.deleteItem(item)
                                     }
                                 }
+                            }
+
+                            if (clearGeneratorHistory) {
+                                passwordHistoryManager.clearHistory()
                             }
                             
                             // 显示成功消息
