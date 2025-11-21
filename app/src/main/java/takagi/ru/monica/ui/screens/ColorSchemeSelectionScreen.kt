@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -36,12 +37,28 @@ fun ColorSchemeSelectionScreen(
     // 用于即时预览的颜色方案
     var previewColorScheme by remember { mutableStateOf(settings.colorScheme) }
     
+    // 防止在返回动画期间误触
+    var isNavigatingOut by remember { mutableStateOf(false) }
+    
+    // 拦截系统返回键
+    BackHandler {
+        if (!isNavigatingOut) {
+            isNavigatingOut = true
+            onNavigateBack()
+        }
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.color_scheme)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = {
+                        if (!isNavigatingOut) {
+                            isNavigatingOut = true
+                            onNavigateBack()
+                        }
+                    }) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = stringResource(R.string.back)
@@ -75,8 +92,10 @@ fun ColorSchemeSelectionScreen(
                 tertiaryColor = Color(0xFF7D5260),
                 isSelected = previewColorScheme == ColorScheme.DEFAULT,
                 onClick = { 
-                    previewColorScheme = ColorScheme.DEFAULT
-                    settingsViewModel.updateColorScheme(ColorScheme.DEFAULT)
+                    if (!isNavigatingOut) {
+                        previewColorScheme = ColorScheme.DEFAULT
+                        settingsViewModel.updateColorScheme(ColorScheme.DEFAULT)
+                    }
                 }
             )
             
@@ -88,8 +107,10 @@ fun ColorSchemeSelectionScreen(
                 tertiaryColor = Color(0xFF26C6DA),
                 isSelected = previewColorScheme == ColorScheme.OCEAN_BLUE,
                 onClick = { 
-                    previewColorScheme = ColorScheme.OCEAN_BLUE
-                    settingsViewModel.updateColorScheme(ColorScheme.OCEAN_BLUE)
+                    if (!isNavigatingOut) {
+                        previewColorScheme = ColorScheme.OCEAN_BLUE
+                        settingsViewModel.updateColorScheme(ColorScheme.OCEAN_BLUE)
+                    }
                 }
             )
             
@@ -101,8 +122,10 @@ fun ColorSchemeSelectionScreen(
                 tertiaryColor = Color(0xFFFFA726),
                 isSelected = previewColorScheme == ColorScheme.SUNSET_ORANGE,
                 onClick = { 
-                    previewColorScheme = ColorScheme.SUNSET_ORANGE
-                    settingsViewModel.updateColorScheme(ColorScheme.SUNSET_ORANGE)
+                    if (!isNavigatingOut) {
+                        previewColorScheme = ColorScheme.SUNSET_ORANGE
+                        settingsViewModel.updateColorScheme(ColorScheme.SUNSET_ORANGE)
+                    }
                 }
             )
             
@@ -114,8 +137,10 @@ fun ColorSchemeSelectionScreen(
                 tertiaryColor = Color(0xFF388E3C),
                 isSelected = previewColorScheme == ColorScheme.FOREST_GREEN,
                 onClick = { 
-                    previewColorScheme = ColorScheme.FOREST_GREEN
-                    settingsViewModel.updateColorScheme(ColorScheme.FOREST_GREEN)
+                    if (!isNavigatingOut) {
+                        previewColorScheme = ColorScheme.FOREST_GREEN
+                        settingsViewModel.updateColorScheme(ColorScheme.FOREST_GREEN)
+                    }
                 }
             )
             
@@ -127,8 +152,10 @@ fun ColorSchemeSelectionScreen(
                 tertiaryColor = Color(0xFF8E24AA),
                 isSelected = previewColorScheme == ColorScheme.TECH_PURPLE,
                 onClick = { 
-                    previewColorScheme = ColorScheme.TECH_PURPLE
-                    settingsViewModel.updateColorScheme(ColorScheme.TECH_PURPLE)
+                    if (!isNavigatingOut) {
+                        previewColorScheme = ColorScheme.TECH_PURPLE
+                        settingsViewModel.updateColorScheme(ColorScheme.TECH_PURPLE)
+                    }
                 }
             )
             
@@ -140,8 +167,10 @@ fun ColorSchemeSelectionScreen(
                 tertiaryColor = Color(0xFF2A2A2A),  // 黑曼巴灰
                 isSelected = previewColorScheme == ColorScheme.BLACK_MAMBA,
                 onClick = { 
-                    previewColorScheme = ColorScheme.BLACK_MAMBA
-                    settingsViewModel.updateColorScheme(ColorScheme.BLACK_MAMBA)
+                    if (!isNavigatingOut) {
+                        previewColorScheme = ColorScheme.BLACK_MAMBA
+                        settingsViewModel.updateColorScheme(ColorScheme.BLACK_MAMBA)
+                    }
                 }
             )
             
@@ -153,8 +182,10 @@ fun ColorSchemeSelectionScreen(
                 tertiaryColor = Color(0xFF37474F),  // 深蓝灰
                 isSelected = previewColorScheme == ColorScheme.GREY_STYLE,
                 onClick = { 
-                    previewColorScheme = ColorScheme.GREY_STYLE
-                    settingsViewModel.updateColorScheme(ColorScheme.GREY_STYLE)
+                    if (!isNavigatingOut) {
+                        previewColorScheme = ColorScheme.GREY_STYLE
+                        settingsViewModel.updateColorScheme(ColorScheme.GREY_STYLE)
+                    }
                 }
             )
             
@@ -167,7 +198,9 @@ fun ColorSchemeSelectionScreen(
                 isSelected = previewColorScheme == ColorScheme.CUSTOM,
                 onClick = { 
                     // 导航到自定义颜色设置界面
-                    onNavigateToCustomColors()
+                    if (!isNavigatingOut) {
+                        onNavigateToCustomColors()
+                    }
                 }
             )
         }
