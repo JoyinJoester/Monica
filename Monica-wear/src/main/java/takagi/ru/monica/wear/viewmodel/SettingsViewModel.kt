@@ -29,6 +29,7 @@ import java.util.*
 sealed class SyncState {
     object Idle : SyncState()
     object Syncing : SyncState()
+    object PasswordRequired : SyncState()
     data class Success(val message: String = "同步成功") : SyncState()
     data class Error(val message: String) : SyncState()
 }
@@ -181,6 +182,8 @@ class SettingsViewModel(
         serverUrl: String,
         username: String,
         password: String,
+        enableEncryption: Boolean = false,
+        encryptionPassword: String = "",
         callback: (success: Boolean, error: String?) -> Unit
     ) {
         viewModelScope.launch {
@@ -189,6 +192,7 @@ class SettingsViewModel(
                 
                 // 配置连接
                 webDavHelper.configure(serverUrl, username, password)
+                webDavHelper.configureEncryption(enableEncryption, encryptionPassword)
                 
                 // 测试连接
                 _syncState.value = SyncState.Syncing
@@ -228,7 +232,7 @@ class SettingsViewModel(
     /**
      * 立即同步
      */
-    fun syncNow() {
+    fun syncNow(tempPassword: String? = null) {
         if (!webDavHelper.isConfigured()) {
             _syncState.value = SyncState.Error(getApplication<Application>().getString(R.string.sync_error_not_configured))
             Log.w(TAG, "Sync requested but WebDAV not configured")
@@ -245,7 +249,8 @@ class SettingsViewModel(
                 Log.d(TAG, "Starting manual sync")
                 _syncState.value = SyncState.Syncing
                 
-                val result = webDavHelper.downloadAndImportLatestBackup()
+                // 使用新的 sync() 方法，包含下载和上传
+                val result = webDavHelper.sync(tempPassword)
                 
                 if (result.isSuccess) {
                     val message = result.getOrDefault(getApplication<Application>().getString(R.string.sync_status_success))
@@ -261,8 +266,13 @@ class SettingsViewModel(
                 } else {
                     val error = result.exceptionOrNull()
                     val errorMessage = error?.message ?: getApplication<Application>().getString(R.string.sync_error_network)
-                    _syncState.value = SyncState.Error(errorMessage)
-                    Log.e(TAG, "Manual sync failed: ${error?.message}", error)
+                    
+                    if (errorMessage == "ENCRYPTION_PASSWORD_REQUIRED") {
+                        _syncState.value = SyncState.PasswordRequired
+                    } else {
+                        _syncState.value = SyncState.Error(errorMessage)
+                        Log.e(TAG, "Manual sync failed: ${error?.message}", error)
+                    }
                 }
             } catch (e: Exception) {
                 _syncState.value = SyncState.Error(getApplication<Application>().getString(R.string.sync_error_with_message, e.message ?: ""))
@@ -270,9 +280,19 @@ class SettingsViewModel(
             }
         }
     }
+
+    /**
+     * 重置同步状态
+     */
+    fun resetSyncState() {
+        if (_syncState.value is SyncState.PasswordRequired) {
+            _syncState.value = SyncState.Idle
+        }
+    }
     
     /**
      * 检查是否需要自动同步
+     * 自动同步只执行下载（恢复），不执行上传（备份）
      */
     fun checkAutoSync() {
         if (!webDavHelper.isConfigured()) {
@@ -285,8 +305,73 @@ class SettingsViewModel(
             return
         }
         
-        Log.d(TAG, "Auto sync conditions met, starting sync")
-        syncNow()
+        Log.d(TAG, "Auto sync conditions met, starting sync (download only)")
+        
+        viewModelScope.launch {
+            try {
+                _syncState.value = SyncState.Syncing
+                
+                // 自动同步只下载
+                val result = webDavHelper.downloadAndImportLatestBackup()
+                
+                if (result.isSuccess) {
+                    val message = result.getOrDefault(getApplication<Application>().getString(R.string.sync_status_success))
+                    _syncState.value = SyncState.Success(message)
+                    loadLastSyncTime()
+                    Log.d(TAG, "Auto sync completed: $message")
+                    
+                    // 3秒后恢复为Idle状态
+                    kotlinx.coroutines.delay(3000)
+                    if (_syncState.value is SyncState.Success) {
+                        _syncState.value = SyncState.Idle
+                    }
+                } else {
+                    val error = result.exceptionOrNull()
+                    val errorMessage = error?.message ?: getApplication<Application>().getString(R.string.sync_error_network)
+                    _syncState.value = SyncState.Error(errorMessage)
+                    Log.e(TAG, "Auto sync failed: ${error?.message}", error)
+                }
+            } catch (e: Exception) {
+                _syncState.value = SyncState.Error(getApplication<Application>().getString(R.string.sync_error_with_message, e.message ?: ""))
+                Log.e(TAG, "Error during auto sync", e)
+            }
+        }
+    }
+
+    /**
+     * 仅备份（上传）
+     */
+    fun backupNow(callback: (Boolean, String) -> Unit) {
+        if (!webDavHelper.isConfigured()) {
+            callback(false, getApplication<Application>().getString(R.string.sync_error_not_configured))
+            return
+        }
+        
+        viewModelScope.launch {
+            try {
+                _syncState.value = SyncState.Syncing
+                val result = webDavHelper.exportAndUploadBackup()
+                
+                if (result.isSuccess) {
+                    val message = result.getOrDefault("备份成功")
+                    _syncState.value = SyncState.Success(message)
+                    callback(true, message)
+                    
+                    kotlinx.coroutines.delay(3000)
+                    if (_syncState.value is SyncState.Success) {
+                        _syncState.value = SyncState.Idle
+                    }
+                } else {
+                    val error = result.exceptionOrNull()?.message ?: "备份失败"
+                    _syncState.value = SyncState.Error(error)
+                    callback(false, error)
+                }
+            } catch (e: Exception) {
+                val error = e.message ?: "未知错误"
+                _syncState.value = SyncState.Error(error)
+                callback(false, error)
+            }
+        }
     }
     
     /**
@@ -389,4 +474,25 @@ class SettingsViewModel(
             }
         }
     }
+
+    /**
+     * 获取当前 WebDAV 配置
+     */
+    fun getWebDavConfig(): WebDavConfig {
+        return WebDavConfig(
+            serverUrl = webDavHelper.getServerUrl(),
+            username = webDavHelper.getUsername(),
+            password = webDavHelper.getPassword(),
+            enableEncryption = webDavHelper.isEncryptionEnabled(),
+            encryptionPassword = webDavHelper.getEncryptionPassword()
+        )
+    }
 }
+
+data class WebDavConfig(
+    val serverUrl: String,
+    val username: String,
+    val password: String,
+    val enableEncryption: Boolean,
+    val encryptionPassword: String
+)

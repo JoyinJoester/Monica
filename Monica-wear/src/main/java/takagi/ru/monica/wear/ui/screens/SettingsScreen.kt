@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.material3.darkColorScheme
@@ -78,6 +79,15 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAddTotpDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showBackupDialog by remember { mutableStateOf(false) }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    
+    // 监听同步状态，如果是 PasswordRequired，显示密码输入框
+    LaunchedEffect(syncState) {
+        if (syncState is SyncState.PasswordRequired) {
+            showPasswordDialog = true
+        }
+    }
     
     SettingsScreenContent(
         scrollState = scrollState,
@@ -90,6 +100,7 @@ fun SettingsScreen(
         securityManager = securityManager,
         onSyncClick = { viewModel.syncNow() },
         onWebDavClick = { showWebDavDialog = true },
+        onBackupClick = { showBackupDialog = true },
         onAddTotpClick = { showAddTotpDialog = true },
         onThemeClick = { showThemeDialog = true },
         onOledBlackToggle = { viewModel.setOledBlack(it) },
@@ -99,6 +110,75 @@ fun SettingsScreen(
         modifier = modifier
     )
     
+    // 备份确认对话框
+    if (showBackupDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupDialog = false },
+            title = { Text("备份到云端") },
+            text = { Text("确定要将当前所有验证器数据上传到 WebDAV 吗？这将创建一个新的备份文件。") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBackupDialog = false
+                        viewModel.backupNow { success, msg ->
+                            // 可以在这里显示 Toast，但 ViewModel 已经更新了 syncState
+                        }
+                    }
+                ) {
+                    Text("备份")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackupDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+    
+    // 解密密码输入对话框
+    if (showPasswordDialog) {
+        var tempPassword by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { 
+                showPasswordDialog = false
+                viewModel.resetSyncState()
+            },
+            title = { Text("输入解密密码") },
+            text = { 
+                Column {
+                    Text("检测到加密的备份文件，请输入密码进行解密：")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tempPassword,
+                        onValueChange = { tempPassword = it },
+                        label = { Text("密码") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPasswordDialog = false
+                        viewModel.syncNow(tempPassword)
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showPasswordDialog = false
+                    viewModel.resetSyncState()
+                }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     // WebDAV配置对话框
     if (showWebDavDialog) {
         WebDavConfigDialog(
@@ -188,6 +268,7 @@ private fun SettingsScreenContent(
     securityManager: takagi.ru.monica.wear.security.WearSecurityManager?,
     onSyncClick: () -> Unit,
     onWebDavClick: () -> Unit,
+    onBackupClick: () -> Unit,
     onAddTotpClick: () -> Unit,
     onThemeClick: () -> Unit,
     onOledBlackToggle: (Boolean) -> Unit,
@@ -247,6 +328,22 @@ private fun SettingsScreenContent(
                     )
                 }
             )
+            
+            if (isWebDavConfigured) {
+                SettingsItem(
+                    icon = Icons.Default.Upload,
+                    title = "备份到云端",
+                    subtitle = "手动上传当前数据",
+                    onClick = onBackupClick,
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
         }
 
         // 验证器管理分组
@@ -471,6 +568,7 @@ private fun SyncStatusCard(
                             SyncState.Syncing -> R.string.sync_status_syncing
                             is SyncState.Success -> R.string.sync_status_success
                             is SyncState.Error -> R.string.sync_status_failed
+                            SyncState.PasswordRequired -> R.string.sync_status_failed // 或者使用一个新的字符串资源
                         }),
                         style = MaterialTheme.typography.titleMedium,
                         color = contentColor,
@@ -528,6 +626,18 @@ private fun SyncStatusCard(
                     is SyncState.Error -> {
                         Text(
                             text = syncState.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(contentColor.copy(alpha = 0.1f))
+                                .padding(8.dp)
+                        )
+                    }
+                    SyncState.PasswordRequired -> {
+                        Text(
+                            text = "需要解密密码",
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor,
                             modifier = Modifier
@@ -687,9 +797,15 @@ private fun WebDavConfigDialog(
     onDismiss: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var serverUrl by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    
+    // 获取当前配置
+    val currentConfig = remember { viewModel.getWebDavConfig() }
+    
+    var serverUrl by remember { mutableStateOf(currentConfig.serverUrl) }
+    var username by remember { mutableStateOf(currentConfig.username) }
+    var password by remember { mutableStateOf(currentConfig.password) }
+    var enableEncryption by remember { mutableStateOf(currentConfig.enableEncryption) }
+    var encryptionPassword by remember { mutableStateOf(currentConfig.encryptionPassword) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     
@@ -739,12 +855,39 @@ private fun WebDavConfigDialog(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text(stringResource(R.string.webdav_password)) },
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = {
                         Icon(Icons.Default.Lock, contentDescription = null)
                     }
                 )
+                
+                // 加密设置
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "加密备份",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Switch(
+                        checked = enableEncryption,
+                        onCheckedChange = { enableEncryption = it }
+                    )
+                }
+                
+                if (enableEncryption) {
+                    OutlinedTextField(
+                        value = encryptionPassword,
+                        onValueChange = { encryptionPassword = it },
+                        label = { Text("加密密码") },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = {
+                            Icon(Icons.Default.Key, contentDescription = null)
+                        }
+                    )
+                }
                 
                 if (errorMessage.isNotEmpty()) {
                     Text(
@@ -759,7 +902,13 @@ private fun WebDavConfigDialog(
             Button(
                 onClick = {
                     isLoading = true
-                    viewModel.configureWebDav(serverUrl, username, password) { success, error ->
+                    viewModel.configureWebDav(
+                        serverUrl, 
+                        username, 
+                        password,
+                        enableEncryption,
+                        encryptionPassword
+                    ) { success, error ->
                         isLoading = false
                         if (success) {
                             onDismiss()

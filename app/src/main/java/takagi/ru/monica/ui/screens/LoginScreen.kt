@@ -304,12 +304,6 @@ private fun handleLogin(
         return
     }
     
-    // 检查密码长度
-    if (masterPassword.length < 6) {
-        onError(context.getString(R.string.error_password_min_6_digits))
-        return
-    }
-    
     if (isFirstTime) {
         // 首次设置密码
         if (!isConfirmingPassword) {

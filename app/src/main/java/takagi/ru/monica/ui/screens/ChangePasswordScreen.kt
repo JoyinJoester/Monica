@@ -253,9 +253,6 @@ fun ChangePasswordScreen(
                         newPassword.isEmpty() -> {
                             errorMessage = errorNewEmpty
                         }
-                        newPassword.length < 6 -> {
-                            errorMessage = errorNewTooShort
-                        }
                         confirmPassword.isEmpty() -> {
                             errorMessage = errorConfirmEmpty
                         }

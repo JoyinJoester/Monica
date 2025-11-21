@@ -449,7 +449,11 @@ class WebDavHelper(
             // 1. 创建临时CSV文件
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val passwordsCsvFile = File(context.cacheDir, "Monica_${timestamp}_password.csv")
-            val secureItemsCsvFile = File(context.cacheDir, "Monica_${timestamp}_other.csv")
+            // 分离备份文件：验证(TOTP) 和 证件/银行卡
+            val totpCsvFile = File(context.cacheDir, "Monica_${timestamp}_totp.csv")
+            val cardsDocsCsvFile = File(context.cacheDir, "Monica_${timestamp}_cards_docs.csv")
+            // 旧版本兼容：如果需要恢复旧版本，可能需要这个，但这里是创建新备份，所以不需要创建 other.csv
+            
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
             val zipFile = File(context.cacheDir, "monica_backup_$timestamp.zip")
             val finalFile = if (enableEncryption) {
@@ -473,45 +477,64 @@ class WebDavHelper(
                     }
                 }
                 
+                // 分类过滤后的项目
+                val totpItems = filteredSecureItems.filter { it.itemType == ItemType.TOTP }
+                val cardsDocsItems = filteredSecureItems.filter { it.itemType == ItemType.BANK_CARD || it.itemType == ItemType.DOCUMENT }
+                
                 // 记录各类型的数量
                 val totpCount = secureItems.count { it.itemType == ItemType.TOTP }
                 val docCount = secureItems.count { it.itemType == ItemType.DOCUMENT }
                 val cardCount = secureItems.count { it.itemType == ItemType.BANK_CARD }
-                val filteredTotpCount = filteredSecureItems.count { it.itemType == ItemType.TOTP }
-                val filteredDocCount = filteredSecureItems.count { it.itemType == ItemType.DOCUMENT }
-                val filteredCardCount = filteredSecureItems.count { it.itemType == ItemType.BANK_CARD }
+                val filteredTotpCount = totpItems.size
+                val filteredDocAndCardCount = cardsDocsItems.size
                 
                 android.util.Log.d("WebDavHelper", "TOTP: $totpCount total, $filteredTotpCount included")
-                android.util.Log.d("WebDavHelper", "Documents: $docCount total, $filteredDocCount included")
-                android.util.Log.d("WebDavHelper", "Bank Cards: $cardCount total, $filteredCardCount included")
+                android.util.Log.d("WebDavHelper", "Docs & Cards: ${docCount + cardCount} total, $filteredDocAndCardCount included")
                 
                 // 4. 导出密码数据到CSV（如果启用）
                 if (preferences.includePasswords && filteredPasswords.isNotEmpty()) {
                     exportPasswordsToCSV(filteredPasswords, passwordsCsvFile)
                 }
                 
-                // 5. 导出其他数据到CSV（如果有过滤后的项目）
-                if (filteredSecureItems.isNotEmpty()) {
+                // 5. 导出验证(TOTP)数据到CSV
+                if (totpItems.isNotEmpty()) {
                     val exportManager = DataExportImportManager(context)
-                    val csvUri = Uri.fromFile(secureItemsCsvFile)
-                    val exportResult = exportManager.exportData(filteredSecureItems, csvUri)
+                    val csvUri = Uri.fromFile(totpCsvFile)
+                    val exportResult = exportManager.exportData(totpItems, csvUri)
                     
                     if (exportResult.isFailure) {
                         return@withContext Result.failure(exportResult.exceptionOrNull() 
-                            ?: Exception("导出数据失败"))
+                            ?: Exception("导出验证数据失败"))
                     }
                 }
                 
-                // 6. 创建ZIP文件,根据偏好设置包含相应内容
+                // 6. 导出证件和银行卡数据到CSV
+                if (cardsDocsItems.isNotEmpty()) {
+                    val exportManager = DataExportImportManager(context)
+                    val csvUri = Uri.fromFile(cardsDocsCsvFile)
+                    val exportResult = exportManager.exportData(cardsDocsItems, csvUri)
+                    
+                    if (exportResult.isFailure) {
+                        return@withContext Result.failure(exportResult.exceptionOrNull() 
+                            ?: Exception("导出证件和银行卡数据失败"))
+                    }
+                }
+                
+                // 7. 创建ZIP文件,根据偏好设置包含相应内容
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
                     // 添加passwords.csv（如果启用且文件存在）
                     if (preferences.includePasswords && passwordsCsvFile.exists()) {
                         addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
                     }
                     
-                    // 添加secure_items.csv（如果文件存在）
-                    if (secureItemsCsvFile.exists()) {
-                        addFileToZip(zipOut, secureItemsCsvFile, secureItemsCsvFile.name)
+                    // 添加totp.csv（如果文件存在）
+                    if (totpCsvFile.exists()) {
+                        addFileToZip(zipOut, totpCsvFile, totpCsvFile.name)
+                    }
+                    
+                    // 添加cards_docs.csv（如果文件存在）
+                    if (cardsDocsCsvFile.exists()) {
+                        addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
                     }
                     
                     // 添加密码生成历史（JSON）- 如果启用
@@ -549,7 +572,7 @@ class WebDavHelper(
                     }
                 }
                 
-                // 5. 如果启用加密，加密 ZIP 文件
+                // 8. 如果启用加密，加密 ZIP 文件
                 if (enableEncryption && encryptionPassword.isNotEmpty()) {
                     val encryptResult = EncryptionHelper.encryptFile(zipFile, finalFile, encryptionPassword)
                     if (encryptResult.isFailure) {
@@ -559,19 +582,20 @@ class WebDavHelper(
                     android.util.Log.d("WebDavHelper", "Backup encrypted successfully")
                 }
                 
-                // 6. 上传到WebDAV
+                // 9. 上传到WebDAV
                 val uploadResult = uploadBackup(finalFile)
                 
-                // 7. 如果上传成功，更新最后备份时间
+                // 10. 如果上传成功，更新最后备份时间
                 if (uploadResult.isSuccess) {
                     updateLastBackupTime()
                 }
                 
                 uploadResult
             } finally {
-                // 8. 清理临时文件
+                // 11. 清理临时文件
                 passwordsCsvFile.delete()
-                secureItemsCsvFile.delete()
+                totpCsvFile.delete()
+                cardsDocsCsvFile.delete()
                 historyJsonFile.delete()
                 zipFile.delete()
                 if (finalFile != zipFile) {
@@ -651,6 +675,11 @@ class WebDavHelper(
     }
     
     /**
+     * 异常：需要密码
+     */
+    class PasswordRequiredException : Exception("备份文件已加密，请提供解密密码")
+
+    /**
      * 下载并恢复备份 - 返回密码、其他数据和账单
      * @param backupFile 要恢复的备份文件
      * @param decryptPassword 解密密码 (如果文件已加密)
@@ -678,7 +707,7 @@ class WebDavHelper(
                 val password = decryptPassword ?: encryptionPassword
                 if (password.isEmpty()) {
                     downloadedFile.delete()
-                    return@withContext Result.failure(Exception("备份文件已加密，请提供解密密码"))
+                    return@withContext Result.failure(PasswordRequiredException())
                 }
                 
                 val decryptedFile = File(context.cacheDir, "restore_decrypted_${System.nanoTime()}.zip")
@@ -717,7 +746,9 @@ class WebDavHelper(
                             }
                             entryName.equals("secure_items.csv", ignoreCase = true) ||
                                 entryName.equals("backup.csv", ignoreCase = true) ||
-                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_other.csv", ignoreCase = true)) -> {
+                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_other.csv", ignoreCase = true)) ||
+                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_totp.csv", ignoreCase = true)) ||
+                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_cards_docs.csv", ignoreCase = true)) -> {
                                 val exportManager = DataExportImportManager(context)
                                 val csvUri = Uri.fromFile(tempFile)
                                 val importResult = exportManager.importData(csvUri)
@@ -1067,6 +1098,27 @@ class WebDavHelper(
             else -> String.format("%.2f MB", bytes / (1024.0 * 1024.0))
         }
     }
+    
+    /**
+     * 获取加密配置
+     */
+    data class EncryptionConfig(
+        val enabled: Boolean,
+        val password: String
+    )
+
+    fun getEncryptionConfig(): EncryptionConfig {
+        return EncryptionConfig(enableEncryption, encryptionPassword)
+    }
+
+    /**
+     * 设置加密配置
+     */
+    fun setEncryptionConfig(enabled: Boolean, password: String) {
+        enableEncryption = enabled
+        encryptionPassword = password
+        saveConfig()
+    }
 }
 
 /**
@@ -1136,3 +1188,5 @@ private fun getSystemServiceForUser(context: Context, serviceName: String): Any?
         return context.getSystemService(serviceName)
     }
 }
+
+

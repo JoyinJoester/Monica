@@ -12,6 +12,7 @@ import takagi.ru.monica.wear.data.PasswordDatabase
 import takagi.ru.monica.wear.data.SecureItem
 import takagi.ru.monica.wear.repository.TotpRepository
 import takagi.ru.monica.wear.repository.TotpRepositoryImpl
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
@@ -279,11 +280,150 @@ class WearWebDavHelper(private val context: Context) {
     }
     
     /**
+     * 执行完整同步：下载 -> 导入 -> 导出 -> 上传
+     */
+    suspend fun sync(tempPassword: String? = null): Result<String> = withContext(Dispatchers.IO) {
+        // 1. 下载并导入
+        val downloadResult = downloadAndImportLatestBackup(tempPassword)
+        
+        // 即使下载失败（例如没有备份），也尝试上传
+        val downloadMsg = if (downloadResult.isSuccess) {
+            downloadResult.getOrNull() ?: "下载成功"
+        } else {
+            val error = downloadResult.exceptionOrNull()?.message ?: "未知错误"
+            if (error == "ENCRYPTION_PASSWORD_REQUIRED") {
+                return@withContext Result.failure(Exception("ENCRYPTION_PASSWORD_REQUIRED"))
+            }
+            Log.w(TAG, "Download failed: $error")
+            "下载跳过: $error"
+        }
+        
+        // 2. 导出并上传
+        val uploadResult = exportAndUploadBackup()
+        
+        if (uploadResult.isFailure) {
+            val uploadError = uploadResult.exceptionOrNull()?.message ?: "上传失败"
+            if (downloadResult.isFailure) {
+                return@withContext Result.failure(Exception("同步失败: 下载错误($downloadMsg), 上传错误($uploadError)"))
+            }
+            return@withContext Result.failure(Exception("$downloadMsg，但上传失败: $uploadError"))
+        }
+        
+        val uploadMsg = uploadResult.getOrNull() ?: ""
+        Result.success("$downloadMsg\n$uploadMsg")
+    }
+
+    /**
+     * 导出并上传备份
+     */
+    suspend fun exportAndUploadBackup(): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            if (sardine == null) {
+                return@withContext Result.failure(Exception("WebDAV未配置"))
+            }
+
+            // 获取所有TOTP数据
+            val items = totpRepository.getAllTotpItems().first()
+            if (items.isEmpty()) {
+                return@withContext Result.success("本地没有数据，跳过上传")
+            }
+            
+            // 生成CSV
+            val csvFile = generateTotpCsv(items)
+            
+            // 生成ZIP (加密或不加密)
+            val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val zipFileName = "monica_backup_wear_$timestamp" + if (enableEncryption) ".enc.zip" else ".zip"
+            val zipFile = File(context.cacheDir, zipFileName)
+            
+            if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                // 先生成普通ZIP
+                val tempZip = File(context.cacheDir, "temp.zip")
+                createZip(csvFile, tempZip, "monica_backup_wear_${timestamp}_totp.csv")
+                // 加密
+                val encryptResult = EncryptionHelper.encryptFile(tempZip, zipFile, encryptionPassword)
+                tempZip.delete()
+                
+                if (encryptResult.isFailure) {
+                    throw Exception("加密失败: ${encryptResult.exceptionOrNull()?.message}")
+                }
+            } else {
+                createZip(csvFile, zipFile, "monica_backup_wear_${timestamp}_totp.csv")
+            }
+            csvFile.delete()
+            
+            // 检查备份目录是否存在
+            val backupDir = "$serverUrl/Monica_Backups"
+            if (!(sardine?.exists(backupDir) ?: false)) {
+                sardine?.createDirectory(backupDir)
+            }
+            
+            // 上传
+            val uploadPath = "$backupDir/$zipFileName"
+            val fileBytes = zipFile.readBytes() // 读取到内存以上传，避免流问题
+            sardine?.put(uploadPath, fileBytes)
+            zipFile.delete()
+            
+            Log.d(TAG, "Uploaded backup: $zipFileName")
+            Result.success("上传成功")
+        } catch (e: Exception) {
+            Log.e(TAG, "Upload failed", e)
+            Result.failure(e)
+        }
+    }
+
+    private fun generateTotpCsv(items: List<SecureItem>): File {
+        val file = File(context.cacheDir, "temp_export.csv")
+        file.bufferedWriter(Charsets.UTF_8).use { writer ->
+            // 写入BOM
+            writer.write("\uFEFF")
+            // 写入表头
+            writer.write("id,type,title,data,notes,favorite,images,created_at,updated_at")
+            writer.newLine()
+            
+            items.forEach { item ->
+                val line = buildCsvLine(item)
+                writer.write(line)
+                writer.newLine()
+            }
+        }
+        return file
+    }
+    
+    private fun buildCsvLine(item: SecureItem): String {
+        val fields = listOf(
+            item.id.toString(),
+            item.itemType.name,
+            item.title,
+            item.itemData,
+            item.notes,
+            item.isFavorite.toString(),
+            item.imagePaths,
+            item.createdAt.time.toString(),
+            item.updatedAt.time.toString()
+        )
+        return fields.joinToString(",") { field ->
+            "\"${field.replace("\"", "\"\"")}\""
+        }
+    }
+    
+    private fun createZip(sourceFile: File, zipFile: File, entryName: String) {
+        java.util.zip.ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+            val entry = java.util.zip.ZipEntry(entryName)
+            zos.putNextEntry(entry)
+            sourceFile.inputStream().use { input ->
+                input.copyTo(zos)
+            }
+            zos.closeEntry()
+        }
+    }
+
+    /**
      * 下载并导入最新的备份
      * 只下载，不上传
      * @return Result包含Pair<导入数量, 跳过数量>和消息
      */
-    suspend fun downloadAndImportLatestBackup(): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun downloadAndImportLatestBackup(tempPassword: String? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
                 Log.e(TAG, "Sardine client is null")
@@ -371,15 +511,25 @@ class WearWebDavHelper(private val context: Context) {
             }
             
             // 3. 如果是加密文件，先解密
-            val zipFile = if (latestBackup.name.endsWith(".enc.zip")) {
-                if (!enableEncryption || encryptionPassword.isEmpty()) {
+            val isEncrypted = EncryptionHelper.isEncryptedFile(localFile)
+            val zipFile = if (isEncrypted) {
+                val pwdToUse = if (!tempPassword.isNullOrEmpty()) {
+                    tempPassword
+                } else if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                    encryptionPassword
+                } else {
+                    null
+                }
+
+                if (pwdToUse == null) {
                     localFile.delete()
-                    return@withContext Result.failure(Exception("备份已加密但未配置解密密码"))
+                    return@withContext Result.failure(Exception("ENCRYPTION_PASSWORD_REQUIRED"))
                 }
                 
                 Log.d(TAG, "Decrypting backup file...")
-                val decryptedFile = File(context.cacheDir, latestBackup.name.replace(".enc.zip", ".zip"))
-                val decryptResult = EncryptionHelper.decryptFile(localFile, decryptedFile, encryptionPassword)
+                // 使用临时文件名，避免源文件名为 .zip 时覆盖自身
+                val decryptedFile = File(context.cacheDir, "decrypted_${System.currentTimeMillis()}.zip")
+                val decryptResult = EncryptionHelper.decryptFile(localFile, decryptedFile, pwdToUse)
                 
                 localFile.delete()
                 
@@ -484,28 +634,56 @@ class WearWebDavHelper(private val context: Context) {
         val normalized = entryName.substringAfterLast('/').lowercase(Locale.US)
         return normalized == "secure_items.csv" ||
             normalized == "backup.csv" ||
-            (normalized.startsWith("monica_") && normalized.endsWith("_other.csv"))
+            (normalized.startsWith("monica_") && normalized.endsWith("_other.csv")) ||
+            (normalized.startsWith("monica_") && normalized.endsWith("_totp.csv"))
     }
     
     private fun parseTotpItemsFromCsv(csvFile: File): List<SecureItem> {
         val parsedItems = mutableListOf<SecureItem>()
         csvFile.bufferedReader(Charsets.UTF_8).use { reader ->
-            var firstLine = reader.readLine() ?: return emptyList()
-            if (firstLine.startsWith("\uFEFF")) {
-                firstLine = firstLine.substring(1)
+            var line = reader.readLine()
+            if (line == null) return emptyList()
+            
+            if (line.startsWith("\uFEFF")) {
+                line = line.substring(1)
             }
-            val hasHeader = firstLine.contains("type", ignoreCase = true) &&
-                firstLine.contains("title", ignoreCase = true)
-            if (!hasHeader && firstLine.isNotBlank()) {
-                parseSecureItem(firstLine)?.let(parsedItems::add)
+            
+            val hasHeader = line.contains("type", ignoreCase = true) &&
+                line.contains("title", ignoreCase = true)
+            
+            // If header, skip it and read next
+            if (hasHeader) {
+                line = reader.readLine()
             }
-            reader.forEachLine { line ->
-                if (line.isNotBlank()) {
-                    parseSecureItem(line)?.let(parsedItems::add)
+            
+            val currentRecord = StringBuilder()
+            
+            while (line != null) {
+                if (currentRecord.isNotEmpty()) {
+                    currentRecord.append("\n")
                 }
+                currentRecord.append(line)
+                
+                // Only process if we have balanced quotes
+                if (countQuotes(currentRecord) % 2 == 0) {
+                    if (currentRecord.isNotBlank()) {
+                        parseSecureItem(currentRecord.toString())?.let(parsedItems::add)
+                    }
+                    currentRecord.clear()
+                }
+                
+                line = reader.readLine()
             }
         }
         return parsedItems.filter { it.itemType == ItemType.TOTP }
+    }
+    
+    private fun countQuotes(text: CharSequence): Int {
+        var count = 0
+        for (i in 0 until text.length) {
+            if (text[i] == '"') count++
+        }
+        return count
     }
     
     private fun parseSecureItem(line: String): SecureItem? {
@@ -565,5 +743,7 @@ class WearWebDavHelper(private val context: Context) {
     
     fun getServerUrl(): String = serverUrl
     fun getUsername(): String = username
+    fun getPassword(): String = password
     fun isEncryptionEnabled(): Boolean = enableEncryption
+    fun getEncryptionPassword(): String = encryptionPassword
 }

@@ -58,6 +58,11 @@ fun WebDavBackupScreen(
     var autoBackupEnabled by remember { mutableStateOf(false) }
     var lastBackupTime by remember { mutableStateOf(0L) }
     
+    // 加密设置状态
+    var encryptionEnabled by remember { mutableStateOf(false) }
+    var encryptionPassword by remember { mutableStateOf("") }
+    var encryptionPasswordVisible by remember { mutableStateOf(false) }
+    
     // 选择性备份状态
     var backupPreferences by remember { mutableStateOf(takagi.ru.monica.data.BackupPreferences()) }
     var passwordCount by remember { mutableStateOf(0) }
@@ -84,6 +89,11 @@ fun WebDavBackupScreen(
         // 加载自动备份状态
         autoBackupEnabled = webDavHelper.isAutoBackupEnabled()
         lastBackupTime = webDavHelper.getLastBackupTime()
+        
+        // 加载加密配置
+        val encryptionConfig = webDavHelper.getEncryptionConfig()
+        encryptionEnabled = encryptionConfig.enabled
+        encryptionPassword = encryptionConfig.password
         
         // 加载备份偏好设置
         backupPreferences = webDavHelper.getBackupPreferences()
@@ -135,6 +145,77 @@ fun WebDavBackupScreen(
                             backupList = emptyList()
                         }
                     )
+                }
+            }
+            
+            // 加密设置卡片 (仅在配置成功后显示)
+            if (isConfigured) {
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "加密备份",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = "启用加密后，备份文件将使用此密码加密。恢复时需要提供相同的密码。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = encryptionEnabled,
+                                onCheckedChange = { enabled ->
+                                    encryptionEnabled = enabled
+                                    if (!enabled) {
+                                        // 如果关闭加密，不需要密码
+                                        webDavHelper.setEncryptionConfig(false, encryptionPassword)
+                                    } else {
+                                        // 如果开启加密，且已有密码，则保存
+                                        if (encryptionPassword.isNotEmpty()) {
+                                            webDavHelper.setEncryptionConfig(true, encryptionPassword)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                        
+                        if (encryptionEnabled) {
+                            OutlinedTextField(
+                                value = encryptionPassword,
+                                onValueChange = { 
+                                    encryptionPassword = it
+                                    webDavHelper.setEncryptionConfig(true, it)
+                                },
+                                label = { Text("加密密码") },
+                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                                visualTransformation = if (encryptionPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { encryptionPasswordVisible = !encryptionPasswordVisible }) {
+                                        Icon(
+                                            if (encryptionPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = null
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done
+                                )
+                            )
+                        }
+                    }
                 }
             }
             
@@ -209,7 +290,6 @@ fun WebDavBackupScreen(
                             keyboardType = KeyboardType.Password,
                             imeAction = ImeAction.Done
                         ),
-                        singleLine = true,
                         enabled = !isConfigured
                     )
                     
@@ -656,6 +736,105 @@ private fun BackupItem(
     var showRestoreDialog by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     
+    // New state variables for smart decryption
+    var showPasswordInputDialog by remember { mutableStateOf(false) }
+    var tempPassword by remember { mutableStateOf("") }
+
+    suspend fun handleRestoreResult(result: Result<BackupContent>) {
+        if (result.isSuccess) {
+            val content = result.getOrNull() ?: BackupContent(emptyList(), emptyList())
+            val passwords = content.passwords
+            val secureItems = content.secureItems
+            
+            // 导入密码数据到数据库(带去重)
+            var passwordCount = 0
+            var passwordSkipped = 0
+            passwords.forEach { password ->
+                try {
+                    val isDuplicate = passwordRepository.isDuplicateEntry(
+                        password.title,
+                        password.username,
+                        password.website
+                    )
+                    if (!isDuplicate) {
+                        val newPassword = password.copy(id = 0)
+                        passwordRepository.insertPasswordEntry(newPassword)
+                        passwordCount++
+                    } else {
+                        passwordSkipped++
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("WebDavBackup", "Failed to import password: ${e.message}")
+                }
+            }
+            
+            // 导入其他数据到数据库(带去重)
+            var secureItemCount = 0
+            var secureItemSkipped = 0
+            secureItems.forEach { exportItem ->
+                try {
+                    val itemType = takagi.ru.monica.data.ItemType.valueOf(exportItem.itemType)
+                    val isDuplicate = secureItemRepository.isDuplicateItem(
+                        itemType,
+                        exportItem.title
+                    )
+                    if (!isDuplicate) {
+                        val secureItem = takagi.ru.monica.data.SecureItem(
+                            id = 0,
+                            itemType = itemType,
+                            title = exportItem.title,
+                            itemData = exportItem.itemData,
+                            notes = exportItem.notes,
+                            isFavorite = exportItem.isFavorite,
+                            imagePaths = exportItem.imagePaths,
+                            createdAt = java.util.Date(exportItem.createdAt),
+                            updatedAt = java.util.Date(exportItem.updatedAt)
+                        )
+                        secureItemRepository.insertItem(secureItem)
+                        secureItemCount++
+                    } else {
+                        secureItemSkipped++
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("WebDavBackup", "Failed to import secure item: ${e.message}")
+                }
+            }
+            
+            isRestoring = false
+            val summaryParts = mutableListOf<String>()
+            summaryParts += "$passwordCount 个密码"
+            summaryParts += "$secureItemCount 个其他数据"
+            val message = buildString {
+                append("恢复成功! 导入了 ${summaryParts.joinToString("、")}")
+                val skippedParts = mutableListOf<String>()
+                if (passwordSkipped > 0) skippedParts += "$passwordSkipped 个重复密码"
+                if (secureItemSkipped > 0) skippedParts += "$secureItemSkipped 个重复数据"
+                if (skippedParts.isNotEmpty()) {
+                    append("\n跳过 ${skippedParts.joinToString("、")}")
+                }
+            }
+            Toast.makeText(
+                context,
+                message,
+                Toast.LENGTH_LONG
+            ).show()
+            onRestoreSuccess()
+        } else {
+            isRestoring = false
+            val exception = result.exceptionOrNull()
+            if (exception is WebDavHelper.PasswordRequiredException) {
+                showPasswordInputDialog = true
+            } else {
+                val error = exception?.message ?: "未知错误"
+                Toast.makeText(
+                    context,
+                    "恢复失败: $error",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -737,94 +916,7 @@ private fun BackupItem(
                             try {
                                 // 下载并恢复备份
                                 val result = webDavHelper.downloadAndRestoreBackup(backup)
-                                
-                                if (result.isSuccess) {
-                                    val content = result.getOrNull() ?: BackupContent(emptyList(), emptyList())
-                                    val passwords = content.passwords
-                                    val secureItems = content.secureItems
-                                    
-                                    // 导入密码数据到数据库(带去重)
-                                    var passwordCount = 0
-                                    var passwordSkipped = 0
-                                    passwords.forEach { password ->
-                                        try {
-                                            val isDuplicate = passwordRepository.isDuplicateEntry(
-                                                password.title,
-                                                password.username,
-                                                password.website
-                                            )
-                                            if (!isDuplicate) {
-                                                val newPassword = password.copy(id = 0)
-                                                passwordRepository.insertPasswordEntry(newPassword)
-                                                passwordCount++
-                                            } else {
-                                                passwordSkipped++
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("WebDavBackup", "Failed to import password: ${e.message}")
-                                        }
-                                    }
-                                    
-                                    // 导入其他数据到数据库(带去重)
-                                    var secureItemCount = 0
-                                    var secureItemSkipped = 0
-                                    secureItems.forEach { exportItem ->
-                                        try {
-                                            val itemType = takagi.ru.monica.data.ItemType.valueOf(exportItem.itemType)
-                                            val isDuplicate = secureItemRepository.isDuplicateItem(
-                                                itemType,
-                                                exportItem.title
-                                            )
-                                            if (!isDuplicate) {
-                                                val secureItem = takagi.ru.monica.data.SecureItem(
-                                                    id = 0,
-                                                    itemType = itemType,
-                                                    title = exportItem.title,
-                                                    itemData = exportItem.itemData,
-                                                    notes = exportItem.notes,
-                                                    isFavorite = exportItem.isFavorite,
-                                                    imagePaths = exportItem.imagePaths,
-                                                    createdAt = java.util.Date(exportItem.createdAt),
-                                                    updatedAt = java.util.Date(exportItem.updatedAt)
-                                                )
-                                                secureItemRepository.insertItem(secureItem)
-                                                secureItemCount++
-                                            } else {
-                                                secureItemSkipped++
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("WebDavBackup", "Failed to import secure item: ${e.message}")
-                                        }
-                                    }
-                                    
-                                    isRestoring = false
-                                    val summaryParts = mutableListOf<String>()
-                                    summaryParts += "$passwordCount 个密码"
-                                    summaryParts += "$secureItemCount 个其他数据"
-                                    val message = buildString {
-                                        append("恢复成功! 导入了 ${summaryParts.joinToString("、")}")
-                                        val skippedParts = mutableListOf<String>()
-                                        if (passwordSkipped > 0) skippedParts += "$passwordSkipped 个重复密码"
-                                        if (secureItemSkipped > 0) skippedParts += "$secureItemSkipped 个重复数据"
-                                        if (skippedParts.isNotEmpty()) {
-                                            append("\n跳过 ${skippedParts.joinToString("、")}")
-                                        }
-                                    }
-                                    Toast.makeText(
-                                        context,
-                                        message,
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    onRestoreSuccess()
-                                } else {
-                                    isRestoring = false
-                                    val error = result.exceptionOrNull()?.message ?: "未知错误"
-                                    Toast.makeText(
-                                        context,
-                                        "恢复失败: $error",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
+                                handleRestoreResult(result)
                             } catch (e: Exception) {
                                 isRestoring = false
                                 Toast.makeText(
@@ -842,6 +934,53 @@ private fun BackupItem(
             dismissButton = {
                 TextButton(onClick = { showRestoreDialog = false }) {
                     Text(context.getString(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    // 密码输入对话框
+    if (showPasswordInputDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordInputDialog = false },
+            title = { Text("输入解密密码") },
+            text = {
+                Column {
+                    Text("此备份文件已加密，请输入密码进行解密：")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tempPassword,
+                        onValueChange = { tempPassword = it },
+                        label = { Text("密码") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPasswordInputDialog = false
+                        isRestoring = true
+                        coroutineScope.launch {
+                            try {
+                                val result = webDavHelper.downloadAndRestoreBackup(backup, tempPassword)
+                                handleRestoreResult(result)
+                            } catch (e: Exception) {
+                                isRestoring = false
+                                Toast.makeText(context, "恢复失败: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordInputDialog = false }) {
+                    Text("取消")
                 }
             }
         )

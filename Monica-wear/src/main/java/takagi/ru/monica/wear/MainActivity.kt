@@ -77,6 +77,14 @@ class MainActivity : ComponentActivity() {
         }
     }
     
+    override fun onResume() {
+        super.onResume()
+        // 检查自动同步
+        if (::settingsViewModel.isInitialized) {
+            settingsViewModel.checkAutoSync()
+        }
+    }
+    
     /**
      * 应用语言设置
      */
