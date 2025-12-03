@@ -110,7 +110,7 @@ fun PaymentScreen(
                     
                     // QR Code Image
                     Image(
-                        painter = painterResource(id = if (isFreeDonation) R.drawable.free_donation_qr else R.drawable.support_author_qr),
+                        painter = painterResource(id = if (isFreeDonation) R.drawable.support_author_qr_free else R.drawable.support_author_qr),
                         contentDescription = stringResource(R.string.payment_qr_code_title),
                         modifier = Modifier
                             .fillMaxWidth()
