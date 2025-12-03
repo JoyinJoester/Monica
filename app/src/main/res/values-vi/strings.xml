@@ -534,7 +534,7 @@
     <string name="settings_import_data">Nhập dữ liệu</string>
     <string name="settings_import_data_description">Khôi phục từ file sao lưu</string>
     <string name="settings_version_info">Thông tin phiên bản</string>
-    <string name="settings_version_number">V1.1.2</string>
+    <string name="settings_version_number">V1.0.12</string>
     <string name="settings_support_author">Ủng hộ tác giả</string>
     <string name="settings_support_author_description">Cảm ơn sự ủng hộ của bạn</string>
     <string name="settings_privacy_policy">Chính sách bảo mật</string>
