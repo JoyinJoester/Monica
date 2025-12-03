@@ -48,7 +48,6 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onResetPassword: () -> Unit,
     onSecurityQuestions: () -> Unit,
-    onSupportAuthor: () -> Unit,
     onExportData: () -> Unit = {},
     onImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
@@ -442,13 +441,6 @@ fun SettingsScreen(
             SettingsSection(
                 title = context.getString(R.string.about)
             ) {
-                SettingsItem(
-                    icon = Icons.Default.Favorite,
-                    title = context.getString(R.string.support_author),
-                    subtitle = context.getString(R.string.support_author_subtitle),
-                    onClick = onSupportAuthor
-                )
-                
                 SettingsItem(
                     icon = Icons.Default.Info,
                     title = context.getString(R.string.version),

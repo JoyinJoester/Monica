@@ -374,9 +374,6 @@ fun MonicaContent(
                 onNavigateToSecurityQuestion = {
                     navController.navigate(Screen.SecurityQuestion.route)
                 },
-                onNavigateToSupportAuthor = {
-                    navController.navigate(Screen.SupportAuthor.route)
-                },
                 onNavigateToExportData = {
                     navController.navigate(Screen.ExportData.route)
                 },
@@ -680,9 +677,6 @@ fun MonicaContent(
                 },
                 onSecurityQuestions = {
                     navController.navigate(Screen.SecurityQuestionsSetup.route)
-                },
-                onSupportAuthor = {
-                    navController.navigate(Screen.SupportAuthor.route)
                 },
                 onNavigateToWebDav = {
                     navController.navigate(Screen.WebDavBackup.route)

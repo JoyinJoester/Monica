@@ -79,7 +79,6 @@ fun SimpleMainScreen(
     onNavigateToDocumentDetail: (Long) -> Unit, // 保留以保持API兼容性，但当前未使用
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
-    onNavigateToSupportAuthor: () -> Unit = {},
     onNavigateToExportData: () -> Unit = {},
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
@@ -413,7 +412,6 @@ fun SimpleMainScreen(
                         onNavigateBack = {}, // 在主屏幕中不需要返回
                         onResetPassword = onNavigateToChangePassword,
                         onSecurityQuestions = onNavigateToSecurityQuestion,
-                        onSupportAuthor = onNavigateToSupportAuthor,
                         onExportData = onNavigateToExportData,
                         onImportData = onNavigateToImportData,
                         onNavigateToWebDav = onNavigateToWebDav,
