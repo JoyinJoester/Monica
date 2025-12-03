@@ -34,6 +34,7 @@ fun PaymentScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var isActivating by remember { mutableStateOf(false) }
+    var isFreeDonation by remember { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
@@ -86,11 +87,30 @@ fun PaymentScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Free Donation Switch
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = stringResource(R.string.free_donation_toggle),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Switch(
+                            checked = isFreeDonation,
+                            onCheckedChange = { isFreeDonation = it }
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
                     
                     // QR Code Image
                     Image(
-                        painter = painterResource(id = R.drawable.support_author_qr),
+                        painter = painterResource(id = if (isFreeDonation) R.drawable.free_donation_qr else R.drawable.support_author_qr),
                         contentDescription = stringResource(R.string.payment_qr_code_title),
                         modifier = Modifier
                             .fillMaxWidth()

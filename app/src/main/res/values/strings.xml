@@ -1330,6 +1330,7 @@
     <string name="monica_plus_features_placeholder">更多功能敬请期待...</string>
     <string name="payment_page_title">支持作者</string>
     <string name="payment_qr_code_title">收款二维码</string>
+    <string name="free_donation_toggle">自由打赏</string>
     <string name="payment_kofi_link">ko-fi.com/joyinjoester</string>
     <string name="payment_paid_button">我已付款，激活plus</string>
     <string name="payment_activated_message">感谢您的支持！Plus功能已激活</string>
