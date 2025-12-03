@@ -655,6 +655,12 @@
     <string name="tech_purple_scheme">Tech Purple</string>
     <string name="black_mamba_scheme">Black Mamba</string>
     <string name="grey_style_scheme">Grey Style</string>
+    <string name="water_lilies_scheme">Water Lilies</string>
+    <string name="impression_sunrise_scheme">Impression Sunrise</string>
+    <string name="japanese_bridge_scheme">Japanese Bridge</string>
+    <string name="haystacks_scheme">Haystacks</string>
+    <string name="rouen_cathedral_scheme">Rouen Cathedral</string>
+    <string name="parliament_fog_scheme">Parliament Fog</string>
     <string name="custom_color_scheme">Custom Colors</string>
     <string name="custom_color_scheme_description">Set your own three colors for the app theme</string>
     <string name="current_colors">Current Colors</string>
@@ -1262,6 +1268,8 @@
     <string name="permission_phone_state_description">Used for: Device identification</string>
     <string name="permission_location_description">Used for: Location-based features (optional)</string>
     <string name="permission_autofill_description">Used for: Auto-filling passwords in apps and browsers</string>
+    <string name="permission_notification_name">Notifications</string>
+    <string name="permission_notification_description">Used for: Displaying TOTP codes in notification bar</string>
 
     <!-- Permission Stats -->
     <string name="permission_stats_title">Permission Summary</string>
@@ -1302,6 +1310,42 @@
     <string name="support_via_afdian">Support on Afdian</string>
     <string name="open_link">Open Link</string>
     
+    <!-- Notification Validator -->
+    <string name="notification">Notification</string>
+    <string name="notification_settings_title">Notification Settings</string>
+    <string name="notification_validator_title">Notification Bar Validator</string>
+    <string name="notification_validator_enabled">Enabled</string>
+    <string name="notification_validator_disabled">Disabled</string>
+    <string name="select_validator_to_display">Select validator to display</string>
+    <string name="no_validators_available">No validators available</string>
+    
     <!-- Error opening link -->
     <string name="error_opening_link">Error opening link</string>
+
+    <!-- Monica Plus -->
+    <string name="monica_plus_title">Monica plus</string>
+    <string name="monica_plus_card_desc">支持Monica的开发，作者快没钱饿死了</string>
+    <string name="click_to_pay">点击付款</string>
+    <string name="monica_plus_features_title">Plus 功能</string>
+    <string name="monica_plus_features_placeholder">更多功能敬请期待...</string>
+    <string name="payment_page_title">支持作者</string>
+    <string name="payment_qr_code_title">收款二维码</string>
+    <string name="payment_kofi_link">ko-fi.com/joyinjoester</string>
+    <string name="payment_paid_button">我已付款，激活plus</string>
+    <string name="payment_activated_message">感谢您的支持！Plus功能已激活</string>
+
+    <!-- Saison Plus Copy -->
+    <string name="plus_title">Monica Plus</string>
+    <string name="plus_subtitle_active">已激活</string>
+    <string name="plus_subtitle_inactive">支持开发</string>
+    <string name="plus_description">支持 Monica 的开发，作者快没钱饿死了</string>
+    <string name="plus_activation_title">Plus 状态</string>
+    <string name="plus_status_activated">已激活</string>
+    <string name="plus_payment_button">点击付款</string>
+    <string name="plus_features_title">Plus 功能</string>
+    <string name="plus_feature_unlocked">已解锁</string>
+    <string name="plus_feature_locked">需要 Plus</string>
+    <string name="cd_back">返回</string>
+    <string name="plus_thank_you">感谢您的支持！</string>
+    <string name="plus_payment_links_title">支付链接</string>
 </resources>

@@ -15,6 +15,12 @@ enum class ColorScheme {
     TECH_PURPLE,     // 科技紫
     BLACK_MAMBA,     // 黑曼巴
     GREY_STYLE,      // 小黑紫
+    WATER_LILIES,    // 睡莲
+    IMPRESSION_SUNRISE, // 印象·日出
+    JAPANESE_BRIDGE, // 日本桥
+    HAYSTACKS,       // 干草堆
+    ROUEN_CATHEDRAL, // 鲁昂大教堂
+    PARLIAMENT_FOG,  // 国会大厦
     CUSTOM           // 自定义
 }
 
@@ -93,5 +99,8 @@ data class AppSettings(
     val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER,
     val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
     val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.LINEAR, // 验证器进度条样式
-    val validatorVibrationEnabled: Boolean = true // 验证器震动提醒
+    val validatorVibrationEnabled: Boolean = true, // 验证器震动提醒
+    val notificationValidatorEnabled: Boolean = false, // 通知栏验证器开关
+    val notificationValidatorId: Long = -1L, // 通知栏显示的验证器ID
+    val isPlusActivated: Boolean = false // Plus是否已激活
 )

@@ -383,5 +383,278 @@ val GreyStyleStageLightDark = Color(0xFFFDD835)        // 稍暗的舞台灯
 val GreyStyleMicStandDark = Color(0xFF90A4AE)          // 亮一点的麦克风支架
 
 // ============================================
+// 🎨 莫奈印象派系列 (Monet Impressionist Collection)
+// ============================================
+
+// 1. 《睡莲·绿色和谐》（Water Lilies）
+// 更加鲜艳的青绿色，搭配睡莲的紫粉色点缀
+// Light
+val WaterLiliesPrimary = Color(0xFF00796B) // Vibrant Teal
+val WaterLiliesOnPrimary = Color(0xFFFFFFFF)
+val WaterLiliesPrimaryContainer = Color(0xFFB2DFDB)
+val WaterLiliesOnPrimaryContainer = Color(0xFF004D40)
+
+val WaterLiliesSecondary = Color(0xFF009688)
+val WaterLiliesOnSecondary = Color(0xFFFFFFFF)
+val WaterLiliesSecondaryContainer = Color(0xFFE0F2F1)
+val WaterLiliesOnSecondaryContainer = Color(0xFF004D40)
+
+val WaterLiliesTertiary = Color(0xFFAB47BC) // Vibrant Purple (Lilies)
+val WaterLiliesOnTertiary = Color(0xFFFFFFFF)
+val WaterLiliesTertiaryContainer = Color(0xFFF3E5F5)
+val WaterLiliesOnTertiaryContainer = Color(0xFF4A148C)
+
+val WaterLiliesBackground = Color(0xFFF0F4C3) // Very light lime/green tint
+val WaterLiliesOnBackground = Color(0xFF1A1A1A)
+val WaterLiliesSurface = Color(0xFFFFFFFF)
+val WaterLiliesOnSurface = Color(0xFF1A1A1A)
+
+// Dark
+val WaterLiliesPrimaryDark = Color(0xFF80CBC4)
+val WaterLiliesOnPrimaryDark = Color(0xFF004D40)
+val WaterLiliesPrimaryContainerDark = Color(0xFF00695C)
+val WaterLiliesOnPrimaryContainerDark = Color(0xFFB2DFDB)
+
+val WaterLiliesSecondaryDark = Color(0xFF4DB6AC)
+val WaterLiliesOnSecondaryDark = Color(0xFF004D40)
+val WaterLiliesSecondaryContainerDark = Color(0xFF00796B)
+val WaterLiliesOnSecondaryContainerDark = Color(0xFFE0F2F1)
+
+val WaterLiliesTertiaryDark = Color(0xFFCE93D8)
+val WaterLiliesOnTertiaryDark = Color(0xFF4A148C)
+val WaterLiliesTertiaryContainerDark = Color(0xFF7B1FA2)
+val WaterLiliesOnTertiaryContainerDark = Color(0xFFF3E5F5)
+
+val WaterLiliesBackgroundDark = Color(0xFF121212)
+val WaterLiliesOnBackgroundDark = Color(0xFFE0E0E0)
+val WaterLiliesSurfaceDark = Color(0xFF1E1E1E)
+val WaterLiliesOnSurfaceDark = Color(0xFFE0E0E0)
+
+
+// 2. 《印象·日出》（Impression, Sunrise）
+// 鲜艳的橙色太阳，对比强烈的海蓝色
+// Light
+val ImpressionSunrisePrimary = Color(0xFFE65100) // Vibrant Orange
+val ImpressionSunriseOnPrimary = Color(0xFFFFFFFF)
+val ImpressionSunrisePrimaryContainer = Color(0xFFFFE0B2)
+val ImpressionSunriseOnPrimaryContainer = Color(0xFFBF360C)
+
+val ImpressionSunriseSecondary = Color(0xFFFB8C00)
+val ImpressionSunriseOnSecondary = Color(0xFFFFFFFF)
+val ImpressionSunriseSecondaryContainer = Color(0xFFFFF3E0)
+val ImpressionSunriseOnSecondaryContainer = Color(0xFFE65100)
+
+val ImpressionSunriseTertiary = Color(0xFF1565C0) // Strong Blue (Sea/Sky)
+val ImpressionSunriseOnTertiary = Color(0xFFFFFFFF)
+val ImpressionSunriseTertiaryContainer = Color(0xFFBBDEFB)
+val ImpressionSunriseOnTertiaryContainer = Color(0xFF0D47A1)
+
+val ImpressionSunriseBackground = Color(0xFFFFF3E0) // Warm light orange tint
+val ImpressionSunriseOnBackground = Color(0xFF1A1A1A)
+val ImpressionSunriseSurface = Color(0xFFFFFFFF)
+val ImpressionSunriseOnSurface = Color(0xFF1A1A1A)
+
+// Dark
+val ImpressionSunrisePrimaryDark = Color(0xFFFFB74D)
+val ImpressionSunriseOnPrimaryDark = Color(0xFFE65100)
+val ImpressionSunrisePrimaryContainerDark = Color(0xFFBF360C)
+val ImpressionSunriseOnPrimaryContainerDark = Color(0xFFFFE0B2)
+
+val ImpressionSunriseSecondaryDark = Color(0xFFFFCC80)
+val ImpressionSunriseOnSecondaryDark = Color(0xFFBF360C)
+val ImpressionSunriseSecondaryContainerDark = Color(0xFFE65100)
+val ImpressionSunriseOnSecondaryContainerDark = Color(0xFFFFF3E0)
+
+val ImpressionSunriseTertiaryDark = Color(0xFF64B5F6)
+val ImpressionSunriseOnTertiaryDark = Color(0xFF0D47A1)
+val ImpressionSunriseTertiaryContainerDark = Color(0xFF1565C0)
+val ImpressionSunriseOnTertiaryContainerDark = Color(0xFFBBDEFB)
+
+val ImpressionSunriseBackgroundDark = Color(0xFF121212)
+val ImpressionSunriseOnBackgroundDark = Color(0xFFE0E0E0)
+val ImpressionSunriseSurfaceDark = Color(0xFF1E1E1E)
+val ImpressionSunriseOnSurfaceDark = Color(0xFFE0E0E0)
+
+
+// 3. 《日本桥》（The Bridge at Argenteuil）
+// 鲜艳的翠绿色，搭配清澈的水蓝色
+// Light
+val JapaneseBridgePrimary = Color(0xFF2E7D32) // Emerald Green
+val JapaneseBridgeOnPrimary = Color(0xFFFFFFFF)
+val JapaneseBridgePrimaryContainer = Color(0xFFC8E6C9)
+val JapaneseBridgeOnPrimaryContainer = Color(0xFF1B5E20)
+
+val JapaneseBridgeSecondary = Color(0xFF43A047)
+val JapaneseBridgeOnSecondary = Color(0xFFFFFFFF)
+val JapaneseBridgeSecondaryContainer = Color(0xFFE8F5E9)
+val JapaneseBridgeOnSecondaryContainer = Color(0xFF2E7D32)
+
+val JapaneseBridgeTertiary = Color(0xFF0277BD) // Vibrant Water Blue
+val JapaneseBridgeOnTertiary = Color(0xFFFFFFFF)
+val JapaneseBridgeTertiaryContainer = Color(0xFFB3E5FC)
+val JapaneseBridgeOnTertiaryContainer = Color(0xFF01579B)
+
+val JapaneseBridgeBackground = Color(0xFFF1F8E9) // Light green tint
+val JapaneseBridgeOnBackground = Color(0xFF1A1A1A)
+val JapaneseBridgeSurface = Color(0xFFFFFFFF)
+val JapaneseBridgeOnSurface = Color(0xFF1A1A1A)
+
+// Dark
+val JapaneseBridgePrimaryDark = Color(0xFFA5D6A7)
+val JapaneseBridgeOnPrimaryDark = Color(0xFF1B5E20)
+val JapaneseBridgePrimaryContainerDark = Color(0xFF2E7D32)
+val JapaneseBridgeOnPrimaryContainerDark = Color(0xFFC8E6C9)
+
+val JapaneseBridgeSecondaryDark = Color(0xFF81C784)
+val JapaneseBridgeOnSecondaryDark = Color(0xFF1B5E20)
+val JapaneseBridgeSecondaryContainerDark = Color(0xFF388E3C)
+val JapaneseBridgeOnSecondaryContainerDark = Color(0xFFE8F5E9)
+
+val JapaneseBridgeTertiaryDark = Color(0xFF4FC3F7)
+val JapaneseBridgeOnTertiaryDark = Color(0xFF01579B)
+val JapaneseBridgeTertiaryContainerDark = Color(0xFF0277BD)
+val JapaneseBridgeOnTertiaryContainerDark = Color(0xFFB3E5FC)
+
+val JapaneseBridgeBackgroundDark = Color(0xFF121212)
+val JapaneseBridgeOnBackgroundDark = Color(0xFFE0E0E0)
+val JapaneseBridgeSurfaceDark = Color(0xFF1E1E1E)
+val JapaneseBridgeOnSurfaceDark = Color(0xFFE0E0E0)
+
+
+// 4. 《干草堆·落日》（Haystacks, Sunset）
+// 金黄色为主，去除土褐色，搭配紫色阴影
+// Light
+val HaystacksPrimary = Color(0xFFF57F17) // Golden Yellow/Orange
+val HaystacksOnPrimary = Color(0xFFFFFFFF)
+val HaystacksPrimaryContainer = Color(0xFFFFF9C4)
+val HaystacksOnPrimaryContainer = Color(0xFFF57F17)
+
+val HaystacksSecondary = Color(0xFFFBC02D) // Bright Yellow
+val HaystacksOnSecondary = Color(0xFF000000)
+val HaystacksSecondaryContainer = Color(0xFFFFFDE7)
+val HaystacksOnSecondaryContainer = Color(0xFFF9A825)
+
+val HaystacksTertiary = Color(0xFF7B1FA2) // Purple (Shadows)
+val HaystacksOnTertiary = Color(0xFFFFFFFF)
+val HaystacksTertiaryContainer = Color(0xFFE1BEE7)
+val HaystacksOnTertiaryContainer = Color(0xFF4A148C)
+
+val HaystacksBackground = Color(0xFFFFFDE7) // Very light yellow tint
+val HaystacksOnBackground = Color(0xFF1A1A1A)
+val HaystacksSurface = Color(0xFFFFFFFF)
+val HaystacksOnSurface = Color(0xFF1A1A1A)
+
+// Dark
+val HaystacksPrimaryDark = Color(0xFFFFF59D)
+val HaystacksOnPrimaryDark = Color(0xFFF57F17)
+val HaystacksPrimaryContainerDark = Color(0xFFF9A825)
+val HaystacksOnPrimaryContainerDark = Color(0xFFFFF9C4)
+
+val HaystacksSecondaryDark = Color(0xFFFFF176)
+val HaystacksOnSecondaryDark = Color(0xFFF57F17)
+val HaystacksSecondaryContainerDark = Color(0xFFFBC02D)
+val HaystacksOnSecondaryContainerDark = Color(0xFFFFFDE7)
+
+val HaystacksTertiaryDark = Color(0xFFCE93D8)
+val HaystacksOnTertiaryDark = Color(0xFF4A148C)
+val HaystacksTertiaryContainerDark = Color(0xFF7B1FA2)
+val HaystacksOnTertiaryContainerDark = Color(0xFFE1BEE7)
+
+val HaystacksBackgroundDark = Color(0xFF121212)
+val HaystacksOnBackgroundDark = Color(0xFFE0E0E0)
+val HaystacksSurfaceDark = Color(0xFF1E1E1E)
+val HaystacksOnSurfaceDark = Color(0xFFE0E0E0)
+
+
+// 5. 《鲁昂大教堂·正午》（Rouen Cathedral）
+// 暖石色（橙红）搭配明亮的天空蓝，去除灰褐色
+// Light
+val RouenCathedralPrimary = Color(0xFFD84315) // Deep Orange (Warm Stone)
+val RouenCathedralOnPrimary = Color(0xFFFFFFFF)
+val RouenCathedralPrimaryContainer = Color(0xFFFFCCBC)
+val RouenCathedralOnPrimaryContainer = Color(0xFFBF360C)
+
+val RouenCathedralSecondary = Color(0xFFFF7043)
+val RouenCathedralOnSecondary = Color(0xFFFFFFFF)
+val RouenCathedralSecondaryContainer = Color(0xFFFBE9E7)
+val RouenCathedralOnSecondaryContainer = Color(0xFFD84315)
+
+val RouenCathedralTertiary = Color(0xFF1976D2) // Bright Blue Sky
+val RouenCathedralOnTertiary = Color(0xFFFFFFFF)
+val RouenCathedralTertiaryContainer = Color(0xFFBBDEFB)
+val RouenCathedralOnTertiaryContainer = Color(0xFF0D47A1)
+
+val RouenCathedralBackground = Color(0xFFFFF3E0) // Warm tint
+val RouenCathedralOnBackground = Color(0xFF1A1A1A)
+val RouenCathedralSurface = Color(0xFFFFFFFF)
+val RouenCathedralOnSurface = Color(0xFF1A1A1A)
+
+// Dark
+val RouenCathedralPrimaryDark = Color(0xFFFFAB91)
+val RouenCathedralOnPrimaryDark = Color(0xFFD84315)
+val RouenCathedralPrimaryContainerDark = Color(0xFFE64A19)
+val RouenCathedralOnPrimaryContainerDark = Color(0xFFFFCCBC)
+
+val RouenCathedralSecondaryDark = Color(0xFFFF8A65)
+val RouenCathedralOnSecondaryDark = Color(0xFFBF360C)
+val RouenCathedralSecondaryContainerDark = Color(0xFFD84315)
+val RouenCathedralOnSecondaryContainerDark = Color(0xFFFBE9E7)
+
+val RouenCathedralTertiaryDark = Color(0xFF64B5F6)
+val RouenCathedralOnTertiaryDark = Color(0xFF0D47A1)
+val RouenCathedralTertiaryContainerDark = Color(0xFF1976D2)
+val RouenCathedralOnTertiaryContainerDark = Color(0xFFBBDEFB)
+
+val RouenCathedralBackgroundDark = Color(0xFF121212)
+val RouenCathedralOnBackgroundDark = Color(0xFFE0E0E0)
+val RouenCathedralSurfaceDark = Color(0xFF1E1E1E)
+val RouenCathedralOnSurfaceDark = Color(0xFFE0E0E0)
+
+
+// 6. 《国会大厦·雾霾》（Houses of Parliament）
+// 梦幻的紫色与青色，去除灰暗感
+// Light
+val ParliamentFogPrimary = Color(0xFF673AB7) // Deep Purple
+val ParliamentFogOnPrimary = Color(0xFFFFFFFF)
+val ParliamentFogPrimaryContainer = Color(0xFFD1C4E9)
+val ParliamentFogOnPrimaryContainer = Color(0xFF311B92)
+
+val ParliamentFogSecondary = Color(0xFF9575CD)
+val ParliamentFogOnSecondary = Color(0xFFFFFFFF)
+val ParliamentFogSecondaryContainer = Color(0xFFEDE7F6)
+val ParliamentFogOnSecondaryContainer = Color(0xFF512DA8)
+
+val ParliamentFogTertiary = Color(0xFF00BCD4) // Cyan (Fog/River)
+val ParliamentFogOnTertiary = Color(0xFFFFFFFF)
+val ParliamentFogTertiaryContainer = Color(0xFFB2EBF2)
+val ParliamentFogOnTertiaryContainer = Color(0xFF006064)
+
+val ParliamentFogBackground = Color(0xFFF3E5F5) // Light purple tint
+val ParliamentFogOnBackground = Color(0xFF1A1A1A)
+val ParliamentFogSurface = Color(0xFFFFFFFF)
+val ParliamentFogOnSurface = Color(0xFF1A1A1A)
+
+// Dark
+val ParliamentFogPrimaryDark = Color(0xFFB39DDB)
+val ParliamentFogOnPrimaryDark = Color(0xFF4527A0)
+val ParliamentFogPrimaryContainerDark = Color(0xFF512DA8)
+val ParliamentFogOnPrimaryContainerDark = Color(0xFFD1C4E9)
+
+val ParliamentFogSecondaryDark = Color(0xFFD1C4E9)
+val ParliamentFogOnSecondaryDark = Color(0xFF512DA8)
+val ParliamentFogSecondaryContainerDark = Color(0xFF673AB7)
+val ParliamentFogOnSecondaryContainerDark = Color(0xFFEDE7F6)
+
+val ParliamentFogTertiaryDark = Color(0xFF4DD0E1)
+val ParliamentFogOnTertiaryDark = Color(0xFF006064)
+val ParliamentFogTertiaryContainerDark = Color(0xFF0097A7)
+val ParliamentFogOnTertiaryContainerDark = Color(0xFFB2EBF2)
+
+val ParliamentFogBackgroundDark = Color(0xFF121212)
+val ParliamentFogOnBackgroundDark = Color(0xFFE0E0E0)
+val ParliamentFogSurfaceDark = Color(0xFF1E1E1E)
+val ParliamentFogOnSurfaceDark = Color(0xFFE0E0E0)
+
+// ============================================
 // 🎨 错误颜色 (Error Colors - 全局共享)
 // ============================================

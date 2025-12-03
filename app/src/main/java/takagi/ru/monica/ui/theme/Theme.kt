@@ -447,6 +447,244 @@ private val GreyStyleDarkColorScheme = darkColorScheme(
 )
 
 // ============================================
+// 🎨 莫奈印象派系列 (Monet Impressionist Collection)
+// ============================================
+
+// 1. 《睡莲·绿色和谐》（Water Lilies）
+private val WaterLiliesLightColorScheme = lightColorScheme(
+    primary = WaterLiliesPrimary,
+    onPrimary = WaterLiliesOnPrimary,
+    primaryContainer = WaterLiliesPrimaryContainer,
+    onPrimaryContainer = WaterLiliesOnPrimaryContainer,
+    secondary = WaterLiliesSecondary,
+    onSecondary = WaterLiliesOnSecondary,
+    secondaryContainer = WaterLiliesSecondaryContainer,
+    onSecondaryContainer = WaterLiliesOnSecondaryContainer,
+    tertiary = WaterLiliesTertiary,
+    onTertiary = WaterLiliesOnTertiary,
+    tertiaryContainer = WaterLiliesTertiaryContainer,
+    onTertiaryContainer = WaterLiliesOnTertiaryContainer,
+    background = WaterLiliesBackground,
+    onBackground = WaterLiliesOnBackground,
+    surface = WaterLiliesSurface,
+    onSurface = WaterLiliesOnSurface,
+)
+
+private val WaterLiliesDarkColorScheme = darkColorScheme(
+    primary = WaterLiliesPrimaryDark,
+    onPrimary = WaterLiliesOnPrimaryDark,
+    primaryContainer = WaterLiliesPrimaryContainerDark,
+    onPrimaryContainer = WaterLiliesOnPrimaryContainerDark,
+    secondary = WaterLiliesSecondaryDark,
+    onSecondary = WaterLiliesOnSecondaryDark,
+    secondaryContainer = WaterLiliesSecondaryContainerDark,
+    onSecondaryContainer = WaterLiliesOnSecondaryContainerDark,
+    tertiary = WaterLiliesTertiaryDark,
+    onTertiary = WaterLiliesOnTertiaryDark,
+    tertiaryContainer = WaterLiliesTertiaryContainerDark,
+    onTertiaryContainer = WaterLiliesOnTertiaryContainerDark,
+    background = WaterLiliesBackgroundDark,
+    onBackground = WaterLiliesOnBackgroundDark,
+    surface = WaterLiliesSurfaceDark,
+    onSurface = WaterLiliesOnSurfaceDark,
+)
+
+// 2. 《印象·日出》（Impression, Sunrise）
+private val ImpressionSunriseLightColorScheme = lightColorScheme(
+    primary = ImpressionSunrisePrimary,
+    onPrimary = ImpressionSunriseOnPrimary,
+    primaryContainer = ImpressionSunrisePrimaryContainer,
+    onPrimaryContainer = ImpressionSunriseOnPrimaryContainer,
+    secondary = ImpressionSunriseSecondary,
+    onSecondary = ImpressionSunriseOnSecondary,
+    secondaryContainer = ImpressionSunriseSecondaryContainer,
+    onSecondaryContainer = ImpressionSunriseOnSecondaryContainer,
+    tertiary = ImpressionSunriseTertiary,
+    onTertiary = ImpressionSunriseOnTertiary,
+    tertiaryContainer = ImpressionSunriseTertiaryContainer,
+    onTertiaryContainer = ImpressionSunriseOnTertiaryContainer,
+    background = ImpressionSunriseBackground,
+    onBackground = ImpressionSunriseOnBackground,
+    surface = ImpressionSunriseSurface,
+    onSurface = ImpressionSunriseOnSurface,
+)
+
+private val ImpressionSunriseDarkColorScheme = darkColorScheme(
+    primary = ImpressionSunrisePrimaryDark,
+    onPrimary = ImpressionSunriseOnPrimaryDark,
+    primaryContainer = ImpressionSunrisePrimaryContainerDark,
+    onPrimaryContainer = ImpressionSunriseOnPrimaryContainerDark,
+    secondary = ImpressionSunriseSecondaryDark,
+    onSecondary = ImpressionSunriseOnSecondaryDark,
+    secondaryContainer = ImpressionSunriseSecondaryContainerDark,
+    onSecondaryContainer = ImpressionSunriseOnSecondaryContainerDark,
+    tertiary = ImpressionSunriseTertiaryDark,
+    onTertiary = ImpressionSunriseOnTertiaryDark,
+    tertiaryContainer = ImpressionSunriseTertiaryContainerDark,
+    onTertiaryContainer = ImpressionSunriseOnTertiaryContainerDark,
+    background = ImpressionSunriseBackgroundDark,
+    onBackground = ImpressionSunriseOnBackgroundDark,
+    surface = ImpressionSunriseSurfaceDark,
+    onSurface = ImpressionSunriseOnSurfaceDark,
+)
+
+// 3. 《日本桥》（The Bridge at Argenteuil）
+private val JapaneseBridgeLightColorScheme = lightColorScheme(
+    primary = JapaneseBridgePrimary,
+    onPrimary = JapaneseBridgeOnPrimary,
+    primaryContainer = JapaneseBridgePrimaryContainer,
+    onPrimaryContainer = JapaneseBridgeOnPrimaryContainer,
+    secondary = JapaneseBridgeSecondary,
+    onSecondary = JapaneseBridgeOnSecondary,
+    secondaryContainer = JapaneseBridgeSecondaryContainer,
+    onSecondaryContainer = JapaneseBridgeOnSecondaryContainer,
+    tertiary = JapaneseBridgeTertiary,
+    onTertiary = JapaneseBridgeOnTertiary,
+    tertiaryContainer = JapaneseBridgeTertiaryContainer,
+    onTertiaryContainer = JapaneseBridgeOnTertiaryContainer,
+    background = JapaneseBridgeBackground,
+    onBackground = JapaneseBridgeOnBackground,
+    surface = JapaneseBridgeSurface,
+    onSurface = JapaneseBridgeOnSurface,
+)
+
+private val JapaneseBridgeDarkColorScheme = darkColorScheme(
+    primary = JapaneseBridgePrimaryDark,
+    onPrimary = JapaneseBridgeOnPrimaryDark,
+    primaryContainer = JapaneseBridgePrimaryContainerDark,
+    onPrimaryContainer = JapaneseBridgeOnPrimaryContainerDark,
+    secondary = JapaneseBridgeSecondaryDark,
+    onSecondary = JapaneseBridgeOnSecondaryDark,
+    secondaryContainer = JapaneseBridgeSecondaryContainerDark,
+    onSecondaryContainer = JapaneseBridgeOnSecondaryContainerDark,
+    tertiary = JapaneseBridgeTertiaryDark,
+    onTertiary = JapaneseBridgeOnTertiaryDark,
+    tertiaryContainer = JapaneseBridgeTertiaryContainerDark,
+    onTertiaryContainer = JapaneseBridgeOnTertiaryContainerDark,
+    background = JapaneseBridgeBackgroundDark,
+    onBackground = JapaneseBridgeOnBackgroundDark,
+    surface = JapaneseBridgeSurfaceDark,
+    onSurface = JapaneseBridgeOnSurfaceDark,
+)
+
+// 4. 《干草堆·落日》（Haystacks, Sunset）
+private val HaystacksLightColorScheme = lightColorScheme(
+    primary = HaystacksPrimary,
+    onPrimary = HaystacksOnPrimary,
+    primaryContainer = HaystacksPrimaryContainer,
+    onPrimaryContainer = HaystacksOnPrimaryContainer,
+    secondary = HaystacksSecondary,
+    onSecondary = HaystacksOnSecondary,
+    secondaryContainer = HaystacksSecondaryContainer,
+    onSecondaryContainer = HaystacksOnSecondaryContainer,
+    tertiary = HaystacksTertiary,
+    onTertiary = HaystacksOnTertiary,
+    tertiaryContainer = HaystacksTertiaryContainer,
+    onTertiaryContainer = HaystacksOnTertiaryContainer,
+    background = HaystacksBackground,
+    onBackground = HaystacksOnBackground,
+    surface = HaystacksSurface,
+    onSurface = HaystacksOnSurface,
+)
+
+private val HaystacksDarkColorScheme = darkColorScheme(
+    primary = HaystacksPrimaryDark,
+    onPrimary = HaystacksOnPrimaryDark,
+    primaryContainer = HaystacksPrimaryContainerDark,
+    onPrimaryContainer = HaystacksOnPrimaryContainerDark,
+    secondary = HaystacksSecondaryDark,
+    onSecondary = HaystacksOnSecondaryDark,
+    secondaryContainer = HaystacksSecondaryContainerDark,
+    onSecondaryContainer = HaystacksOnSecondaryContainerDark,
+    tertiary = HaystacksTertiaryDark,
+    onTertiary = HaystacksOnTertiaryDark,
+    tertiaryContainer = HaystacksTertiaryContainerDark,
+    onTertiaryContainer = HaystacksOnTertiaryContainerDark,
+    background = HaystacksBackgroundDark,
+    onBackground = HaystacksOnBackgroundDark,
+    surface = HaystacksSurfaceDark,
+    onSurface = HaystacksOnSurfaceDark,
+)
+
+// 5. 《鲁昂大教堂·正午》（Rouen Cathedral）
+private val RouenCathedralLightColorScheme = lightColorScheme(
+    primary = RouenCathedralPrimary,
+    onPrimary = RouenCathedralOnPrimary,
+    primaryContainer = RouenCathedralPrimaryContainer,
+    onPrimaryContainer = RouenCathedralOnPrimaryContainer,
+    secondary = RouenCathedralSecondary,
+    onSecondary = RouenCathedralOnSecondary,
+    secondaryContainer = RouenCathedralSecondaryContainer,
+    onSecondaryContainer = RouenCathedralOnSecondaryContainer,
+    tertiary = RouenCathedralTertiary,
+    onTertiary = RouenCathedralOnTertiary,
+    tertiaryContainer = RouenCathedralTertiaryContainer,
+    onTertiaryContainer = RouenCathedralOnTertiaryContainer,
+    background = RouenCathedralBackground,
+    onBackground = RouenCathedralOnBackground,
+    surface = RouenCathedralSurface,
+    onSurface = RouenCathedralOnSurface,
+)
+
+private val RouenCathedralDarkColorScheme = darkColorScheme(
+    primary = RouenCathedralPrimaryDark,
+    onPrimary = RouenCathedralOnPrimaryDark,
+    primaryContainer = RouenCathedralPrimaryContainerDark,
+    onPrimaryContainer = RouenCathedralOnPrimaryContainerDark,
+    secondary = RouenCathedralSecondaryDark,
+    onSecondary = RouenCathedralOnSecondaryDark,
+    secondaryContainer = RouenCathedralSecondaryContainerDark,
+    onSecondaryContainer = RouenCathedralOnSecondaryContainerDark,
+    tertiary = RouenCathedralTertiaryDark,
+    onTertiary = RouenCathedralOnTertiaryDark,
+    tertiaryContainer = RouenCathedralTertiaryContainerDark,
+    onTertiaryContainer = RouenCathedralOnTertiaryContainerDark,
+    background = RouenCathedralBackgroundDark,
+    onBackground = RouenCathedralOnBackgroundDark,
+    surface = RouenCathedralSurfaceDark,
+    onSurface = RouenCathedralOnSurfaceDark,
+)
+
+// 6. 《国会大厦·雾霾》（Houses of Parliament）
+private val ParliamentFogLightColorScheme = lightColorScheme(
+    primary = ParliamentFogPrimary,
+    onPrimary = ParliamentFogOnPrimary,
+    primaryContainer = ParliamentFogPrimaryContainer,
+    onPrimaryContainer = ParliamentFogOnPrimaryContainer,
+    secondary = ParliamentFogSecondary,
+    onSecondary = ParliamentFogOnSecondary,
+    secondaryContainer = ParliamentFogSecondaryContainer,
+    onSecondaryContainer = ParliamentFogOnSecondaryContainer,
+    tertiary = ParliamentFogTertiary,
+    onTertiary = ParliamentFogOnTertiary,
+    tertiaryContainer = ParliamentFogTertiaryContainer,
+    onTertiaryContainer = ParliamentFogOnTertiaryContainer,
+    background = ParliamentFogBackground,
+    onBackground = ParliamentFogOnBackground,
+    surface = ParliamentFogSurface,
+    onSurface = ParliamentFogOnSurface,
+)
+
+private val ParliamentFogDarkColorScheme = darkColorScheme(
+    primary = ParliamentFogPrimaryDark,
+    onPrimary = ParliamentFogOnPrimaryDark,
+    primaryContainer = ParliamentFogPrimaryContainerDark,
+    onPrimaryContainer = ParliamentFogOnPrimaryContainerDark,
+    secondary = ParliamentFogSecondaryDark,
+    onSecondary = ParliamentFogOnSecondaryDark,
+    secondaryContainer = ParliamentFogSecondaryContainerDark,
+    onSecondaryContainer = ParliamentFogOnSecondaryContainerDark,
+    tertiary = ParliamentFogTertiaryDark,
+    onTertiary = ParliamentFogOnTertiaryDark,
+    tertiaryContainer = ParliamentFogTertiaryContainerDark,
+    onTertiaryContainer = ParliamentFogOnTertiaryContainerDark,
+    background = ParliamentFogBackgroundDark,
+    onBackground = ParliamentFogOnBackgroundDark,
+    surface = ParliamentFogSurfaceDark,
+    onSurface = ParliamentFogOnSurfaceDark,
+)
+
+// ============================================
 // 🎨 自定义方案
 // ============================================
 private fun customDarkColorScheme(primary: Long, secondary: Long, tertiary: Long) = darkColorScheme(
@@ -500,6 +738,30 @@ fun MonicaTheme(
         
         colorScheme == ColorScheme.GREY_STYLE -> {
             if (darkTheme) GreyStyleDarkColorScheme else GreyStyleLightColorScheme
+        }
+
+        colorScheme == ColorScheme.WATER_LILIES -> {
+            if (darkTheme) WaterLiliesDarkColorScheme else WaterLiliesLightColorScheme
+        }
+
+        colorScheme == ColorScheme.IMPRESSION_SUNRISE -> {
+            if (darkTheme) ImpressionSunriseDarkColorScheme else ImpressionSunriseLightColorScheme
+        }
+
+        colorScheme == ColorScheme.JAPANESE_BRIDGE -> {
+            if (darkTheme) JapaneseBridgeDarkColorScheme else JapaneseBridgeLightColorScheme
+        }
+
+        colorScheme == ColorScheme.HAYSTACKS -> {
+            if (darkTheme) HaystacksDarkColorScheme else HaystacksLightColorScheme
+        }
+
+        colorScheme == ColorScheme.ROUEN_CATHEDRAL -> {
+            if (darkTheme) RouenCathedralDarkColorScheme else RouenCathedralLightColorScheme
+        }
+
+        colorScheme == ColorScheme.PARLIAMENT_FOG -> {
+            if (darkTheme) ParliamentFogDarkColorScheme else ParliamentFogLightColorScheme
         }
         
         colorScheme == ColorScheme.CUSTOM -> {

@@ -44,6 +44,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import takagi.ru.monica.data.ItemType
@@ -74,6 +77,8 @@ import takagi.ru.monica.ui.screens.SecurityQuestionsSetupScreen
 import takagi.ru.monica.ui.screens.SecurityQuestionsVerificationScreen
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.PermissionManagementScreen
+import takagi.ru.monica.ui.screens.MonicaPlusScreen
+import takagi.ru.monica.ui.screens.PaymentScreen
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
@@ -128,6 +133,25 @@ class MainActivity : FragmentActivity() {
         
         // Initialize auto backup if enabled
         initializeAutoBackup()
+
+        // Initialize Notification Validator Service
+        lifecycleScope.launch {
+            settingsManager.settingsFlow
+                .map { Pair(it.notificationValidatorEnabled, it.notificationValidatorId) }
+                .distinctUntilChanged()
+                .collect { (enabled, id) ->
+                    val intent = Intent(this@MainActivity, takagi.ru.monica.service.NotificationValidatorService::class.java)
+                    if (enabled && id != -1L) {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                    } else {
+                        stopService(intent)
+                    }
+                }
+        }
 
         setContent {
             MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database)
@@ -222,7 +246,7 @@ fun MonicaApp(
 
     val passwordHistoryManager = remember { PasswordHistoryManager(navController.context) }
     val settingsViewModel: SettingsViewModel = viewModel {
-        SettingsViewModel(settingsManager)
+        SettingsViewModel(settingsManager, secureItemRepository)
     }
     val generatorViewModel: GeneratorViewModel = viewModel {
         GeneratorViewModel()
@@ -379,6 +403,9 @@ fun MonicaContent(
                 },
                 onNavigateToPermissionManagement = {
                     navController.navigate(Screen.PermissionManagement.route)
+                },
+                onNavigateToMonicaPlus = {
+                    android.util.Log.d("MainActivity", "Navigating to Monica Plus"); navController.navigate(Screen.MonicaPlus.route)
                 },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
@@ -678,6 +705,9 @@ fun MonicaContent(
                 onNavigateToPermissionManagement = {
                     navController.navigate(Screen.PermissionManagement.route)
                 },
+                onNavigateToMonicaPlus = {
+                    android.util.Log.d("MainActivity", "Navigating to Monica Plus"); navController.navigate(Screen.MonicaPlus.route)
+                },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
                     android.util.Log.d(
@@ -908,6 +938,34 @@ fun MonicaContent(
         composable(Screen.PermissionManagement.route) {
             PermissionManagementScreen(
                 onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.MonicaPlus.route) {
+            val settings by settingsViewModel.settings.collectAsState()
+            MonicaPlusScreen(
+                isPlusActivated = settings.isPlusActivated,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToPayment = {
+                    navController.navigate(Screen.Payment.route)
+                },
+                onDeactivatePlus = {
+                    settingsViewModel.updatePlusActivated(false)
+                }
+            )
+        }
+
+        composable(Screen.Payment.route) {
+            PaymentScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onActivatePlus = {
+                    settingsViewModel.updatePlusActivated(true)
                     navController.popBackStack()
                 }
             )

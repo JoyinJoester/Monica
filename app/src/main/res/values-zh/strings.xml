@@ -642,6 +642,12 @@
     <string name="tech_purple_scheme">科技紫</string>
     <string name="black_mamba_scheme">黑曼巴</string>
     <string name="grey_style_scheme">小黑紫</string>
+    <string name="water_lilies_scheme">莫奈：睡莲</string>
+    <string name="impression_sunrise_scheme">莫奈：日出·印象</string>
+    <string name="japanese_bridge_scheme">莫奈：日本桥</string>
+    <string name="haystacks_scheme">莫奈：干草堆</string>
+    <string name="rouen_cathedral_scheme">莫奈：鲁昂大教堂</string>
+    <string name="parliament_fog_scheme">莫奈：议会大厦·雾</string>
     <string name="custom_color_scheme">自定义颜色</string>
     <string name="custom_color_scheme_description">为应用主题设置您自己的三种颜色</string>
     <string name="current_colors">当前颜色</string>
@@ -1175,6 +1181,15 @@
     <string name="deselect_all">全不选</string>
     <string name="backup_validation_error">请至少选择一种备份内容</string>
 
+    <!-- Notification Validator -->
+    <string name="notification">通知</string>
+    <string name="notification_settings_title">通知设置</string>
+    <string name="notification_validator_title">通知栏验证器</string>
+    <string name="notification_validator_enabled">已启用</string>
+    <string name="notification_validator_disabled">已禁用</string>
+    <string name="select_validator_to_display">选择要显示的验证器</string>
+    <string name="no_validators_available">暂无验证器</string>
+    
     <!-- Support Author Page -->
     <string name="support_author_page_title">支持作者</string>
     <string name="support_author_page_description">感谢您使用 Monica！如果您觉得这个应用对您有帮助，欢迎通过以下方式支持作者的后续开发工作：</string>

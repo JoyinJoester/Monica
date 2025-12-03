@@ -29,6 +29,11 @@
     <!-- Phase 9: Haptic feedback permission -->
     <uses-permission android:name="android.permission.VIBRATE" />
     
+    <!-- Foreground Service permissions for Notification Validator -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
     <!-- 添加电话状态权限 -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     
@@ -80,6 +85,17 @@
             <meta-data
                 android:name="android.autofill"
                 android:resource="@xml/autofill_service_config" />
+        </service>
+
+        <!-- Notification Validator Service -->
+        <service
+            android:name=".service.NotificationValidatorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Displaying TOTP codes in notification" />
         </service>
         
         <!-- Autofill Save Activity (旧版全屏) -->

@@ -38,6 +38,8 @@ import takagi.ru.monica.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.animateContentSize
+import takagi.ru.monica.data.SecureItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +58,7 @@ fun SettingsScreen(
     onSecurityAnalysis: () -> Unit = {},
     onNavigateToDeveloperSettings: () -> Unit = {},
     onNavigateToPermissionManagement: () -> Unit = {},
+    onNavigateToMonicaPlus: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _ -> },
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
@@ -66,6 +69,7 @@ fun SettingsScreen(
     android.util.Log.d("SettingsScreen", "Activity: $activity (type: ${context.javaClass.name})")
     
     val settings by viewModel.settings.collectAsState()
+    val totpItems by viewModel.totpItems.collectAsState()
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
     var showClearDataDialog by remember { mutableStateOf(false) }
@@ -93,14 +97,31 @@ fun SettingsScreen(
     Scaffold(
         topBar = if (showTopBar) {
             {
-                TopAppBar(
-                    title = { Text(context.getString(R.string.settings_title)) },
-                    navigationIcon = {
+                // 使用自定义顶部栏以减小高度
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.statusBars) // 仅适配状态栏
+                            .height(56.dp) // 标准高度
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.Default.ArrowBack, contentDescription = context.getString(R.string.back))
                         }
-                    },
-                    actions = {
+                        
+                        Text(
+                            text = context.getString(R.string.settings_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp)
+                        )
+                        
                         // 安全分析图标
                         IconButton(onClick = onSecurityAnalysis) {
                             Icon(
@@ -110,7 +131,7 @@ fun SettingsScreen(
                             )
                         }
                     }
-                )
+                }
             }
         } else {
             {}
@@ -122,6 +143,15 @@ fun SettingsScreen(
                 .padding(paddingValues)
                 .verticalScroll(scrollState)
         ) {
+            // Monica Plus Card
+            takagi.ru.monica.ui.components.MonicaPlusCard(
+                isPlusActivated = settings.isPlusActivated,
+                onClick = {
+                    android.util.Log.d("SettingsScreen", "Monica Plus card clicked")
+                    onNavigateToMonicaPlus()
+                }
+            )
+
             // 安全分析入口卡片 - 置顶显示
             Card(
                 modifier = Modifier
@@ -304,12 +334,14 @@ fun SettingsScreen(
                     onClick = onImportData
                 )
                 
-                SettingsItem(
-                    icon = Icons.Default.Cloud,
-                    title = context.getString(R.string.webdav_backup),
-                    subtitle = context.getString(R.string.webdav_backup_description),
-                    onClick = onNavigateToWebDav
-                )
+                if (settings.isPlusActivated) {
+                    SettingsItem(
+                        icon = Icons.Default.Cloud,
+                        title = context.getString(R.string.webdav_backup),
+                        subtitle = context.getString(R.string.webdav_backup_description),
+                        onClick = onNavigateToWebDav
+                    )
+                }
                 
                 SettingsItem(
                     icon = Icons.Default.VpnKey,
@@ -374,17 +406,38 @@ fun SettingsScreen(
                 )
                 
                 // 4. 验证器震动提醒
-                SettingsItemWithSwitch(
-                    icon = Icons.Default.Vibration,
-                    title = context.getString(R.string.validator_vibration),
-                    subtitle = context.getString(R.string.validator_vibration_description),
-                    checked = settings.validatorVibrationEnabled,
-                    onCheckedChange = { enabled ->
-                        viewModel.updateValidatorVibrationEnabled(enabled)
-                    }
-                )
+                if (settings.isPlusActivated) {
+                    SettingsItemWithSwitch(
+                        icon = Icons.Default.Vibration,
+                        title = context.getString(R.string.validator_vibration),
+                        subtitle = context.getString(R.string.validator_vibration_description),
+                        checked = settings.validatorVibrationEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateValidatorVibrationEnabled(enabled)
+                        }
+                    )
+                }
             }
             
+            // Notification Settings
+            if (settings.isPlusActivated) {
+                SettingsSection(
+                    title = stringResource(R.string.notification_settings_title)
+                ) {
+                    NotificationValidatorCard(
+                        enabled = settings.notificationValidatorEnabled,
+                        selectedId = settings.notificationValidatorId,
+                        totpItems = totpItems,
+                        onEnabledChange = { enabled ->
+                            viewModel.updateNotificationValidatorEnabled(enabled)
+                        },
+                        onValidatorSelected = { id ->
+                            viewModel.updateNotificationValidatorId(id)
+                        }
+                    )
+                }
+            }
+
             // About Settings
             SettingsSection(
                 title = context.getString(R.string.about)
@@ -1213,6 +1266,12 @@ private fun getColorSchemeDisplayName(colorScheme: takagi.ru.monica.data.ColorSc
         takagi.ru.monica.data.ColorScheme.TECH_PURPLE -> context.getString(R.string.tech_purple_scheme)
         takagi.ru.monica.data.ColorScheme.BLACK_MAMBA -> context.getString(R.string.black_mamba_scheme)
         takagi.ru.monica.data.ColorScheme.GREY_STYLE -> context.getString(R.string.grey_style_scheme)
+        takagi.ru.monica.data.ColorScheme.WATER_LILIES -> context.getString(R.string.water_lilies_scheme)
+        takagi.ru.monica.data.ColorScheme.IMPRESSION_SUNRISE -> context.getString(R.string.impression_sunrise_scheme)
+        takagi.ru.monica.data.ColorScheme.JAPANESE_BRIDGE -> context.getString(R.string.japanese_bridge_scheme)
+        takagi.ru.monica.data.ColorScheme.HAYSTACKS -> context.getString(R.string.haystacks_scheme)
+        takagi.ru.monica.data.ColorScheme.ROUEN_CATHEDRAL -> context.getString(R.string.rouen_cathedral_scheme)
+        takagi.ru.monica.data.ColorScheme.PARLIAMENT_FOG -> context.getString(R.string.parliament_fog_scheme)
         takagi.ru.monica.data.ColorScheme.CUSTOM -> context.getString(R.string.custom_color_scheme)
     }
 }
@@ -1344,5 +1403,119 @@ fun ProgressBarStyleDialog(
             }
         }
     )
+}
+
+@Composable
+fun NotificationValidatorCard(
+    enabled: Boolean,
+    selectedId: Long,
+    totpItems: List<SecureItem>,
+    onEnabledChange: (Boolean) -> Unit,
+    onValidatorSelected: (Long) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    
+    // If disabled, collapse
+    LaunchedEffect(enabled) {
+        if (!enabled) expanded = false
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.animateContentSize()
+        ) {
+            // Header with Switch
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { if (enabled) expanded = !expanded }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Notifications,
+                    contentDescription = null,
+                    tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.38f),
+                    modifier = Modifier.size(24.dp)
+                )
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.notification_validator_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (enabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.38f)
+                    )
+                    Text(
+                        text = if (enabled) stringResource(R.string.notification_validator_enabled) else stringResource(R.string.notification_validator_disabled),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    )
+                }
+                
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onEnabledChange
+                )
+            }
+            
+            // Expanded Content
+            if (expanded && enabled) {
+                Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.select_validator_to_display),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    if (totpItems.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.no_validators_available),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        totpItems.forEach { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onValidatorSelected(item.id) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = item.id == selectedId,
+                                    onClick = { onValidatorSelected(item.id) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = item.title,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 

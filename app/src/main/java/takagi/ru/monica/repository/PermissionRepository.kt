@@ -59,6 +59,7 @@ class PermissionRepository(private val context: Context) {
             createInternetPermission(),
             createNetworkStatePermission(),
             createVibratePermission(),
+            createNotificationPermission(),
             createPhoneStatePermission(),
             createAutofillPermission()
         ).map { permission ->
@@ -83,6 +84,21 @@ class PermissionRepository(private val context: Context) {
             "INTERNET", "NETWORK_STATE", "VIBRATE" -> {
                 // 这些权限在安装时自动授予
                 PermissionStatus.GRANTED
+            }
+            "NOTIFICATION" -> {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    val result = ContextCompat.checkSelfPermission(
+                        context,
+                        permission.androidPermission
+                    )
+                    if (result == PackageManager.PERMISSION_GRANTED) {
+                        PermissionStatus.GRANTED
+                    } else {
+                        PermissionStatus.DENIED
+                    }
+                } else {
+                    PermissionStatus.GRANTED
+                }
             }
             else -> {
                 val result = ContextCompat.checkSelfPermission(
@@ -238,6 +254,20 @@ class PermissionRepository(private val context: Context) {
         descriptionResId = R.string.permission_vibrate_description,
         category = PermissionCategory.DEVICE,
         importance = PermissionImportance.OPTIONAL
+    )
+
+    private fun createNotificationPermission() = PermissionInfo(
+        id = "NOTIFICATION",
+        androidPermission = if (Build.VERSION.SDK_INT >= 33) {
+            "android.permission.POST_NOTIFICATIONS"
+        } else {
+            "android.permission.POST_NOTIFICATIONS"
+        },
+        icon = Icons.Default.Notifications,
+        nameResId = R.string.permission_notification_name,
+        descriptionResId = R.string.permission_notification_description,
+        category = PermissionCategory.DEVICE,
+        importance = PermissionImportance.RECOMMENDED
     )
 
     private fun createPhoneStatePermission() = PermissionInfo(

@@ -89,6 +89,7 @@ fun SimpleMainScreen(
     onSecurityAnalysis: () -> Unit = {},
     onNavigateToDeveloperSettings: () -> Unit = {},
     onNavigateToPermissionManagement: () -> Unit = {},
+    onNavigateToMonicaPlus: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
@@ -422,6 +423,7 @@ fun SimpleMainScreen(
                         onSecurityAnalysis = onSecurityAnalysis,
                         onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
                         onNavigateToPermissionManagement = onNavigateToPermissionManagement,
+                        onNavigateToMonicaPlus = onNavigateToMonicaPlus,
                         onClearAllData = onClearAllData,
                         showTopBar = false  // 在标签页中不显示顶栏
                     )

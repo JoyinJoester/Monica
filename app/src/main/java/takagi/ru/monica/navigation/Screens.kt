@@ -78,4 +78,6 @@ sealed class Screen(val route: String) {
     object Generator : Screen("generator")  // 添加生成器页面路由
     object DeveloperSettings : Screen("developer_settings")  // 添加开发者设置页面路由
     object PermissionManagement : Screen("permission_management")  // 权限管理页面路由
+    object MonicaPlus : Screen("monica_plus") // Monica Plus 页面
+    object Payment : Screen("payment") // 付款页面
 }

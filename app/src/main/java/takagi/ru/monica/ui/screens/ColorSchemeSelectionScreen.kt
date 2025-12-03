@@ -188,6 +188,99 @@ fun ColorSchemeSelectionScreen(
                     }
                 }
             )
+
+            // Monet Impressionist Schemes
+            if (settings.isPlusActivated) {
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.WATER_LILIES,
+                    name = stringResource(R.string.water_lilies_scheme),
+                    primaryColor = Color(0xFF00796B),
+                    secondaryColor = Color(0xFF009688),
+                    tertiaryColor = Color(0xFFAB47BC),
+                    isSelected = previewColorScheme == ColorScheme.WATER_LILIES,
+                    onClick = { 
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.WATER_LILIES
+                            settingsViewModel.updateColorScheme(ColorScheme.WATER_LILIES)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.IMPRESSION_SUNRISE,
+                    name = stringResource(R.string.impression_sunrise_scheme),
+                    primaryColor = Color(0xFFE65100),
+                    secondaryColor = Color(0xFFFB8C00),
+                    tertiaryColor = Color(0xFF1565C0),
+                    isSelected = previewColorScheme == ColorScheme.IMPRESSION_SUNRISE,
+                    onClick = { 
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.IMPRESSION_SUNRISE
+                            settingsViewModel.updateColorScheme(ColorScheme.IMPRESSION_SUNRISE)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.JAPANESE_BRIDGE,
+                    name = stringResource(R.string.japanese_bridge_scheme),
+                    primaryColor = Color(0xFF2E7D32),
+                    secondaryColor = Color(0xFF43A047),
+                    tertiaryColor = Color(0xFF0277BD),
+                    isSelected = previewColorScheme == ColorScheme.JAPANESE_BRIDGE,
+                    onClick = { 
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.JAPANESE_BRIDGE
+                            settingsViewModel.updateColorScheme(ColorScheme.JAPANESE_BRIDGE)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.HAYSTACKS,
+                    name = stringResource(R.string.haystacks_scheme),
+                    primaryColor = Color(0xFFF57F17),
+                    secondaryColor = Color(0xFFFBC02D),
+                    tertiaryColor = Color(0xFF7B1FA2),
+                    isSelected = previewColorScheme == ColorScheme.HAYSTACKS,
+                    onClick = { 
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.HAYSTACKS
+                            settingsViewModel.updateColorScheme(ColorScheme.HAYSTACKS)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.ROUEN_CATHEDRAL,
+                    name = stringResource(R.string.rouen_cathedral_scheme),
+                    primaryColor = Color(0xFFD84315),
+                    secondaryColor = Color(0xFFFF7043),
+                    tertiaryColor = Color(0xFF1976D2),
+                    isSelected = previewColorScheme == ColorScheme.ROUEN_CATHEDRAL,
+                    onClick = { 
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.ROUEN_CATHEDRAL
+                            settingsViewModel.updateColorScheme(ColorScheme.ROUEN_CATHEDRAL)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.PARLIAMENT_FOG,
+                    name = stringResource(R.string.parliament_fog_scheme),
+                    primaryColor = Color(0xFF673AB7),
+                    secondaryColor = Color(0xFF9575CD),
+                    tertiaryColor = Color(0xFF00BCD4),
+                    isSelected = previewColorScheme == ColorScheme.PARLIAMENT_FOG,
+                    onClick = { 
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.PARLIAMENT_FOG
+                            settingsViewModel.updateColorScheme(ColorScheme.PARLIAMENT_FOG)
+                        }
+                    }
+                )
+            }
             
             ColorSchemeOption(
                 colorScheme = ColorScheme.CUSTOM,
