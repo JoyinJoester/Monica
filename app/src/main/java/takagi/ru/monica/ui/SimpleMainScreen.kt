@@ -130,11 +130,15 @@ fun SimpleMainScreen(
     var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     
+    val appSettings by settingsViewModel.settings.collectAsState()
+    
     // 密码分组模式: smart(备注>网站>应用>标题), note, website, app, title
-    var passwordGroupMode by rememberSaveable { mutableStateOf("smart") }
+    // 从设置中读取，如果设置中没有则默认为 "smart"
+    val passwordGroupMode = appSettings.passwordGroupMode
 
     // 堆叠卡片显示模式: 自动/始终展开（始终展开指逐条显示，不堆叠）
-    var stackCardModeKey by rememberSaveable { mutableStateOf(StackCardMode.AUTO.name) }
+    // 从设置中读取，如果设置中没有则默认为 AUTO
+    val stackCardModeKey = appSettings.stackCardMode
     val stackCardMode = remember(stackCardModeKey) {
         runCatching { StackCardMode.valueOf(stackCardModeKey) }.getOrDefault(StackCardMode.AUTO)
     }
@@ -162,7 +166,6 @@ fun SimpleMainScreen(
     var onDeleteSelectedBankCards by remember { mutableStateOf({}) }
     var onFavoriteBankCards by remember { mutableStateOf({}) }  // 添加收藏回调
 
-    val appSettings by settingsViewModel.settings.collectAsState()
     val bottomNavVisibility = appSettings.bottomNavVisibility
 
     val dataTabItems = appSettings.bottomNavOrder
@@ -288,7 +291,7 @@ fun SimpleMainScreen(
 
                                             DropdownMenuItem(
                                                 onClick = {
-                                                    stackCardModeKey = mode.name
+                                                    settingsViewModel.updateStackCardMode(mode.name)
                                                     displayMenuExpanded = false
                                                 },
                                                 text = {
@@ -381,7 +384,7 @@ fun SimpleMainScreen(
 
                                             DropdownMenuItem(
                                                 onClick = {
-                                                    passwordGroupMode = modeKey
+                                                    settingsViewModel.updatePasswordGroupMode(modeKey)
                                                     displayMenuExpanded = false
                                                 },
                                                 text = {

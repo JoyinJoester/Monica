@@ -47,6 +47,8 @@ class SettingsManager(private val context: Context) {
         private val NOTIFICATION_VALIDATOR_ENABLED_KEY = booleanPreferencesKey("notification_validator_enabled")
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
+        private val STACK_CARD_MODE_KEY = stringPreferencesKey("stack_card_mode")
+        private val PASSWORD_GROUP_MODE_KEY = stringPreferencesKey("password_group_mode")
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -97,7 +99,9 @@ class SettingsManager(private val context: Context) {
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
             notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
             notificationValidatorId = preferences[NOTIFICATION_VALIDATOR_ID_KEY] ?: -1L,
-            isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false
+            isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false,
+            stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
+            passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart"
         )
     }
     
@@ -205,6 +209,18 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePlusActivated(activated: Boolean) {
         dataStore.edit { preferences ->
             preferences[IS_PLUS_ACTIVATED_KEY] = activated
+        }
+    }
+
+    suspend fun updateStackCardMode(mode: String) {
+        dataStore.edit { preferences ->
+            preferences[STACK_CARD_MODE_KEY] = mode
+        }
+    }
+
+    suspend fun updatePasswordGroupMode(mode: String) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_GROUP_MODE_KEY] = mode
         }
     }
 }

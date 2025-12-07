@@ -563,7 +563,7 @@
     <string name="settings_import_data">データをインポート</string>
     <string name="settings_import_data_description">バックアップファイルから復元</string>
     <string name="settings_version_info">バージョン情報</string>
-    <string name="settings_version_number">V1.0.12</string>
+    <string name="settings_version_number">V1.0.13</string>
     <string name="settings_support_author">作者をサポート</string>
     <string name="settings_support_author_description">ご支援ありがとうございます</string>
     <string name="settings_privacy_policy">プライバシーポリシー</string>

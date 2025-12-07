@@ -99,6 +99,19 @@ class SettingsViewModel(
         }
     }
 
+    fun updateStackCardMode(mode: String) {
+        viewModelScope.launch {
+            settingsManager.updateStackCardMode(mode)
+        }
+    }
+
+    fun updatePasswordGroupMode(mode: String) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordGroupMode(mode)
+        }
+    }
+}
+
     fun updateDisablePasswordVerification(disabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateDisablePasswordVerification(disabled)
