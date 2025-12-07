@@ -121,6 +121,9 @@
     <string name="numbers_09">Số (0-9)</string>
     <string name="symbols">Ký hiệu (!@#$...)</string>
     <string name="exclude_similar">Loại trừ ký tự giống nhau</string>
+    <string name="analyze_common_passwords">Phân tích mật khẩu phổ biến</string>
+    <string name="analyze_common_passwords_desc">Phân tích mật khẩu đã lưu để tạo mật khẩu tương tự và dễ nhớ</string>
+    <string name="analyze_weight_label">Mức độ tương đồng: %d</string>
     <string name="use_password">Sử dụng mật khẩu</string>
     <string name="generate_new_password">Tạo mật khẩu mới</string>
     <string name="show">Hiển thị</string>

@@ -36,6 +36,14 @@ class GeneratorViewModel : ViewModel() {
     private val _excludeAmbiguous = MutableStateFlow(false)
     val excludeAmbiguous: StateFlow<Boolean> = _excludeAmbiguous.asStateFlow()
     
+    // ✨ New: Common Password Analysis
+    private val _analyzeCommonPasswords = MutableStateFlow(false)
+    val analyzeCommonPasswords: StateFlow<Boolean> = _analyzeCommonPasswords.asStateFlow()
+
+    // 关联权重（0-100），数值越大越偏向沿用常见片段
+    private val _analyzeWeight = MutableStateFlow(60)
+    val analyzeWeight: StateFlow<Int> = _analyzeWeight.asStateFlow()
+
     // ✨ 新增：最小字符数要求（Keyguard 特性）
     private val _uppercaseMin = MutableStateFlow(0)
     val uppercaseMin: StateFlow<Int> = _uppercaseMin.asStateFlow()
@@ -139,6 +147,14 @@ class GeneratorViewModel : ViewModel() {
     
     fun updateExcludeAmbiguous(exclude: Boolean) {
         _excludeAmbiguous.value = exclude
+    }
+
+    fun updateAnalyzeCommonPasswords(analyze: Boolean) {
+        _analyzeCommonPasswords.value = analyze
+    }
+
+    fun updateAnalyzeWeight(weight: Int) {
+        _analyzeWeight.value = weight.coerceIn(0, 100)
     }
     
     // ✨ 最小字符数要求更新方法

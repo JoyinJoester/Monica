@@ -1,6 +1,7 @@
 package takagi.ru.monica.util
 
 import android.content.Context
+import takagi.ru.monica.data.PasswordEntry
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.security.SecureRandom
@@ -77,6 +78,155 @@ class PasswordGenerator {
                 symbolsMin = symbolsMin,
                 allChars = filteredChars
             )
+        }
+
+        /**
+         * Analyze stored passwords and generate a similar one.
+         */
+        fun generateSimilarPassword(
+            passwords: List<PasswordEntry>,
+            targetLength: Int,
+            includeUppercase: Boolean,
+            includeLowercase: Boolean,
+            includeNumbers: Boolean,
+            includeSymbols: Boolean,
+            excludeSimilar: Boolean,
+            excludeAmbiguous: Boolean,
+            weightPercent: Int
+        ): String {
+            if (passwords.isEmpty()) return generatePassword(length = targetLength)
+
+            val weight = weightPercent.coerceIn(0, 100) / 100f // 0..1
+
+            // 1) 目标长度：根据用户长度滑条与历史平均长度混合
+            val avgLength = passwords.map { it.password.length }
+                .average()
+                .toInt()
+                .coerceIn(4, 30)
+            val mixedLength = ((targetLength * (1 - weight)) + (avgLength * weight)).toInt().coerceIn(4, 30)
+
+            // 2) 字符集：尊重用户复选框，历史仅作参考
+            val historyUse = analyzeCharUsage(passwords)
+            val finalIncludeUpper = includeUppercase && historyUse.useUpper
+            val finalIncludeLower = includeLowercase && historyUse.useLower
+            val finalIncludeNumber = includeNumbers && historyUse.useNumber
+            val finalIncludeSymbol = includeSymbols && historyUse.useSymbol
+
+            // 若全部被禁用，则回退为用户勾选的原始值（避免全 false）
+            val safeUpper = finalIncludeUpper || includeUppercase
+            val safeLower = finalIncludeLower || includeLowercase
+            val safeNumber = finalIncludeNumber || includeNumbers
+            val safeSymbol = finalIncludeSymbol || includeSymbols
+            val hasAny = safeUpper || safeLower || safeNumber || safeSymbol
+
+            val commonFragment = findCommonFragment(passwords)
+
+            // fragment 概率受权重影响：权重越高越倾向嵌入
+            val shouldEmbed = !commonFragment.isNullOrEmpty() && random.nextFloat() <= weight
+
+            // 基础长度预留 fragment 空间
+            val reserved = if (shouldEmbed) commonFragment!!.length else 0
+            val baseLength = (mixedLength - reserved).coerceAtLeast(3)
+
+            val base = generatePassword(
+                length = baseLength,
+                includeUppercase = if (hasAny) safeUpper else true,
+                includeLowercase = if (hasAny) safeLower else true,
+                includeNumbers = if (hasAny) safeNumber else true,
+                includeSymbols = if (hasAny) safeSymbol else true,
+                excludeSimilar = excludeSimilar,
+                excludeAmbiguous = excludeAmbiguous
+            )
+
+            if (!shouldEmbed) return base
+
+            val placement = random.nextInt(3) // 0 start, 1 middle, 2 end
+            val builder = StringBuilder()
+            when (placement) {
+                0 -> builder.append(commonFragment).append(base)
+                1 -> {
+                    val split = base.length / 2
+                    builder.append(base.substring(0, split))
+                    builder.append(commonFragment)
+                    builder.append(base.substring(split))
+                }
+                else -> builder.append(base).append(commonFragment)
+            }
+
+            // 补齐长度（若 fragment 占用导致长度不足）
+            val remaining = (mixedLength - builder.length).coerceAtLeast(0)
+            if (remaining > 0) {
+                builder.append(
+                    generatePassword(
+                        length = remaining,
+                        includeUppercase = if (hasAny) safeUpper else true,
+                        includeLowercase = if (hasAny) safeLower else true,
+                        includeNumbers = if (hasAny) safeNumber else true,
+                        includeSymbols = if (hasAny) safeSymbol else true,
+                        excludeSimilar = excludeSimilar,
+                        excludeAmbiguous = excludeAmbiguous
+                    )
+                )
+            }
+
+            return builder.toString()
+        }
+
+        private data class CharUsage(
+            val useUpper: Boolean,
+            val useLower: Boolean,
+            val useNumber: Boolean,
+            val useSymbol: Boolean
+        )
+
+        private fun analyzeCharUsage(passwords: List<PasswordEntry>): CharUsage {
+            var useUpper = 0
+            var useLower = 0
+            var useNumber = 0
+            var useSymbol = 0
+            val total = passwords.size.toDouble().coerceAtLeast(1.0)
+
+            passwords.forEach { entry ->
+                val p = entry.password
+                if (p.any { it.isUpperCase() }) useUpper++
+                if (p.any { it.isLowerCase() }) useLower++
+                if (p.any { it.isDigit() }) useNumber++
+                if (p.any { !it.isLetterOrDigit() }) useSymbol++
+            }
+
+            return CharUsage(
+                useUpper = (useUpper / total) > 0.2,
+                useLower = (useLower / total) > 0.2,
+                useNumber = (useNumber / total) > 0.2,
+                useSymbol = (useSymbol / total) > 0.2
+            )
+        }
+
+        private fun findCommonFragment(passwords: List<PasswordEntry>): String? {
+            val freq = mutableMapOf<String, Int>()
+            passwords.forEach { entry ->
+                val p = entry.password
+                if (p.length < 3) return@forEach
+                val maxLen = minOf(11, p.length)
+                for (len in 3..maxLen) {
+                    for (i in 0..p.length - len) {
+                        val sub = p.substring(i, i + len)
+                        if (sub.isBlank()) continue
+                        freq[sub] = freq.getOrDefault(sub, 0) + 1
+                    }
+                }
+            }
+
+            if (freq.isEmpty()) return null
+
+            // Phone-like numeric片段加权，优先出现频率高且长度长的
+            return freq.entries
+                .maxByOrNull { (key, value) ->
+                    val isNumeric = key.all { it.isDigit() }
+                    val phoneBoost = if (isNumeric && key.length in 6..11) 1.5 else 1.0
+                    (value * key.length * phoneBoost).toInt()
+                }
+                ?.key
         }
         
         /**

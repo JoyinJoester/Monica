@@ -131,6 +131,9 @@
     <string name="numbers_09">数字 (0-9)</string>
     <string name="symbols">符号 (!@#$...)</string>
     <string name="exclude_similar">排除相似字符</string>
+    <string name="analyze_common_passwords">常用密码分析</string>
+    <string name="analyze_common_passwords_desc">分析已保存的密码并生成相似且易记的密码</string>
+    <string name="analyze_weight_label">关联强度：%d</string>
     <string name="use_password">使用密码</string>
     <string name="generate_new_password">生成新密码</string>
     <string name="show">显示</string>

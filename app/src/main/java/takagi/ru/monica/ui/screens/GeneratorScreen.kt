@@ -84,8 +84,8 @@ fun colorizePassword(password: String): AnnotatedString {
 @Composable
 fun GeneratorScreen(
     onNavigateBack: () -> Unit,
-    viewModel: GeneratorViewModel = viewModel(),
-    passwordViewModel: PasswordViewModel
+    passwordViewModel: PasswordViewModel,
+    viewModel: GeneratorViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -115,7 +115,12 @@ fun GeneratorScreen(
     val includeSymbols by viewModel.includeSymbols.collectAsState()
     val excludeSimilar by viewModel.excludeSimilar.collectAsState()
     val excludeAmbiguous by viewModel.excludeAmbiguous.collectAsState()
+    val analyzeCommonPasswords by viewModel.analyzeCommonPasswords.collectAsState()
+    val analyzeWeight by viewModel.analyzeWeight.collectAsState()
     val symbolResult by viewModel.symbolResult.collectAsState()
+
+    // 用户密码数据用于分析
+    val passwordEntries by passwordViewModel.passwordEntries.collectAsState()
     
     // 初始化时生成默认密码
     LaunchedEffect(Unit) {
@@ -166,7 +171,7 @@ fun GeneratorScreen(
     LaunchedEffect(
         selectedGenerator,
         symbolLength, includeUppercase, includeLowercase, includeNumbers, 
-        includeSymbols, excludeSimilar, excludeAmbiguous, 
+        includeSymbols, excludeSimilar, excludeAmbiguous, analyzeCommonPasswords, analyzeWeight,
         uppercaseMin, lowercaseMin, numbersMin, symbolsMin,
         passwordLength, firstLetterUppercase, includeNumbersInPassword, 
         customSeparator, separatorCountsTowardsLength, segmentLength,
@@ -179,19 +184,33 @@ fun GeneratorScreen(
         
         when (selectedGenerator) {
             GeneratorType.SYMBOL -> {
-                val result = PasswordGenerator.generatePassword(
-                    length = symbolLength,
-                    includeUppercase = includeUppercase,
-                    includeLowercase = includeLowercase,
-                    includeNumbers = includeNumbers,
-                    includeSymbols = includeSymbols,
-                    excludeSimilar = excludeSimilar,
-                    excludeAmbiguous = excludeAmbiguous,
-                    uppercaseMin = uppercaseMin,
-                    lowercaseMin = lowercaseMin,
-                    numbersMin = numbersMin,
-                    symbolsMin = symbolsMin
-                )
+                val result = if (analyzeCommonPasswords && passwordEntries.isNotEmpty()) {
+                    PasswordGenerator.generateSimilarPassword(
+                        passwords = passwordEntries,
+                        targetLength = symbolLength,
+                        includeUppercase = includeUppercase,
+                        includeLowercase = includeLowercase,
+                        includeNumbers = includeNumbers,
+                        includeSymbols = includeSymbols,
+                        excludeSimilar = excludeSimilar,
+                        excludeAmbiguous = excludeAmbiguous,
+                        weightPercent = analyzeWeight
+                    )
+                } else {
+                    PasswordGenerator.generatePassword(
+                        length = symbolLength,
+                        includeUppercase = includeUppercase,
+                        includeLowercase = includeLowercase,
+                        includeNumbers = includeNumbers,
+                        includeSymbols = includeSymbols,
+                        excludeSimilar = excludeSimilar,
+                        excludeAmbiguous = excludeAmbiguous,
+                        uppercaseMin = uppercaseMin,
+                        lowercaseMin = lowercaseMin,
+                        numbersMin = numbersMin,
+                        symbolsMin = symbolsMin
+                    )
+                }
                 viewModel.updateSymbolResult(result)
                 // 保存到历史记录
                 scope.launch {
@@ -447,6 +466,36 @@ fun GeneratorScreen(
                                 checked = excludeAmbiguous,
                                 onCheckedChange = { viewModel.updateExcludeAmbiguous(it) }
                             )
+
+                            CheckboxWithText(
+                                text = stringResource(R.string.analyze_common_passwords),
+                                checked = analyzeCommonPasswords,
+                                onCheckedChange = { viewModel.updateAnalyzeCommonPasswords(it) }
+                            )
+                            if (analyzeCommonPasswords) {
+                                Text(
+                                    text = stringResource(R.string.analyze_common_passwords_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
+                                )
+
+                                // 权重滑块：控制保留常见片段的强度
+                                Text(
+                                    text = stringResource(R.string.analyze_weight_label, analyzeWeight),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                                )
+                                Slider(
+                                    value = analyzeWeight.toFloat(),
+                                    onValueChange = { viewModel.updateAnalyzeWeight(it.toInt()) },
+                                    valueRange = 0f..100f,
+                                    steps = 10,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 4.dp, end = 4.dp)
+                                )
+                            }
                         }
                         
                         Spacer(modifier = Modifier.height(16.dp))
@@ -700,19 +749,33 @@ fun GeneratorScreen(
                 // 触发重新生成
                 when (selectedGenerator) {
                     GeneratorType.SYMBOL -> {
-                        val result = PasswordGenerator.generatePassword(
-                            length = symbolLength,
-                            includeUppercase = includeUppercase,
-                            includeLowercase = includeLowercase,
-                            includeNumbers = includeNumbers,
-                            includeSymbols = includeSymbols,
-                            excludeSimilar = excludeSimilar,
-                            excludeAmbiguous = excludeAmbiguous,
-                            uppercaseMin = uppercaseMin,
-                            lowercaseMin = lowercaseMin,
-                            numbersMin = numbersMin,
-                            symbolsMin = symbolsMin
-                        )
+                        val result = if (analyzeCommonPasswords && passwordEntries.isNotEmpty()) {
+                            PasswordGenerator.generateSimilarPassword(
+                                passwords = passwordEntries,
+                                targetLength = symbolLength,
+                                includeUppercase = includeUppercase,
+                                includeLowercase = includeLowercase,
+                                includeNumbers = includeNumbers,
+                                includeSymbols = includeSymbols,
+                                excludeSimilar = excludeSimilar,
+                                excludeAmbiguous = excludeAmbiguous,
+                                weightPercent = analyzeWeight
+                            )
+                        } else {
+                            PasswordGenerator.generatePassword(
+                                length = symbolLength,
+                                includeUppercase = includeUppercase,
+                                includeLowercase = includeLowercase,
+                                includeNumbers = includeNumbers,
+                                includeSymbols = includeSymbols,
+                                excludeSimilar = excludeSimilar,
+                                excludeAmbiguous = excludeAmbiguous,
+                                uppercaseMin = uppercaseMin,
+                                lowercaseMin = lowercaseMin,
+                                numbersMin = numbersMin,
+                                symbolsMin = symbolsMin
+                            )
+                        }
                         viewModel.updateSymbolResult(result)
                         // 保存到历史记录
                         scope.launch {

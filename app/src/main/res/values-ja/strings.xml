@@ -127,6 +127,9 @@
     <string name="numbers_09">数字 (0-9)</string>
     <string name="symbols">記号 (!@#$...)</string>
     <string name="exclude_similar">類似文字を除外</string>
+    <string name="analyze_common_passwords">よく使われるパスワード分析</string>
+    <string name="analyze_common_passwords_desc">保存されたパスワードを分析して似ていて覚えやすいパスワードを生成します</string>
+    <string name="analyze_weight_label">類似度の強さ: %d</string>
     <string name="use_password">パスワードを使用</string>
     <string name="generate_new_password">新しいパスワードを生成</string>
     <string name="show">表示</string>

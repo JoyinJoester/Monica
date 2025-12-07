@@ -131,6 +131,9 @@
     <string name="numbers_09">Numbers (0-9)</string>
     <string name="symbols">Symbols (!@#$...)</string>
     <string name="exclude_similar">Exclude similar</string>
+    <string name="analyze_common_passwords">Common Password Analysis</string>
+    <string name="analyze_common_passwords_desc">Analyze stored passwords to generate a similar and easy-to-remember password</string>
+    <string name="analyze_weight_label">Similarity strength: %d</string>
     <string name="use_password">Use Password</string>
     <string name="generate_new_password">Generate new password</string>
     <string name="show">Show</string>
