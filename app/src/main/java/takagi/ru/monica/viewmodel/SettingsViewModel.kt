@@ -143,6 +143,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateNotificationValidatorAutoMatch(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateNotificationValidatorAutoMatch(enabled)
+        }
+    }
+
     fun updatePlusActivated(activated: Boolean) {
         viewModelScope.launch {
             settingsManager.updatePlusActivated(activated)

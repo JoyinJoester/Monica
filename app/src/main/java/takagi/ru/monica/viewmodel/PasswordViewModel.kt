@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
+import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
@@ -74,6 +75,8 @@ class PasswordViewModel(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    val allPasswords: Flow<List<PasswordEntry>> = repository.getAllPasswordEntries()
     
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -138,13 +141,20 @@ class PasswordViewModel(
         _isAuthenticated.value = false
     }
     
-    fun addPasswordEntry(entry: PasswordEntry) {
+    fun addPasswordEntry(entry: PasswordEntry, onResult: (Long) -> Unit = {}) {
         viewModelScope.launch {
-            repository.insertPasswordEntry(entry.copy(
+            val id = repository.insertPasswordEntry(entry.copy(
                 password = securityManager.encryptData(entry.password),
                 createdAt = Date(),
                 updatedAt = Date()
             ))
+            onResult(id)
+        }
+    }
+
+    fun addSecureItem(item: SecureItem) {
+        viewModelScope.launch {
+            secureItemRepository?.insertItem(item)
         }
     }
     

@@ -137,11 +137,18 @@ class MainActivity : FragmentActivity() {
         // Initialize Notification Validator Service
         lifecycleScope.launch {
             settingsManager.settingsFlow
-                .map { Pair(it.notificationValidatorEnabled, it.notificationValidatorId) }
+                .map {
+                    Triple(
+                        it.notificationValidatorEnabled,
+                        it.notificationValidatorId,
+                        it.notificationValidatorAutoMatch
+                    )
+                }
                 .distinctUntilChanged()
-                .collect { (enabled, id) ->
+                .collect { (enabled, id, autoMatch) ->
                     val intent = Intent(this@MainActivity, takagi.ru.monica.service.NotificationValidatorService::class.java)
-                    if (enabled && id != -1L) {
+                    // Start service if enabled and either a specific validator is chosen or auto-match is on.
+                    if (enabled && (id != -1L || autoMatch)) {
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                             startForegroundService(intent)
                         } else {
@@ -464,6 +471,7 @@ fun MonicaContent(
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             AddEditPasswordScreen(
                 viewModel = viewModel,
+                bankCardViewModel = bankCardViewModel,
                 passwordId = if (passwordId == -1L) null else passwordId,
                 onNavigateBack = {
                     navController.popBackStack()
@@ -523,6 +531,7 @@ fun MonicaContent(
                     initialData = initialData,
                     initialTitle = initialTitle,
                     initialNotes = initialNotes,
+                    passwordViewModel = viewModel,
                     onSave = { title, notes, totpData ->
                         totpViewModel.saveTotpItem(
                             id = if (totpId > 0) totpId else null,

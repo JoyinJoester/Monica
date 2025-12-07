@@ -738,6 +738,8 @@ fun GeneratorScreen(
                     }
                 }
             }
+            
+            Spacer(modifier = Modifier.height(80.dp))
         }
         
         // 右下角重新生成按钮 - FAB 设计

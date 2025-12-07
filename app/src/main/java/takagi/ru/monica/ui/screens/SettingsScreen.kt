@@ -425,10 +425,14 @@ fun SettingsScreen(
                 ) {
                     NotificationValidatorCard(
                         enabled = settings.notificationValidatorEnabled,
+                        autoMatchEnabled = settings.notificationValidatorAutoMatch,
                         selectedId = settings.notificationValidatorId,
                         totpItems = totpItems,
                         onEnabledChange = { enabled ->
                             viewModel.updateNotificationValidatorEnabled(enabled)
+                        },
+                        onAutoMatchChange = { enabled ->
+                            viewModel.updateNotificationValidatorAutoMatch(enabled)
                         },
                         onValidatorSelected = { id ->
                             viewModel.updateNotificationValidatorId(id)
@@ -1400,9 +1404,11 @@ fun ProgressBarStyleDialog(
 @Composable
 fun NotificationValidatorCard(
     enabled: Boolean,
+    autoMatchEnabled: Boolean,
     selectedId: Long,
     totpItems: List<SecureItem>,
     onEnabledChange: (Boolean) -> Unit,
+    onAutoMatchChange: (Boolean) -> Unit,
     onValidatorSelected: (Long) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1471,37 +1477,39 @@ fun NotificationValidatorCard(
                 Column(
                     modifier = Modifier.padding(16.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.select_validator_to_display),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    
-                    if (totpItems.isEmpty()) {
+                    run {
                         Text(
-                            text = stringResource(R.string.no_validators_available),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = stringResource(R.string.select_validator_to_display),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
-                    } else {
-                        totpItems.forEach { item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onValidatorSelected(item.id) }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = item.id == selectedId,
-                                    onClick = { onValidatorSelected(item.id) }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = item.title,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                        
+                        if (totpItems.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.no_validators_available),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            totpItems.forEach { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onValidatorSelected(item.id) }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = item.id == selectedId,
+                                        onClick = { onValidatorSelected(item.id) }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                             }
                         }
                     }
@@ -1510,4 +1518,3 @@ fun NotificationValidatorCard(
         }
     }
 }
-

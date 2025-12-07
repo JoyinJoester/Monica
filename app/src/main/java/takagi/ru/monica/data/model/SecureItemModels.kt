@@ -28,7 +28,10 @@ data class TotpData(
     val algorithm: String = "SHA1",        // 算法（SHA1, SHA256, SHA512）
     val otpType: OtpType = OtpType.TOTP,  // OTP类型（默认TOTP，确保向后兼容）
     val counter: Long = 0,                 // 计数器（仅HOTP使用）
-    val pin: String = ""                   // PIN码（仅mOTP使用，应加密存储）
+    val pin: String = "",                  // PIN码（仅mOTP使用，应加密存储）
+    val link: String = "",                 // 关联链接
+    val associatedApp: String = "",        // 关联应用
+    val boundPasswordId: Long? = null      // 绑定的密码ID
 )
 
 /**

@@ -93,6 +93,10 @@ fun TotpListScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+                
+                item {
+                    Spacer(modifier = Modifier.height(80.dp))
+                }
             }
         }
     }

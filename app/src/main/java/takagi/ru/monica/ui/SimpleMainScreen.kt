@@ -1345,6 +1345,10 @@ private fun PasswordListContent(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }
+            
+            item {
+                Spacer(modifier = Modifier.height(80.dp))
+            }
         }
     }
     
@@ -1818,6 +1822,10 @@ private fun TotpListContent(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
+                
+                item {
+                    Spacer(modifier = Modifier.height(80.dp))
+                }
             }
         }
     }
@@ -2265,6 +2273,10 @@ private fun BankCardListContent(
                     )
                 }
             }
+            
+            item {
+                Spacer(modifier = Modifier.height(80.dp))
+            }
         }
     }    // 单项删除确认对话框(支持指纹和密码验证)
     itemToDelete?.let { item ->
@@ -2572,6 +2584,10 @@ private fun DocumentListContent(
                         isSelected = selectedItems.contains(document.id)
                     )
                 }
+            }
+            
+            item {
+                Spacer(modifier = Modifier.height(80.dp))
             }
         }
     }

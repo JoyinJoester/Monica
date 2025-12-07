@@ -1222,4 +1222,15 @@
     <string name="open_link">打开链接</string>
     <string name="error_opening_link">打开链接失败</string>
     <string name="other_support_ways">其他支持方式</string>
+
+    <!-- TOTP Association -->
+    <string name="association_options">关联选项</string>
+    <string name="associated_link">关联链接</string>
+    <string name="associated_app">关联应用</string>
+    <string name="bind_password">绑定密码</string>
+    <string name="bound_password_change">已绑定密码 (点击更换)</string>
+    <string name="unbind">解除绑定</string>
+    <string name="select_password_to_bind">选择要绑定的密码</string>
+    <string name="link_example">https://example.com</string>
+    <string name="app_name_placeholder">应用名称</string>
 </resources>

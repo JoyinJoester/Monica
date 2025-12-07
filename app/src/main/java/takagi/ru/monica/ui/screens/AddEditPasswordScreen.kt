@@ -37,13 +37,24 @@ import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.ui.components.AppSelectorField
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.data.model.BankCardData
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.OtpType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditPasswordScreen(
     viewModel: PasswordViewModel,
+    bankCardViewModel: BankCardViewModel? = null,
     passwordId: Long?,
     onNavigateBack: () -> Unit
 ) {
@@ -65,6 +76,7 @@ fun AddEditPasswordScreen(
     var website by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var authenticatorKey by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var isFavorite by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -201,9 +213,39 @@ fun AddEditPasswordScreen(
                                 
                                 if (isEditing) {
                                     viewModel.updatePasswordEntry(entry)
+                                    
+                                    if (authenticatorKey.isNotEmpty()) {
+                                        val totpData = TotpData(
+                                            secret = authenticatorKey,
+                                            issuer = title,
+                                            accountName = username,
+                                            boundPasswordId = entry.id
+                                        )
+                                        val secureItem = SecureItem(
+                                            itemType = ItemType.TOTP,
+                                            title = title,
+                                            itemData = Json.encodeToString(totpData)
+                                        )
+                                        viewModel.addSecureItem(secureItem)
+                                    }
                                 } else {
                                     // 复制模式和新建模式都使用 addPasswordEntry
-                                    viewModel.addPasswordEntry(entry)
+                                    viewModel.addPasswordEntry(entry) { newId ->
+                                        if (authenticatorKey.isNotEmpty()) {
+                                            val totpData = TotpData(
+                                                secret = authenticatorKey,
+                                                issuer = title,
+                                                accountName = username,
+                                                boundPasswordId = newId
+                                            )
+                                            val secureItem = SecureItem(
+                                                itemType = ItemType.TOTP,
+                                                title = title,
+                                                itemData = Json.encodeToString(totpData)
+                                            )
+                                            viewModel.addSecureItem(secureItem)
+                                        }
+                                    }
                                 }
                                 
                                 // 批量更新关联
@@ -395,6 +437,20 @@ fun AddEditPasswordScreen(
                     imeAction = ImeAction.Next
                 ),
                 singleLine = true
+            )
+            
+            // Authenticator Key Field
+            OutlinedTextField(
+                value = authenticatorKey,
+                onValueChange = { authenticatorKey = it },
+                label = { Text("验证码密钥 (可选)") },
+                placeholder = { Text("输入密钥以自动创建验证器") },
+                leadingIcon = {
+                    Icon(Icons.Default.VpnKey, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
             )
             
             // Phase 8: 密码强度分析指示器
@@ -813,6 +869,82 @@ fun AddEditPasswordScreen(
                                 .padding(bottom = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            // 导入银行卡按钮
+                            if (bankCardViewModel != null) {
+                                val bankCards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
+                                var showBankCardDialog by remember { mutableStateOf(false) }
+
+                                OutlinedButton(
+                                    onClick = { showBankCardDialog = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.CreditCard, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("从银行卡导入")
+                                }
+
+                                if (showBankCardDialog) {
+                                    AlertDialog(
+                                        onDismissRequest = { showBankCardDialog = false },
+                                        title = { Text("选择银行卡") },
+                                        text = {
+                                            if (bankCards.isEmpty()) {
+                                                Text("暂无银行卡数据")
+                                            } else {
+                                                LazyColumn {
+                                                    items(bankCards) { item ->
+                                                        val cardData = remember(item.itemData) {
+                                                            try {
+                                                                Json.decodeFromString<BankCardData>(item.itemData)
+                                                            } catch (e: Exception) {
+                                                                null
+                                                            }
+                                                        }
+                                                        
+                                                        ListItem(
+                                                            headlineContent = { Text(item.title) },
+                                                            supportingContent = {
+                                                                Text(
+                                                                    if (cardData != null) {
+                                                                        "尾号 ${cardData.cardNumber.takeLast(4)}"
+                                                                    } else {
+                                                                        "数据解析失败"
+                                                                    }
+                                                                )
+                                                            },
+                                                            leadingContent = {
+                                                                Icon(Icons.Default.CreditCard, null)
+                                                            },
+                                                            modifier = Modifier.clickable {
+                                                                if (cardData != null) {
+                                                                    creditCardNumber = cardData.cardNumber
+                                                                    creditCardHolder = cardData.cardholderName
+                                                                    creditCardCVV = cardData.cvv
+                                                                    // Format expiry MM/YY
+                                                                    val month = cardData.expiryMonth.padStart(2, '0')
+                                                                    val year = if (cardData.expiryYear.length == 4) cardData.expiryYear.takeLast(2) else cardData.expiryYear
+                                                                    creditCardExpiry = "$month/$year"
+                                                                    
+                                                                    showBankCardDialog = false
+                                                                    Toast.makeText(context, "已导入银行卡信息", Toast.LENGTH_SHORT).show()
+                                                                } else {
+                                                                    Toast.makeText(context, "导入失败: 数据解析错误", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        confirmButton = {
+                                            TextButton(onClick = { showBankCardDialog = false }) {
+                                                Text("取消")
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+
                             // 信用卡号
                             OutlinedTextField(
                                 value = creditCardNumber,

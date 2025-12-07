@@ -528,6 +528,10 @@ fun PasswordListScreen(
                             }
                         }
                     }
+                    
+                    item {
+                        Spacer(modifier = Modifier.height(80.dp))
+                    }
                 }
             }
         }

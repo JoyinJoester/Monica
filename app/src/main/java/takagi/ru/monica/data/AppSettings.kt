@@ -101,6 +101,7 @@ data class AppSettings(
     val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.LINEAR, // 验证器进度条样式
     val validatorVibrationEnabled: Boolean = true, // 验证器震动提醒
     val notificationValidatorEnabled: Boolean = false, // 通知栏验证器开关
+    val notificationValidatorAutoMatch: Boolean = false, // 通知栏验证器自动匹配
     val notificationValidatorId: Long = -1L, // 通知栏显示的验证器ID
     val isPlusActivated: Boolean = false, // Plus是否已激活
     val stackCardMode: String = "AUTO", // 堆叠卡片模式

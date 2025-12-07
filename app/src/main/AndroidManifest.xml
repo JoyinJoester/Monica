@@ -97,6 +97,19 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Displaying TOTP codes in notification" />
         </service>
+
+        <!-- Accessibility Service -->
+        <service
+            android:name=".service.MonicaAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
         
         <!-- Autofill Save Activity (旧版全屏) -->
         <activity

@@ -45,6 +45,7 @@ class SettingsManager(private val context: Context) {
         private val VALIDATOR_PROGRESS_BAR_STYLE_KEY = stringPreferencesKey("validator_progress_bar_style")
         private val VALIDATOR_VIBRATION_ENABLED_KEY = booleanPreferencesKey("validator_vibration_enabled")
         private val NOTIFICATION_VALIDATOR_ENABLED_KEY = booleanPreferencesKey("notification_validator_enabled")
+        private val NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY = booleanPreferencesKey("notification_validator_auto_match")
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
         private val STACK_CARD_MODE_KEY = stringPreferencesKey("stack_card_mode")
@@ -98,6 +99,7 @@ class SettingsManager(private val context: Context) {
             }.getOrDefault(takagi.ru.monica.data.ProgressBarStyle.LINEAR),
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
             notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
+            notificationValidatorAutoMatch = preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] ?: false,
             notificationValidatorId = preferences[NOTIFICATION_VALIDATOR_ID_KEY] ?: -1L,
             isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
@@ -197,6 +199,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateNotificationValidatorEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateNotificationValidatorAutoMatch(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] = enabled
         }
     }
 

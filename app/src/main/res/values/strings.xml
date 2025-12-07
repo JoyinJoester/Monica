@@ -83,6 +83,9 @@
     <string name="copy">Copy</string>
     <string name="username_copied">Username copied to clipboard</string>
     <string name="password_copied">Password copied to clipboard</string>
+    <string name="notification_validator_ready">Authenticator notification is starting...</string>
+    <string name="notification_validator_no_match">No matching authenticator yet</string>
+    <string name="notification_validator_switch">切换</string>
     
     <!-- Form Fields -->
     <string name="field_email">Email</string>
@@ -1373,4 +1376,15 @@
     <string name="cd_back">返回</string>
     <string name="plus_thank_you">感谢您的支持！</string>
     <string name="plus_payment_links_title">支付链接</string>
+
+    <!-- TOTP Association -->
+    <string name="association_options">Association Options</string>
+    <string name="associated_link">Associated Link</string>
+    <string name="associated_app">Associated App</string>
+    <string name="bind_password">Bind Password</string>
+    <string name="bound_password_change">Bound Password (Click to Change)</string>
+    <string name="unbind">Unbind</string>
+    <string name="select_password_to_bind">Select Password to Bind</string>
+    <string name="link_example">https://example.com</string>
+    <string name="app_name_placeholder">App Name</string>
 </resources>
