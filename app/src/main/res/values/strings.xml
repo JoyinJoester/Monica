@@ -103,6 +103,23 @@
     <string name="collapse">Collapse</string>
     <string name="collapse_group">Collapse %d passwords</string>
     <string name="passwords_count">%d passwords</string>
+
+    <!-- Stack card modes -->
+    <string name="stack_mode_menu_title">Stack display mode</string>
+    <string name="stack_mode_auto">Auto stack</string>
+    <string name="stack_mode_auto_desc">Smartly stack or expand based on card type</string>
+    <string name="stack_mode_stack">Always stack</string>
+    <string name="stack_mode_stack_desc">Keep multi-entry cards collapsed by default</string>
+    <string name="stack_mode_expand">Always expand</string>
+    <string name="stack_mode_expand_desc">Keep multi-entry cards expanded by default</string>
+
+    <!-- Group/display menu -->
+    <string name="display_options_menu_title">Display &amp; grouping</string>
+    <string name="group_mode_menu_title">Grouping</string>
+    <string name="group_mode_website">Notes/Web/App priority</string>
+    <string name="group_mode_website_desc">Group by Notes > Website > App > Title</string>
+    <string name="group_mode_title">Group by title</string>
+    <string name="group_mode_title_desc">Group strictly by full title</string>
     
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">Add Password</string>

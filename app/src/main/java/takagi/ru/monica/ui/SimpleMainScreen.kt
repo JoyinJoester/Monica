@@ -14,8 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
@@ -130,8 +130,13 @@ fun SimpleMainScreen(
     var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     
-    // 密码分组模式: "website" 按网站分组, "title" 按标题分组
+    // 密码分组模式: "website" 按备注>网站>应用>标题优先分组, "title" 按标题分组
     var passwordGroupMode by rememberSaveable { mutableStateOf("website") }
+
+    // 堆叠卡片显示模式: 自动/始终堆叠/始终展开
+    var stackCardModeKey by rememberSaveable { mutableStateOf(StackCardMode.AUTO.name) }
+    val stackCardMode = remember(stackCardModeKey) { StackCardMode.valueOf(stackCardModeKey) }
+    var displayMenuExpanded by remember { mutableStateOf(false) }
     
     // TOTP的选择模式状态
     var isTotpSelectionMode by remember { mutableStateOf(false) }
@@ -232,24 +237,180 @@ fun SimpleMainScreen(
                             Text(currentTabLabel)
                         },
                         actions = {
-                            // 只在密码页面显示分组切换按钮
+                            // 只在密码页面显示分组/堆叠模式的统一菜单
                             if (currentTab == BottomNavItem.Passwords) {
-                                IconButton(onClick = {
-                                    passwordGroupMode = when (passwordGroupMode) {
-                                        "website" -> "title"
-                                        else -> "website"
+                                Box {
+                                    IconButton(onClick = { displayMenuExpanded = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.DashboardCustomize,
+                                            contentDescription = stringResource(R.string.display_options_menu_title)
+                                        )
                                     }
-                                }) {
-                                    Icon(
-                                        when (passwordGroupMode) {
-                                            "website" -> Icons.Default.Language  // 地球图标表示按网站
-                                            else -> Icons.Default.Title          // 标题图标表示按标题
-                                        },
-                                        contentDescription = when (passwordGroupMode) {
-                                            "website" -> "按网站分组"
-                                            else -> "按标题分组"
+
+                                    DropdownMenu(
+                                        expanded = displayMenuExpanded,
+                                        onDismissRequest = { displayMenuExpanded = false }
+                                    ) {
+                                        // 堆叠模式
+                                        DropdownMenuItem(
+                                            onClick = {},
+                                            enabled = false,
+                                            text = {
+                                                Text(
+                                                    text = stringResource(R.string.stack_mode_menu_title),
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        )
+
+                                        val stackModes = listOf(
+                                            StackCardMode.AUTO,
+                                            StackCardMode.ALWAYS_STACKED,
+                                            StackCardMode.ALWAYS_EXPANDED
+                                        )
+
+                                        stackModes.forEach { mode ->
+                                            val selected = mode == stackCardMode
+                                            val (title, desc, icon) = when (mode) {
+                                                StackCardMode.AUTO -> Triple(
+                                                    stringResource(R.string.stack_mode_auto),
+                                                    stringResource(R.string.stack_mode_auto_desc),
+                                                    Icons.Default.AutoAwesome
+                                                )
+                                                StackCardMode.ALWAYS_STACKED -> Triple(
+                                                    stringResource(R.string.stack_mode_stack),
+                                                    stringResource(R.string.stack_mode_stack_desc),
+                                                    Icons.Default.ViewAgenda
+                                                )
+                                                StackCardMode.ALWAYS_EXPANDED -> Triple(
+                                                    stringResource(R.string.stack_mode_expand),
+                                                    stringResource(R.string.stack_mode_expand_desc),
+                                                    Icons.Default.UnfoldMore
+                                                )
+                                            }
+
+                                            DropdownMenuItem(
+                                                onClick = {
+                                                    stackCardModeKey = mode.name
+                                                    displayMenuExpanded = false
+                                                },
+                                                text = {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(12.dp)
+                                                                    .background(
+                                                                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                                                        shape = RoundedCornerShape(4.dp)
+                                                                    )
+                                                            )
+                                                            Text(
+                                                                text = title,
+                                                                style = MaterialTheme.typography.titleSmall,
+                                                                color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = desc,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 2
+                                                        )
+                                                    }
+                                                },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = icon,
+                                                        contentDescription = null,
+                                                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            )
                                         }
-                                    )
+
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 12.dp),
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                        )
+
+                                        // 分组模式
+                                        DropdownMenuItem(
+                                            onClick = {},
+                                            enabled = false,
+                                            text = {
+                                                Text(
+                                                    text = stringResource(R.string.group_mode_menu_title),
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        )
+
+                                        val groupModes = listOf(
+                                            "website" to Triple(
+                                                stringResource(R.string.group_mode_website),
+                                                stringResource(R.string.group_mode_website_desc),
+                                                Icons.Default.Language
+                                            ),
+                                            "title" to Triple(
+                                                stringResource(R.string.group_mode_title),
+                                                stringResource(R.string.group_mode_title_desc),
+                                                Icons.Default.Title
+                                            )
+                                        )
+
+                                        groupModes.forEach { (modeKey, meta) ->
+                                            val selected = passwordGroupMode == modeKey
+                                            val (title, desc, icon) = meta
+
+                                            DropdownMenuItem(
+                                                onClick = {
+                                                    passwordGroupMode = modeKey
+                                                    displayMenuExpanded = false
+                                                },
+                                                text = {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(12.dp)
+                                                                    .background(
+                                                                        color = if (selected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                                                        shape = RoundedCornerShape(4.dp)
+                                                                    )
+                                                            )
+                                                            Text(
+                                                                text = title,
+                                                                style = MaterialTheme.typography.titleSmall,
+                                                                color = if (selected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = desc,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 2
+                                                        )
+                                                    }
+                                                },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = icon,
+                                                        contentDescription = null,
+                                                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -330,6 +491,7 @@ fun SimpleMainScreen(
                     PasswordListContent(
                         viewModel = passwordViewModel,
                         groupMode = passwordGroupMode,
+                        stackCardMode = stackCardMode,
                         onPasswordClick = { password ->
                             onNavigateToAddPassword(password.id)
                         },
@@ -438,6 +600,7 @@ fun SimpleMainScreen(
 private fun PasswordListContent(
     viewModel: PasswordViewModel,
     groupMode: String = "none",
+    stackCardMode: StackCardMode,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onNavigateToAddPassword: (Long?) -> Unit,
     onSelectionModeChange: (
@@ -485,7 +648,7 @@ private fun PasswordListContent(
     var expandedGroups by remember { mutableStateOf(setOf<String>()) }
     
     // 当分组模式改变时,重置展开状态
-    LaunchedEffect(groupMode) {
+    LaunchedEffect(groupMode, stackCardMode) {
         expandedGroups = setOf()
     }
     
@@ -537,7 +700,7 @@ private fun PasswordListContent(
             else -> {
                 // 按网站分组密码(默认),并按优先级排序
                 mergedByInfo
-                    .groupBy { entries -> entries.first().website.ifBlank { "未分类" } }
+                    .groupBy { entries -> getPasswordGroupTitle(entries.first()) }
                     .mapValues { (_, groups) -> groups.flatten() }
                     .toList()
                     .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
@@ -659,16 +822,25 @@ private fun PasswordListContent(
             contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
             groupedPasswords.forEach { (groupKey, passwords) ->
+                    val isExpanded = when (stackCardMode) {
+                        StackCardMode.AUTO -> expandedGroups.contains(groupKey)
+                        StackCardMode.ALWAYS_EXPANDED -> true
+                        StackCardMode.ALWAYS_STACKED -> false
+                    }
+
                     item(key = "group_$groupKey") {
                         StackedPasswordGroup(
                             website = groupKey,
                             passwords = passwords,
-                            isExpanded = expandedGroups.contains(groupKey),
+                            isExpanded = isExpanded,
+                            stackCardMode = stackCardMode,
                             onToggleExpand = {
-                                expandedGroups = if (expandedGroups.contains(groupKey)) {
-                                    expandedGroups - groupKey
-                                } else {
-                                    expandedGroups + groupKey
+                                if (stackCardMode == StackCardMode.AUTO) {
+                                    expandedGroups = if (expandedGroups.contains(groupKey)) {
+                                        expandedGroups - groupKey
+                                    } else {
+                                        expandedGroups + groupKey
+                                    }
                                 }
                             },
                         onPasswordClick = { password ->
@@ -2099,6 +2271,7 @@ private fun StackedPasswordGroup(
     @Suppress("UNUSED_PARAMETER") website: String,
     passwords: List<takagi.ru.monica.data.PasswordEntry>,
     isExpanded: Boolean,
+    stackCardMode: StackCardMode,
     onToggleExpand: () -> Unit,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onSwipeLeft: (takagi.ru.monica.data.PasswordEntry) -> Unit,
@@ -2154,8 +2327,14 @@ private fun StackedPasswordGroup(
     val hasGroupCover = passwords.any { it.isGroupCover }
     
     // 🎨 动画状态
+    val effectiveExpanded = when (stackCardMode) {
+        StackCardMode.AUTO -> isExpanded
+        StackCardMode.ALWAYS_EXPANDED -> true
+        StackCardMode.ALWAYS_STACKED -> false
+    }
+
     val expandProgress by animateFloatAsState(
-        targetValue = if (isExpanded && passwords.size > 1) 1f else 0f,
+        targetValue = if (effectiveExpanded && passwords.size > 1) 1f else 0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -2164,7 +2343,7 @@ private fun StackedPasswordGroup(
     )
     
     val containerAlpha by animateFloatAsState(
-        targetValue = if (isExpanded && passwords.size > 1) 1f else 0f,
+        targetValue = if (effectiveExpanded && passwords.size > 1) 1f else 0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMedium
@@ -2180,7 +2359,7 @@ private fun StackedPasswordGroup(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (isExpanded && passwords.size > 1) {
+                if (effectiveExpanded && passwords.size > 1) {
                     Modifier.pointerInput(Unit) {
                         detectDragGesturesAfterLongPress(
                             onDragStart = { 
@@ -2209,7 +2388,7 @@ private fun StackedPasswordGroup(
                 } else Modifier
             )
     ) {
-        if (!isExpanded && passwords.size > 1) {
+        if (!effectiveExpanded && passwords.size > 1) {
             // 📚 堆叠视图 - 层级式布局
             Box(
                 modifier = Modifier.fillMaxWidth()
@@ -2380,7 +2559,7 @@ private fun StackedPasswordGroup(
                         translationY = swipeOffset * 0.5f
                     }
             ) {
-                if (isExpanded && passwords.size > 1) {
+                if (effectiveExpanded && passwords.size > 1) {
                     // � 统一的卡片容器
                     Card(
                         modifier = Modifier
@@ -2501,7 +2680,7 @@ private fun StackedPasswordGroup(
                                                     isSelectionMode = isSelectionMode,
                                                     isSelected = selectedPasswords.contains(password.id),
                                                     canSetGroupCover = passwords.size > 1,
-                                                    isInExpandedGroup = isExpanded && passwords.size > 1,
+                                                    isInExpandedGroup = effectiveExpanded && passwords.size > 1,
                                                     isSingleCard = false
                                                 )
                                             } else {
@@ -2529,7 +2708,7 @@ private fun StackedPasswordGroup(
                                                     selectedPasswords = selectedPasswords,
                                                     canSetGroupCover = passwords.size > 1,
                                                     hasGroupCover = hasGroupCover,
-                                                    isInExpandedGroup = isExpanded && passwords.size > 1
+                                                    isInExpandedGroup = effectiveExpanded && passwords.size > 1
                                                 )
                                             }
                                         }
@@ -3574,5 +3753,37 @@ private fun DeleteConfirmDialog(
  * 用于将除密码外其它信息相同的条目合并显示
  */
 private fun getPasswordInfoKey(entry: takagi.ru.monica.data.PasswordEntry): String {
-    return "${entry.title}|${entry.website}|${entry.username}|${entry.notes}"
+    return "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+}
+
+/**
+ * 生成密码分组标题,按备注>网站>应用>标题的优先顺序选择第一个非空字段
+ */
+private fun getPasswordGroupTitle(entry: takagi.ru.monica.data.PasswordEntry): String {
+    // 取备注的首个非空行,避免整段备注过长
+    val noteLabel = entry.notes
+        .lineSequence()
+        .firstOrNull { it.isNotBlank() }
+        ?.trim()
+    if (!noteLabel.isNullOrEmpty()) return noteLabel
+
+    val website = entry.website.trim()
+    if (website.isNotEmpty()) return website
+
+    val appName = entry.appName.trim()
+    if (appName.isNotEmpty()) return appName
+
+    val packageName = entry.appPackageName.trim()
+    if (packageName.isNotEmpty()) return packageName
+
+    val title = entry.title.trim()
+    if (title.isNotEmpty()) return title
+
+    return "未分类"
+}
+
+private enum class StackCardMode {
+    AUTO,            // 根据卡片类型自动决定堆叠/展开
+    ALWAYS_STACKED,  // 默认保持折叠堆叠
+    ALWAYS_EXPANDED  // 默认展开所有堆叠组
 }
