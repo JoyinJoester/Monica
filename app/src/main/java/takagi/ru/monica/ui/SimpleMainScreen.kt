@@ -680,7 +680,7 @@ private fun PasswordListContent(
         }
         
         // 步骤2: 再按显示模式分组
-        when (groupMode) {
+        val groupedAndSorted = when (groupMode) {
             "title" -> {
                 // 按完整标题分组
                 mergedByInfo
@@ -746,6 +746,18 @@ private fun PasswordListContent(
                     })
                     .toMap()
             }
+        }
+
+        // 如果是始终展开模式，强制拆分为单项列表，但保持排序顺序
+        if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+            groupedAndSorted.values.flatten()
+                .map { entry -> 
+                    // 使用唯一ID作为键，确保LazyColumn正确渲染
+                    "entry_${entry.id}" to listOf(entry)
+                }
+                .toMap()
+        } else {
+            groupedAndSorted
         }
     }
     
