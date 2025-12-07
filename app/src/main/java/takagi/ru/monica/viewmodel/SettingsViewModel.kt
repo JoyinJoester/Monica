@@ -110,7 +110,6 @@ class SettingsViewModel(
             settingsManager.updatePasswordGroupMode(mode)
         }
     }
-}
 
     fun updateDisablePasswordVerification(disabled: Boolean) {
         viewModelScope.launch {
