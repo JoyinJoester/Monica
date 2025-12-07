@@ -106,16 +106,14 @@
 
     <!-- Stack card modes -->
     <string name="stack_mode_menu_title">堆叠展示模式</string>
-    <string name="stack_mode_auto">自动智能堆叠</string>
-    <string name="stack_mode_auto_desc">根据卡片类型智能决定堆叠或展开</string>
-    <string name="stack_mode_stack">始终堆叠</string>
-    <string name="stack_mode_stack_desc">多条目默认保持折叠</string>
+    <string name="stack_mode_auto">自动堆叠</string>
+    <string name="stack_mode_auto_desc">根据卡片类型自动决定堆叠或展开</string>
     <string name="stack_mode_expand">始终展开</string>
-    <string name="stack_mode_expand_desc">多条目默认完全展开</string>
+    <string name="stack_mode_expand_desc">逐条显示，不堆叠</string>
 
     <!-- Group/display menu -->
     <string name="display_options_menu_title">显示与分组</string>
-    <string name="group_mode_menu_title">分组方式</string>
+    <string name="group_mode_menu_title">堆叠方式</string>
     <string name="group_mode_website">备注/网站/应用优先</string>
     <string name="group_mode_website_desc">按备注>网站>应用>标题进行分组</string>
     <string name="group_mode_title">按标题分组</string>

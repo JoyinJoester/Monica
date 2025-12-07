@@ -133,9 +133,11 @@ fun SimpleMainScreen(
     // 密码分组模式: "website" 按备注>网站>应用>标题优先分组, "title" 按标题分组
     var passwordGroupMode by rememberSaveable { mutableStateOf("website") }
 
-    // 堆叠卡片显示模式: 自动/始终堆叠/始终展开
+    // 堆叠卡片显示模式: 自动/始终展开（始终展开指逐条显示，不堆叠）
     var stackCardModeKey by rememberSaveable { mutableStateOf(StackCardMode.AUTO.name) }
-    val stackCardMode = remember(stackCardModeKey) { StackCardMode.valueOf(stackCardModeKey) }
+    val stackCardMode = remember(stackCardModeKey) {
+        runCatching { StackCardMode.valueOf(stackCardModeKey) }.getOrDefault(StackCardMode.AUTO)
+    }
     var displayMenuExpanded by remember { mutableStateOf(false) }
     
     // TOTP的选择模式状态
@@ -266,7 +268,6 @@ fun SimpleMainScreen(
 
                                         val stackModes = listOf(
                                             StackCardMode.AUTO,
-                                            StackCardMode.ALWAYS_STACKED,
                                             StackCardMode.ALWAYS_EXPANDED
                                         )
 
@@ -277,11 +278,6 @@ fun SimpleMainScreen(
                                                     stringResource(R.string.stack_mode_auto),
                                                     stringResource(R.string.stack_mode_auto_desc),
                                                     Icons.Default.AutoAwesome
-                                                )
-                                                StackCardMode.ALWAYS_STACKED -> Triple(
-                                                    stringResource(R.string.stack_mode_stack),
-                                                    stringResource(R.string.stack_mode_stack_desc),
-                                                    Icons.Default.ViewAgenda
                                                 )
                                                 StackCardMode.ALWAYS_EXPANDED -> Triple(
                                                     stringResource(R.string.stack_mode_expand),
@@ -825,7 +821,6 @@ private fun PasswordListContent(
                     val isExpanded = when (stackCardMode) {
                         StackCardMode.AUTO -> expandedGroups.contains(groupKey)
                         StackCardMode.ALWAYS_EXPANDED -> true
-                        StackCardMode.ALWAYS_STACKED -> false
                     }
 
                     item(key = "group_$groupKey") {
@@ -2330,7 +2325,6 @@ private fun StackedPasswordGroup(
     val effectiveExpanded = when (stackCardMode) {
         StackCardMode.AUTO -> isExpanded
         StackCardMode.ALWAYS_EXPANDED -> true
-        StackCardMode.ALWAYS_STACKED -> false
     }
 
     val expandProgress by animateFloatAsState(
@@ -3784,6 +3778,5 @@ private fun getPasswordGroupTitle(entry: takagi.ru.monica.data.PasswordEntry): S
 
 private enum class StackCardMode {
     AUTO,            // 根据卡片类型自动决定堆叠/展开
-    ALWAYS_STACKED,  // 默认保持折叠堆叠
-    ALWAYS_EXPANDED  // 默认展开所有堆叠组
+    ALWAYS_EXPANDED  // 默认展开所有堆叠组（逐条显示，不堆叠）
 }
