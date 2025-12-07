@@ -130,8 +130,11 @@ fun SimpleMainScreen(
     var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     
-    // 密码分组模式: "website" 按备注>网站>应用>标题优先分组, "title" 按标题分组
-    var passwordGroupMode by rememberSaveable { mutableStateOf("website") }
+    // 密码分组模式: smart(备注>网站>应用>标题), note, website, app, title
+    var passwordGroupMode by rememberSaveable { mutableStateOf("smart") }
+    val normalizedGroupMode = remember(passwordGroupMode) {
+        if (passwordGroupMode == "website") "smart" else passwordGroupMode
+    }
 
     // 堆叠卡片显示模式: 自动/始终展开（始终展开指逐条显示，不堆叠）
     var stackCardModeKey by rememberSaveable { mutableStateOf(StackCardMode.AUTO.name) }
@@ -348,10 +351,25 @@ fun SimpleMainScreen(
                                         )
 
                                         val groupModes = listOf(
+                                            "smart" to Triple(
+                                                stringResource(R.string.group_mode_smart),
+                                                stringResource(R.string.group_mode_smart_desc),
+                                                Icons.Default.DashboardCustomize
+                                            ),
+                                            "note" to Triple(
+                                                stringResource(R.string.group_mode_note),
+                                                stringResource(R.string.group_mode_note_desc),
+                                                Icons.Default.Description
+                                            ),
                                             "website" to Triple(
                                                 stringResource(R.string.group_mode_website),
                                                 stringResource(R.string.group_mode_website_desc),
                                                 Icons.Default.Language
+                                            ),
+                                            "app" to Triple(
+                                                stringResource(R.string.group_mode_app),
+                                                stringResource(R.string.group_mode_app_desc),
+                                                Icons.Default.Apps
                                             ),
                                             "title" to Triple(
                                                 stringResource(R.string.group_mode_title),
@@ -361,7 +379,7 @@ fun SimpleMainScreen(
                                         )
 
                                         groupModes.forEach { (modeKey, meta) ->
-                                            val selected = passwordGroupMode == modeKey
+                                            val selected = normalizedGroupMode == modeKey
                                             val (title, desc, icon) = meta
 
                                             DropdownMenuItem(
@@ -486,7 +504,7 @@ fun SimpleMainScreen(
                     // 密码页面 - 使用现有的密码列表
                     PasswordListContent(
                         viewModel = passwordViewModel,
-                        groupMode = passwordGroupMode,
+                        groupMode = normalizedGroupMode,
                         stackCardMode = stackCardMode,
                         onPasswordClick = { password ->
                             onNavigateToAddPassword(password.id)
@@ -694,9 +712,10 @@ private fun PasswordListContent(
             }
             
             else -> {
-                // 按网站分组密码(默认),并按优先级排序
+                // 按所选维度分组，并按优先级排序
+                val effectiveGroupMode = if (groupMode == "website") "smart" else groupMode
                 mergedByInfo
-                    .groupBy { entries -> getPasswordGroupTitle(entries.first()) }
+                    .groupBy { entries -> getGroupKeyForMode(entries.first(), effectiveGroupMode) }
                     .mapValues { (_, groups) -> groups.flatten() }
                     .toList()
                     .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
@@ -3753,28 +3772,46 @@ private fun getPasswordInfoKey(entry: takagi.ru.monica.data.PasswordEntry): Stri
 /**
  * 生成密码分组标题,按备注>网站>应用>标题的优先顺序选择第一个非空字段
  */
-private fun getPasswordGroupTitle(entry: takagi.ru.monica.data.PasswordEntry): String {
-    // 取备注的首个非空行,避免整段备注过长
+private fun getGroupKeyForMode(entry: takagi.ru.monica.data.PasswordEntry, mode: String): String {
     val noteLabel = entry.notes
         .lineSequence()
         .firstOrNull { it.isNotBlank() }
         ?.trim()
-    if (!noteLabel.isNullOrEmpty()) return noteLabel
-
     val website = entry.website.trim()
-    if (website.isNotEmpty()) return website
-
     val appName = entry.appName.trim()
-    if (appName.isNotEmpty()) return appName
-
     val packageName = entry.appPackageName.trim()
-    if (packageName.isNotEmpty()) return packageName
+    val title = entry.title.trim().ifEmpty { "未分类" }
 
-    val title = entry.title.trim()
-    if (title.isNotEmpty()) return title
-
-    return "未分类"
+    return when (mode) {
+        "note" -> noteLabel.takeUnless { it.isNullOrEmpty() }
+            ?: website.takeUnless { it.isEmpty() }
+            ?: appName.takeUnless { it.isEmpty() }
+            ?: packageName.takeUnless { it.isEmpty() }
+            ?: title
+        "website" -> website.takeUnless { it.isEmpty() }
+            ?: noteLabel.takeUnless { it.isNullOrEmpty() }
+            ?: appName.takeUnless { it.isEmpty() }
+            ?: packageName.takeUnless { it.isEmpty() }
+            ?: title
+        "app" -> appName.takeUnless { it.isEmpty() }
+            ?: packageName.takeUnless { it.isEmpty() }
+            ?: noteLabel.takeUnless { it.isNullOrEmpty() }
+            ?: website.takeUnless { it.isEmpty() }
+            ?: title
+        "title" -> title
+        else -> {
+            // smart: 备注 > 网站 > 应用 > 标题
+            noteLabel.takeUnless { it.isNullOrEmpty() }
+                ?: website.takeUnless { it.isEmpty() }
+                ?: appName.takeUnless { it.isEmpty() }
+                ?: packageName.takeUnless { it.isEmpty() }
+                ?: title
+        }
+    }
 }
+
+private fun getPasswordGroupTitle(entry: takagi.ru.monica.data.PasswordEntry): String =
+    getGroupKeyForMode(entry, "smart")
 
 private enum class StackCardMode {
     AUTO,            // 根据卡片类型自动决定堆叠/展开
