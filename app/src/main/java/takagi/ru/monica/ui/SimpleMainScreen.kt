@@ -132,9 +132,6 @@ fun SimpleMainScreen(
     
     // 密码分组模式: smart(备注>网站>应用>标题), note, website, app, title
     var passwordGroupMode by rememberSaveable { mutableStateOf("smart") }
-    val normalizedGroupMode = remember(passwordGroupMode) {
-        if (passwordGroupMode == "website") "smart" else passwordGroupMode
-    }
 
     // 堆叠卡片显示模式: 自动/始终展开（始终展开指逐条显示，不堆叠）
     var stackCardModeKey by rememberSaveable { mutableStateOf(StackCardMode.AUTO.name) }
@@ -379,7 +376,7 @@ fun SimpleMainScreen(
                                         )
 
                                         groupModes.forEach { (modeKey, meta) ->
-                                            val selected = normalizedGroupMode == modeKey
+                                            val selected = passwordGroupMode == modeKey
                                             val (title, desc, icon) = meta
 
                                             DropdownMenuItem(
@@ -504,7 +501,7 @@ fun SimpleMainScreen(
                     // 密码页面 - 使用现有的密码列表
                     PasswordListContent(
                         viewModel = passwordViewModel,
-                        groupMode = normalizedGroupMode,
+                        groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
                         onPasswordClick = { password ->
                             onNavigateToAddPassword(password.id)
@@ -713,9 +710,8 @@ private fun PasswordListContent(
             
             else -> {
                 // 按所选维度分组，并按优先级排序
-                val effectiveGroupMode = if (groupMode == "website") "smart" else groupMode
                 mergedByInfo
-                    .groupBy { entries -> getGroupKeyForMode(entries.first(), effectiveGroupMode) }
+                    .groupBy { entries -> getGroupKeyForMode(entries.first(), groupMode) }
                     .mapValues { (_, groups) -> groups.flatten() }
                     .toList()
                     .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
@@ -3780,32 +3776,32 @@ private fun getGroupKeyForMode(entry: takagi.ru.monica.data.PasswordEntry, mode:
     val website = entry.website.trim()
     val appName = entry.appName.trim()
     val packageName = entry.appPackageName.trim()
-    val title = entry.title.trim().ifEmpty { "未分类" }
+    val title = entry.title.trim()
+    val idKey = "id-${entry.id}"
 
     return when (mode) {
-        "note" -> noteLabel.takeUnless { it.isNullOrEmpty() }
-            ?: website.takeUnless { it.isEmpty() }
-            ?: appName.takeUnless { it.isEmpty() }
-            ?: packageName.takeUnless { it.isEmpty() }
-            ?: title
-        "website" -> website.takeUnless { it.isEmpty() }
-            ?: noteLabel.takeUnless { it.isNullOrEmpty() }
-            ?: appName.takeUnless { it.isEmpty() }
-            ?: packageName.takeUnless { it.isEmpty() }
-            ?: title
+        // 只按备注；若备注为空则不分组（使用唯一键避免堆叠）
+        "note" -> noteLabel.takeUnless { it.isNullOrEmpty() } ?: idKey
+
+        // 只按网站；若网站为空则不分组
+        "website" -> website.takeUnless { it.isEmpty() } ?: idKey
+
+        // 只按应用；若应用名/包名都空则不分组
         "app" -> appName.takeUnless { it.isEmpty() }
             ?: packageName.takeUnless { it.isEmpty() }
-            ?: noteLabel.takeUnless { it.isNullOrEmpty() }
-            ?: website.takeUnless { it.isEmpty() }
-            ?: title
-        "title" -> title
+            ?: idKey
+
+        // 只按标题；若标题为空则不分组
+        "title" -> title.takeUnless { it.isEmpty() } ?: idKey
+
         else -> {
-            // smart: 备注 > 网站 > 应用 > 标题
+            // smart: 备注 > 网站 > 应用 > 标题，若都空则不分组
             noteLabel.takeUnless { it.isNullOrEmpty() }
                 ?: website.takeUnless { it.isEmpty() }
                 ?: appName.takeUnless { it.isEmpty() }
                 ?: packageName.takeUnless { it.isEmpty() }
-                ?: title
+                ?: title.takeUnless { it.isEmpty() }
+                ?: idKey
         }
     }
 }
