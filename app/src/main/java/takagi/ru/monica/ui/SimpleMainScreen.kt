@@ -2603,7 +2603,7 @@ private fun StackedPasswordGroup(
                         translationY = swipeOffset * 0.5f
                     }
             ) {
-                if (effectiveExpanded && passwords.size > 1) {
+                if (effectiveExpanded && passwords.size > 1 && stackCardMode != StackCardMode.ALWAYS_EXPANDED) {
                     // � 统一的卡片容器
                     Card(
                         modifier = Modifier
@@ -2763,9 +2763,14 @@ private fun StackedPasswordGroup(
                     }
                 } else {
                     // 单个或不展开时,也需要按信息分组
-                    val groupedByInfo = passwords.groupBy { getPasswordInfoKey(it) }
+                    // 如果是 ALWAYS_EXPANDED，则不按信息分组，直接逐个显示
+                    val passwordGroups = if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+                        passwords.map { listOf(it) }
+                    } else {
+                        passwords.groupBy { getPasswordInfoKey(it) }.values
+                    }
                     
-                    groupedByInfo.values.forEach { passwordGroup ->
+                    passwordGroups.forEach { passwordGroup ->
                         takagi.ru.monica.ui.gestures.SwipeActions(
                             onSwipeLeft = { onSwipeLeft(passwordGroup.first()) },
                             onSwipeRight = { onSwipeRight(passwordGroup.first()) },
