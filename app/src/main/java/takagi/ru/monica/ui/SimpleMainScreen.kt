@@ -664,16 +664,20 @@ private fun PasswordListContent(
     }
     
     // 根据分组模式对密码进行分组
-    val groupedPasswords = remember(passwordEntries, deletedItemIds, groupMode) {
+    val groupedPasswords = remember(passwordEntries, deletedItemIds, groupMode, stackCardMode) {
         val filteredEntries = passwordEntries.filter { it.id !in deletedItemIds }
         
-        // 步骤1: 先按"除密码外的信息"合并
-        val mergedByInfo = filteredEntries
-            .groupBy { getPasswordInfoKey(it) }
-            .map { (_, entries) -> 
-                // 如果有多个密码,保留所有但标记为合并组
-                entries.sortedBy { it.sortOrder }
-            }
+        // 步骤1: 先按"除密码外的信息"合并；始终展开模式下跳过合并，逐条显示
+        val mergedByInfo = if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+            filteredEntries.sortedBy { it.sortOrder }.map { listOf(it) }
+        } else {
+            filteredEntries
+                .groupBy { getPasswordInfoKey(it) }
+                .map { (_, entries) -> 
+                    // 如果有多个密码,保留所有但标记为合并组
+                    entries.sortedBy { it.sortOrder }
+                }
+        }
         
         // 步骤2: 再按显示模式分组
         when (groupMode) {
@@ -2300,56 +2304,30 @@ private fun StackedPasswordGroup(
     
     // 如果选择“始终展开”，则直接平铺展示，不使用堆叠容器
     if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
-        val groupedByInfo = passwords.groupBy { getPasswordInfoKey(it) }
-        groupedByInfo.values.forEach { passwordGroup ->
+        passwords.forEach { password ->
             takagi.ru.monica.ui.gestures.SwipeActions(
-                onSwipeLeft = { onSwipeLeft(passwordGroup.first()) },
-                onSwipeRight = { onSwipeRight(passwordGroup.first()) },
+                onSwipeLeft = { onSwipeLeft(password) },
+                onSwipeRight = { onSwipeRight(password) },
                 enabled = true
             ) {
-                if (passwordGroup.size == 1) {
-                    val password = passwordGroup.first()
-                    PasswordEntryCard(
-                        entry = password,
-                        onClick = {
-                            if (isSelectionMode) {
-                                onToggleSelection(password.id)
-                            } else {
-                                onPasswordClick(password)
-                            }
-                        },
-                        onLongClick = {},
-                        onToggleFavorite = { onToggleFavorite(password) },
-                        onToggleGroupCover = null,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = selectedPasswords.contains(password.id),
-                        canSetGroupCover = false,
-                        isInExpandedGroup = false,
-                        isSingleCard = true
-                    )
-                } else {
-                    MultiPasswordEntryCard(
-                        passwords = passwordGroup,
-                        onClick = { password ->
-                            if (isSelectionMode) {
-                                onToggleSelection(password.id)
-                            } else {
-                                onPasswordClick(password)
-                            }
-                        },
-                        onCardClick = if (!isSelectionMode) {
-                            { onOpenMultiPasswordDialog(passwordGroup) }
-                        } else null,
-                        onLongClick = {},
-                        onToggleFavorite = { password -> onToggleFavorite(password) },
-                        onToggleGroupCover = null,
-                        isSelectionMode = isSelectionMode,
-                        selectedPasswords = selectedPasswords,
-                        canSetGroupCover = false,
-                        hasGroupCover = false,
-                        isInExpandedGroup = false
-                    )
-                }
+                PasswordEntryCard(
+                    entry = password,
+                    onClick = {
+                        if (isSelectionMode) {
+                            onToggleSelection(password.id)
+                        } else {
+                            onPasswordClick(password)
+                        }
+                    },
+                    onLongClick = {},
+                    onToggleFavorite = { onToggleFavorite(password) },
+                    onToggleGroupCover = null,
+                    isSelectionMode = isSelectionMode,
+                    isSelected = selectedPasswords.contains(password.id),
+                    canSetGroupCover = false,
+                    isInExpandedGroup = false,
+                    isSingleCard = true
+                )
             }
         }
         return
