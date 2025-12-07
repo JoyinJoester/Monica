@@ -2298,6 +2298,63 @@ private fun StackedPasswordGroup(
     val isMergedPasswordCard = passwords.size > 1 && 
         passwords.map { getPasswordInfoKey(it) }.distinct().size == 1
     
+    // 如果选择“始终展开”，则直接平铺展示，不使用堆叠容器
+    if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+        val groupedByInfo = passwords.groupBy { getPasswordInfoKey(it) }
+        groupedByInfo.values.forEach { passwordGroup ->
+            takagi.ru.monica.ui.gestures.SwipeActions(
+                onSwipeLeft = { onSwipeLeft(passwordGroup.first()) },
+                onSwipeRight = { onSwipeRight(passwordGroup.first()) },
+                enabled = true
+            ) {
+                if (passwordGroup.size == 1) {
+                    val password = passwordGroup.first()
+                    PasswordEntryCard(
+                        entry = password,
+                        onClick = {
+                            if (isSelectionMode) {
+                                onToggleSelection(password.id)
+                            } else {
+                                onPasswordClick(password)
+                            }
+                        },
+                        onLongClick = {},
+                        onToggleFavorite = { onToggleFavorite(password) },
+                        onToggleGroupCover = null,
+                        isSelectionMode = isSelectionMode,
+                        isSelected = selectedPasswords.contains(password.id),
+                        canSetGroupCover = false,
+                        isInExpandedGroup = false,
+                        isSingleCard = true
+                    )
+                } else {
+                    MultiPasswordEntryCard(
+                        passwords = passwordGroup,
+                        onClick = { password ->
+                            if (isSelectionMode) {
+                                onToggleSelection(password.id)
+                            } else {
+                                onPasswordClick(password)
+                            }
+                        },
+                        onCardClick = if (!isSelectionMode) {
+                            { onOpenMultiPasswordDialog(passwordGroup) }
+                        } else null,
+                        onLongClick = {},
+                        onToggleFavorite = { password -> onToggleFavorite(password) },
+                        onToggleGroupCover = null,
+                        isSelectionMode = isSelectionMode,
+                        selectedPasswords = selectedPasswords,
+                        canSetGroupCover = false,
+                        hasGroupCover = false,
+                        isInExpandedGroup = false
+                    )
+                }
+            }
+        }
+        return
+    }
+
     // 如果是多密码合并卡片,直接显示为单卡片,不堆叠
     if (isMergedPasswordCard) {
         takagi.ru.monica.ui.gestures.SwipeActions(
