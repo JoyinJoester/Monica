@@ -136,6 +136,7 @@ fun AddEditTotpScreen(
             modifier = modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
