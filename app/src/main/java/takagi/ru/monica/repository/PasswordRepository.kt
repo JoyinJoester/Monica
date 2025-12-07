@@ -1,5 +1,7 @@
 package takagi.ru.monica.repository
 
+import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.CategoryDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
 import kotlinx.coroutines.flow.Flow
@@ -8,11 +10,48 @@ import kotlinx.coroutines.flow.Flow
  * Repository for password entries
  */
 class PasswordRepository(
-    private val passwordEntryDao: PasswordEntryDao
+    private val passwordEntryDao: PasswordEntryDao,
+    private val categoryDao: CategoryDao? = null
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getAllPasswordEntries()
+    }
+    
+    fun getPasswordEntriesByCategory(categoryId: Long): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getPasswordEntriesByCategory(categoryId)
+    }
+
+    fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getFavoritePasswordEntries()
+    }
+
+    // Category operations
+    fun getAllCategories(): Flow<List<Category>> {
+        return categoryDao?.getAllCategories() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+
+    suspend fun insertCategory(category: Category): Long {
+        return categoryDao?.insert(category) ?: -1
+    }
+
+    suspend fun updateCategory(category: Category) {
+        categoryDao?.update(category)
+    }
+
+    suspend fun deleteCategory(category: Category) {
+        // First remove category from passwords
+        passwordEntryDao.removeCategoryFromPasswords(category.id)
+        // Then delete category
+        categoryDao?.delete(category)
+    }
+    
+    suspend fun updateCategorySortOrder(id: Long, sortOrder: Int) {
+        categoryDao?.updateSortOrder(id, sortOrder)
+    }
+
+    suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?) {
+        passwordEntryDao.updateCategoryForPasswords(ids, categoryId)
     }
     
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>> {

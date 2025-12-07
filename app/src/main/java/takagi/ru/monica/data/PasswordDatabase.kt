@@ -12,9 +12,10 @@ import androidx.room.TypeConverters
 @Database(
     entities = [
         PasswordEntry::class,
-        SecureItem::class
+        SecureItem::class,
+        Category::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -22,6 +23,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     
     abstract fun passwordEntryDao(): PasswordEntryDao
     abstract fun secureItemDao(): SecureItemDao
+    abstract fun categoryDao(): CategoryDao
     
     companion object {
         @Volatile
@@ -262,6 +264,17 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 16 → 17 - 添加分类功能
+        private val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // Create categories table
+                database.execSQL("CREATE TABLE IF NOT EXISTS `categories` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL DEFAULT 0)")
+                
+                // Add categoryId to password_entries
+                database.execSQL("ALTER TABLE `password_entries` ADD COLUMN `categoryId` INTEGER DEFAULT NULL")
+            }
+        }
+
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -285,7 +298,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_12_13,
                         MIGRATION_13_14,
                         MIGRATION_14_15,  // 扩展OTP支持
-                        MIGRATION_15_16   // 版本占位
+                        MIGRATION_15_16,  // 版本占位
+                        MIGRATION_16_17   // 添加分类功能
                     )
                     .build()
                 INSTANCE = instance

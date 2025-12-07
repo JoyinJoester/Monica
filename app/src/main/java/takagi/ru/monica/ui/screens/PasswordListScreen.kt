@@ -26,10 +26,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.viewmodel.CategoryFilter
+import takagi.ru.monica.data.Category
 
 @OptIn(ExperimentalMaterial3Api::class)  
 @Composable
@@ -56,17 +59,110 @@ fun PasswordListScreen(
     // 分组模式: "none" 不分组, "website" 按网站分组, "title" 按标题分组
     var groupMode by remember { mutableStateOf("none") }
     
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val categories by viewModel.categories.collectAsState()
+    val currentFilter by viewModel.categoryFilter.collectAsState()
+    
+    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
+    var categoryNameInput by remember { mutableStateOf("") }
+    
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Spacer(Modifier.height(12.dp))
+                NavigationDrawerItem(
+                    label = { Text("全部") },
+                    selected = currentFilter is CategoryFilter.All,
+                    onClick = {
+                        viewModel.setCategoryFilter(CategoryFilter.All)
+                        scope.launch { drawerState.close() }
+                    },
+                    icon = { Icon(Icons.Default.AllInclusive, null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    label = { Text("标星") },
+                    selected = currentFilter is CategoryFilter.Starred,
+                    onClick = {
+                        viewModel.setCategoryFilter(CategoryFilter.Starred)
+                        scope.launch { drawerState.close() }
+                    },
+                    icon = { Icon(Icons.Default.Star, null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                Divider(Modifier.padding(vertical = 8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("分类", style = MaterialTheme.typography.titleSmall)
+                    IconButton(onClick = { 
+                        categoryNameInput = ""
+                        showAddCategoryDialog = true 
+                    }) {
+                        Icon(Icons.Default.Add, "添加分类")
+                    }
+                }
+                categories.forEach { category ->
+                    NavigationDrawerItem(
+                        label = { 
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(category.name)
+                                Row {
+                                    IconButton(onClick = { 
+                                        categoryNameInput = category.name
+                                        showEditCategoryDialog = category 
+                                    }) {
+                                        Icon(Icons.Default.Edit, "编辑", modifier = Modifier.size(16.dp))
+                                    }
+                                    IconButton(onClick = { viewModel.deleteCategory(category) }) {
+                                        Icon(Icons.Default.Delete, "删除", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        },
+                        selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id,
+                        onClick = {
+                            viewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                }
+            }
+        }
+    ) {
     Scaffold(
         topBar = {
             if (!hideTopBar) {
                 TopAppBar(
                     title = { 
-                        Text(
-                            if (selectionMode) 
-                                "已选择 ${selectedItems.size} 项" 
-                            else 
-                                context.getString(R.string.app_name)
-                        )
+                        if (selectionMode) {
+                            Text("已选择 ${selectedItems.size} 项")
+                        } else {
+                            TextButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Text(
+                                    text = when(currentFilter) {
+                                        is CategoryFilter.All -> context.getString(R.string.app_name)
+                                        is CategoryFilter.Starred -> "标星"
+                                        is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+                                    },
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                            }
+                        }
                     },
                     navigationIcon = {
                         if (selectionMode) {
@@ -544,6 +640,70 @@ fun PasswordListScreen(
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
                     Text(context.getString(R.string.cancel))
+                }
+            }
+        )
+    }
+    
+    } // End of ModalNavigationDrawer
+
+    if (showAddCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddCategoryDialog = false },
+            title = { Text("新建分类") },
+            text = {
+                OutlinedTextField(
+                    value = categoryNameInput,
+                    onValueChange = { categoryNameInput = it },
+                    label = { Text("分类名称") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (categoryNameInput.isNotBlank()) {
+                        viewModel.addCategory(categoryNameInput)
+                        categoryNameInput = ""
+                        showAddCategoryDialog = false
+                    }
+                }) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCategoryDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showEditCategoryDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showEditCategoryDialog = null },
+            title = { Text("编辑分类") },
+            text = {
+                OutlinedTextField(
+                    value = categoryNameInput,
+                    onValueChange = { categoryNameInput = it },
+                    label = { Text("分类名称") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (categoryNameInput.isNotBlank()) {
+                        viewModel.updateCategory(showEditCategoryDialog!!.copy(name = categoryNameInput))
+                        categoryNameInput = ""
+                        showEditCategoryDialog = null
+                    }
+                }) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditCategoryDialog = null }) {
+                    Text("取消")
                 }
             }
         )

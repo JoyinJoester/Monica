@@ -126,7 +126,7 @@ class MainActivity : FragmentActivity() {
 
         // Initialize dependencies
         val database = PasswordDatabase.getDatabase(this)
-        val repository = PasswordRepository(database.passwordEntryDao())
+        val repository = PasswordRepository(database.passwordEntryDao(), database.categoryDao())
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)
         val settingsManager = SettingsManager(this)

@@ -12,6 +12,15 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>>
     
+    @Query("SELECT * FROM password_entries WHERE categoryId = :categoryId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getPasswordEntriesByCategory(categoryId: Long): Flow<List<PasswordEntry>>
+
+    @Query("SELECT * FROM password_entries WHERE isFavorite = 1 ORDER BY sortOrder ASC, updatedAt DESC")
+    fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>>
+    
+    @Query("UPDATE password_entries SET categoryId = NULL WHERE categoryId = :categoryId")
+    suspend fun removeCategoryFromPasswords(categoryId: Long)
+    
     @Query("SELECT * FROM password_entries WHERE title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' OR appName LIKE '%' || :query || '%' OR appPackageName LIKE '%' || :query || '%' ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>>
     
@@ -42,6 +51,9 @@ interface PasswordEntryDao {
     @Query("UPDATE password_entries SET isGroupCover = 0 WHERE website = :website")
     suspend fun clearGroupCover(website: String)
     
+    @Query("UPDATE password_entries SET categoryId = :categoryId WHERE id IN (:ids)")
+    suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?)
+
     @Transaction
     suspend fun setGroupCover(id: Long, website: String) {
         // 先清除该分组的所有封面标记

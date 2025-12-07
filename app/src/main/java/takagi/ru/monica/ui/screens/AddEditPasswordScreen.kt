@@ -98,6 +98,9 @@ fun AddEditPasswordScreen(
     var creditCardExpiry by remember { mutableStateOf("") }
     var creditCardCVV by remember { mutableStateOf("") }
     
+    var categoryId by remember { mutableStateOf<Long?>(null) }
+    val categories by viewModel.categories.collectAsState()
+    
     // 折叠面板状态
     var personalInfoExpanded by remember { mutableStateOf(false) }
     var addressInfoExpanded by remember { mutableStateOf(false) }
@@ -130,6 +133,7 @@ fun AddEditPasswordScreen(
                     creditCardHolder = entry.creditCardHolder
                     creditCardExpiry = entry.creditCardExpiry
                     creditCardCVV = entry.creditCardCVV
+                    categoryId = entry.categoryId
                     
                     // 如果是编辑模式，加载密码和收藏状态
                     if (isEditing) {
@@ -191,7 +195,8 @@ fun AddEditPasswordScreen(
                                     creditCardNumber = creditCardNumber,
                                     creditCardHolder = creditCardHolder,
                                     creditCardExpiry = creditCardExpiry,
-                                    creditCardCVV = creditCardCVV
+                                    creditCardCVV = creditCardCVV,
+                                    categoryId = categoryId
                                 )
                                 
                                 if (isEditing) {
@@ -242,6 +247,96 @@ fun AddEditPasswordScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 singleLine = true
             )
+            
+            // Category Selector
+            var categoryExpanded by remember { mutableStateOf(false) }
+            var showAddCategoryDialog by remember { mutableStateOf(false) }
+            var newCategoryName by remember { mutableStateOf("") }
+
+            ExposedDropdownMenuBox(
+                expanded = categoryExpanded,
+                onExpandedChange = { categoryExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = categories.find { it.id == categoryId }?.name ?: "无分类",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("分类") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = categoryExpanded,
+                    onDismissRequest = { categoryExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("无分类") },
+                        onClick = {
+                            categoryId = null
+                            categoryExpanded = false
+                        }
+                    )
+                    categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category.name) },
+                            onClick = {
+                                categoryId = category.id
+                                categoryExpanded = false
+                            }
+                        )
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { 
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("新建分类")
+                            }
+                        },
+                        onClick = {
+                            categoryExpanded = false
+                            showAddCategoryDialog = true
+                        }
+                    )
+                }
+            }
+
+            if (showAddCategoryDialog) {
+                AlertDialog(
+                    onDismissRequest = { showAddCategoryDialog = false },
+                    title = { Text("新建分类") },
+                    text = {
+                        OutlinedTextField(
+                            value = newCategoryName,
+                            onValueChange = { newCategoryName = it },
+                            label = { Text("分类名称") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            if (newCategoryName.isNotBlank()) {
+                                viewModel.addCategory(newCategoryName) { id ->
+                                    if (id > 0) {
+                                        categoryId = id
+                                    }
+                                }
+                                newCategoryName = ""
+                                showAddCategoryDialog = false
+                            }
+                        }) {
+                            Text("确定")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAddCategoryDialog = false }) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
             
             // Website Field
             OutlinedTextField(

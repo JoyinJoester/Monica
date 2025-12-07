@@ -42,5 +42,7 @@ data class PasswordEntry(
     val creditCardNumber: String = "",      // 加密存储
     val creditCardHolder: String = "",
     val creditCardExpiry: String = "",       // 格式: MM/YY
-    val creditCardCVV: String = ""           // 加密存储
+    val creditCardCVV: String = "",           // 加密存储
+    
+    val categoryId: Long? = null // 分类ID
 ) : Parcelable

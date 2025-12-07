@@ -48,6 +48,8 @@ import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
+import takagi.ru.monica.viewmodel.CategoryFilter
+import takagi.ru.monica.data.Category
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
@@ -128,6 +130,7 @@ fun SimpleMainScreen(
     var onExitPasswordSelection by remember { mutableStateOf({}) }
     var onSelectAllPasswords by remember { mutableStateOf({}) }
     var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
+    var onMoveToCategoryPasswords by remember { mutableStateOf({}) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     
     val appSettings by settingsViewModel.settings.collectAsState()
@@ -189,6 +192,129 @@ fun SimpleMainScreen(
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
     val currentTabLabel = stringResource(currentTab.fullLabelRes())
 
+    // Drawer state
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val categories by passwordViewModel.categories.collectAsState()
+    val currentFilter by passwordViewModel.categoryFilter.collectAsState()
+    
+    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
+    var categoryNameInput by remember { mutableStateOf("") }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = currentTab == BottomNavItem.Passwords,
+        drawerContent = {
+            ModalDrawerSheet {
+                // App Header
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp, vertical = 24.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                NavigationDrawerItem(
+                    label = { Text("全部") },
+                    selected = currentFilter is CategoryFilter.All,
+                    onClick = {
+                        passwordViewModel.setCategoryFilter(CategoryFilter.All)
+                        scope.launch { drawerState.close() }
+                    },
+                    icon = { Icon(Icons.Default.AllInclusive, null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    label = { Text("标星") },
+                    selected = currentFilter is CategoryFilter.Starred,
+                    onClick = {
+                        passwordViewModel.setCategoryFilter(CategoryFilter.Starred)
+                        scope.launch { drawerState.close() }
+                    },
+                    icon = { Icon(Icons.Default.Star, null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                
+                Text(
+                    text = "分类",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)
+                )
+                
+                categories.forEach { category ->
+                    var showMenu by remember { mutableStateOf(false) }
+                    
+                    NavigationDrawerItem(
+                        label = { Text(category.name) },
+                        selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id,
+                        onClick = {
+                            passwordViewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = { Icon(Icons.Default.Folder, null) },
+                        badge = {
+                            Box {
+                                IconButton(
+                                    onClick = { showMenu = true },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = "更多",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showMenu,
+                                    onDismissRequest = { showMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("重命名") },
+                                        onClick = {
+                                            showMenu = false
+                                            categoryNameInput = category.name
+                                            showEditCategoryDialog = category
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Edit, null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("删除") },
+                                        onClick = {
+                                            showMenu = false
+                                            passwordViewModel.deleteCategory(category)
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Delete, null) }
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                }
+                
+                NavigationDrawerItem(
+                    label = { Text("新建分类") },
+                    selected = false,
+                    onClick = {
+                        categoryNameInput = ""
+                        showAddCategoryDialog = true
+                    },
+                    icon = { Icon(Icons.Default.Add, null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+            }
+        }
+    ) {
     Scaffold(
         topBar = {
             // 根据不同页面的选择模式显示对应的顶栏
@@ -200,6 +326,7 @@ fun SimpleMainScreen(
                         onExit = { onExitPasswordSelection() },
                         onSelectAll = { onSelectAllPasswords() },
                         onFavorite = { onFavoriteSelectedPasswords() },
+                        onMoveToCategory = { onMoveToCategoryPasswords() },
                         onDelete = { onDeleteSelectedPasswords() }
                     )
                 }
@@ -239,7 +366,24 @@ fun SimpleMainScreen(
                 else -> {
                     TopAppBar(
                         title = {
-                            Text(currentTabLabel)
+                            if (currentTab == BottomNavItem.Passwords) {
+                                Text(
+                                    text = when(currentFilter) {
+                                        is CategoryFilter.All -> stringResource(R.string.app_name)
+                                        is CategoryFilter.Starred -> "标星"
+                                        is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+                                    }
+                                )
+                            } else {
+                                Text(currentTabLabel)
+                            }
+                        },
+                        navigationIcon = {
+                            if (currentTab == BottomNavItem.Passwords) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.Menu, contentDescription = "打开菜单")
+                                }
+                            }
                         },
                         actions = {
                             // 只在密码页面显示分组/堆叠模式的统一菜单
@@ -510,12 +654,13 @@ fun SimpleMainScreen(
                             onNavigateToAddPassword(password.id)
                         },
                         onNavigateToAddPassword = onNavigateToAddPassword,
-                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onDelete ->
+                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
                             isPasswordSelectionMode = isSelectionMode
                             selectedPasswordCount = count
                             onExitPasswordSelection = onExit
                             onSelectAllPasswords = onSelectAll
                             onFavoriteSelectedPasswords = onFavorite
+                            onMoveToCategoryPasswords = onMoveToCategory
                             onDeleteSelectedPasswords = onDelete
                         }
                     )
@@ -605,6 +750,69 @@ fun SimpleMainScreen(
             }
         }
     }
+    } // End of ModalNavigationDrawer
+
+    if (showAddCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddCategoryDialog = false },
+            title = { Text("新建分类") },
+            text = {
+                OutlinedTextField(
+                    value = categoryNameInput,
+                    onValueChange = { categoryNameInput = it },
+                    label = { Text("分类名称") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (categoryNameInput.isNotBlank()) {
+                        passwordViewModel.addCategory(categoryNameInput)
+                        categoryNameInput = ""
+                        showAddCategoryDialog = false
+                    }
+                }) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCategoryDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showEditCategoryDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showEditCategoryDialog = null },
+            title = { Text("编辑分类") },
+            text = {
+                OutlinedTextField(
+                    value = categoryNameInput,
+                    onValueChange = { categoryNameInput = it },
+                    label = { Text("分类名称") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (categoryNameInput.isNotBlank()) {
+                        passwordViewModel.updateCategory(showEditCategoryDialog!!.copy(name = categoryNameInput))
+                        categoryNameInput = ""
+                        showEditCategoryDialog = null
+                    }
+                }) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditCategoryDialog = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 /**
@@ -623,16 +831,19 @@ private fun PasswordListContent(
         onExit: () -> Unit,
         onSelectAll: () -> Unit,
         onFavorite: () -> Unit,
+        onMoveToCategory: () -> Unit,
         onDelete: () -> Unit
     ) -> Unit
 ) {
     val passwordEntries by viewModel.passwordEntries.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedPasswords by remember { mutableStateOf(setOf<Long>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    var showMoveToCategoryDialog by remember { mutableStateOf(false) }
     
     // 详情对话框状态
     var showDetailDialog by remember { mutableStateOf(false) }
@@ -812,6 +1023,10 @@ private fun PasswordListContent(
         }
     }
     
+    val moveToCategory = {
+        showMoveToCategoryDialog = true
+    }
+    
     val deleteSelected = {
         showBatchDeleteDialog = true
     }
@@ -824,7 +1039,136 @@ private fun PasswordListContent(
             exitSelection,
             selectAll,
             favoriteSelected,
+            moveToCategory,
             deleteSelected
+        )
+    }
+
+    if (showMoveToCategoryDialog) {
+        // 计算每个分类的密码数量
+        val categoryCounts = remember(passwordEntries) {
+            passwordEntries.groupingBy { it.categoryId }.eachCount()
+        }
+
+        AlertDialog(
+            onDismissRequest = { showMoveToCategoryDialog = false },
+            icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
+            title = { 
+                Text(
+                    "移动到分类",
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center
+                ) 
+            },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    item {
+                        val count = categoryCounts[null] ?: 0
+                        Surface(
+                            onClick = {
+                                viewModel.movePasswordsToCategory(selectedPasswords.toList(), null)
+                                showMoveToCategoryDialog = false
+                                isSelectionMode = false
+                                selectedPasswords = setOf()
+                                Toast.makeText(context, "已移出分类", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.FolderOff,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Text(
+                                        "无分类",
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
+                                if (count > 0) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Text(
+                                            text = count.toString(),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    items(categories) { category ->
+                        val count = categoryCounts[category.id] ?: 0
+                        Surface(
+                            onClick = {
+                                viewModel.movePasswordsToCategory(selectedPasswords.toList(), category.id)
+                                showMoveToCategoryDialog = false
+                                isSelectionMode = false
+                                selectedPasswords = setOf()
+                                Toast.makeText(context, "已移动到 ${category.name}", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Text(
+                                        category.name,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
+                                if (count > 0) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Text(
+                                            text = count.toString(),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMoveToCategoryDialog = false }) {
+                    Text("取消")
+                }
+            }
         )
     }
 
@@ -902,6 +1246,24 @@ private fun PasswordListContent(
                                 selectedPasswords - password.id
                             } else {
                                 selectedPasswords + password.id
+                            }
+                        },
+                        onGroupSwipeRight = { groupPasswords ->
+                            // 右滑选择整组
+                            haptic.performSuccess()
+                            if (!isSelectionMode) {
+                                isSelectionMode = true
+                            }
+                            
+                            // 检查是否整组都已选中
+                            val allSelected = groupPasswords.all { selectedPasswords.contains(it.id) }
+                            
+                            selectedPasswords = if (allSelected) {
+                                // 如果全选了，则取消全选
+                                selectedPasswords - groupPasswords.map { it.id }.toSet()
+                            } else {
+                                // 否则全选（补齐未选中的）
+                                selectedPasswords + groupPasswords.map { it.id }
                             }
                         },
                         onToggleFavorite = { password ->
@@ -2305,6 +2667,7 @@ private fun StackedPasswordGroup(
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onSwipeLeft: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onSwipeRight: (takagi.ru.monica.data.PasswordEntry) -> Unit,
+    onGroupSwipeRight: (List<takagi.ru.monica.data.PasswordEntry>) -> Unit,
     onToggleFavorite: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onToggleGroupFavorite: () -> Unit,
     onToggleGroupCover: (takagi.ru.monica.data.PasswordEntry) -> Unit,
@@ -2352,7 +2715,7 @@ private fun StackedPasswordGroup(
     if (isMergedPasswordCard) {
         takagi.ru.monica.ui.gestures.SwipeActions(
             onSwipeLeft = { onSwipeLeft(passwords.first()) },
-            onSwipeRight = { onSwipeRight(passwords.first()) },
+            onSwipeRight = { onGroupSwipeRight(passwords) },
             enabled = true
         ) {
             MultiPasswordEntryCard(
@@ -2480,7 +2843,7 @@ private fun StackedPasswordGroup(
                 // 顶层主卡片
                 takagi.ru.monica.ui.gestures.SwipeActions(
                     onSwipeLeft = { onSwipeLeft(passwords.first()) },
-                    onSwipeRight = { onSwipeRight(passwords.first()) },
+                    onSwipeRight = { onGroupSwipeRight(passwords) },
                     enabled = true
                 ) {
                     Card(
@@ -3555,6 +3918,7 @@ private fun SelectionModeTopBar(
     onExit: () -> Unit,
     onSelectAll: () -> Unit,
     onFavorite: (() -> Unit)? = null,
+    onMoveToCategory: (() -> Unit)? = null,
     onDelete: () -> Unit
 ) {
     TopAppBar(
@@ -3593,6 +3957,23 @@ private fun SelectionModeTopBar(
                     )
                 }
                 
+                // 批量移动到分类
+                if (onMoveToCategory != null) {
+                    IconButton(
+                        onClick = onMoveToCategory,
+                        enabled = selectedCount > 0
+                    ) {
+                        Icon(
+                            Icons.Default.FolderOpen,
+                            contentDescription = "移动到分类",
+                            tint = if (selectedCount > 0) 
+                                MaterialTheme.colorScheme.primary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
+                }
+
                 // 批量收藏按钮 (仅部分列表显示)
                 if (onFavorite != null) {
                     IconButton(

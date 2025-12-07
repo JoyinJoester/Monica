@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.repository.PasswordRepository
@@ -12,6 +13,12 @@ import takagi.ru.monica.security.SecurityManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Date
+
+sealed class CategoryFilter {
+    object All : CategoryFilter()
+    object Starred : CategoryFilter()
+    data class Custom(val categoryId: Long) : CategoryFilter()
+}
 
 /**
  * ViewModel for password management
@@ -28,17 +35,32 @@ class PasswordViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
     
+    private val _categoryFilter = MutableStateFlow<CategoryFilter>(CategoryFilter.All)
+    val categoryFilter = _categoryFilter.asStateFlow()
+
+    val categories = repository.getAllCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
     private val _isAuthenticated = MutableStateFlow(false)
     val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
     
-    val passwordEntries: StateFlow<List<PasswordEntry>> = searchQuery
+    val passwordEntries: StateFlow<List<PasswordEntry>> = combine(
+        searchQuery,
+        _categoryFilter
+    ) { query, filter ->
+        Pair(query, filter)
+    }
         .debounce(300)
         .distinctUntilChanged()
-        .flatMapLatest { query ->
-            if (query.isBlank()) {
-                repository.getAllPasswordEntries()
-            } else {
+        .flatMapLatest { (query, filter) ->
+            if (query.isNotBlank()) {
                 repository.searchPasswordEntries(query)
+            } else {
+                when (filter) {
+                    is CategoryFilter.All -> repository.getAllPasswordEntries()
+                    is CategoryFilter.Starred -> repository.getFavoritePasswordEntries()
+                    is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
+                }
             }
         }
         .map { entries ->
@@ -55,6 +77,46 @@ class PasswordViewModel(
     
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+
+    fun setCategoryFilter(filter: CategoryFilter) {
+        _categoryFilter.value = filter
+    }
+
+    fun addCategory(name: String, onResult: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val id = repository.insertCategory(Category(name = name))
+            onResult(id)
+        }
+    }
+
+    fun updateCategory(category: Category) {
+        viewModelScope.launch {
+            repository.updateCategory(category)
+        }
+    }
+
+    fun deleteCategory(category: Category) {
+        viewModelScope.launch {
+            repository.deleteCategory(category)
+            if (_categoryFilter.value is CategoryFilter.Custom && (_categoryFilter.value as CategoryFilter.Custom).categoryId == category.id) {
+                _categoryFilter.value = CategoryFilter.All
+            }
+        }
+    }
+    
+    fun updateCategorySortOrder(categories: List<Category>) {
+        viewModelScope.launch {
+            categories.forEachIndexed { index, category ->
+                repository.updateCategorySortOrder(category.id, index)
+            }
+        }
+    }
+
+    fun movePasswordsToCategory(ids: List<Long>, categoryId: Long?) {
+        viewModelScope.launch {
+            repository.updateCategoryForPasswords(ids, categoryId)
+        }
     }
     
     fun authenticate(password: String): Boolean {
