@@ -1,0 +1,60 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>bitwarden/renovate-config"
+  ],
+  "enabledManagers": [
+    "github-actions",
+    "gradle",
+    "bundler"
+  ],
+  "packageRules": [
+    {
+      "groupName": "gh minor",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ]
+    },
+    {
+      "groupName": "gradle minor",
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchManagers": [
+        "gradle"
+      ],
+      "excludePackageNames": [
+        "com.github.bumptech.glide:compose",
+        "com.bitwarden:sdk-android"
+      ]
+    },
+    {
+      "groupName": "kotlin",
+      "description": "Kotlin and Compose dependencies that must be updated together to maintain compatibility.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/androidx.compose:compose-bom/",
+        "/androidx.lifecycle:*/",
+        "/org.jetbrains.kotlin.*/",
+        "/com.google.devtools.ksp/"
+      ]
+    },
+    {
+      "groupName": "bundler minor",
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchManagers": [
+        "bundler"
+      ]
+    }
+  ]
+}

@@ -968,9 +968,20 @@ fun AddEditPasswordScreen(
                                 singleLine = true,
                                 visualTransformation = if (creditCardNumber.isNotEmpty()) {
                                     VisualTransformation { text ->
+                                        val offsetMapping = object : OffsetMapping {
+                                            override fun originalToTransformed(offset: Int): Int {
+                                                if (offset <= 0) return 0
+                                                return offset + (offset - 1) / 4
+                                            }
+
+                                            override fun transformedToOriginal(offset: Int): Int {
+                                                if (offset <= 0) return 0
+                                                return offset - offset / 5
+                                            }
+                                        }
                                         TransformedText(
                                             AnnotatedString(takagi.ru.monica.utils.FieldValidation.formatCreditCard(text.text)),
-                                            OffsetMapping.Identity
+                                            offsetMapping
                                         )
                                     }
                                 } else {
