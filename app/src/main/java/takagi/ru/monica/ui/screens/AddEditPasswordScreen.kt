@@ -72,6 +72,10 @@ fun AddEditPasswordScreen(
     var appPackageName by remember { mutableStateOf("") }
     var appName by remember { mutableStateOf("") }
     
+    // 绑定选项状态
+    var bindTitle by remember { mutableStateOf(false) }
+    var bindWebsite by remember { mutableStateOf(false) }
+    
     // Phase 8: 计算密码强度
     val passwordStrength = remember(password) {
         if (password.isNotEmpty()) {
@@ -196,6 +200,17 @@ fun AddEditPasswordScreen(
                                     // 复制模式和新建模式都使用 addPasswordEntry
                                     viewModel.addPasswordEntry(entry)
                                 }
+                                
+                                // 批量更新关联
+                                if (appPackageName.isNotEmpty()) {
+                                    if (bindWebsite && website.isNotEmpty()) {
+                                        viewModel.updateAppAssociationByWebsite(website, appPackageName, appName)
+                                    }
+                                    if (bindTitle && title.isNotEmpty()) {
+                                        viewModel.updateAppAssociationByTitle(title, appPackageName, appName)
+                                    }
+                                }
+                                
                                 onNavigateBack()
                             }
                         },
@@ -321,6 +336,78 @@ fun AddEditPasswordScreen(
                     appName = name
                 }
             )
+            
+            // 绑定选项
+            if (appPackageName.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "批量关联设置",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                        
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { bindWebsite = !bindWebsite }
+                                .padding(horizontal = 4.dp)
+                        ) {
+                            Checkbox(
+                                checked = bindWebsite,
+                                onCheckedChange = { bindWebsite = it }
+                            )
+                            Column {
+                                Text(
+                                    text = "绑定网址",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                )
+                                Text(
+                                    text = "将该应用关联到所有相同网址的密码",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { bindTitle = !bindTitle }
+                                .padding(horizontal = 4.dp)
+                        ) {
+                            Checkbox(
+                                checked = bindTitle,
+                                onCheckedChange = { bindTitle = it }
+                            )
+                            Column {
+                                Text(
+                                    text = "绑定标题",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                )
+                                Text(
+                                    text = "将该应用关联到所有相同标题的密码",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             
             // Phase 7: 个人信息折叠面板
             Card(

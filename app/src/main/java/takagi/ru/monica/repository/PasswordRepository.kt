@@ -108,4 +108,12 @@ class PasswordRepository(
     suspend fun findExactMatch(packageName: String, username: String, encryptedPassword: String): PasswordEntry? {
         return passwordEntryDao.findExactMatch(packageName, username, encryptedPassword)
     }
+
+    suspend fun updateAppAssociationByWebsite(website: String, packageName: String, appName: String) {
+        passwordEntryDao.updateAppAssociationByWebsite(website, packageName, appName)
+    }
+
+    suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String) {
+        passwordEntryDao.updateAppAssociationByTitle(title, packageName, appName)
+    }
 }

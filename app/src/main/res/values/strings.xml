@@ -117,11 +117,11 @@
     <string name="group_mode_smart">Smart (notes > web > app > title)</string>
     <string name="group_mode_smart_desc">Prefer notes, then website, app, title</string>
     <string name="group_mode_note">Stack by notes</string>
-    <string name="group_mode_note_desc">First non-empty note line; fallback to website/app/title</string>
+    <string name="group_mode_note_desc">First non-empty note line</string>
     <string name="group_mode_website">Stack by website</string>
-    <string name="group_mode_website_desc">Website first; fallback to notes/app/title</string>
+    <string name="group_mode_website_desc">Website first</string>
     <string name="group_mode_app">Stack by app</string>
-    <string name="group_mode_app_desc">App name/package first; fallback to notes/website/title</string>
+    <string name="group_mode_app_desc">App name/package first</string>
     <string name="group_mode_title">Stack by title</string>
     <string name="group_mode_title_desc">Group strictly by full title</string>
     

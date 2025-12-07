@@ -49,6 +49,13 @@ interface PasswordEntryDao {
         // 再设置新的封面
         updateGroupCoverStatus(id, true)
     }
+
+    @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName WHERE website = :website AND website != ''")
+    suspend fun updateAppAssociationByWebsite(website: String, packageName: String, appName: String)
+
+    @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName WHERE title = :title AND title != ''")
+    suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String)
+
     
     @Query("UPDATE password_entries SET sortOrder = :sortOrder WHERE id = :id")
     suspend fun updateSortOrder(id: Long, sortOrder: Int)

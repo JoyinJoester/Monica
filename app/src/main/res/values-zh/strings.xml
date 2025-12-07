@@ -117,11 +117,11 @@
     <string name="group_mode_smart">智能堆叠（备注>网站>应用>标题）</string>
     <string name="group_mode_smart_desc">优先备注，其次网站/应用，最后标题</string>
     <string name="group_mode_note">按备注堆叠</string>
-    <string name="group_mode_note_desc">取备注首个非空行，空则回退到网站/应用/标题</string>
+    <string name="group_mode_note_desc">取备注首个非空行</string>
     <string name="group_mode_website">按网站堆叠</string>
-    <string name="group_mode_website_desc">网站优先，空则回退到备注/应用/标题</string>
+    <string name="group_mode_website_desc">网站优先</string>
     <string name="group_mode_app">按应用堆叠</string>
-    <string name="group_mode_app_desc">应用名/包名优先，空则回退到备注/网站/标题</string>
+    <string name="group_mode_app_desc">应用名/包名优先</string>
     <string name="group_mode_title">按标题堆叠</string>
     <string name="group_mode_title_desc">严格按完整标题分组</string>
     

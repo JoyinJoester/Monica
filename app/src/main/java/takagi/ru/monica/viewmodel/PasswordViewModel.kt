@@ -236,4 +236,16 @@ class PasswordViewModel(
             }
         }
     }
+
+    fun updateAppAssociationByWebsite(website: String, packageName: String, appName: String) {
+        viewModelScope.launch {
+            repository.updateAppAssociationByWebsite(website, packageName, appName)
+        }
+    }
+
+    fun updateAppAssociationByTitle(title: String, packageName: String, appName: String) {
+        viewModelScope.launch {
+            repository.updateAppAssociationByTitle(title, packageName, appName)
+        }
+    }
 }
