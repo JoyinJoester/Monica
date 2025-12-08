@@ -85,8 +85,9 @@ class SettingsManager(private val context: Context) {
                 passwords = preferences[SHOW_PASSWORDS_TAB_KEY] ?: true,
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
                 documents = preferences[SHOW_DOCUMENTS_TAB_KEY] ?: true,
-                bankCards = preferences[SHOW_BANK_CARDS_TAB_KEY] ?: false,  // 银行卡功能默认关闭
-                generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false    // 生成器功能默认关闭
+                bankCards = preferences[SHOW_BANK_CARDS_TAB_KEY] ?: false,
+                generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false,
+                notes = preferences[SHOW_NOTES_TAB_KEY] ?: false
             ),
             bottomNavOrder = sanitizedOrder,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
@@ -157,6 +158,7 @@ class SettingsManager(private val context: Context) {
                 BottomNavContentTab.DOCUMENTS -> preferences[SHOW_DOCUMENTS_TAB_KEY] = visible
                 BottomNavContentTab.BANK_CARDS -> preferences[SHOW_BANK_CARDS_TAB_KEY] = visible
                 BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible  // 添加生成器分支
+                BottomNavContentTab.NOTES -> preferences[SHOW_NOTES_TAB_KEY] = visible
             }
         }
     }

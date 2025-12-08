@@ -27,6 +27,10 @@
     <string name="no">No</string>
     <string name="share">Share</string>
     <string name="no_results">No results found</string>
+    <string name="note_placeholder">Write something...</string>
+    <string name="new_note">New Note</string>
+    <string name="edit_note">Edit Note</string>
+    <string name="delete_note_confirm">Delete this note?</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">Set up your master password</string>
@@ -362,6 +366,8 @@
     <string name="export_option_totp_desc">Export TOTP authenticators in CSV or Aegis-compatible format</string>
     <string name="export_option_cards_docs">Export Bank Cards &amp; Documents</string>
     <string name="export_option_cards_docs_desc">Export bank cards and documents together in CSV format</string>
+    <string name="export_option_notes">Export Notes Only</string>
+    <string name="export_option_notes_desc">Export all notes in CSV format</string>
     <string name="export_totp_format">Select TOTP Export Format</string>
     <string name="export_enable_encryption">Enable Encryption</string>
     <string name="export_encryption_hint">Protect your TOTP data with a password (Aegis-compatible)</string>
@@ -503,6 +509,7 @@
     
     <!-- Security Questions Verification -->
     <string name="verify_identity">Verify Identity</string>
+    <string name="verify_to_delete">Verify to delete</string>
     <string name="answer_security_questions">Answer Security Questions</string>
     <string name="security_questions_verify_description">Please answer your security questions to reset your password</string>
     <string name="question_1">Question 1:</string>

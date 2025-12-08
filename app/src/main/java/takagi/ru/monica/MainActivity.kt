@@ -258,6 +258,9 @@ fun MonicaApp(
     val generatorViewModel: GeneratorViewModel = viewModel {
         GeneratorViewModel()
     }
+    val noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel = viewModel {
+        takagi.ru.monica.viewmodel.NoteViewModel(secureItemRepository)
+    }
 
     val settings by settingsViewModel.settings.collectAsState()
     val isSystemInDarkTheme = isSystemInDarkTheme()
@@ -292,6 +295,7 @@ fun MonicaApp(
                 dataExportImportViewModel = dataExportImportViewModel,
                 settingsViewModel = settingsViewModel,
                 generatorViewModel = generatorViewModel,
+                noteViewModel = noteViewModel,
                 securityManager = securityManager,
                 repository = repository,
                 secureItemRepository = secureItemRepository,
@@ -315,6 +319,7 @@ fun MonicaContent(
     dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel,
     settingsViewModel: SettingsViewModel,
     generatorViewModel: GeneratorViewModel,
+    noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
@@ -360,6 +365,8 @@ fun MonicaContent(
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
                 generatorViewModel = generatorViewModel,
+                noteViewModel = noteViewModel,
+                securityManager = securityManager,
                 onNavigateToAddPassword = { passwordId ->
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
                 },
@@ -371,6 +378,9 @@ fun MonicaContent(
                 },
                 onNavigateToAddDocument = { documentId ->
                     navController.navigate(Screen.AddEditDocument.createRoute(documentId))
+                },
+                onNavigateToAddNote = { noteId ->
+                    navController.navigate(Screen.AddEditNote.createRoute(noteId))
                 },
                 onNavigateToDocumentDetail = { documentId ->
                     navController.navigate(Screen.DocumentDetail.createRoute(documentId))
@@ -575,6 +585,18 @@ fun MonicaContent(
             )
         }
 
+        composable(Screen.AddEditNote.route) { backStackEntry ->
+            val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
+
+            takagi.ru.monica.ui.screens.AddEditNoteScreen(
+                noteId = noteId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                viewModel = noteViewModel
+            )
+        }
+
         composable(Screen.DocumentDetail.route) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
 
@@ -624,6 +646,9 @@ fun MonicaContent(
                 },
                 onExportBankCardsAndDocs = { uri ->
                     dataExportImportViewModel.exportBankCardsAndDocuments(uri)
+                },
+                onExportNotes = { uri ->
+                    dataExportImportViewModel.exportNotes(uri)
                 }
             )
         }

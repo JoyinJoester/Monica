@@ -64,6 +64,7 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_BANK_CARDS = "backup_include_bank_cards"
         private const val KEY_BACKUP_INCLUDE_GENERATOR_HISTORY = "backup_include_generator_history"
         private const val KEY_BACKUP_INCLUDE_IMAGES = "backup_include_images"
+        private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
     }
     
     // 加密相关
@@ -296,6 +297,7 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, preferences.includeBankCards)
             putBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, preferences.includeGeneratorHistory)
             putBoolean(KEY_BACKUP_INCLUDE_IMAGES, preferences.includeImages)
+            putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
             apply()
         }
         android.util.Log.d("WebDavHelper", "Saved backup preferences: $preferences")
@@ -313,7 +315,8 @@ class WebDavHelper(
             includeDocuments = prefs.getBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, true),
             includeBankCards = prefs.getBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, true),
             includeGeneratorHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, true),
-            includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true)
+            includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true),
+            includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true)
         )
     }
     
@@ -452,6 +455,7 @@ class WebDavHelper(
             // 分离备份文件：验证(TOTP) 和 证件/银行卡
             val totpCsvFile = File(context.cacheDir, "Monica_${timestamp}_totp.csv")
             val cardsDocsCsvFile = File(context.cacheDir, "Monica_${timestamp}_cards_docs.csv")
+            val notesCsvFile = File(context.cacheDir, "Monica_${timestamp}_notes.csv")
             // 旧版本兼容：如果需要恢复旧版本，可能需要这个，但这里是创建新备份，所以不需要创建 other.csv
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
@@ -473,6 +477,7 @@ class WebDavHelper(
                         ItemType.TOTP -> preferences.includeAuthenticators
                         ItemType.DOCUMENT -> preferences.includeDocuments
                         ItemType.BANK_CARD -> preferences.includeBankCards
+                        ItemType.NOTE -> preferences.includeNotes
                         else -> true // 其他类型默认包含
                     }
                 }
@@ -480,16 +485,20 @@ class WebDavHelper(
                 // 分类过滤后的项目
                 val totpItems = filteredSecureItems.filter { it.itemType == ItemType.TOTP }
                 val cardsDocsItems = filteredSecureItems.filter { it.itemType == ItemType.BANK_CARD || it.itemType == ItemType.DOCUMENT }
+                val noteItems = filteredSecureItems.filter { it.itemType == ItemType.NOTE }
                 
                 // 记录各类型的数量
                 val totpCount = secureItems.count { it.itemType == ItemType.TOTP }
                 val docCount = secureItems.count { it.itemType == ItemType.DOCUMENT }
                 val cardCount = secureItems.count { it.itemType == ItemType.BANK_CARD }
+                val noteCount = secureItems.count { it.itemType == ItemType.NOTE }
                 val filteredTotpCount = totpItems.size
                 val filteredDocAndCardCount = cardsDocsItems.size
+                val filteredNoteCount = noteItems.size
                 
                 android.util.Log.d("WebDavHelper", "TOTP: $totpCount total, $filteredTotpCount included")
                 android.util.Log.d("WebDavHelper", "Docs & Cards: ${docCount + cardCount} total, $filteredDocAndCardCount included")
+                android.util.Log.d("WebDavHelper", "Notes: $noteCount total, $filteredNoteCount included")
                 
                 // 4. 导出密码数据到CSV（如果启用）
                 if (preferences.includePasswords && filteredPasswords.isNotEmpty()) {
@@ -519,6 +528,18 @@ class WebDavHelper(
                             ?: Exception("导出证件和银行卡数据失败"))
                     }
                 }
+
+                // 6.5 导出笔记数据到CSV
+                if (noteItems.isNotEmpty()) {
+                    val exportManager = DataExportImportManager(context)
+                    val csvUri = Uri.fromFile(notesCsvFile)
+                    val exportResult = exportManager.exportData(noteItems, csvUri)
+                    
+                    if (exportResult.isFailure) {
+                        return@withContext Result.failure(exportResult.exceptionOrNull() 
+                            ?: Exception("导出笔记数据失败"))
+                    }
+                }
                 
                 // 7. 创建ZIP文件,根据偏好设置包含相应内容
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
@@ -535,6 +556,11 @@ class WebDavHelper(
                     // 添加cards_docs.csv（如果文件存在）
                     if (cardsDocsCsvFile.exists()) {
                         addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
+                    }
+
+                    // 添加notes.csv（如果文件存在）
+                    if (notesCsvFile.exists()) {
+                        addFileToZip(zipOut, notesCsvFile, notesCsvFile.name)
                     }
                     
                     // 添加密码生成历史（JSON）- 如果启用
@@ -596,6 +622,7 @@ class WebDavHelper(
                 passwordsCsvFile.delete()
                 totpCsvFile.delete()
                 cardsDocsCsvFile.delete()
+                notesCsvFile.delete()
                 historyJsonFile.delete()
                 zipFile.delete()
                 if (finalFile != zipFile) {
@@ -748,7 +775,8 @@ class WebDavHelper(
                                 entryName.equals("backup.csv", ignoreCase = true) ||
                                 (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_other.csv", ignoreCase = true)) ||
                                 (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_totp.csv", ignoreCase = true)) ||
-                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_cards_docs.csv", ignoreCase = true)) -> {
+                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_cards_docs.csv", ignoreCase = true)) ||
+                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_notes.csv", ignoreCase = true)) -> {
                                 val exportManager = DataExportImportManager(context)
                                 val csvUri = Uri.fromFile(tempFile)
                                 val importResult = exportManager.importData(csvUri)

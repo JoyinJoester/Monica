@@ -13,6 +13,16 @@ sealed class Screen(val route: String) {
     }
     object PasswordList : Screen("password_list")
     object DataList : Screen("data_list")  // 新的统一数据列表界面
+    object NoteList : Screen("note_list")
+    object AddEditNote : Screen("add_edit_note/{noteId}") {
+        fun createRoute(noteId: Long? = null): String {
+            return if (noteId != null) {
+                "add_edit_note/$noteId"
+            } else {
+                "add_edit_note/-1"
+            }
+        }
+    }
     object AddEditPassword : Screen("add_edit_password/{passwordId}") {
         fun createRoute(passwordId: Long? = null): String {
             return if (passwordId != null) {

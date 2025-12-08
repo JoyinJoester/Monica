@@ -53,13 +53,17 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
+import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
+import takagi.ru.monica.ui.screens.NoteListScreen
+import takagi.ru.monica.ui.screens.NoteListContent
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
 
 import takagi.ru.monica.ui.components.QrCodeDialog
+import takagi.ru.monica.security.SecurityManager
 
 /**
  * 带有底部导航的主屏幕
@@ -73,10 +77,13 @@ fun SimpleMainScreen(
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
     generatorViewModel: GeneratorViewModel = viewModel(), // 添加GeneratorViewModel
+    noteViewModel: NoteViewModel = viewModel(),
+    securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
+    onNavigateToAddNote: (Long?) -> Unit,
     @Suppress("UNUSED_PARAMETER")
     onNavigateToDocumentDetail: (Long) -> Unit, // 保留以保持API兼容性，但当前未使用
     onNavigateToChangePassword: () -> Unit = {},
@@ -359,7 +366,7 @@ fun SimpleMainScreen(
                     )
                 }
                 // 生成器页面不需要顶栏
-                currentTab == BottomNavItem.Generator -> {
+                currentTab == BottomNavItem.Generator || currentTab == BottomNavItem.Notes -> {
                     // 不显示顶部栏
                 }
                 // 正常顶栏
@@ -634,6 +641,10 @@ fun SimpleMainScreen(
                     // 生成器页面不需要 FAB
                 }
 
+                BottomNavItem.Notes -> {
+                    // 笔记页面不需要 FAB (由 NoteListScreen 处理)
+                }
+
                 BottomNavItem.Settings -> {}
             }
         }
@@ -724,6 +735,14 @@ fun SimpleMainScreen(
                         onNavigateBack = {}, // 在主屏幕中不需要返回
                         viewModel = generatorViewModel, // 传递ViewModel
                         passwordViewModel = passwordViewModel // 传递 PasswordViewModel
+                    )
+                }
+                BottomNavItem.Notes -> {
+                    // 笔记页面
+                    NoteListScreen(
+                        viewModel = noteViewModel,
+                        onNavigateToAddNote = onNavigateToAddNote,
+                        securityManager = securityManager
                     )
                 }
                 BottomNavItem.Settings -> {
@@ -4042,6 +4061,7 @@ sealed class BottomNavItem(
     object Documents : BottomNavItem(BottomNavContentTab.DOCUMENTS, Icons.Default.Description)
     object BankCards : BottomNavItem(BottomNavContentTab.BANK_CARDS, Icons.Default.CreditCard)
     object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)  // 添加生成器导航项
+    object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
 
@@ -4051,6 +4071,7 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.DOCUMENTS -> BottomNavItem.Documents
     BottomNavContentTab.BANK_CARDS -> BottomNavItem.BankCards
     BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
+    BottomNavContentTab.NOTES -> BottomNavItem.Notes
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
@@ -4059,6 +4080,7 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.Documents -> R.string.nav_documents
     BottomNavItem.BankCards -> R.string.nav_bank_cards
     BottomNavItem.Generator -> R.string.nav_generator  // 添加生成器标签资源
+    BottomNavItem.Notes -> R.string.nav_notes
     BottomNavItem.Settings -> R.string.nav_settings
 }
 
@@ -4068,6 +4090,7 @@ private fun BottomNavItem.shortLabelRes(): Int = when (this) {
     BottomNavItem.Documents -> R.string.nav_documents_short
     BottomNavItem.BankCards -> R.string.nav_bank_cards_short
     BottomNavItem.Generator -> R.string.nav_generator_short  // 添加生成器短标签资源
+    BottomNavItem.Notes -> R.string.nav_notes_short
     BottomNavItem.Settings -> R.string.nav_settings_short
 }
 
@@ -4077,7 +4100,8 @@ private fun indexToDefaultTabKey(index: Int): String = when (index) {
     2 -> BottomNavContentTab.DOCUMENTS.name
     3 -> BottomNavContentTab.BANK_CARDS.name
     4 -> BottomNavContentTab.GENERATOR.name
-    5 -> SETTINGS_TAB_KEY
+    5 -> BottomNavContentTab.NOTES.name
+    6 -> SETTINGS_TAB_KEY
     else -> BottomNavContentTab.PASSWORDS.name
 }
 

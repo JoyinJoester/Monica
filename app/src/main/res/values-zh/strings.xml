@@ -27,6 +27,10 @@
     <string name="no">否</string>
     <string name="share">分享</string>
     <string name="no_results">未找到结果</string>
+    <string name="note_placeholder">记点什么...</string>
+    <string name="new_note">新建笔记</string>
+    <string name="edit_note">编辑笔记</string>
+    <string name="delete_note_confirm">确定要删除这条笔记吗？</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">设置您的主密码</string>
@@ -359,6 +363,8 @@
     <string name="export_option_totp_desc">以CSV或Aegis兼容格式导出TOTP验证器</string>
     <string name="export_option_cards_docs">导出银行卡和证件</string>
     <string name="export_option_cards_docs_desc">以CSV格式合并导出银行卡和证件</string>
+    <string name="export_option_notes">仅导出笔记</string>
+    <string name="export_option_notes_desc">以CSV格式导出所有笔记</string>
     <string name="export_totp_format">选择TOTP导出格式</string>
     <string name="export_enable_encryption">启用加密</string>
     <string name="export_encryption_hint">使用密码保护您的TOTP数据（Aegis兼容）</string>
@@ -494,6 +500,7 @@
     
     <!-- Security Questions Verification -->
     <string name="verify_identity">验证身份</string>
+    <string name="verify_to_delete">验证后删除</string>
     <string name="answer_security_questions">回答密保问题</string>
     <string name="security_questions_verify_description">请回答您的密保问题以重置密码</string>
     <string name="question_1">问题 1：</string>
@@ -509,6 +516,7 @@
     <string name="nav_authenticator">验证器</string>
     <string name="nav_documents">证件</string>
     <string name="nav_bank_cards">银行卡</string>
+    <string name="nav_notes">笔记</string>
     <string name="nav_generator">生成器</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_settings">设置</string>
     <string name="add">添加</string>
@@ -518,6 +526,7 @@
     <string name="nav_authenticator_short">验证</string>
     <string name="nav_documents_short">证件</string>
     <string name="nav_bank_cards_short">银行</string>
+    <string name="nav_notes_short">笔记</string>
     <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_settings_short">设置</string>
     

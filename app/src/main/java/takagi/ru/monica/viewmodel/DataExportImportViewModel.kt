@@ -549,4 +549,17 @@ class DataExportImportViewModel(
             Result.failure(e)
         }
     }
+
+    /**
+     * 导出笔记数据
+     */
+    suspend fun exportNotes(outputUri: Uri): Result<String> {
+        return try {
+            val notes = secureItemRepository.getItemsByType(ItemType.NOTE).first()
+            exportManager.exportData(notes, outputUri)
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "导出笔记失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }

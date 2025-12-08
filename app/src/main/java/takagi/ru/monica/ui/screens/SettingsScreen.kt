@@ -1097,6 +1097,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.DOCUMENTS -> Icons.Default.Description
     BottomNavContentTab.BANK_CARDS -> Icons.Default.CreditCard
     BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome  // 添加生成器图标
+    BottomNavContentTab.NOTES -> Icons.Default.Note
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
@@ -1105,6 +1106,7 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.DOCUMENTS -> R.string.nav_documents
     BottomNavContentTab.BANK_CARDS -> R.string.nav_bank_cards
     BottomNavContentTab.GENERATOR -> R.string.nav_generator  // 添加生成器标签
+    BottomNavContentTab.NOTES -> R.string.nav_notes
 }
 
 @Composable

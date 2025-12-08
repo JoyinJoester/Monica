@@ -33,7 +33,8 @@ enum class ExportOption {
     ALL,           // 全部（CSV格式）
     PASSWORDS,     // 密码（CSV格式）
     TOTP,          // TOTP（CSV或Aegis格式）
-    BANK_CARDS_DOCS // 银行卡和证件合并（CSV格式）
+    BANK_CARDS_DOCS, // 银行卡和证件合并（CSV格式）
+    NOTES          // 笔记（CSV格式）
 }
 
 /**
@@ -55,7 +56,8 @@ fun ExportDataScreen(
     onExportAll: suspend (Uri) -> Result<String>,
     onExportPasswords: suspend (Uri) -> Result<String>,
     onExportTotp: suspend (Uri, TotpExportFormat, String?) -> Result<String>,
-    onExportBankCardsAndDocs: suspend (Uri) -> Result<String>
+    onExportBankCardsAndDocs: suspend (Uri) -> Result<String>,
+    onExportNotes: suspend (Uri) -> Result<String>
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -89,6 +91,7 @@ fun ExportDataScreen(
                             onExportTotp(safeUri, totpFormat, password)
                         }
                         ExportOption.BANK_CARDS_DOCS -> onExportBankCardsAndDocs(safeUri)
+                        ExportOption.NOTES -> onExportNotes(safeUri)
                     }
                     
                     isExporting = false
@@ -134,6 +137,7 @@ fun ExportDataScreen(
                 }
             }
             ExportOption.BANK_CARDS_DOCS -> "monica_cards_docs_${System.currentTimeMillis()}.csv"
+            ExportOption.NOTES -> "monica_notes_${System.currentTimeMillis()}.csv"
         }
         
         filePickerLauncher.launch(fileName)
@@ -369,6 +373,14 @@ fun ExportDataScreen(
                 description = stringResource(R.string.export_option_cards_docs_desc),
                 selected = selectedOption == ExportOption.BANK_CARDS_DOCS,
                 onClick = { selectedOption = ExportOption.BANK_CARDS_DOCS }
+            )
+
+            ExportOptionCard(
+                icon = Icons.Default.Note,
+                title = stringResource(R.string.export_option_notes),
+                description = stringResource(R.string.export_option_notes_desc),
+                selected = selectedOption == ExportOption.NOTES,
+                onClick = { selectedOption = ExportOption.NOTES }
             )
             
             Spacer(modifier = Modifier.weight(1f))
