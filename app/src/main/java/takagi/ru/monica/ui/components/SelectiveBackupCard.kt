@@ -70,6 +70,7 @@ fun SelectiveBackupCard(
     authenticatorCount: Int,
     documentCount: Int,
     bankCardCount: Int,
+    noteCount: Int,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -101,12 +102,13 @@ fun SelectiveBackupCard(
                             preferences.includeAuthenticators,
                             preferences.includeDocuments,
                             preferences.includeBankCards,
+                            preferences.includeNotes,
                             preferences.includeGeneratorHistory,
                             preferences.includeImages
                         ).count { it }
                         
                         Text(
-                            text = stringResource(R.string.selective_backup_summary, selectedCount, 6),
+                            text = stringResource(R.string.selective_backup_summary, selectedCount, 7),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -178,6 +180,15 @@ fun SelectiveBackupCard(
                     )
                     
                     ContentTypeSwitch(
+                        label = stringResource(R.string.backup_content_notes),
+                        count = noteCount,
+                        checked = preferences.includeNotes,
+                        onCheckedChange = { 
+                            onPreferencesChange(preferences.copy(includeNotes = it))
+                        }
+                    )
+                    
+                    ContentTypeSwitch(
                         label = stringResource(R.string.backup_content_generator_history),
                         count = null, // 历史记录不显示数量
                         checked = preferences.includeGeneratorHistory,
@@ -210,6 +221,7 @@ fun SelectiveBackupCard(
                                         includeAuthenticators = true,
                                         includeDocuments = true,
                                         includeBankCards = true,
+                                        includeNotes = true,
                                         includeGeneratorHistory = true,
                                         includeImages = true
                                     )
@@ -228,6 +240,7 @@ fun SelectiveBackupCard(
                                         includeAuthenticators = false,
                                         includeDocuments = false,
                                         includeBankCards = false,
+                                        includeNotes = false,
                                         includeGeneratorHistory = false,
                                         includeImages = false
                                     )

@@ -597,7 +597,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.13</string>
+    <string name="settings_version_number">V1.0.14</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -1331,6 +1331,7 @@
     <string name="backup_content_authenticators">Authenticators (TOTP)</string>
     <string name="backup_content_documents">Documents</string>
     <string name="backup_content_bank_cards">Bank Cards</string>
+    <string name="backup_content_notes">Notes</string>
     <string name="backup_content_generator_history">Password Generator History</string>
     <string name="backup_content_images">Images</string>
     <string name="deselect_all">Deselect All</string>

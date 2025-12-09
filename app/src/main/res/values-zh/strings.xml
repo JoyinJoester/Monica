@@ -579,7 +579,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">V1.0.13</string>
+    <string name="settings_version_number">V1.0.14</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1209,6 +1209,7 @@
     <string name="backup_content_authenticators">验证器 (TOTP)</string>
     <string name="backup_content_documents">证件</string>
     <string name="backup_content_bank_cards">银行卡</string>
+    <string name="backup_content_notes">笔记</string>
     <string name="backup_content_generator_history">密码生成历史</string>
     <string name="backup_content_images">图片</string>
     <string name="deselect_all">全不选</string>

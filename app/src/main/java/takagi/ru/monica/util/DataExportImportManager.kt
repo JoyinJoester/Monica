@@ -130,7 +130,7 @@ class DataExportImportManager(private val context: Context) {
                 }
                 
                 reader.use { 
-                    var firstLine = reader.readLine()
+                    var firstLine = readCsvRecord(reader)
                     if (firstLine == null) {
                         return@withContext Result.failure(Exception("文件为空"))
                     }
@@ -182,9 +182,11 @@ class DataExportImportManager(private val context: Context) {
                     }
                     
                     // 读取剩余数据行
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        val currentLine = line ?: continue
+                    var record: String?
+                    while (true) {
+                        record = readCsvRecord(reader)
+                        if (record == null) break
+                        val currentLine = record
                         lineCount++
                         android.util.Log.d("DataImport", "读取第${lineCount}行: $currentLine")
                         if (currentLine.isNotBlank()) {
@@ -350,6 +352,51 @@ class DataExportImportManager(private val context: Context) {
         } else {
             field
         }
+    }
+
+    /**
+     * 读取一条完整的CSV记录，支持包含换行的带引号字段
+     */
+    private fun readCsvRecord(reader: BufferedReader): String? {
+        val builder = StringBuilder()
+        var inQuotes = false
+        var line: String?
+
+        // 初始行
+        line = reader.readLine() ?: return null
+        builder.append(line)
+        inQuotes = toggleQuoteState(builder.toString())
+
+        // 如果引号未闭合，继续读取下一行并追加，直到闭合或文件结束
+        while (inQuotes) {
+            val next = reader.readLine() ?: break
+            builder.append('\n').append(next)
+            inQuotes = toggleQuoteState(builder.toString())
+        }
+
+        return builder.toString()
+    }
+
+    /**
+     * 根据CSV引号规则检测当前文本是否处于未闭合的引号状态
+     */
+    private fun toggleQuoteState(text: String): Boolean {
+        var inQuotes = false
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c == '"' && inQuotes && i + 1 < text.length && text[i + 1] == '"' -> {
+                    // 转义的引号，跳过
+                    i++
+                }
+                c == '"' -> {
+                    inQuotes = !inQuotes
+                }
+            }
+            i++
+        }
+        return inQuotes
     }
 
     /**

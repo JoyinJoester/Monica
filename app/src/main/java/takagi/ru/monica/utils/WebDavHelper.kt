@@ -16,6 +16,7 @@ import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -33,6 +34,18 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
+
+@Serializable
+private data class NoteBackupEntry(
+    val id: Long = 0,
+    val title: String = "",
+    val notes: String = "",
+    val itemData: String = "",
+    val isFavorite: Boolean = false,
+    val imagePaths: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
 
 /**
  * WebDAV 帮助类
@@ -449,13 +462,14 @@ class WebDavHelper(
             // 记录备份偏好设置
             android.util.Log.d("WebDavHelper", "Creating backup with preferences: $preferences")
             
-            // 1. 创建临时CSV文件
+            // 1. 创建临时导出文件/目录
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val passwordsCsvFile = File(context.cacheDir, "Monica_${timestamp}_password.csv")
             // 分离备份文件：验证(TOTP) 和 证件/银行卡
             val totpCsvFile = File(context.cacheDir, "Monica_${timestamp}_totp.csv")
             val cardsDocsCsvFile = File(context.cacheDir, "Monica_${timestamp}_cards_docs.csv")
-            val notesCsvFile = File(context.cacheDir, "Monica_${timestamp}_notes.csv")
+            // 笔记：改为每条笔记独立JSON文件存放于 notes 目录
+            val notesDir = File(context.cacheDir, "Monica_${timestamp}_notes")
             // 旧版本兼容：如果需要恢复旧版本，可能需要这个，但这里是创建新备份，所以不需要创建 other.csv
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
@@ -529,15 +543,28 @@ class WebDavHelper(
                     }
                 }
 
-                // 6.5 导出笔记数据到CSV
+                // 6.5 导出笔记数据到单文件 JSON（每条一个文件，放在 notes 目录）
                 if (noteItems.isNotEmpty()) {
-                    val exportManager = DataExportImportManager(context)
-                    val csvUri = Uri.fromFile(notesCsvFile)
-                    val exportResult = exportManager.exportData(noteItems, csvUri)
-                    
-                    if (exportResult.isFailure) {
-                        return@withContext Result.failure(exportResult.exceptionOrNull() 
-                            ?: Exception("导出笔记数据失败"))
+                    if (!notesDir.exists()) notesDir.mkdirs()
+                    val json = Json { prettyPrint = false }
+                    noteItems.forEach { item ->
+                        try {
+                            val backup = NoteBackupEntry(
+                                id = item.id,
+                                title = item.title,
+                                notes = item.notes,
+                                itemData = item.itemData,
+                                isFavorite = item.isFavorite,
+                                imagePaths = item.imagePaths,
+                                createdAt = item.createdAt.time,
+                                updatedAt = item.updatedAt.time
+                            )
+                            val fileName = "note_${item.id}_${item.createdAt.time}.json"
+                            val target = File(notesDir, fileName)
+                            target.writeText(json.encodeToString(NoteBackupEntry.serializer(), backup), Charsets.UTF_8)
+                        } catch (e: Exception) {
+                            android.util.Log.e("WebDavHelper", "导出单条笔记失败: ${item.id}", e)
+                        }
                     }
                 }
                 
@@ -558,9 +585,11 @@ class WebDavHelper(
                         addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
                     }
 
-                    // 添加notes.csv（如果文件存在）
-                    if (notesCsvFile.exists()) {
-                        addFileToZip(zipOut, notesCsvFile, notesCsvFile.name)
+                    // 添加 notes 目录下的每条笔记文件
+                    if (notesDir.exists()) {
+                        notesDir.listFiles()?.forEach { noteFile ->
+                            addFileToZip(zipOut, noteFile, "notes/${noteFile.name}")
+                        }
                     }
                     
                     // 添加密码生成历史（JSON）- 如果启用
@@ -622,7 +651,7 @@ class WebDavHelper(
                 passwordsCsvFile.delete()
                 totpCsvFile.delete()
                 cardsDocsCsvFile.delete()
-                notesCsvFile.delete()
+                notesDir.deleteRecursively()
                 historyJsonFile.delete()
                 zipFile.delete()
                 if (finalFile != zipFile) {
@@ -784,6 +813,9 @@ class WebDavHelper(
                                     secureItems.addAll(importResult.getOrNull() ?: emptyList())
                                 }
                             }
+                            entry.name.contains("/notes/") || entry.name.startsWith("notes/") -> {
+                                restoreNoteFromJson(tempFile)?.let { secureItems.add(it) }
+                            }
                             entryName.endsWith("_generated_history.json", ignoreCase = true) -> {
                                 // 恢复密码生成历史
                                 try {
@@ -868,6 +900,28 @@ class WebDavHelper(
         }
         
         return passwords
+    }
+
+    private fun restoreNoteFromJson(file: File): DataExportImportManager.ExportItem? {
+        return try {
+            val json = Json { ignoreUnknownKeys = true }
+            val text = file.readText(Charsets.UTF_8)
+            val entry = json.decodeFromString(NoteBackupEntry.serializer(), text)
+            DataExportImportManager.ExportItem(
+                id = entry.id,
+                itemType = ItemType.NOTE.name,
+                title = entry.title,
+                itemData = entry.itemData,
+                notes = entry.notes,
+                isFavorite = entry.isFavorite,
+                imagePaths = entry.imagePaths,
+                createdAt = entry.createdAt,
+                updatedAt = entry.updatedAt
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("WebDavHelper", "Failed to restore note from ${file.name}: ${e.message}")
+            null
+        }
     }
 
     private fun detectPasswordCsvFormat(fields: List<String>): PasswordCsvFormat {
