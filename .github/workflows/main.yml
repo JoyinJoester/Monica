@@ -2,9 +2,9 @@ name: Android CI debug
 
 on:
   push:
-    branches: [ main, develop ]
+    分支: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    分支: [ main, develop ]
   workflow_dispatch: # 允许手动触发
 
 jobs:
@@ -71,4 +71,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
