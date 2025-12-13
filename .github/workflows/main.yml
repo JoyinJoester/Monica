@@ -2,9 +2,9 @@ name: Android CI debug
 
 on:
   push:
-    分支: [ main, develop ]
+    branches: [ main, develop ]
   pull_request:
-    分支: [ main, develop ]
+    branches: [ main, develop ]
   workflow_dispatch: # 允许手动触发
 
 jobs:
