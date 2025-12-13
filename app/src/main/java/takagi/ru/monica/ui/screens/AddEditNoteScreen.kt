@@ -14,6 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 import kotlinx.coroutines.launch
@@ -31,8 +35,14 @@ import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddEditNoteScreen(
     noteId: Long,
@@ -50,6 +60,7 @@ fun AddEditNoteScreen(
     var showConfirmDelete by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
     
     val scope = rememberCoroutineScope()
     
@@ -106,14 +117,25 @@ fun AddEditNoteScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 内容输入框 - 卡片样式
+            val configuration = LocalConfiguration.current
+            val isImeVisible = WindowInsets.isImeVisible
+            // 输入法显示时限制在屏幕的50%，收起时可以显示70%
+            val maxHeight = if (isImeVisible) {
+                (configuration.screenHeightDp * 0.5).dp
+            } else {
+                (configuration.screenHeightDp * 0.7).dp
+            }
+            
             Card(
                 modifier = Modifier
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(bringIntoViewRequester),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
@@ -121,11 +143,23 @@ fun AddEditNoteScreen(
             ) {
                 TextField(
                     value = content,
-                    onValueChange = { content = it },
+                    onValueChange = { 
+                        content = it
+                        scope.launch {
+                            bringIntoViewRequester.bringIntoView()
+                        }
+                    },
                     placeholder = { Text(stringResource(R.string.note_placeholder)) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .defaultMinSize(minHeight = 200.dp),
+                        .heightIn(min = 200.dp, max = maxHeight)
+                        .onFocusEvent { focusState ->
+                            if (focusState.isFocused) {
+                                scope.launch {
+                                    bringIntoViewRequester.bringIntoView()
+                                }
+                            }
+                        },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Default
