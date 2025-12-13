@@ -2,9 +2,9 @@ name: Android CI prerelease
 
 on:
   push:
-    branches: [ main, develop ]
+    分支: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    分支: [ main, develop ]
   workflow_dispatch: # 允许手动触发
   
 jobs:
@@ -41,4 +41,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: app/build/outputs/apk/debug/*/*.apk
+          path: app/build/outputs/apk/debug/*.apk
