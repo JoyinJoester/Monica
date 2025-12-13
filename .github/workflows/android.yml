@@ -1,12 +1,12 @@
-name: Android CI/CD
+name: Android debug build
 
 on:
   push:
-    branches: [ main ]
+    分支: [ main ]
     tags:
       - 'v*'
   pull_request:
-    branches: [ main ]
+    分支: [ main ]
 
 jobs:
   test:
