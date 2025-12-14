@@ -24,8 +24,11 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.utils.BackupFile
 import takagi.ru.monica.utils.BackupContent
+import takagi.ru.monica.utils.RestoreResult
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.utils.AutoBackupManager
+import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.util.DataExportImportManager
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlinx.coroutines.flow.first
@@ -588,21 +591,13 @@ fun WebDavBackupScreen(
                                     // 更新上次备份时间
                                     lastBackupTime = webDavHelper.getLastBackupTime()
                                     
-                                    // 计算实际备份的数量
-                                    val backedUpPasswords = if (backupPreferences.includePasswords) allPasswords.size else 0
-                                    val backedUpTotp = if (backupPreferences.includeAuthenticators) 
-                                        allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP } else 0
-                                    val backedUpDocs = if (backupPreferences.includeDocuments) 
-                                        allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT } else 0
-                                    val backedUpCards = if (backupPreferences.includeBankCards) 
-                                        allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD } else 0
-                                    
-                                    val message = buildString {
-                                        append(context.getString(R.string.webdav_backup_success_detail, result.getOrNull() ?: "") + "\n")
-                                        if (backedUpPasswords > 0) append(context.getString(R.string.webdav_backup_passwords, backedUpPasswords) + "\n")
-                                        if (backedUpTotp > 0) append(context.getString(R.string.webdav_backup_authenticators, backedUpTotp) + "\n")
-                                        if (backedUpDocs > 0) append(context.getString(R.string.webdav_backup_documents, backedUpDocs) + "\n")
-                                        if (backedUpCards > 0) append(context.getString(R.string.webdav_backup_bank_cards, backedUpCards))
+                                    // P0修复：使用报告数据
+                                    val report = result.getOrNull()
+                                    val message = if (report != null && report.hasIssues()) {
+                                        // 显示详细报告（如果有问题）
+                                        report.getSummary()
+                                    } else {
+                                        "Backup created successfully"
                                     }
                                     
                                     Toast.makeText(
@@ -619,20 +614,20 @@ fun WebDavBackupScreen(
                                     }
                                 } else {
                                     isLoading = false
-                                    val error = result.exceptionOrNull()?.message ?: context.getString(R.string.webdav_create_backup_failed)
+                                    val error = result.exceptionOrNull()?.message ?: "Backup failed"
                                     errorMessage = error
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.webdav_backup_failed, error),
+                                        "Backup failed: $error",
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
                             } catch (e: Exception) {
                                 isLoading = false
-                                errorMessage = e.message ?: context.getString(R.string.webdav_create_backup_failed)
+                                errorMessage = e.message ?: "Backup failed"
                                 Toast.makeText(
                                     context,
-                                    context.getString(R.string.webdav_backup_failed, e.message ?: ""),
+                                    "Backup failed: ${e.message ?: "Unknown error"}",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -743,15 +738,25 @@ private fun BackupItem(
     var showPasswordInputDialog by remember { mutableStateOf(false) }
     var tempPassword by remember { mutableStateOf("") }
 
-    suspend fun handleRestoreResult(result: Result<BackupContent>) {
+    suspend fun handleRestoreResult(result: Result<RestoreResult>) {
         if (result.isSuccess) {
-            val content = result.getOrNull() ?: BackupContent(emptyList(), emptyList())
-            val passwords = content.passwords
-            val secureItems = content.secureItems
+            val restoreResult = result.getOrNull() ?: return
+            val content = restoreResult.content
+            val report = restoreResult.report
+            val passwords: List<PasswordEntry> = content.passwords
+            val secureItems: List<DataExportImportManager.ExportItem> = content.secureItems
+            
+            // 调试日志：记录备份中的数据统计
+            android.util.Log.d("WebDavBackup", "===== 开始恢复 =====")
+            android.util.Log.d("WebDavBackup", "备份中密码数量: ${passwords.size}")
+            android.util.Log.d("WebDavBackup", "备份中安全项数量: ${secureItems.size}")
+            android.util.Log.d("WebDavBackup", "报告: ${report.getSummary()}")
             
             // 导入密码数据到数据库(带去重)
             var passwordCount = 0
             var passwordSkipped = 0
+            var passwordFailed = 0
+            val failedPasswordDetails = mutableListOf<String>()
             passwords.forEach { password ->
                 try {
                     val isDuplicate = passwordRepository.isDuplicateEntry(
@@ -767,13 +772,18 @@ private fun BackupItem(
                         passwordSkipped++
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("WebDavBackup", "Failed to import password: ${e.message}")
+                    passwordFailed++
+                    val detail = "${password.title} (${password.username}): ${e.message}"
+                    failedPasswordDetails.add(detail)
+                    android.util.Log.e("WebDavBackup", "Failed to import password: $detail")
                 }
             }
             
             // 导入其他数据到数据库(带去重)
             var secureItemCount = 0
             var secureItemSkipped = 0
+            var secureItemFailed = 0
+            val failedSecureItemDetails = mutableListOf<String>()
             secureItems.forEach { exportItem ->
                 try {
                     val itemType = takagi.ru.monica.data.ItemType.valueOf(exportItem.itemType)
@@ -799,21 +809,55 @@ private fun BackupItem(
                         secureItemSkipped++
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("WebDavBackup", "Failed to import secure item: ${e.message}")
+                    secureItemFailed++
+                    val detail = "${exportItem.title} (${exportItem.itemType}): ${e.message}"
+                    failedSecureItemDetails.add(detail)
+                    android.util.Log.e("WebDavBackup", "Failed to import secure item: $detail")
                 }
             }
             
+            // 调试日志：记录导入统计
+            android.util.Log.d("WebDavBackup", "===== 导入统计 =====")
+            android.util.Log.d("WebDavBackup", "成功导入密码: $passwordCount")
+            android.util.Log.d("WebDavBackup", "跳过重复密码: $passwordSkipped")
+            android.util.Log.d("WebDavBackup", "导入失败密码: $passwordFailed")
+            android.util.Log.d("WebDavBackup", "成功导入安全项: $secureItemCount")
+            android.util.Log.d("WebDavBackup", "跳过重复安全项: $secureItemSkipped")
+            android.util.Log.d("WebDavBackup", "导入失败安全项: $secureItemFailed")
+            android.util.Log.d("WebDavBackup", "总计: ${passwordCount + passwordSkipped + passwordFailed} vs 备份中: ${passwords.size}")
+            
             isRestoring = false
-            val summaryParts = mutableListOf<String>()
-            summaryParts += "$passwordCount 个密码"
-            summaryParts += "$secureItemCount 个其他数据"
-            val message = buildString {
-                append("恢复成功! 导入了 ${summaryParts.joinToString("、")}")
-                val skippedParts = mutableListOf<String>()
-                if (passwordSkipped > 0) skippedParts += "$passwordSkipped 个重复密码"
-                if (secureItemSkipped > 0) skippedParts += "$secureItemSkipped 个重复数据"
-                if (skippedParts.isNotEmpty()) {
-                    append("\n跳过 ${skippedParts.joinToString("、")}")
+            // P0修复：显示详细报告
+            val message = if (report.hasIssues()) {
+                // 有问题，显示详细报告
+                report.getSummary()
+            } else {
+                // 无问题，显示简洁消息
+                buildString {
+                    val summaryParts = mutableListOf<String>()
+                    summaryParts += "$passwordCount 个密码"
+                    summaryParts += "$secureItemCount 个其他数据"
+                    append("恢复成功! 导入了 ${summaryParts.joinToString("、")}")
+                    
+                    val issuesParts = mutableListOf<String>()
+                    if (passwordSkipped > 0) issuesParts += "$passwordSkipped 个重复密码"
+                    if (secureItemSkipped > 0) issuesParts += "$secureItemSkipped 个重复数据"
+                    if (passwordFailed > 0) issuesParts += "$passwordFailed 个密码导入失败"
+                    if (secureItemFailed > 0) issuesParts += "$secureItemFailed 个数据导入失败"
+                    
+                    if (issuesParts.isNotEmpty()) {
+                        append("\n跳过/失败: ${issuesParts.joinToString("、")}")
+                    }
+                    
+                    // 如果有导入失败，显示详细信息
+                    if (passwordFailed > 0 || secureItemFailed > 0) {
+                        append("\n\n导入失败详情:")
+                        failedPasswordDetails.take(5).forEach { append("\n• $it") }
+                        failedSecureItemDetails.take(5).forEach { append("\n• $it") }
+                        if (passwordFailed + secureItemFailed > 10) {
+                            append("\n...查看日志了解更多")
+                        }
+                    }
                 }
             }
             Toast.makeText(

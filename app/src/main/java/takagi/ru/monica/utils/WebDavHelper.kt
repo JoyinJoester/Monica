@@ -14,6 +14,10 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.BackupReport
+import takagi.ru.monica.data.RestoreReport
+import takagi.ru.monica.data.ItemCounts
+import takagi.ru.monica.data.FailedItem
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.Serializable
@@ -34,6 +38,20 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
+
+@Serializable
+private data class PasswordBackupEntry(
+    val id: Long = 0,
+    val title: String = "",
+    val username: String = "",
+    val password: String = "",
+    val website: String = "",
+    val notes: String = "",
+    val isFavorite: Boolean = false,
+    val categoryId: Long? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
 
 @Serializable
 private data class NoteBackupEntry(
@@ -445,13 +463,13 @@ class WebDavHelper(
      * @param passwords 所有密码条目
      * @param secureItems 所有其他安全数据项(TOTP、银行卡、证件)
      * @param preferences 备份偏好设置，控制包含哪些内容类型
-     * @return 备份文件名
+     * @return 备份报告，包含成功/失败详情
      */
     suspend fun createAndUploadBackup(
         passwords: List<PasswordEntry>,
         secureItems: List<SecureItem>,
         preferences: BackupPreferences = getBackupPreferences()
-    ): Result<String> = withContext(Dispatchers.IO) {
+    ): Result<BackupReport> = withContext(Dispatchers.IO) {
         try {
             // 验证：检查是否至少启用了一种内容类型
             if (!preferences.hasAnyEnabled()) {
@@ -462,14 +480,27 @@ class WebDavHelper(
             // 记录备份偏好设置
             android.util.Log.d("WebDavHelper", "Creating backup with preferences: $preferences")
             
+            // P0修复：错误跟踪
+            val failedItems = mutableListOf<FailedItem>()
+            val warnings = mutableListOf<String>()
+            var successPasswordCount = 0
+            var successNoteCount = 0
+            var successImageCount = 0
+            
             // 1. 创建临时导出文件/目录
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val passwordsCsvFile = File(context.cacheDir, "Monica_${timestamp}_password.csv")
+            val cacheBackupDir = File(context.cacheDir, "Monica_${timestamp}_backup")
+            if (!cacheBackupDir.exists()) cacheBackupDir.mkdirs()
+            
+            // 使用旧版本兼容的文件名
+            val passwordsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_password.csv")
             // 分离备份文件：验证(TOTP) 和 证件/银行卡
-            val totpCsvFile = File(context.cacheDir, "Monica_${timestamp}_totp.csv")
-            val cardsDocsCsvFile = File(context.cacheDir, "Monica_${timestamp}_cards_docs.csv")
+            val totpCsvFile = File(cacheBackupDir, "Monica_${timestamp}_totp.csv")
+            val cardsDocsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_cards_docs.csv")
             // 笔记：改为每条笔记独立JSON文件存放于 notes 目录
-            val notesDir = File(context.cacheDir, "Monica_${timestamp}_notes")
+            val notesDir = File(cacheBackupDir, "notes")
+            // 密码：改为每个密码独立JSON文件存放于 passwords 目录
+            val passwordsDir = File(cacheBackupDir, "passwords")
             // 旧版本兼容：如果需要恢复旧版本，可能需要这个，但这里是创建新备份，所以不需要创建 other.csv
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
@@ -514,9 +545,45 @@ class WebDavHelper(
                 android.util.Log.d("WebDavHelper", "Docs & Cards: ${docCount + cardCount} total, $filteredDocAndCardCount included")
                 android.util.Log.d("WebDavHelper", "Notes: $noteCount total, $filteredNoteCount included")
                 
-                // 4. 导出密码数据到CSV（如果启用）
+                // 4. 导出密码数据到JSON（更可靠的格式）
+                val passwordsDir = File(cacheBackupDir, "passwords")
                 if (preferences.includePasswords && filteredPasswords.isNotEmpty()) {
-                    exportPasswordsToCSV(filteredPasswords, passwordsCsvFile)
+                    if (!passwordsDir.exists()) passwordsDir.mkdirs()
+                    val json = Json { prettyPrint = false }
+                    filteredPasswords.forEach { password ->
+                        try {
+                            val backup = PasswordBackupEntry(
+                                id = password.id,
+                                title = password.title,
+                                username = password.username,
+                                password = password.password,
+                                website = password.website,
+                                notes = password.notes,
+                                isFavorite = password.isFavorite,
+                                categoryId = password.categoryId,
+                                createdAt = password.createdAt.time,
+                                updatedAt = password.updatedAt.time
+                            )
+                            val fileName = "password_${password.id}_${password.createdAt.time}.json"
+                            val target = File(passwordsDir, fileName)
+                            target.writeText(json.encodeToString(PasswordBackupEntry.serializer(), backup), Charsets.UTF_8)
+                            successPasswordCount++
+                        } catch (e: Exception) {
+                            android.util.Log.e("WebDavHelper", "导出密码失败: ${password.id} - ${password.title}", e)
+                            failedItems.add(FailedItem(
+                                id = password.id,
+                                type = "密码",
+                                title = password.title,
+                                reason = "序列化失败: ${e.message}"
+                            ))
+                        }
+                    }
+                    // 向后兼容: 也生成CSV文件供旧版本使用
+                    try {
+                        exportPasswordsToCSV(filteredPasswords, passwordsCsvFile)
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "CSV backup failed (non-critical): ${e.message}")
+                    }
                 }
                 
                 // 5. 导出验证(TOTP)数据到CSV
@@ -562,15 +629,29 @@ class WebDavHelper(
                             val fileName = "note_${item.id}_${item.createdAt.time}.json"
                             val target = File(notesDir, fileName)
                             target.writeText(json.encodeToString(NoteBackupEntry.serializer(), backup), Charsets.UTF_8)
+                            successNoteCount++  // P0修复：记录成功
                         } catch (e: Exception) {
                             android.util.Log.e("WebDavHelper", "导出单条笔记失败: ${item.id}", e)
+                            // P0修复：记录失败项而不是静默跳过
+                            failedItems.add(FailedItem(
+                                id = item.id,
+                                type = "笔记",
+                                title = item.title,
+                                reason = "序列化失败: ${e.message}"
+                            ))
                         }
                     }
                 }
                 
                 // 7. 创建ZIP文件,根据偏好设置包含相应内容
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
-                    // 添加passwords.csv（如果启用且文件存在）
+                    // 添加passwords目录下的每个密码JSON文件
+                    if (passwordsDir.exists()) {
+                        passwordsDir.listFiles()?.forEach { passwordFile ->
+                            addFileToZip(zipOut, passwordFile, "passwords/${passwordFile.name}")
+                        }
+                    }
+                    // 向后兼容: 添加passwords.csv（如果存在）
                     if (preferences.includePasswords && passwordsCsvFile.exists()) {
                         addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
                     }
@@ -615,14 +696,18 @@ class WebDavHelper(
                                 when {
                                     imageFile.exists() -> {
                                         addFileToZip(zipOut, imageFile, "images/$fileName")
+                                        successImageCount++  // P0修复：记录成功
                                     }
                                     else -> {
                                         android.util.Log.w("WebDavHelper", "Image file not found: $fileName")
+                                        // P0修复：记录缺失的图片
+                                        warnings.add("图片文件缺失: $fileName")
                                     }
                                 }
                             }
                         } catch (e: Exception) {
                             android.util.Log.w("WebDavHelper", "Failed to backup images: ${e.message}")
+                            warnings.add("图片备份失败: ${e.message}")
                         }
                     }
                 }
@@ -645,7 +730,40 @@ class WebDavHelper(
                     updateLastBackupTime()
                 }
                 
-                uploadResult
+                // P0修复：生成详细报告
+                val totalImageCount = if (preferences.includeImages) extractAllImageFileNames(filteredSecureItems).size else 0
+                
+                val totalCounts = ItemCounts(
+                    passwords = if (preferences.includePasswords) passwords.size else 0,
+                    notes = noteItems.size,
+                    totp = totpItems.size,
+                    bankCards = cardsDocsItems.count { it.itemType == ItemType.BANK_CARD },
+                    documents = cardsDocsItems.count { it.itemType == ItemType.DOCUMENT },
+                    images = totalImageCount
+                )
+                
+                val successCounts = ItemCounts(
+                    passwords = if (preferences.includePasswords) passwords.size else 0,
+                    notes = successNoteCount,
+                    totp = totpItems.size,
+                    bankCards = cardsDocsItems.count { it.itemType == ItemType.BANK_CARD },
+                    documents = cardsDocsItems.count { it.itemType == ItemType.DOCUMENT },
+                    images = successImageCount
+                )
+                
+                val report = BackupReport(
+                    success = uploadResult.isSuccess && failedItems.isEmpty(),
+                    totalItems = totalCounts,
+                    successItems = successCounts,
+                    failedItems = failedItems,
+                    warnings = warnings
+                )
+                
+                if (uploadResult.isFailure) {
+                    Result.failure(uploadResult.exceptionOrNull() ?: Exception("上传失败"))
+                } else {
+                    Result.success(report)
+                }
             } finally {
                 // 11. 清理临时文件
                 passwordsCsvFile.delete()
@@ -736,16 +854,28 @@ class WebDavHelper(
     class PasswordRequiredException : Exception("备份文件已加密，请提供解密密码")
 
     /**
-     * 下载并恢复备份 - 返回密码、其他数据和账单
+     * 下载并恢复备份 - 返回密码、其他数据和恢复报告
      * @param backupFile 要恢复的备份文件
      * @param decryptPassword 解密密码 (如果文件已加密)
      */
     suspend fun downloadAndRestoreBackup(
         backupFile: BackupFile,
         decryptPassword: String? = null
-    ): Result<BackupContent> = 
+    ): Result<RestoreResult> = 
         withContext(Dispatchers.IO) {
         try {
+            // P0修复：错误跟踪
+            val failedItems = mutableListOf<FailedItem>()
+            val warnings = mutableListOf<String>()
+            var backupPasswordCount = 0
+            var backupNoteCount = 0
+            var backupTotpCount = 0
+            var backupCardCount = 0
+            var backupDocCount = 0
+            var backupImageCount = 0
+            var restoredPasswordCount = 0
+            var restoredNoteCount = 0
+            var restoredImageCount = 0
             // 1. 下载备份文件
             val downloadedFile = File(context.cacheDir, "restore_${backupFile.name}")
             val downloadResult = downloadBackup(backupFile, downloadedFile)
@@ -785,7 +915,10 @@ class WebDavHelper(
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
                 
-                // 4. 解压ZIP文件并读取CSV、密码历史和图片
+                // 临时存储CSV文件路径，延后处理
+                var passwordsCsvFile: File? = null
+                
+                // 4. 解压ZIP文件并读取JSON/CSV、密码历史和图片
                 ZipInputStream(FileInputStream(zipFile)).use { zipIn ->
                     var entry = zipIn.nextEntry
                     while (entry != null) {
@@ -796,9 +929,32 @@ class WebDavHelper(
                         }
                         zipIn.closeEntry()
                         when {
+                            // 优先收集JSON格式的密码文件
+                            entry.name.contains("/passwords/") || entry.name.startsWith("passwords/") -> {
+                                backupPasswordCount++
+                                val passwordItem = restorePasswordFromJson(tempFile)
+                                if (passwordItem != null) {
+                                    passwords.add(passwordItem)
+                                    restoredPasswordCount++
+                                } else {
+                                    failedItems.add(FailedItem(
+                                        id = 0,
+                                        type = "密码",
+                                        title = entryName,
+                                        reason = "JSON解析失败"
+                                    ))
+                                }
+                                tempFile.delete()
+                            }
+                            // 保存CSV文件路径，稍后处理（向后兼容）
                             entryName.equals("passwords.csv", ignoreCase = true) ||
                                 (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_password.csv", ignoreCase = true)) -> {
-                                passwords.addAll(importPasswordsFromCSV(tempFile))
+                                // 只在没有JSON密码时才使用CSV
+                                if (passwordsCsvFile == null) {
+                                    passwordsCsvFile = tempFile
+                                } else {
+                                    tempFile.delete()
+                                }
                             }
                             entryName.equals("secure_items.csv", ignoreCase = true) ||
                                 entryName.equals("backup.csv", ignoreCase = true) ||
@@ -814,7 +970,20 @@ class WebDavHelper(
                                 }
                             }
                             entry.name.contains("/notes/") || entry.name.startsWith("notes/") -> {
-                                restoreNoteFromJson(tempFile)?.let { secureItems.add(it) }
+                                backupNoteCount++  // P0修复：统计备份中的笔记数
+                                val noteItem = restoreNoteFromJson(tempFile)
+                                if (noteItem != null) {
+                                    secureItems.add(noteItem)
+                                    restoredNoteCount++  // P0修复：记录成功
+                                } else {
+                                    // P0修复：记录失败项
+                                    failedItems.add(FailedItem(
+                                        id = 0,
+                                        type = "笔记",
+                                        title = entryName,
+                                        reason = "JSON解析失败"
+                                    ))
+                                }
                             }
                             entryName.endsWith("_generated_history.json", ignoreCase = true) -> {
                                 // 恢复密码生成历史
@@ -830,6 +999,7 @@ class WebDavHelper(
                                 }
                             }
                             entry.name.contains("/images/") || entryName.endsWith(".enc") -> {
+                                backupImageCount++  // P0修复：统计备份中的图片数
                                 // 恢复图片文件
                                 try {
                                     val imageDir = File(context.filesDir, "secure_images")
@@ -839,17 +1009,79 @@ class WebDavHelper(
                                     val destFile = File(imageDir, entryName)
                                     tempFile.copyTo(destFile, overwrite = true)
                                     android.util.Log.d("WebDavHelper", "Restored image file: $entryName")
+                                    restoredImageCount++  // P0修复：记录成功
                                 } catch (e: Exception) {
                                     android.util.Log.w("WebDavHelper", "Failed to restore image file $entryName: ${e.message}")
+                                    // P0修复：记录失败
+                                    warnings.add("图片恢复失败: $entryName - ${e.message}")
                                 }
                             }
                         }
-                        tempFile.delete()
+                        if (!entry.name.contains("/passwords/") && !entry.name.startsWith("passwords/") &&
+                            !(entryName.equals("passwords.csv", ignoreCase = true) ||
+                                (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_password.csv", ignoreCase = true)))) {
+                            tempFile.delete()
+                        }
                         entry = zipIn.nextEntry
                     }
                 }
                 
-                Result.success(BackupContent(passwords, secureItems))
+                // 5. 向后兼容：如果没有JSON密码，使用CSV（支持旧版本备份）
+                passwordsCsvFile?.let { csvFile ->
+                    if (passwords.isEmpty() && csvFile.exists()) {
+                        android.util.Log.d("WebDavHelper", "No JSON passwords found, using CSV for backward compatibility")
+                        try {
+                            val csvPasswords = importPasswordsFromCSV(csvFile)
+                            backupPasswordCount = csvPasswords.size
+                            passwords.addAll(csvPasswords)
+                            restoredPasswordCount = csvPasswords.size
+                            android.util.Log.d("WebDavHelper", "Restored ${csvPasswords.size} passwords from CSV")
+                        } catch (e: Exception) {
+                            android.util.Log.e("WebDavHelper", "Failed to import passwords from CSV: ${e.message}")
+                            warnings.add("CSV密码导入失败: ${e.message}")
+                        }
+                    }
+                    csvFile.delete()
+                }
+                
+                // P0修复：生成详细报告
+                if (backupPasswordCount == 0) {
+                    backupPasswordCount = passwords.size
+                }
+                val totpItems = secureItems.count { it.itemType == "TOTP" }
+                val cardItems = secureItems.count { it.itemType == "BANK_CARD" }
+                val docItems = secureItems.count { it.itemType == "DOCUMENT" }
+                
+                val backupCounts = ItemCounts(
+                    passwords = backupPasswordCount,
+                    notes = backupNoteCount,
+                    totp = totpItems,
+                    bankCards = cardItems,
+                    documents = docItems,
+                    images = backupImageCount
+                )
+                
+                val restoredCounts = ItemCounts(
+                    passwords = passwords.size,
+                    notes = restoredNoteCount,
+                    totp = totpItems,
+                    bankCards = cardItems,
+                    documents = docItems,
+                    images = restoredImageCount
+                )
+                
+                val report = RestoreReport(
+                    success = failedItems.isEmpty(),
+                    backupContains = backupCounts,
+                    restoredSuccessfully = restoredCounts,
+                    failedItems = failedItems,
+                    warnings = warnings
+                )
+                
+                Result.success(RestoreResult(
+                    content = BackupContent(passwords, secureItems),
+                    report = report
+                ))
             } finally {
                 zipFile.delete()
                 if (zipFile != downloadedFile) {
@@ -900,6 +1132,29 @@ class WebDavHelper(
         }
         
         return passwords
+    }
+
+    private fun restorePasswordFromJson(file: File): PasswordEntry? {
+        return try {
+            val content = file.readText(Charsets.UTF_8)
+            val json = Json { ignoreUnknownKeys = true }
+            val backup = json.decodeFromString<PasswordBackupEntry>(content)
+            PasswordEntry(
+                id = 0, // 重置id以避免冲突
+                title = backup.title,
+                username = backup.username,
+                password = backup.password,
+                website = backup.website,
+                notes = backup.notes,
+                isFavorite = backup.isFavorite,
+                categoryId = backup.categoryId,
+                createdAt = Date(backup.createdAt),
+                updatedAt = Date(backup.updatedAt)
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("WebDavHelper", "Failed to parse password JSON from ${file.name}: ${e.message}")
+            null
+        }
     }
 
     private fun restoreNoteFromJson(file: File): DataExportImportManager.ExportItem? {
@@ -1223,6 +1478,14 @@ data class BackupFile(
 data class BackupContent(
     val passwords: List<PasswordEntry>,
     val secureItems: List<DataExportImportManager.ExportItem>
+)
+
+/**
+ * 恢复结果 - 包含恢复的内容和详细报告
+ */
+data class RestoreResult(
+    val content: BackupContent,
+    val report: RestoreReport
 )
 
 

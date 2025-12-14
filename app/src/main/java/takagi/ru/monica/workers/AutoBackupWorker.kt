@@ -60,7 +60,12 @@ class AutoBackupWorker(
             val backupResult = webDavHelper.createAndUploadBackup(passwords, secureItems, backupPreferences)
             
             return if (backupResult.isSuccess) {
-                android.util.Log.d("AutoBackupWorker", "Auto backup completed successfully: ${backupResult.getOrNull()}")
+                val report = backupResult.getOrNull()
+                android.util.Log.d("AutoBackupWorker", "Auto backup completed: ${report?.getSummary()}")
+                // P0修复：检查是否有失败项
+                if (report != null && report.hasIssues()) {
+                    android.util.Log.w("AutoBackupWorker", "Backup has issues but completed")
+                }
                 androidx.work.ListenableWorker.Result.success()
             } else {
                 val error = backupResult.exceptionOrNull()
