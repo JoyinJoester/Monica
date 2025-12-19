@@ -1,0 +1,1492 @@
+package takagi.ru.monica.ui.screens
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.utils.PasswordGenerator
+import takagi.ru.monica.utils.PasswordStrengthAnalyzer
+import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.ui.components.AppSelectorField
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import takagi.ru.monica.ui.components.PasswordStrengthIndicator
+import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.data.model.BankCardData
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.OtpType
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddEditPasswordScreen(
+    viewModel: PasswordViewModel,
+    bankCardViewModel: BankCardViewModel? = null,
+    passwordId: Long?,
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+    val passwordGenerator = remember { PasswordGenerator() }
+    
+    // 获取设置以读取进度条样式
+    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    
+    // 调试日志：打印当前进度条样式
+    LaunchedEffect(settings.validatorProgressBarStyle) {
+        android.util.Log.d("AddEditPasswordScreen", "Current progress bar style: ${settings.validatorProgressBarStyle}")
+    }
+    
+    var title by remember { mutableStateOf("") }
+    var website by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var authenticatorKey by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var isFavorite by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var showPasswordGenerator by remember { mutableStateOf(false) }
+    var appPackageName by remember { mutableStateOf("") }
+    var appName by remember { mutableStateOf("") }
+    
+    // 绑定选项状态
+    var bindTitle by remember { mutableStateOf(false) }
+    var bindWebsite by remember { mutableStateOf(false) }
+    
+    // Phase 8: 计算密码强度
+    val passwordStrength = remember(password) {
+        if (password.isNotEmpty()) {
+            PasswordStrengthAnalyzer.calculateStrength(password)
+        } else {
+            null
+        }
+    }
+    
+    // Phase 7: 新增字段状态
+    var email by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var addressLine by remember { mutableStateOf("") }
+    var city by remember { mutableStateOf("") }
+    var state by remember { mutableStateOf("") }
+    var zipCode by remember { mutableStateOf("") }
+    var country by remember { mutableStateOf("") }
+    var creditCardNumber by remember { mutableStateOf("") }
+    var creditCardHolder by remember { mutableStateOf("") }
+    var creditCardExpiry by remember { mutableStateOf("") }
+    var creditCardCVV by remember { mutableStateOf("") }
+    
+    var categoryId by remember { mutableStateOf<Long?>(null) }
+    val categories by viewModel.categories.collectAsState()
+    
+    // 折叠面板状态
+    var personalInfoExpanded by remember { mutableStateOf(false) }
+    var addressInfoExpanded by remember { mutableStateOf(false) }
+    var paymentInfoExpanded by remember { mutableStateOf(false) }
+    
+    val isEditing = passwordId != null && passwordId > 0
+    val isCopyMode = passwordId != null && passwordId < 0
+    
+    // Load existing password data if editing or copying
+    LaunchedEffect(passwordId) {
+        if (passwordId != null) {
+            coroutineScope.launch {
+                val actualId = if (passwordId < 0) -passwordId else passwordId
+                viewModel.getPasswordEntryById(actualId)?.let { entry ->
+                    title = entry.title
+                    website = entry.website
+                    username = entry.username
+                    notes = entry.notes
+                    appPackageName = entry.appPackageName
+                    appName = entry.appName
+                    // Phase 7: 加载新字段
+                    email = entry.email
+                    phone = entry.phone
+                    addressLine = entry.addressLine
+                    city = entry.city
+                    state = entry.state
+                    zipCode = entry.zipCode
+                    country = entry.country
+                    creditCardNumber = entry.creditCardNumber
+                    creditCardHolder = entry.creditCardHolder
+                    creditCardExpiry = entry.creditCardExpiry
+                    creditCardCVV = entry.creditCardCVV
+                    categoryId = entry.categoryId
+                    
+                    // 如果是编辑模式，加载密码和收藏状态
+                    if (isEditing) {
+                        password = entry.password
+                        isFavorite = entry.isFavorite
+                    }
+                    // 如果是复制模式，密码留空，不继承收藏状态
+                    // password 和 isFavorite 保持初始值（空字符串和false）
+                }
+            }
+        }
+    }
+    
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { 
+                    Text(stringResource(
+                        if (isEditing) R.string.edit_password_title 
+                        else R.string.add_password_title
+                    )) 
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
+                    }
+                },
+                actions = {
+                    // 收藏按钮
+                    IconButton(onClick = { isFavorite = !isFavorite }) {
+                        Icon(
+                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = stringResource(R.string.favorite),
+                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        )
+                    }
+                    
+                    TextButton(
+                        onClick = {
+                            if (title.isNotEmpty() && password.isNotEmpty()) {
+                                val entry = PasswordEntry(
+                                    id = if (isEditing) passwordId!! else 0,  // 复制模式下使用0创建新条目
+                                    title = title,
+                                    website = website,
+                                    username = username,
+                                    password = password,
+                                    notes = notes,
+                                    isFavorite = isFavorite,
+                                    appPackageName = appPackageName,
+                                    appName = appName,
+                                    // Phase 7: 保存新字段
+                                    email = email,
+                                    phone = phone,
+                                    addressLine = addressLine,
+                                    city = city,
+                                    state = state,
+                                    zipCode = zipCode,
+                                    country = country,
+                                    creditCardNumber = creditCardNumber,
+                                    creditCardHolder = creditCardHolder,
+                                    creditCardExpiry = creditCardExpiry,
+                                    creditCardCVV = creditCardCVV,
+                                    categoryId = categoryId
+                                )
+                                
+                                if (isEditing) {
+                                    viewModel.updatePasswordEntry(entry)
+                                    
+                                    if (authenticatorKey.isNotEmpty()) {
+                                        val totpData = TotpData(
+                                            secret = authenticatorKey,
+                                            issuer = title,
+                                            accountName = username,
+                                            boundPasswordId = entry.id
+                                        )
+                                        val secureItem = SecureItem(
+                                            itemType = ItemType.TOTP,
+                                            title = title,
+                                            itemData = Json.encodeToString(totpData)
+                                        )
+                                        viewModel.addSecureItem(secureItem)
+                                    }
+                                } else {
+                                    // 复制模式和新建模式都使用 addPasswordEntry
+                                    viewModel.addPasswordEntry(entry) { newId ->
+                                        if (authenticatorKey.isNotEmpty()) {
+                                            val totpData = TotpData(
+                                                secret = authenticatorKey,
+                                                issuer = title,
+                                                accountName = username,
+                                                boundPasswordId = newId
+                                            )
+                                            val secureItem = SecureItem(
+                                                itemType = ItemType.TOTP,
+                                                title = title,
+                                                itemData = Json.encodeToString(totpData)
+                                            )
+                                            viewModel.addSecureItem(secureItem)
+                                        }
+                                    }
+                                }
+                                
+                                // 批量更新关联
+                                if (appPackageName.isNotEmpty()) {
+                                    if (bindWebsite && website.isNotEmpty()) {
+                                        viewModel.updateAppAssociationByWebsite(website, appPackageName, appName)
+                                    }
+                                    if (bindTitle && title.isNotEmpty()) {
+                                        viewModel.updateAppAssociationByTitle(title, appPackageName, appName)
+                                    }
+                                }
+                                
+                                onNavigateBack()
+                            }
+                        },
+                        enabled = title.isNotEmpty() && password.isNotEmpty()
+                    ) {
+                        Text(stringResource(R.string.save))
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .imePadding()
+                .padding(16.dp)
+                .verticalScroll(scrollState),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Title Field
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text(stringResource(R.string.title_required)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                singleLine = true
+            )
+            
+            // Category Selector
+            var categoryExpanded by remember { mutableStateOf(false) }
+            var showAddCategoryDialog by remember { mutableStateOf(false) }
+            var newCategoryName by remember { mutableStateOf("") }
+
+            ExposedDropdownMenuBox(
+                expanded = categoryExpanded,
+                onExpandedChange = { categoryExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = categories.find { it.id == categoryId }?.name ?: "无分类",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("分类") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = categoryExpanded,
+                    onDismissRequest = { categoryExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("无分类") },
+                        onClick = {
+                            categoryId = null
+                            categoryExpanded = false
+                        }
+                    )
+                    categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category.name) },
+                            onClick = {
+                                categoryId = category.id
+                                categoryExpanded = false
+                            }
+                        )
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { 
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("新建分类")
+                            }
+                        },
+                        onClick = {
+                            categoryExpanded = false
+                            showAddCategoryDialog = true
+                        }
+                    )
+                }
+            }
+
+            if (showAddCategoryDialog) {
+                AlertDialog(
+                    onDismissRequest = { showAddCategoryDialog = false },
+                    title = { Text("新建分类") },
+                    text = {
+                        OutlinedTextField(
+                            value = newCategoryName,
+                            onValueChange = { newCategoryName = it },
+                            label = { Text("分类名称") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            if (newCategoryName.isNotBlank()) {
+                                viewModel.addCategory(newCategoryName) { id ->
+                                    if (id > 0) {
+                                        categoryId = id
+                                    }
+                                }
+                                newCategoryName = ""
+                                showAddCategoryDialog = false
+                            }
+                        }) {
+                            Text("确定")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAddCategoryDialog = false }) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
+            
+            // Website Field
+            OutlinedTextField(
+                value = website,
+                onValueChange = { website = it },
+                label = { Text(stringResource(R.string.website_url)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Link, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Next
+                ),
+                singleLine = true
+            )
+            
+            // Username Field
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text(stringResource(R.string.username_email)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Person, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                singleLine = true
+            )
+            
+            // Password Field
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text(stringResource(R.string.password_required)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                },
+                visualTransformation = if (passwordVisible) ColoredPasswordVisualTransformation() else PasswordVisualTransformation(),
+                trailingIcon = {
+                    Row {
+                        IconButton(onClick = { showPasswordGenerator = true }) {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
+                        }
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password)
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Next
+                ),
+                singleLine = true
+            )
+            
+            // Authenticator Key Field
+            OutlinedTextField(
+                value = authenticatorKey,
+                onValueChange = { authenticatorKey = it },
+                label = { Text("验证码密钥 (可选)") },
+                placeholder = { Text("输入密钥以自动创建验证器") },
+                leadingIcon = {
+                    Icon(Icons.Default.VpnKey, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
+            
+            // Phase 8: 密码强度分析指示器
+            if (passwordStrength != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                PasswordStrengthIndicator(
+                    strength = passwordStrength,
+                    style = settings.validatorProgressBarStyle,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            
+            // Notes Field
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text(stringResource(R.string.notes)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                maxLines = 5
+            )
+            
+            // 应用选择器 (用于自动填充匹配)
+            AppSelectorField(
+                selectedPackageName = appPackageName,
+                selectedAppName = appName,
+                onAppSelected = { packageName, name ->
+                    appPackageName = packageName
+                    appName = name
+                }
+            )
+            
+            // 绑定选项
+            if (appPackageName.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "批量关联设置",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                        
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { bindWebsite = !bindWebsite }
+                                .padding(horizontal = 4.dp)
+                        ) {
+                            Checkbox(
+                                checked = bindWebsite,
+                                onCheckedChange = { bindWebsite = it }
+                            )
+                            Column {
+                                Text(
+                                    text = "绑定网址",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                )
+                                Text(
+                                    text = "将该应用关联到所有相同网址的密码",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { bindTitle = !bindTitle }
+                                .padding(horizontal = 4.dp)
+                        ) {
+                            Checkbox(
+                                checked = bindTitle,
+                                onCheckedChange = { bindTitle = it }
+                            )
+                            Column {
+                                Text(
+                                    text = "绑定标题",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                )
+                                Text(
+                                    text = "将该应用关联到所有相同标题的密码",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Phase 7: 个人信息折叠面板
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 标题栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { personalInfoExpanded = !personalInfoExpanded }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                stringResource(R.string.personal_info),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            if (personalInfoExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+                    
+                    // 展开内容
+                    if (personalInfoExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // 邮箱
+                            OutlinedTextField(
+                                value = email,
+                                onValueChange = { email = it },
+                                label = { Text(stringResource(R.string.field_email)) },
+                                placeholder = { Text("user@example.com") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.General.email, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Email,
+                                    imeAction = ImeAction.Next
+                                ),
+                                singleLine = true,
+                                isError = email.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidEmail(email),
+                                supportingText = {
+                                    if (email.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidEmail(email)) {
+                                        Text(
+                                            takagi.ru.monica.utils.FieldValidation.getEmailError(email) ?: "",
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            )
+                            
+                            // 手机号
+                            OutlinedTextField(
+                                value = phone,
+                                onValueChange = { 
+                                    // 只允许输入数字
+                                    if (it.all { char -> char.isDigit() } && it.length <= 11) {
+                                        phone = it
+                                    }
+                                },
+                                label = { Text(stringResource(R.string.field_phone)) },
+                                placeholder = { Text("13800000000") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.General.phone, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Phone,
+                                    imeAction = ImeAction.Done
+                                ),
+                                singleLine = true,
+                                isError = phone.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidPhone(phone),
+                                supportingText = {
+                                    if (phone.isNotEmpty()) {
+                                        if (!takagi.ru.monica.utils.FieldValidation.isValidPhone(phone)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getPhoneError(phone) ?: "",
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        } else {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.formatPhone(phone),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // Phase 7: 地址信息折叠面板
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 标题栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { addressInfoExpanded = !addressInfoExpanded }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Home,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                stringResource(R.string.address_info),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            if (addressInfoExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+                    
+                    // 展开内容
+                    if (addressInfoExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // 详细地址
+                            OutlinedTextField(
+                                value = addressLine,
+                                onValueChange = { addressLine = it },
+                                label = { Text(stringResource(R.string.field_address)) },
+                                placeholder = { Text(stringResource(R.string.field_address_placeholder)) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Home, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                singleLine = true
+                            )
+                            
+                            // 城市和省份（两列布局）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = city,
+                                    onValueChange = { city = it },
+                                    label = { Text(stringResource(R.string.field_city)) },
+                                    placeholder = { Text("Beijing") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.LocationCity, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    singleLine = true
+                                )
+                                
+                                OutlinedTextField(
+                                    value = state,
+                                    onValueChange = { state = it },
+                                    label = { Text(stringResource(R.string.field_state)) },
+                                    placeholder = { Text("Beijing") },
+                                    leadingIcon = {
+                                        Icon(MonicaIcons.General.location, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    singleLine = true
+                                )
+                            }
+                            
+                            // 邮编和国家（两列布局）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = zipCode,
+                                    onValueChange = { 
+                                        // 只允许输入数字
+                                        if (it.all { char -> char.isDigit() } && it.length <= 6) {
+                                            zipCode = it
+                                        }
+                                    },
+                                    label = { Text(stringResource(R.string.field_postal_code)) },
+                                    placeholder = { Text("100000") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Markunread, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    singleLine = true,
+                                    isError = zipCode.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidZipCode(zipCode),
+                                    supportingText = {
+                                        if (zipCode.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidZipCode(zipCode)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getZipCodeError(zipCode) ?: "",
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                )
+                                
+                                OutlinedTextField(
+                                    value = country,
+                                    onValueChange = { country = it },
+                                    label = { Text(stringResource(R.string.field_country)) },
+                                    placeholder = { Text("China") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Public, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                    singleLine = true
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Phase 7: 支付信息折叠面板
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 标题栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { paymentInfoExpanded = !paymentInfoExpanded }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.CreditCard,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                stringResource(R.string.payment_info),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            if (paymentInfoExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+                    
+                    // 展开内容
+                    if (paymentInfoExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // 导入银行卡按钮
+                            if (bankCardViewModel != null) {
+                                val bankCards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
+                                var showBankCardDialog by remember { mutableStateOf(false) }
+
+                                OutlinedButton(
+                                    onClick = { showBankCardDialog = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.CreditCard, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("从银行卡导入")
+                                }
+
+                                if (showBankCardDialog) {
+                                    AlertDialog(
+                                        onDismissRequest = { showBankCardDialog = false },
+                                        title = { Text("选择银行卡") },
+                                        text = {
+                                            if (bankCards.isEmpty()) {
+                                                Text("暂无银行卡数据")
+                                            } else {
+                                                LazyColumn {
+                                                    items(bankCards) { item ->
+                                                        val cardData = remember(item.itemData) {
+                                                            try {
+                                                                Json.decodeFromString<BankCardData>(item.itemData)
+                                                            } catch (e: Exception) {
+                                                                null
+                                                            }
+                                                        }
+                                                        
+                                                        ListItem(
+                                                            headlineContent = { Text(item.title) },
+                                                            supportingContent = {
+                                                                Text(
+                                                                    if (cardData != null) {
+                                                                        "尾号 ${cardData.cardNumber.takeLast(4)}"
+                                                                    } else {
+                                                                        "数据解析失败"
+                                                                    }
+                                                                )
+                                                            },
+                                                            leadingContent = {
+                                                                Icon(Icons.Default.CreditCard, null)
+                                                            },
+                                                            modifier = Modifier.clickable {
+                                                                if (cardData != null) {
+                                                                    creditCardNumber = cardData.cardNumber
+                                                                    creditCardHolder = cardData.cardholderName
+                                                                    creditCardCVV = cardData.cvv
+                                                                    // Format expiry MM/YY
+                                                                    val month = cardData.expiryMonth.padStart(2, '0')
+                                                                    val year = if (cardData.expiryYear.length == 4) cardData.expiryYear.takeLast(2) else cardData.expiryYear
+                                                                    creditCardExpiry = "$month/$year"
+                                                                    
+                                                                    showBankCardDialog = false
+                                                                    Toast.makeText(context, "已导入银行卡信息", Toast.LENGTH_SHORT).show()
+                                                                } else {
+                                                                    Toast.makeText(context, "导入失败: 数据解析错误", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        confirmButton = {
+                                            TextButton(onClick = { showBankCardDialog = false }) {
+                                                Text("取消")
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+
+                            // 信用卡号
+                            OutlinedTextField(
+                                value = creditCardNumber,
+                                onValueChange = { 
+                                    // 只允许输入数字
+                                    if (it.all { char -> char.isDigit() } && it.length <= 19) {
+                                        creditCardNumber = it
+                                    }
+                                },
+                                label = { Text(stringResource(R.string.field_card_number)) },
+                                placeholder = { Text("1234 5678 9012 3456") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.Data.creditCard, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                singleLine = true,
+                                visualTransformation = if (creditCardNumber.isNotEmpty()) {
+                                    VisualTransformation { text ->
+                                        val offsetMapping = object : OffsetMapping {
+                                            override fun originalToTransformed(offset: Int): Int {
+                                                if (offset <= 0) return 0
+                                                return offset + (offset - 1) / 4
+                                            }
+
+                                            override fun transformedToOriginal(offset: Int): Int {
+                                                if (offset <= 0) return 0
+                                                return offset - offset / 5
+                                            }
+                                        }
+                                        TransformedText(
+                                            AnnotatedString(takagi.ru.monica.utils.FieldValidation.formatCreditCard(text.text)),
+                                            offsetMapping
+                                        )
+                                    }
+                                } else {
+                                    VisualTransformation.None
+                                },
+                                isError = creditCardNumber.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidCreditCard(creditCardNumber),
+                                supportingText = {
+                                    if (creditCardNumber.isNotEmpty()) {
+                                        if (!takagi.ru.monica.utils.FieldValidation.isValidCreditCard(creditCardNumber)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getCreditCardError(creditCardNumber) ?: "",
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        } else {
+                                            Text(
+                                                stringResource(R.string.field_card_valid),
+                                                color = Color(0xFF4CAF50)
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                            
+                            // 持卡人姓名
+                            OutlinedTextField(
+                                value = creditCardHolder,
+                                onValueChange = { creditCardHolder = it },
+                                label = { Text(stringResource(R.string.field_cardholder)) },
+                                placeholder = { Text("ZHANG SAN") },
+                                leadingIcon = {
+                                    Icon(MonicaIcons.General.person, contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                singleLine = true
+                            )
+                            
+                            // 有效期和CVV（两列布局）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = creditCardExpiry,
+                                    onValueChange = { 
+                                        // 格式化为 MM/YY
+                                        val digits = it.filter { char -> char.isDigit() }
+                                        creditCardExpiry = when {
+                                            digits.length <= 2 -> digits
+                                            digits.length <= 4 -> "${digits.substring(0, 2)}/${digits.substring(2)}"
+                                            else -> "${digits.substring(0, 2)}/${digits.substring(2, 4)}"
+                                        }
+                                    },
+                                    label = { Text(stringResource(R.string.field_expiry)) },
+                                    placeholder = { Text("MM/YY") },
+                                    leadingIcon = {
+                                        Icon(MonicaIcons.General.calendar, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    singleLine = true,
+                                    isError = creditCardExpiry.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidExpiry(creditCardExpiry),
+                                    supportingText = {
+                                        if (creditCardExpiry.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidExpiry(creditCardExpiry)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getExpiryError(creditCardExpiry) ?: "",
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                )
+                                
+                                OutlinedTextField(
+                                    value = creditCardCVV,
+                                    onValueChange = { 
+                                        // 只允许输入数字，3-4位
+                                        if (it.all { char -> char.isDigit() } && it.length <= 4) {
+                                            creditCardCVV = it
+                                        }
+                                    },
+                                    label = { Text(stringResource(R.string.field_cvv)) },
+                                    placeholder = { Text("123") },
+                                    leadingIcon = {
+                                        Icon(MonicaIcons.Security.lock, contentDescription = null)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    isError = creditCardCVV.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidCVV(creditCardCVV),
+                                    supportingText = {
+                                        if (creditCardCVV.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidCVV(creditCardCVV)) {
+                                            Text(
+                                                takagi.ru.monica.utils.FieldValidation.getCVVError(creditCardCVV) ?: "",
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            // 安全提示
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                )
+                                Text(
+                                    "信用卡信息将加密存储",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 复制按钮区域（仅编辑模式显示）
+            if (isEditing && (username.isNotEmpty() || password.isNotEmpty())) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 复制账号按钮
+                    if (username.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("username", username)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, context.getString(R.string.username_copied), Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.copy_username),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                    
+                    // 复制密码按钮
+                    if (password.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("password", password)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, context.getString(R.string.password_copied), Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.copy_password),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Password Generator Dialog
+    if (showPasswordGenerator) {
+        PasswordGeneratorDialog(
+            onDismiss = { showPasswordGenerator = false },
+            onPasswordGenerated = { generatedPassword ->
+                password = generatedPassword
+                showPasswordGenerator = false
+            }
+        )
+    }
+}
+
+/**
+ * 彩色密码显示转换器
+ * 白色=字母, 蓝色=数字, 红色=符号
+ */
+class ColoredPasswordVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val coloredText = buildAnnotatedString {
+            text.forEach { char ->
+                when {
+                    char.isLetter() -> {
+                        // 字母 - 白色/浅色
+                        withStyle(style = SpanStyle(color = Color(0xFFE0E0E0))) {
+                            append(char)
+                        }
+                    }
+                    char.isDigit() -> {
+                        // 数字 - 蓝色
+                        withStyle(style = SpanStyle(color = Color(0xFF64B5F6))) {
+                            append(char)
+                        }
+                    }
+                    else -> {
+                        // 符号 - 红色
+                        withStyle(style = SpanStyle(color = Color(0xFFEF5350))) {
+                            append(char)
+                        }
+                    }
+                }
+            }
+        }
+        
+        return TransformedText(coloredText, OffsetMapping.Identity)
+    }
+}
+
+@Composable
+fun PasswordGeneratorDialog(
+    onDismiss: () -> Unit,
+    onPasswordGenerated: (String) -> Unit
+) {
+    val passwordGenerator = remember { PasswordGenerator() }
+    
+    var length by remember { mutableStateOf(16) }
+    var includeUppercase by remember { mutableStateOf(true) }
+    var includeLowercase by remember { mutableStateOf(true) }
+    var includeNumbers by remember { mutableStateOf(true) }
+    var includeSymbols by remember { mutableStateOf(true) }
+    var excludeSimilar by remember { mutableStateOf(true) }
+    var generatedPassword by remember { mutableStateOf("") }
+    
+    // Generate initial password
+    LaunchedEffect(Unit) {
+        try {
+            generatedPassword = passwordGenerator.generatePassword(
+                PasswordGenerator.PasswordOptions(
+                    length = length,
+                    includeUppercase = includeUppercase,
+                    includeLowercase = includeLowercase,
+                    includeNumbers = includeNumbers,
+                    includeSymbols = includeSymbols,
+                    excludeSimilar = excludeSimilar
+                )
+            )
+        } catch (e: Exception) {
+            // Handle error
+        }
+    }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.password_generator)) },
+        text = {
+            Column {
+                // Generated Password Display
+                OutlinedTextField(
+                    value = generatedPassword,
+                    onValueChange = { },
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                try {
+                                    generatedPassword = passwordGenerator.generatePassword(
+                                        PasswordGenerator.PasswordOptions(
+                                            length = length,
+                                            includeUppercase = includeUppercase,
+                                            includeLowercase = includeLowercase,
+                                            includeNumbers = includeNumbers,
+                                            includeSymbols = includeSymbols,
+                                            excludeSimilar = excludeSimilar
+                                        )
+                                    )
+                                } catch (e: Exception) {
+                                    // Handle error
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
+                        }
+                    }
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Length Slider
+                Text(stringResource(R.string.length_value, length))
+                Slider(
+                    value = length.toFloat(),
+                    onValueChange = { 
+                        length = it.toInt()
+                        try {
+                            generatedPassword = passwordGenerator.generatePassword(
+                                PasswordGenerator.PasswordOptions(
+                                    length = length,
+                                    includeUppercase = includeUppercase,
+                                    includeLowercase = includeLowercase,
+                                    includeNumbers = includeNumbers,
+                                    includeSymbols = includeSymbols,
+                                    excludeSimilar = excludeSimilar
+                                )
+                            )
+                        } catch (e: Exception) {
+                            // Handle error
+                        }
+                    },
+                    valueRange = 8f..32f,
+                    steps = 24
+                )
+                
+                // Options Checkboxes
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.uppercase_az))
+                    Checkbox(
+                        checked = includeUppercase,
+                        onCheckedChange = { 
+                            includeUppercase = it
+                            try {
+                                generatedPassword = passwordGenerator.generatePassword(
+                                    PasswordGenerator.PasswordOptions(
+                                        length = length,
+                                        includeUppercase = includeUppercase,
+                                        includeLowercase = includeLowercase,
+                                        includeNumbers = includeNumbers,
+                                        includeSymbols = includeSymbols,
+                                        excludeSimilar = excludeSimilar
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                // Handle error
+                            }
+                        }
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.lowercase_az))
+                    Checkbox(
+                        checked = includeLowercase,
+                        onCheckedChange = { 
+                            includeLowercase = it
+                            try {
+                                generatedPassword = passwordGenerator.generatePassword(
+                                    PasswordGenerator.PasswordOptions(
+                                        length = length,
+                                        includeUppercase = includeUppercase,
+                                        includeLowercase = includeLowercase,
+                                        includeNumbers = includeNumbers,
+                                        includeSymbols = includeSymbols,
+                                        excludeSimilar = excludeSimilar
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                // Handle error
+                            }
+                        }
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.numbers_09))
+                    Checkbox(
+                        checked = includeNumbers,
+                        onCheckedChange = { 
+                            includeNumbers = it
+                            try {
+                                generatedPassword = passwordGenerator.generatePassword(
+                                    PasswordGenerator.PasswordOptions(
+                                        length = length,
+                                        includeUppercase = includeUppercase,
+                                        includeLowercase = includeLowercase,
+                                        includeNumbers = includeNumbers,
+                                        includeSymbols = includeSymbols,
+                                        excludeSimilar = excludeSimilar
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                // Handle error
+                            }
+                        }
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.symbols))
+                    Checkbox(
+                        checked = includeSymbols,
+                        onCheckedChange = { 
+                            includeSymbols = it
+                            try {
+                                generatedPassword = passwordGenerator.generatePassword(
+                                    PasswordGenerator.PasswordOptions(
+                                        length = length,
+                                        includeUppercase = includeUppercase,
+                                        includeLowercase = includeLowercase,
+                                        includeNumbers = includeNumbers,
+                                        includeSymbols = includeSymbols,
+                                        excludeSimilar = excludeSimilar
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                // Handle error
+                            }
+                        }
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.exclude_similar))
+                    Checkbox(
+                        checked = excludeSimilar,
+                        onCheckedChange = { 
+                            excludeSimilar = it
+                            try {
+                                generatedPassword = passwordGenerator.generatePassword(
+                                    PasswordGenerator.PasswordOptions(
+                                        length = length,
+                                        includeUppercase = includeUppercase,
+                                        includeLowercase = includeLowercase,
+                                        includeNumbers = includeNumbers,
+                                        includeSymbols = includeSymbols,
+                                        excludeSimilar = excludeSimilar
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                // Handle error
+                            }
+                        }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onPasswordGenerated(generatedPassword) }
+            ) {
+                Text(stringResource(R.string.use_password))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}

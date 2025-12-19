@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="autofill_auth_dialog_padding">24dp</dimen>
+    <dimen name="autofill_auth_field_spacing">12dp</dimen>
+    <dimen name="autofill_auth_box_corner_radius">20dp</dimen>
+    <dimen name="autofill_auth_box_stroke_width">1.5dp</dimen>
+</resources>
