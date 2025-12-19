@@ -1,0 +1,31 @@
+
+# Binaries and Build results
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+*.cache
+*intermediate*
+
+# User specific
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# OS specific
+Thumbs.db
+.DS_Store
+
+# Installer output (optional, but usually don't commit 60MB binary)
+Monica for Windows/Monica.Windows/installer/
+
+# Dependencies
+node_modules/
+packages/
+
+# Temporary
+*.log
+*.tmp

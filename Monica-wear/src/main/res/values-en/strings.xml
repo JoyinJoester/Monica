@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Monica Wear</string>
+    
+    <!-- Common -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_back">Back</string>
+    <string name="common_save">Save</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_confirm">Confirm</string>
+    <string name="common_edit">Edit</string>
+    <string name="common_add">Add</string>
+    
+    <!-- TOTP -->
+    <string name="totp_empty_title">No Authenticators</string>
+    <string name="totp_empty_subtitle">Please sync data in settings</string>
+    <string name="totp_click_to_copy">Tap to copy</string>
+    <string name="totp_code_copied">Code copied</string>
+    <string name="totp_seconds_refresh">seconds until refresh</string>
+    <string name="totp_add_title">Add Authenticator</string>
+    <string name="totp_edit_title">Edit Authenticator</string>
+    <string name="totp_delete_success">Deleted successfully</string>
+    <string name="totp_delete_failed">Delete failed</string>
+    <string name="totp_update_success">Updated successfully</string>
+    <string name="totp_update_failed">Update failed</string>
+    <string name="totp_add_failed">Add failed</string>
+    
+    <!-- Search -->
+    <string name="search_title">Search Authenticators</string>
+    <string name="search_hint">Search by name...</string>
+    <string name="search_no_results">No matches found</string>
+    <string name="search_add_button">Add Authenticator</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_sync">Cloud Sync</string>
+    <string name="settings_section_authenticator">Authenticator Management</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_security">Security</string>
+    <string name="settings_section_data">Data Management</string>
+    
+    <string name="settings_webdav_config">WebDAV Configuration</string>
+    <string name="settings_webdav_configured">Configured</string>
+    <string name="settings_webdav_not_configured">Not Configured</string>
+    
+    <string name="settings_add_totp">Add Authenticator</string>
+    <string name="settings_add_totp_subtitle">Manually add new authenticator</string>
+    
+    <string name="settings_color_scheme">Color Scheme</string>
+    <string name="settings_oled_black">OLED Pure Black</string>
+    <string name="settings_oled_black_enabled">Enabled - Power Saving</string>
+    <string name="settings_oled_black_disabled">Disabled - Dark Gray</string>
+    
+    <string name="settings_language">Language</string>
+    <string name="settings_language_subtitle">Select app display language</string>
+    
+    <string name="settings_reset_pin">Reset PIN</string>
+    <string name="settings_reset_pin_subtitle">Change 6-digit password</string>
+    
+    <string name="settings_clear_data">Clear All Data</string>
+    <string name="settings_clear_data_subtitle">Delete all local authenticators</string>
+    
+    <string name="settings_about_app">Monica Wear</string>
+    <string name="settings_version">Version 1.0.15</string>
+    <string name="settings_about_description">Lightweight version based on Monica\nTOTP authenticator optimized for small screens</string>
+    
+    <!-- Sync -->
+    <string name="sync_status_idle">Cloud Sync</string>
+    <string name="sync_status_idle_not_configured">Sync Not Configured</string>
+    <string name="sync_status_syncing">Syncing...</string>
+    <string name="sync_status_success">Sync Successful</string>
+    <string name="sync_status_failed">Sync Failed</string>
+    <string name="sync_last_time">Last sync: %s</string>
+    <string name="sync_tap_to_sync">Tap to sync now</string>
+    <string name="sync_configure_first">Please configure WebDAV first</string>
+    <string name="sync_error_not_configured">WebDAV not configured</string>
+    <string name="sync_error_network">Sync failed, please check network connection</string>
+    <string name="sync_error_with_message">Sync error: %s</string>
+    
+    <!-- WebDAV -->
+    <string name="webdav_config_title">WebDAV Configuration</string>
+    <string name="webdav_server_url">Server URL</string>
+    <string name="webdav_server_url_hint">https://example.com/webdav</string>
+    <string name="webdav_username">Username</string>
+    <string name="webdav_password">Password</string>
+    <string name="webdav_config_failed">Configuration failed</string>
+    <string name="webdav_test_failed">Connection test failed, please check server address and credentials</string>
+    <string name="webdav_empty_title">WebDAV Not Configured</string>
+    <string name="webdav_empty_subtitle">Please configure WebDAV to sync data</string>
+    <string name="webdav_empty_button">Configure</string>
+    
+    <!-- Dialogs -->
+    <string name="dialog_clear_data_title">Confirm Clear Data</string>
+    <string name="dialog_clear_data_message">Are you sure you want to delete all local authenticators? This action cannot be undone.</string>
+    
+    <string name="dialog_color_scheme_title">Select Color Scheme</string>
+    
+    <string name="dialog_language_title">Select Language</string>
+    <string name="language_system_default">Follow System</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_japanese">日本語</string>
+    
+    <string name="dialog_totp_secret">Secret Key</string>
+    <string name="dialog_totp_secret_hint">Base32 encoded secret</string>
+    <string name="dialog_totp_secret_error">Secret key cannot be empty</string>
+    <string name="dialog_totp_issuer">Issuer</string>
+    <string name="dialog_totp_issuer_hint">e.g., Google, GitHub</string>
+    <string name="dialog_totp_account">Account Name</string>
+    <string name="dialog_totp_account_hint">e.g., user@example.com</string>
+    
+    <string name="dialog_menu_edit">Edit</string>
+    <string name="dialog_menu_delete">Delete</string>
+    <string name="dialog_menu_more">More Options</string>
+    
+    <!-- Color Schemes -->
+    <string name="color_scheme_ocean_blue">Ocean Blue</string>
+    <string name="color_scheme_ocean_blue_desc">Fresh blue tones</string>
+    <string name="color_scheme_sunset_orange">Sunset Orange</string>
+    <string name="color_scheme_sunset_orange_desc">Warm orange tones</string>
+    <string name="color_scheme_forest_green">Forest Green</string>
+    <string name="color_scheme_forest_green_desc">Natural green tones</string>
+    <string name="color_scheme_tech_purple">Tech Purple</string>
+    <string name="color_scheme_tech_purple_desc">Futuristic purple tones</string>
+    <string name="color_scheme_black_mamba">Black Mamba</string>
+    <string name="color_scheme_black_mamba_desc">Lakers purple and gold</string>
+    <string name="color_scheme_grey_style">Grey Style</string>
+    <string name="color_scheme_grey_style_desc">Premium grey tones</string>
+    
+    <!-- Errors -->
+    <string name="error_generic">An error occurred</string>
+    <string name="error_network">Network error</string>
+    <string name="error_auth">Authentication failed</string>
+    <string name="error_with_message">Error: %s</string>
+</resources>

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Monica Wear</string>
+    
+    <!-- 共通 -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">キャンセル</string>
+    <string name="common_back">戻る</string>
+    <string name="common_save">保存</string>
+    <string name="common_delete">削除</string>
+    <string name="common_confirm">確認</string>
+    <string name="common_edit">編集</string>
+    <string name="common_add">追加</string>
+    
+    <!-- TOTP -->
+    <string name="totp_empty_title">認証アプリがありません</string>
+    <string name="totp_empty_subtitle">設定で同期してください</string>
+    <string name="totp_click_to_copy">タップしてコピー</string>
+    <string name="totp_code_copied">コードをコピーしました</string>
+    <string name="totp_seconds_refresh">秒後に更新</string>
+    <string name="totp_add_title">認証アプリを追加</string>
+    <string name="totp_edit_title">認証アプリを編集</string>
+    <string name="totp_delete_success">削除しました</string>
+    <string name="totp_delete_failed">削除に失敗しました</string>
+    <string name="totp_update_success">更新しました</string>
+    <string name="totp_update_failed">更新に失敗しました</string>
+    <string name="totp_add_failed">追加に失敗しました</string>
+    
+    <!-- 検索 -->
+    <string name="search_title">認証アプリを検索</string>
+    <string name="search_hint">名前で検索...</string>
+    <string name="search_no_results">一致する項目が見つかりません</string>
+    <string name="search_add_button">認証アプリを追加</string>
+    
+    <!-- 設定 -->
+    <string name="settings_title">設定</string>
+    <string name="settings_section_sync">クラウド同期</string>
+    <string name="settings_section_authenticator">認証アプリ管理</string>
+    <string name="settings_section_appearance">外観</string>
+    <string name="settings_section_security">セキュリティ</string>
+    <string name="settings_section_data">データ管理</string>
+    
+    <string name="settings_webdav_config">WebDAV設定</string>
+    <string name="settings_webdav_configured">設定済み</string>
+    <string name="settings_webdav_not_configured">未設定</string>
+    
+    <string name="settings_add_totp">認証アプリを追加</string>
+    <string name="settings_add_totp_subtitle">手動で新しい認証アプリを追加</string>
+    
+    <string name="settings_color_scheme">配色</string>
+    <string name="settings_oled_black">OLED純黒</string>
+    <string name="settings_oled_black_enabled">有効 - 省電力モード</string>
+    <string name="settings_oled_black_disabled">無効 - ダークグレー</string>
+    
+    <string name="settings_language">言語</string>
+    <string name="settings_language_subtitle">アプリの表示言語を選択</string>
+    
+    <string name="settings_reset_pin">PINコードを再設定</string>
+    <string name="settings_reset_pin_subtitle">6桁のパスワードを変更</string>
+    
+    <string name="settings_clear_data">すべてのデータを消去</string>
+    <string name="settings_clear_data_subtitle">ローカルのすべての認証アプリを削除</string>
+    
+    <string name="settings_about_app">Monica Wear</string>
+    <string name="settings_version">バージョン 1.0.15</string>
+    <string name="settings_about_description">Monicaベースの軽量版\n小型画面に最適化されたTOTP認証アプリ</string>
+    
+    <!-- 同期 -->
+    <string name="sync_status_idle">クラウド同期</string>
+    <string name="sync_status_idle_not_configured">同期が未設定</string>
+    <string name="sync_status_syncing">同期中...</string>
+    <string name="sync_status_success">同期成功</string>
+    <string name="sync_status_failed">同期失敗</string>
+    <string name="sync_last_time">最終同期: %s</string>
+    <string name="sync_tap_to_sync">タップして今すぐ同期</string>
+    <string name="sync_configure_first">まずWebDAVを設定してください</string>
+    <string name="sync_error_not_configured">WebDAVが未設定です</string>
+    <string name="sync_error_network">同期に失敗しました。ネットワーク接続を確認してください</string>
+    <string name="sync_error_with_message">同期エラー: %s</string>
+    
+    <!-- WebDAV -->
+    <string name="webdav_config_title">WebDAV設定</string>
+    <string name="webdav_server_url">サーバーURL</string>
+    <string name="webdav_server_url_hint">https://example.com/webdav</string>
+    <string name="webdav_username">ユーザー名</string>
+    <string name="webdav_password">パスワード</string>
+    <string name="webdav_config_failed">設定に失敗しました</string>
+    <string name="webdav_test_failed">接続テストに失敗しました。サーバーアドレスと認証情報を確認してください</string>
+    <string name="webdav_empty_title">WebDAV未設定</string>
+    <string name="webdav_empty_subtitle">データを同期するにはWebDAVを設定してください</string>
+    <string name="webdav_empty_button">設定する</string>
+    
+    <!-- ダイアログ -->
+    <string name="dialog_clear_data_title">データ消去の確認</string>
+    <string name="dialog_clear_data_message">すべてのローカル認証アプリを削除してもよろしいですか？この操作は元に戻せません。</string>
+    
+    <string name="dialog_color_scheme_title">配色を選択</string>
+    
+    <string name="dialog_language_title">言語を選択</string>
+    <string name="language_system_default">システムに従う</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_japanese">日本語</string>
+    
+    <string name="dialog_totp_secret">シークレットキー</string>
+    <string name="dialog_totp_secret_hint">Base32エンコードされたシークレット</string>
+    <string name="dialog_totp_secret_error">シークレットキーは空にできません</string>
+    <string name="dialog_totp_issuer">発行者</string>
+    <string name="dialog_totp_issuer_hint">例：Google、GitHub</string>
+    <string name="dialog_totp_account">アカウント名</string>
+    <string name="dialog_totp_account_hint">例：user@example.com</string>
+    
+    <string name="dialog_menu_edit">編集</string>
+    <string name="dialog_menu_delete">削除</string>
+    <string name="dialog_menu_more">その他のオプション</string>
+    
+    <!-- 配色 -->
+    <string name="color_scheme_ocean_blue">オーシャンブルー</string>
+    <string name="color_scheme_ocean_blue_desc">爽やかなブルートーン</string>
+    <string name="color_scheme_sunset_orange">サンセットオレンジ</string>
+    <string name="color_scheme_sunset_orange_desc">温かみのあるオレンジトーン</string>
+    <string name="color_scheme_forest_green">フォレストグリーン</string>
+    <string name="color_scheme_forest_green_desc">自然なグリーントーン</string>
+    <string name="color_scheme_tech_purple">テックパープル</string>
+    <string name="color_scheme_tech_purple_desc">未来的なパープルトーン</string>
+    <string name="color_scheme_black_mamba">ブラックマンバ</string>
+    <string name="color_scheme_black_mamba_desc">レイカーズパープル＆ゴールド</string>
+    <string name="color_scheme_grey_style">グレースタイル</string>
+    <string name="color_scheme_grey_style_desc">プレミアムグレートーン</string>
+    
+    <!-- エラー -->
+    <string name="error_generic">エラーが発生しました</string>
+    <string name="error_network">ネットワークエラー</string>
+    <string name="error_auth">認証に失敗しました</string>
+    <string name="error_with_message">エラー: %s</string>
+</resources>
