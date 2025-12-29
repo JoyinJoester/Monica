@@ -39,6 +39,9 @@ enum class AutofillFieldType {
     CREDIT_CARD_EXPIRATION,     // 过期日期
     CREDIT_CARD_SECURITY_CODE,  // CVV
     
+    // 应被忽略的字段
+    SEARCH,             // 搜索框（不应触发自动填充）
+    
     // 其他
     UNKNOWN             // 未知类型
 }
@@ -245,6 +248,12 @@ object SmartFieldDetector {
         }
         
         // 3. 使用关键词匹配
+        // 搜索框检测 - 必须在凭据字段检测之前，避免误判搜索栏为用户名/密码输入框
+        if (matchesKeywords(combined, SEARCH_KEYWORDS)) {
+            android.util.Log.d("SmartFieldDetector", "🔍 Detected search field, skipping autofill")
+            return AutofillFieldType.SEARCH
+        }
+        
         // Email 检测
         if (matchesKeywords(combined, EMAIL_KEYWORDS)) {
             return AutofillFieldType.EMAIL
@@ -474,6 +483,67 @@ object SmartFieldDetector {
     }
     
     // ==================== 关键词定义 ====================
+    
+    // 非凭据字段关键词（多语言支持）
+    // 这些字段不应触发密码自动填充
+    private val SEARCH_KEYWORDS = listOf(
+        // ========== 搜索相关 ==========
+        // 英文
+        "search", "query", "find", "lookup", "magnifier", "explore",
+        "filter", "keyword", "q", "searchbox", "search_box", "search-box",
+        "searchfield", "search_field", "search-field", "searchinput",
+        "search_input", "search-input", "searchbar", "search_bar", "search-bar",
+        // 中文
+        "搜索", "查找", "检索", "探索", "筛选", "搜一搜", "搜尋", "查詢", "檢索",
+        // 日语
+        "検索", "探す",
+        // 韩语  
+        "검색", "찾기",
+        // 俄语
+        "поиск", "искать",
+        // 西班牙语
+        "buscar", "búsqueda",
+        // 葡萄牙语
+        "pesquisar", "busca",
+        
+        // ========== 评论相关 ==========
+        "comment", "comments", "reply", "replies", "review", "feedback",
+        "评论", "留言", "回复", "回覆", "评价", "意见",
+        "コメント", "댓글", "отзыв", "comentario", "comentário",
+        
+        // ========== 聊天/消息相关 ==========
+        "chat", "message", "msg", "messenger", "im", "send",
+        "聊天", "消息", "私信", "发送", "訊息", "私訊",
+        "チャット", "メッセージ", "채팅", "메시지", "чат", "сообщение",
+        
+        // ========== 发帖/发推相关 ==========
+        "post", "tweet", "status", "compose", "write", "publish", "share",
+        "whats_happening", "what_happening", "whatshappening",
+        "发帖", "发推", "发文", "发布", "分享", "动态", "發文", "發佈",
+        "投稿", "ツイート", "게시", "публикация",
+        
+        // ========== 备注/说明相关 ==========
+        "note", "notes", "memo", "remark", "description", "desc", "bio",
+        "about", "intro", "introduction", "summary",
+        "备注", "说明", "简介", "描述", "個人簡介", "自我介绍",
+        "メモ", "備考", "説明", "메모", "설명", "заметка", "описание",
+        
+        // ========== 输入提示相关 ==========
+        "placeholder", "hint", "tip", "prompt",
+        "type_something", "type_here", "enter_text",
+        "what_on_your_mind", "whats_on_your_mind",
+        "说点什么", "写点什么", "请输入", "有什么想法",
+        
+        // ========== 标题/内容相关 ==========
+        "title", "content", "body", "text", "article",
+        "标题", "内容", "正文", "文章",
+        
+        // ========== 其他非凭据字段 ==========
+        "caption", "tag", "tags", "hashtag", "label",
+        "location", "place", "venue",
+        "emoji", "sticker", "gif",
+        "标签", "位置", "地点"
+    )
     
     private val EMAIL_KEYWORDS = listOf(
         "email", "e-mail", "mail", "邮箱", "邮件", "电子邮件"

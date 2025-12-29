@@ -1,0 +1,38 @@
+{
+    "manifest_version": 3,
+    "name": "Monica",
+    "version": "1.0.0",
+    "description": "Monica Password Manager Browser Extension",
+    "icons": {
+        "128": "icons/icon.png"
+    },
+    "action": {
+        "default_popup": "index.html",
+        "default_icon": "icons/icon.png"
+    },
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "permissions": [
+        "storage",
+        "unlimitedStorage",
+        "scripting",
+        "tabs",
+        "activeTab"
+    ],
+    "host_permissions": [
+        "*://*/*"
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "icons/icon.png",
+                "content.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
+}

@@ -221,6 +221,10 @@ class EnhancedAutofillFieldParser(private val structure: AssistStructure) {
                     collection.setFieldValue(autofillId, value, fieldType)
                 }
             }
+            AutofillFieldType.SEARCH -> {
+                // 搜索字段/非凭据字段不需要处理，直接忽略
+                android.util.Log.v(TAG, "Ignoring non-credential field (search/comment/chat/etc)")
+            }
             AutofillFieldType.UNKNOWN -> {
                 // 对于未知类型,仍然记录以便调试
                 android.util.Log.v(TAG, "Unknown field type encountered")

@@ -1,0 +1,73 @@
+{
+    "app": {
+        "title": "Monica",
+        "searchPlaceholder": "Search..."
+    },
+    "nav": {
+        "passwords": "Passwords",
+        "notes": "Notes",
+        "documents": "Documents",
+        "authenticator": "2FA",
+        "settings": "Settings"
+    },
+    "common": {
+        "add": "Add",
+        "edit": "Edit",
+        "delete": "Delete",
+        "copy": "Copy",
+        "save": "Save",
+        "cancel": "Cancel",
+        "copied": "Copied to clipboard",
+        "confirmDelete": "Are you sure you want to delete this item?",
+        "noItems": "No items found"
+    },
+    "passwords": {
+        "title": "Passwords",
+        "username": "Username",
+        "password": "Password",
+        "website": "Website",
+        "category": "Category",
+        "categories": {
+            "social": "Social",
+            "work": "Work",
+            "finance": "Finance",
+            "entertainment": "Entertainment",
+            "other": "Other"
+        }
+    },
+    "notes": {
+        "title": "Secure Notes",
+        "content": "Content"
+    },
+    "documents": {
+        "title": "Documents",
+        "type": "Type",
+        "number": "Number",
+        "fullName": "Full Name",
+        "types": {
+            "id_card": "ID Card",
+            "passport": "Passport",
+            "driver_license": "Driver License",
+            "other": "Other"
+        }
+    },
+    "authenticator": {
+        "title": "Authenticator",
+        "secret": "Secret Key",
+        "issuer": "Issuer",
+        "account": "Account Name",
+        "period": "Period (s)",
+        "digits": "Digits"
+    },
+    "settings": {
+        "title": "Settings",
+        "appearance": "Appearance",
+        "language": "Language",
+        "about": "About",
+        "version": "Version",
+        "themes": {
+            "light": "Light",
+            "dark": "Dark"
+        }
+    }
+}

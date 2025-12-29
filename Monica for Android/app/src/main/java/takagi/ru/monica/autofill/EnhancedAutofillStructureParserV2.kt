@@ -56,6 +56,7 @@ class EnhancedAutofillStructureParserV2 {
         NEW_PASSWORD,
         EMAIL_ADDRESS,
         PHONE_NUMBER,
+        SEARCH_FIELD,  // 搜索字段 - 不应触发自动填充
         CREDIT_CARD_NUMBER,
         CREDIT_CARD_EXPIRATION_DATE,
         CREDIT_CARD_SECURITY_CODE,
@@ -316,6 +317,51 @@ class EnhancedAutofillStructureParserV2 {
         "adres",        // 土耳其语
     )
     
+    /**
+     * 非凭据字段的翻译（用于过滤，避免在非登录输入框弹出自动填充）
+     * 包括：搜索框、评论框、聊天框、发帖框、备注框等
+     */
+    private val searchTranslations = listOf(
+        // ========== 搜索相关 ==========
+        "search", "query", "find", "lookup", "explore", "filter", "q",
+        "searchbox", "searchfield", "searchinput", "searchbar",
+        "搜索", "查找", "检索", "探索", "筛选",
+        "搜尋", "查詢", "檢索",
+        "検索", "探す",
+        "검색", "찾기",
+        "поиск", "искать",
+        "buscar", "búsqueda",
+        "pesquisar", "busca",
+        
+        // ========== 评论相关 ==========
+        "comment", "comments", "reply", "replies", "review", "feedback",
+        "评论", "留言", "回复", "回覆", "评价",
+        "コメント", "댓글", "отзыв",
+        
+        // ========== 聊天/消息相关 ==========
+        "chat", "message", "msg", "messenger", "send",
+        "聊天", "消息", "私信", "发送", "訊息", "私訊",
+        "チャット", "メッセージ", "채팅", "메시지", "чат",
+        
+        // ========== 发帖/发推相关 ==========
+        "post", "tweet", "status", "compose", "write", "publish", "share",
+        "发帖", "发推", "发文", "发布", "分享", "动态", "發文",
+        "投稿", "ツイート", "게시",
+        
+        // ========== 备注/说明相关 ==========
+        "note", "notes", "memo", "remark", "description", "bio", "about",
+        "备注", "说明", "简介", "描述", "自我介绍",
+        "メモ", "備考", "메모", "заметка",
+        
+        // ========== 标题/内容相关 ==========
+        "title", "content", "body", "text", "article",
+        "标题", "内容", "正文", "文章",
+        
+        // ========== 其他非凭据字段 ==========
+        "caption", "tag", "tags", "hashtag", "label", "location", "place",
+        "标签", "位置", "地点",
+    )
+    
     // ==================== 标签匹配器列表 ====================
     
     private val labelMatchers = buildList {
@@ -372,6 +418,11 @@ class EnhancedAutofillStructureParserV2 {
         // 地址匹配
         addressTranslations.forEach { translation ->
             add(LabelMatcher(FieldHint.POSTAL_ADDRESS, translation, Accuracy.MEDIUM, partialMatch = true))
+        }
+        
+        // 搜索字段匹配（用于过滤，设置为HIGHEST优先级确保优先检测）
+        searchTranslations.forEach { translation ->
+            add(LabelMatcher(FieldHint.SEARCH_FIELD, translation, Accuracy.HIGHEST, partialMatch = true))
         }
     }
     
@@ -481,6 +532,11 @@ class EnhancedAutofillStructureParserV2 {
         val autofillId = node.autofillId
         if (autofillId != null && node.autofillType != View.AUTOFILL_TYPE_NONE) {
             detectFieldType(node, currentWebViewNodeId)?.let { parsedItem ->
+                // 过滤搜索字段，不将其添加到可填充字段列表中
+                if (parsedItem.hint == FieldHint.SEARCH_FIELD) {
+                    android.util.Log.d("EnhancedParser", "🔍 Skipping search field: ${node.idEntry ?: node.hint ?: "unknown"}")
+                    return@let
+                }
                 items.add(parsedItem)
                 android.util.Log.d("EnhancedParser", "Found ${parsedItem.hint} field with accuracy ${parsedItem.accuracy}")
             }

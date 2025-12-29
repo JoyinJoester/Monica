@@ -1,0 +1,5 @@
+
+> monica-browser@0.0.0 build
+> tsc -b && vite build
+
+src/theme/theme.ts(1,10): error TS1484: 'DefaultTheme' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.

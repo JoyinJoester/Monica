@@ -1,0 +1,73 @@
+{
+    "app": {
+        "title": "Monica",
+        "searchPlaceholder": "搜索..."
+    },
+    "nav": {
+        "passwords": "密码",
+        "notes": "笔记",
+        "documents": "证件",
+        "authenticator": "两步验证",
+        "settings": "设置"
+    },
+    "common": {
+        "add": "添加",
+        "edit": "编辑",
+        "delete": "删除",
+        "copy": "复制",
+        "save": "保存",
+        "cancel": "取消",
+        "copied": "已复制到剪贴板",
+        "confirmDelete": "确定要删除此项吗？",
+        "noItems": "暂无数据"
+    },
+    "passwords": {
+        "title": "密码本",
+        "username": "用户名",
+        "password": "密码",
+        "website": "网址",
+        "category": "分类",
+        "categories": {
+            "social": "社交",
+            "work": "工作",
+            "finance": "金融",
+            "entertainment": "娱乐",
+            "other": "其他"
+        }
+    },
+    "notes": {
+        "title": "安全笔记",
+        "content": "内容"
+    },
+    "documents": {
+        "title": "证件详情",
+        "type": "类型",
+        "number": "证件号码",
+        "fullName": "姓名",
+        "types": {
+            "id_card": "身份证",
+            "passport": "护照",
+            "driver_license": "驾驶证",
+            "other": "其他"
+        }
+    },
+    "authenticator": {
+        "title": "身份验证器",
+        "secret": "密钥",
+        "issuer": "发行方",
+        "account": "账户名",
+        "period": "周期 (秒)",
+        "digits": "位数"
+    },
+    "settings": {
+        "title": "设置",
+        "appearance": "外观",
+        "language": "语言",
+        "about": "关于",
+        "version": "版本",
+        "themes": {
+            "light": "浅色模式",
+            "dark": "深色模式"
+        }
+    }
+}
