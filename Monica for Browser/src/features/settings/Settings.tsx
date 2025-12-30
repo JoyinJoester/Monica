@@ -5,8 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardTitle } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Sun, Moon, Globe, Cloud, ChevronRight, Trash2, AlertTriangle } from 'lucide-react';
+import { Sun, Moon, Globe, Cloud, ChevronRight, Trash2, AlertTriangle, Lock, Key, Shield } from 'lucide-react';
 import { clearAllData } from '../../utils/storage';
+import { useMasterPassword } from '../../contexts/MasterPasswordContext';
+import { validateEncryptionPassword } from '../../utils/webdav/EncryptionHelper';
 
 const Container = styled.div`
   padding: 16px;
@@ -183,6 +185,34 @@ const ModalButtons = styled.div`
   gap: 12px;
 `;
 
+const Input = styled.input`
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid ${({ theme }) => theme.colors.outline};
+  border-radius: 10px;
+  background: ${({ theme }) => theme.colors.surfaceVariant};
+  color: ${({ theme }) => theme.colors.onSurface};
+  font-size: 14px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+  
+  &:focus {
+    outline: none;
+    border-color: ${({ theme }) => theme.colors.primary};
+  }
+`;
+
+const ErrorText = styled.div`
+  color: ${({ theme }) => theme.colors.error};
+  font-size: 13px;
+  margin-bottom: 12px;
+`;
+
+const SuccessIcon = styled(ModalIcon)`
+  background: #4CAF5020;
+  color: #4CAF50;
+`;
+
 export const Settings = () => {
   const { themeMode, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation();
@@ -190,6 +220,25 @@ export const Settings = () => {
   const isZh = i18n.language.startsWith('zh');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+
+  // Password change state
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showPasswordSuccess, setShowPasswordSuccess] = useState(false);
+
+  // Security question state
+  const [showSecurityQuestion, setShowSecurityQuestion] = useState(false);
+  const [securityQ, setSecurityQ] = useState('');
+  const [securityA, setSecurityA] = useState('');
+  const [securityError, setSecurityError] = useState('');
+  const [isSavingQuestion, setIsSavingQuestion] = useState(false);
+  const [showQuestionSuccess, setShowQuestionSuccess] = useState(false);
+
+  const { changeMasterPassword, setSecurityQuestion, hasSecurityQuestion, securityQuestion, autoLockDuration, setAutoLockDuration } = useMasterPassword();
 
   const currentLang = i18n.language?.startsWith('zh') ? 'zh' : 'en';
 
@@ -214,6 +263,66 @@ export const Settings = () => {
     }
   };
 
+  const handleChangePassword = async () => {
+    setPasswordError('');
+
+    const validation = validateEncryptionPassword(newPassword);
+    if (!validation.valid) {
+      setPasswordError(validation.message);
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError(isZh ? '两次输入的密码不一致' : 'Passwords do not match');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const success = await changeMasterPassword(oldPassword, newPassword);
+      if (success) {
+        setShowChangePassword(false);
+        setShowPasswordSuccess(true);
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setTimeout(() => setShowPasswordSuccess(false), 2000);
+      } else {
+        setPasswordError(isZh ? '原密码错误' : 'Current password is incorrect');
+      }
+    } catch {
+      setPasswordError(isZh ? '修改失败' : 'Failed to change password');
+    }
+    setIsChangingPassword(false);
+  };
+
+  const handleSetSecurityQuestion = async () => {
+    setSecurityError('');
+
+    if (!securityQ.trim()) {
+      setSecurityError(isZh ? '请输入密保问题' : 'Please enter a security question');
+      return;
+    }
+
+    if (!securityA.trim()) {
+      setSecurityError(isZh ? '请输入答案' : 'Please enter an answer');
+      return;
+    }
+
+    setIsSavingQuestion(true);
+    try {
+      await setSecurityQuestion(securityQ.trim(), securityA.trim());
+      setShowSecurityQuestion(false);
+      setShowQuestionSuccess(true);
+      setSecurityQ('');
+      setSecurityA('');
+      setTimeout(() => setShowQuestionSuccess(false), 2000);
+    } catch {
+      setSecurityError(isZh ? '保存失败' : 'Failed to save');
+    }
+    setIsSavingQuestion(false);
+  };
+
   return (
     <Container>
       {/* WebDAV Backup Section */}
@@ -232,6 +341,69 @@ export const Settings = () => {
           <ChevronRight size={20} style={{ opacity: 0.5 }} />
         </BackupCardContent>
       </ClickableCard>
+
+      {/* Security Settings Section */}
+      <div style={{ marginTop: 24 }}>
+        <SectionTitle>{isZh ? '安全设置' : 'Security'}</SectionTitle>
+        <ClickableCard onClick={() => setShowChangePassword(true)}>
+          <BackupCardContent>
+            <BackupIcon style={{ background: 'linear-gradient(135deg, #9C27B0, #673AB7)' }}>
+              <Key size={22} />
+            </BackupIcon>
+            <BackupInfo>
+              <BackupTitle>{isZh ? '修改主密码' : 'Change Master Password'}</BackupTitle>
+              <BackupSubtitle>
+                {isZh ? '定期更换密码以提高安全性' : 'Change your password regularly'}
+              </BackupSubtitle>
+            </BackupInfo>
+            <ChevronRight size={20} style={{ opacity: 0.5 }} />
+          </BackupCardContent>
+        </ClickableCard>
+
+        <div style={{ marginTop: 12 }}>
+          <ClickableCard onClick={() => {
+            setSecurityQ(securityQuestion || '');
+            setShowSecurityQuestion(true);
+          }}>
+            <BackupCardContent>
+              <BackupIcon style={{ background: 'linear-gradient(135deg, #FF9800, #F57C00)' }}>
+                <Shield size={22} />
+              </BackupIcon>
+              <BackupInfo>
+                <BackupTitle>{isZh ? '密保问题' : 'Security Question'}</BackupTitle>
+                <BackupSubtitle>
+                  {hasSecurityQuestion
+                    ? (isZh ? '已设置，可用于找回密码' : 'Set up, can be used to recover password')
+                    : (isZh ? '设置后可找回忘记的密码' : 'Set up to recover forgotten password')}
+                </BackupSubtitle>
+              </BackupInfo>
+              <ChevronRight size={20} style={{ opacity: 0.5 }} />
+            </BackupCardContent>
+          </ClickableCard>
+        </div>
+
+        {/* Auto Lock Duration */}
+        <div style={{ marginTop: 12 }}>
+          <Card>
+            <SettingRow>
+              <SettingLabel>
+                <Lock />
+                {isZh ? '自动锁定' : 'Auto Lock'}
+              </SettingLabel>
+              <Select
+                value={autoLockDuration}
+                onChange={(e) => setAutoLockDuration(Number(e.target.value) as typeof autoLockDuration)}
+              >
+                <option value={1}>{isZh ? '1 分钟' : '1 min'}</option>
+                <option value={5}>{isZh ? '5 分钟' : '5 min'}</option>
+                <option value={10}>{isZh ? '10 分钟' : '10 min'}</option>
+                <option value={30}>{isZh ? '30 分钟' : '30 min'}</option>
+                <option value={1440}>{isZh ? '1 天' : '1 day'}</option>
+              </Select>
+            </SettingRow>
+          </Card>
+        </div>
+      </div>
 
       <div style={{ marginTop: 24 }}>
         <SectionTitle>{t('settings.appearance')}</SectionTitle>
@@ -289,7 +461,7 @@ export const Settings = () => {
         </Card>
       </div>
 
-      {/* Confirmation Modal */}
+      {/* Clear Data Confirmation Modal */}
       {showClearConfirm && (
         <Modal onClick={() => setShowClearConfirm(false)}>
           <ModalContent onClick={(e) => e.stopPropagation()}>
@@ -321,6 +493,137 @@ export const Settings = () => {
           </ModalContent>
         </Modal>
       )}
+
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <Modal onClick={() => setShowChangePassword(false)}>
+          <ModalContent onClick={(e) => e.stopPropagation()}>
+            <ModalIcon style={{ background: '#9C27B020', color: '#9C27B0' }}>
+              <Key size={28} />
+            </ModalIcon>
+            <ModalTitle>{isZh ? '修改主密码' : 'Change Master Password'}</ModalTitle>
+            <div style={{ textAlign: 'left', marginTop: 16 }}>
+              <Input
+                type="password"
+                placeholder={isZh ? '当前密码' : 'Current password'}
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+              />
+              <Input
+                type="password"
+                placeholder={isZh ? '新密码 (至少6位)' : 'New password (min 6 chars)'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <Input
+                type="password"
+                placeholder={isZh ? '确认新密码' : 'Confirm new password'}
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+              />
+              {passwordError && <ErrorText>{passwordError}</ErrorText>}
+            </div>
+            <ModalButtons>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowChangePassword(false);
+                  setOldPassword('');
+                  setNewPassword('');
+                  setConfirmNewPassword('');
+                  setPasswordError('');
+                }}
+                style={{ flex: 1 }}
+              >
+                {isZh ? '取消' : 'Cancel'}
+              </Button>
+              <Button
+                onClick={handleChangePassword}
+                disabled={isChangingPassword || !oldPassword || !newPassword}
+                style={{ flex: 1 }}
+              >
+                {isChangingPassword ? '...' : (isZh ? '确认' : 'Confirm')}
+              </Button>
+            </ModalButtons>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Security Question Modal */}
+      {showSecurityQuestion && (
+        <Modal onClick={() => setShowSecurityQuestion(false)}>
+          <ModalContent onClick={(e) => e.stopPropagation()}>
+            <ModalIcon style={{ background: '#FF980020', color: '#FF9800' }}>
+              <Shield size={28} />
+            </ModalIcon>
+            <ModalTitle>{isZh ? '设置密保问题' : 'Set Security Question'}</ModalTitle>
+            <div style={{ textAlign: 'left', marginTop: 16 }}>
+              <Input
+                type="text"
+                placeholder={isZh ? '密保问题 (如：我的出生城市)' : 'Security question (e.g., My birth city)'}
+                value={securityQ}
+                onChange={(e) => setSecurityQ(e.target.value)}
+              />
+              <Input
+                type="text"
+                placeholder={isZh ? '答案' : 'Answer'}
+                value={securityA}
+                onChange={(e) => setSecurityA(e.target.value)}
+              />
+              {securityError && <ErrorText>{securityError}</ErrorText>}
+              <div style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
+                {isZh ? '提示：答案不区分大小写' : 'Tip: Answer is case-insensitive'}
+              </div>
+            </div>
+            <ModalButtons style={{ marginTop: 16 }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowSecurityQuestion(false);
+                  setSecurityQ('');
+                  setSecurityA('');
+                  setSecurityError('');
+                }}
+                style={{ flex: 1 }}
+              >
+                {isZh ? '取消' : 'Cancel'}
+              </Button>
+              <Button
+                onClick={handleSetSecurityQuestion}
+                disabled={isSavingQuestion || !securityQ || !securityA}
+                style={{ flex: 1 }}
+              >
+                {isSavingQuestion ? '...' : (isZh ? '保存' : 'Save')}
+              </Button>
+            </ModalButtons>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Password Change Success */}
+      {showPasswordSuccess && (
+        <Modal>
+          <ModalContent>
+            <SuccessIcon>
+              <Lock size={28} />
+            </SuccessIcon>
+            <ModalTitle>{isZh ? '密码已修改' : 'Password Changed'}</ModalTitle>
+          </ModalContent>
+        </Modal>
+      )}
+
+      {/* Security Question Success */}
+      {showQuestionSuccess && (
+        <Modal>
+          <ModalContent>
+            <SuccessIcon>
+              <Shield size={28} />
+            </SuccessIcon>
+            <ModalTitle>{isZh ? '密保问题已保存' : 'Security Question Saved'}</ModalTitle>
+          </ModalContent>
+        </Modal>
+      )}
     </Container>
   );
 };
+

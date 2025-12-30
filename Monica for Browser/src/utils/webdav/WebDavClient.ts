@@ -3,6 +3,7 @@
  * Uses background script for network requests to bypass CORS
  */
 
+import { obfuscateString, deobfuscateString } from './EncryptionHelper';
 // ========== Types ==========
 export interface WebDavConfig {
     serverUrl: string;
@@ -139,12 +140,13 @@ class WebDavClientService {
     private async saveConfig(): Promise<void> {
         if (!this.config) return;
 
+        // Obfuscate sensitive credentials before storage
         const data = {
             [STORAGE_KEYS.SERVER_URL]: this.config.serverUrl,
-            [STORAGE_KEYS.USERNAME]: this.config.username,
-            [STORAGE_KEYS.PASSWORD]: this.config.password,
+            [STORAGE_KEYS.USERNAME]: obfuscateString(this.config.username),
+            [STORAGE_KEYS.PASSWORD]: obfuscateString(this.config.password),
             [STORAGE_KEYS.ENABLE_ENCRYPTION]: this.encryptionEnabled,
-            [STORAGE_KEYS.ENCRYPTION_PASSWORD]: this.encryptionPassword,
+            [STORAGE_KEYS.ENCRYPTION_PASSWORD]: obfuscateString(this.encryptionPassword),
         };
 
         if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -171,16 +173,17 @@ class WebDavClientService {
                 STORAGE_KEYS.ENCRYPTION_PASSWORD,
             ]) as Record<string, string | boolean | number>;
             url = (data[STORAGE_KEYS.SERVER_URL] as string) || '';
-            username = (data[STORAGE_KEYS.USERNAME] as string) || '';
-            password = (data[STORAGE_KEYS.PASSWORD] as string) || '';
+            // Deobfuscate sensitive credentials
+            username = deobfuscateString((data[STORAGE_KEYS.USERNAME] as string) || '');
+            password = deobfuscateString((data[STORAGE_KEYS.PASSWORD] as string) || '');
             this.encryptionEnabled = (data[STORAGE_KEYS.ENABLE_ENCRYPTION] as boolean) || false;
-            this.encryptionPassword = (data[STORAGE_KEYS.ENCRYPTION_PASSWORD] as string) || '';
+            this.encryptionPassword = deobfuscateString((data[STORAGE_KEYS.ENCRYPTION_PASSWORD] as string) || '');
         } else {
             url = localStorage.getItem(STORAGE_KEYS.SERVER_URL) || '';
-            username = localStorage.getItem(STORAGE_KEYS.USERNAME) || '';
-            password = localStorage.getItem(STORAGE_KEYS.PASSWORD) || '';
+            username = deobfuscateString(localStorage.getItem(STORAGE_KEYS.USERNAME) || '');
+            password = deobfuscateString(localStorage.getItem(STORAGE_KEYS.PASSWORD) || '');
             this.encryptionEnabled = localStorage.getItem(STORAGE_KEYS.ENABLE_ENCRYPTION) === 'true';
-            this.encryptionPassword = localStorage.getItem(STORAGE_KEYS.ENCRYPTION_PASSWORD) || '';
+            this.encryptionPassword = deobfuscateString(localStorage.getItem(STORAGE_KEYS.ENCRYPTION_PASSWORD) || '');
         }
 
         if (url && username && password) {

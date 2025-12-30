@@ -181,3 +181,37 @@ export function validateEncryptionPassword(password: string): { valid: boolean; 
     }
     return { valid: true, message: '' };
 }
+
+// ========== Simple Obfuscation for Settings ==========
+// Note: This is NOT cryptographic security, just basic obfuscation
+// to prevent casual viewing of credentials in storage
+const OBFUSCATION_KEY = 'M0n1c4_Br0ws3r_K3y';
+
+export function obfuscateString(value: string): string {
+    if (!value) return '';
+    const encoded = btoa(unescape(encodeURIComponent(value)));
+    // XOR with key for basic obfuscation
+    let result = '';
+    for (let i = 0; i < encoded.length; i++) {
+        result += String.fromCharCode(
+            encoded.charCodeAt(i) ^ OBFUSCATION_KEY.charCodeAt(i % OBFUSCATION_KEY.length)
+        );
+    }
+    return btoa(result);
+}
+
+export function deobfuscateString(obfuscated: string): string {
+    if (!obfuscated) return '';
+    try {
+        const decoded = atob(obfuscated);
+        let result = '';
+        for (let i = 0; i < decoded.length; i++) {
+            result += String.fromCharCode(
+                decoded.charCodeAt(i) ^ OBFUSCATION_KEY.charCodeAt(i % OBFUSCATION_KEY.length)
+            );
+        }
+        return decodeURIComponent(escape(atob(result)));
+    } catch {
+        return obfuscated; // Return as-is if decoding fails (backwards compatibility)
+    }
+}

@@ -100,6 +100,14 @@ interface AutofillRequest {
     url: string;
 }
 
+interface GetAllPasswordsRequest {
+    type: 'GET_ALL_PASSWORDS';
+}
+
+interface OpenPopupRequest {
+    type: 'OPEN_POPUP';
+}
+
 interface PasswordItem {
     id: number;
     title: string;
@@ -113,6 +121,11 @@ interface AutofillResponse {
     passwords: PasswordItem[];
     matchedPasswords: PasswordItem[];
     lang: string;
+}
+
+interface GetAllPasswordsResponse {
+    success: boolean;
+    passwords: PasswordItem[];
 }
 
 interface SavePasswordRequest {
@@ -181,9 +194,14 @@ function matchPasswordsByUrl(passwords: PasswordItem[], url: string): PasswordIt
     }
 }
 
+// Get all passwords (alias for content script)
+async function getAllPasswords(): Promise<PasswordItem[]> {
+    return getPasswordsFromStorage();
+}
+
 // Handle autofill requests
 chrome.runtime.onMessage.addListener(
-    (request: AutofillRequest | WebDavRequest | SavePasswordRequest, _sender, sendResponse: (response: AutofillResponse | WebDavResponse | SavePasswordResponse) => void) => {
+    (request: AutofillRequest | WebDavRequest | SavePasswordRequest | GetAllPasswordsRequest | OpenPopupRequest, _sender, sendResponse: (response: AutofillResponse | WebDavResponse | SavePasswordResponse | GetAllPasswordsResponse | { success: boolean }) => void) => {
         if (request.type === 'GET_PASSWORDS_FOR_AUTOFILL') {
             Promise.all([
                 getPasswordsFromStorage(),
@@ -205,6 +223,31 @@ chrome.runtime.onMessage.addListener(
                     lang: 'en',
                 });
             });
+            return true;
+        }
+
+        if (request.type === 'GET_ALL_PASSWORDS') {
+            getAllPasswords().then((passwords) => {
+                sendResponse({
+                    success: true,
+                    passwords: passwords,
+                });
+            }).catch(() => {
+                sendResponse({
+                    success: false,
+                    passwords: [],
+                });
+            });
+            return true;
+        }
+
+        if (request.type === 'OPEN_POPUP') {
+            // Open extension popup by focusing/creating a new tab
+            chrome.action.openPopup().catch(() => {
+                // Fallback: create tab with extension page
+                chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+            });
+            sendResponse({ success: true });
             return true;
         }
 
@@ -264,47 +307,36 @@ async function saveNewPassword(credentials: { website: string; title: string; us
 }
 
 // ========== Automatic Content Script Injection ==========
-
-// Helper function to inject content script
-async function injectContentScript(tabId: number, url: string) {
-    // Skip invalid URLs
-    if (!url || url.startsWith('chrome://') ||
-        url.startsWith('chrome-extension://') ||
-        url.startsWith('about:') ||
-        url.startsWith('edge://')) {
-        return;
-    }
-
-    console.log('[Monica] Injecting content script into:', url);
-
-    try {
-        await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            files: ['content.js']
-        });
-        console.log('[Monica] Content script injected successfully into tab', tabId);
-    } catch (error) {
-        console.error('[Monica] Failed to inject content script:', error);
-    }
-}
-
-// Handle extension installation - inject into all existing tabs
+// Content script is now injected via manifest.json
+// But we still try to inject into existing tabs upon installation to avoid reload
 chrome.runtime.onInstalled.addListener(async () => {
     console.log('[Monica] Extension installed');
 
     // Inject into all existing tabs
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
-        if (tab.id && tab.url) {
-            injectContentScript(tab.id, tab.url);
+        // Skip restricted URLs
+        if (!tab.url || tab.url.startsWith('chrome://') ||
+            tab.url.startsWith('chrome-extension://') ||
+            tab.url.startsWith('about:') ||
+            tab.url.startsWith('edge://') ||
+            tab.url.startsWith('file://')) { // Also skip file:// if not allowed
+            continue;
         }
-    }
-});
 
-// Inject content script when page loads
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab.url) {
-        injectContentScript(tabId, tab.url);
+        if (tab.id) {
+            try {
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['content.js']
+                });
+            } catch (err: any) {
+                // Ignore "Cannot access contents of the page" error which is expected for some pages
+                if (!err?.message?.includes('Cannot access contents of the page')) {
+                    console.log('[Monica] Failed to inject into existing tab:', tab.url, err);
+                }
+            }
+        }
     }
 });
 
