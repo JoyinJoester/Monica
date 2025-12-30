@@ -684,19 +684,29 @@
 
     // Direct storage access to bypass background script update issues
     function savePasswordToStorage(credentials) {
+        console.log('[Monica Debug] savePasswordToStorage called with:', credentials);
         return new Promise((resolve, reject) => {
             const STORAGE_KEY = 'monica_vault';
+            console.log('[Monica Debug] Getting storage key:', STORAGE_KEY);
+
             chrome.storage.local.get(STORAGE_KEY, (result) => {
+                console.log('[Monica Debug] chrome.storage.local.get result:', result);
+                console.log('[Monica Debug] chrome.runtime.lastError:', chrome.runtime.lastError);
+
                 if (chrome.runtime.lastError) {
+                    console.error('[Monica Debug] Storage get error:', chrome.runtime.lastError);
                     return reject(chrome.runtime.lastError);
                 }
 
                 try {
                     const rawItems = result[STORAGE_KEY];
+                    console.log('[Monica Debug] rawItems:', rawItems);
                     const items = Array.isArray(rawItems) ? rawItems : [];
+                    console.log('[Monica Debug] items count:', items.length);
 
                     // Generate new ID
                     const maxId = items.reduce((max, item) => Math.max(max, item.id || 0), 0);
+                    console.log('[Monica Debug] maxId:', maxId);
 
                     // Create item matching SecureItem interface (Source of Truth)
                     const newItem = {
@@ -715,13 +725,20 @@
                             categoryId: undefined
                         }
                     };
+                    console.log('[Monica Debug] newItem created:', newItem);
 
                     items.push(newItem);
+                    console.log('[Monica Debug] Saving items count:', items.length);
 
                     chrome.storage.local.set({ [STORAGE_KEY]: items }, () => {
+                        console.log('[Monica Debug] storage.local.set callback');
+                        console.log('[Monica Debug] chrome.runtime.lastError after set:', chrome.runtime.lastError);
+
                         if (chrome.runtime.lastError) {
+                            console.error('[Monica Debug] Storage set error:', chrome.runtime.lastError);
                             reject(chrome.runtime.lastError);
                         } else {
+                            console.log('[Monica Debug] Save successful!');
                             // Update local cache to prevent re-prompting on this page
                             currentPasswords.push({
                                 id: newItem.id,
@@ -734,6 +751,7 @@
                         }
                     });
                 } catch (e) {
+                    console.error('[Monica Debug] Exception in save:', e);
                     reject(e);
                 }
             });
