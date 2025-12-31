@@ -615,17 +615,85 @@ if ((window as any).__monica_content_loaded__) {
     // Listen for form submissions
     document.addEventListener('submit', handleFormSubmit, true);
 
-    // Also listen for click on submit buttons (some sites use JS)
-    document.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'BUTTON' ||
-        (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'submit')) {
-        const form = target.closest('form');
-        if (form) {
-          setTimeout(() => handleFormSubmit({ target: form } as unknown as Event), 100);
+    // Listen for Enter key on password fields
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT') {
+          const input = target as HTMLInputElement;
+          if (input.type === 'password' || input.type === 'text' || input.type === 'email') {
+            setTimeout(() => handlePageCredentials(), 100);
+          }
         }
       }
     }, true);
+
+    // Also listen for click on submit buttons (some sites use JS without form)
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+
+      // Check if it's a button or submit input
+      const isSubmitButton = target.tagName === 'BUTTON' ||
+        (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'submit') ||
+        target.closest('button');
+
+      // Check if button text contains login keywords
+      const buttonText = target.textContent?.toLowerCase() || '';
+      const isLoginButton = /登录|登入|login|sign.?in|submit|确定/.test(buttonText);
+
+      if (isSubmitButton || isLoginButton) {
+        const form = target.closest('form');
+        if (form) {
+          // Has form - use form-based detection
+          setTimeout(() => handleFormSubmit({ target: form } as unknown as Event), 100);
+        } else {
+          // No form - search entire page for credentials
+          setTimeout(() => handlePageCredentials(), 100);
+        }
+      }
+    }, true);
+  }
+
+  // Handle login pages without <form> element
+  function handlePageCredentials() {
+    if (savePromptShown) return;
+
+    // Find password field on page
+    const passwordField = document.querySelector('input[type="password"]') as HTMLInputElement;
+    if (!passwordField || !passwordField.value) return;
+
+    // Find username field - look for text/email input before password
+    let usernameField: HTMLInputElement | null = null;
+    const allInputs = Array.from(document.querySelectorAll('input')) as HTMLInputElement[];
+    const pwIndex = allInputs.indexOf(passwordField);
+
+    // Method 1: Previous input in DOM order
+    if (pwIndex > 0) {
+      for (let i = pwIndex - 1; i >= 0; i--) {
+        const input = allInputs[i];
+        if ((input.type === 'text' || input.type === 'email' || input.type === 'tel') &&
+          input.offsetParent !== null) {
+          usernameField = input;
+          break;
+        }
+      }
+    }
+
+    // Method 2: Look for common patterns
+    if (!usernameField) {
+      usernameField = document.querySelector('input[type="email"], input[type="text"][placeholder*="用户"], input[type="text"][placeholder*="账号"], input[type="text"][placeholder*="手机"], input[autocomplete="username"]') as HTMLInputElement;
+    }
+
+    if (!usernameField || !usernameField.value) return;
+
+    const credentials = {
+      website: window.location.origin,
+      title: document.title || window.location.hostname,
+      username: usernameField.value,
+      password: passwordField.value
+    };
+
+    showSavePrompt(credentials);
   }
 
   function handleFormSubmit(e: Event) {

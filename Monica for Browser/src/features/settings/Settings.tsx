@@ -394,11 +394,13 @@ export const Settings = () => {
                 value={autoLockDuration}
                 onChange={(e) => setAutoLockDuration(Number(e.target.value) as typeof autoLockDuration)}
               >
+                <option value={0}>{isZh ? '立即 (关闭即锁定)' : 'Immediate'}</option>
                 <option value={1}>{isZh ? '1 分钟' : '1 min'}</option>
                 <option value={5}>{isZh ? '5 分钟' : '5 min'}</option>
                 <option value={10}>{isZh ? '10 分钟' : '10 min'}</option>
                 <option value={30}>{isZh ? '30 分钟' : '30 min'}</option>
                 <option value={1440}>{isZh ? '1 天' : '1 day'}</option>
+                <option value={-1}>{isZh ? '不锁定' : 'Never'}</option>
               </Select>
             </SettingRow>
           </Card>

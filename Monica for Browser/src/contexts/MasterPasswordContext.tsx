@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { encrypt, decrypt, isEncrypted } from '../utils/webdav/EncryptionHelper';
 
 // ========== Types ==========
-export type AutoLockDuration = 1 | 5 | 10 | 30 | 1440; // minutes (1440 = 1 day)
+export type AutoLockDuration = -1 | 0 | 1 | 5 | 10 | 30 | 1440; // minutes (-1 = never, 0 = immediate, 1440 = 1 day)
 
 interface MasterPasswordContextType {
     isLocked: boolean;
@@ -113,13 +113,17 @@ export function MasterPasswordProvider({ children }: { children: React.ReactNode
                     }
 
                     // Check if still within auto-lock window
-                    if (lastUnlockTime) {
+                    const duration = savedDuration !== undefined ? savedDuration : 5;
+                    if (duration === -1) {
+                        // Never lock - always stay unlocked
+                        setIsLocked(false);
+                    } else if (lastUnlockTime && duration > 0) {
                         const elapsed = Date.now() - lastUnlockTime;
-                        const duration = savedDuration || 5;
                         if (elapsed < duration * 60 * 1000) {
                             setIsLocked(false);
                         }
                     }
+                    // If duration is 0 (immediate), always stay locked - isLocked remains true
                 } else {
                     setIsFirstTime(true);
                     setIsLocked(false); // Allow access for first-time setup
