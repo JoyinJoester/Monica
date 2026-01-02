@@ -143,8 +143,109 @@ interface SavePasswordResponse {
     error?: string;
 }
 
+// ========== 2FA/TOTP Autofill Support ==========
+
+interface TotpItem {
+    id: number;
+    title: string;
+    issuer: string;
+    accountName: string;
+    secret: string;
+    period: number;
+    digits: number;
+    algorithm: string;
+}
+
+interface GetTotpsRequest {
+    type: 'GET_TOTPS_FOR_AUTOFILL';
+    url: string;
+}
+
+interface GetTotpsResponse {
+    success: boolean;
+    totps: TotpItem[];
+    matchedTotps: TotpItem[];
+}
+
+interface GenerateTotpRequest {
+    type: 'GENERATE_TOTP_CODE';
+    totpId: number;
+}
+
+interface GenerateTotpResponse {
+    success: boolean;
+    code?: string;
+    timeRemaining?: number;
+    error?: string;
+}
+
+interface VerifyMasterPasswordRequest {
+    type: 'VERIFY_MASTER_PASSWORD';
+    password: string;
+}
+
+interface VerifyMasterPasswordResponse {
+    success: boolean;
+    verified: boolean;
+    error?: string;
+}
+
 // Storage key (same as in storage.ts)
 const STORAGE_KEY = 'monica_vault';
+// Keys must match MasterPasswordContext exactly
+const MASTER_PASSWORD_HASH_KEY = 'monica_master_hash';
+const MASTER_PASSWORD_SALT_KEY = 'monica_master_salt';
+
+// Password hashing function - MUST match MasterPasswordContext (PBKDF2)
+async function hashPassword(password: string, saltArray: number[]): Promise<string> {
+    const encoder = new TextEncoder();
+    const salt = new Uint8Array(saltArray);
+
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        'PBKDF2',
+        false,
+        ['deriveBits']
+    );
+
+    const bits = await crypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            salt: salt.buffer as ArrayBuffer,
+            iterations: 100000,
+            hash: 'SHA-256',
+        },
+        keyMaterial,
+        256
+    );
+
+    return btoa(String.fromCharCode(...new Uint8Array(bits)));
+}
+
+// Verify master password
+async function verifyMasterPassword(password: string): Promise<boolean> {
+    try {
+        const result = await chrome.storage.local.get([MASTER_PASSWORD_HASH_KEY, MASTER_PASSWORD_SALT_KEY]);
+        const storedHash = result[MASTER_PASSWORD_HASH_KEY] as string | undefined;
+        const saltBase64 = result[MASTER_PASSWORD_SALT_KEY] as string | undefined;
+
+        if (!storedHash || !saltBase64) {
+            console.log('[Background] No master password hash found');
+            return false;
+        }
+
+        // Salt is stored as Base64 string - decode it
+        const saltArray = atob(saltBase64).split('').map(c => c.charCodeAt(0));
+        const hash = await hashPassword(password, saltArray);
+
+        console.log('[Background] Verifying password, hash match:', hash === storedHash);
+        return hash === storedHash;
+    } catch (error) {
+        console.error('[Background] Password verification error:', error);
+        return false;
+    }
+}
 
 // Get passwords from storage
 async function getPasswordsFromStorage(): Promise<PasswordItem[]> {
@@ -198,6 +299,84 @@ function matchPasswordsByUrl(passwords: PasswordItem[], url: string): PasswordIt
 async function getAllPasswords(): Promise<PasswordItem[]> {
     return getPasswordsFromStorage();
 }
+
+// ========== TOTP Functions ==========
+
+// Get TOTPs from storage
+async function getTotpsFromStorage(): Promise<TotpItem[]> {
+    try {
+        const result = await chrome.storage.local.get(STORAGE_KEY);
+        const rawItems = result[STORAGE_KEY];
+
+        if (!rawItems || !Array.isArray(rawItems) || rawItems.length === 0) {
+            return [];
+        }
+
+        // Filter TOTP items (itemType === 1)
+        return rawItems
+            .filter((item) => item.itemType === 1)
+            .map((item) => ({
+                id: item.id as number,
+                title: item.title as string,
+                issuer: (item.itemData?.issuer as string) || '',
+                accountName: (item.itemData?.accountName as string) || '',
+                secret: (item.itemData?.secret as string) || '',
+                period: (item.itemData?.period as number) || 30,
+                digits: (item.itemData?.digits as number) || 6,
+                algorithm: (item.itemData?.algorithm as string) || 'SHA1',
+            }));
+    } catch (error) {
+        console.error('[Background] Failed to get TOTPs:', error);
+        return [];
+    }
+}
+
+// Match TOTPs by URL domain or issuer
+function matchTotpsByUrl(totps: TotpItem[], url: string): TotpItem[] {
+    try {
+        const urlObj = new URL(url);
+        const domain = urlObj.hostname.replace(/^www\./, '').toLowerCase();
+        const domainParts = domain.split('.');
+        const siteName = domainParts.length > 1 ? domainParts[domainParts.length - 2] : domain;
+
+        return totps.filter(t => {
+            const issuer = (t.issuer || '').toLowerCase();
+            const title = (t.title || '').toLowerCase();
+            const account = (t.accountName || '').toLowerCase();
+
+            // Match by issuer, title, account, or domain name
+            return issuer.includes(siteName) ||
+                title.includes(siteName) ||
+                account.includes(siteName) ||
+                siteName.includes(issuer) ||
+                domain.includes(issuer) ||
+                issuer.includes(domain.split('.')[0]);
+        });
+    } catch {
+        return [];
+    }
+}
+
+// Generate TOTP code
+function generateTotpCode(totp: TotpItem): { code: string; timeRemaining: number } | null {
+    try {
+        // TOTP generation is done client-side with OTPAuth library
+        // Background script just returns the raw data
+        const period = totp.period || 30;
+        const epoch = Math.floor(Date.now() / 1000);
+        const timeRemaining = period - (epoch % period);
+
+        // Return placeholder - actual code generation happens in content script
+        return {
+            code: '------',
+            timeRemaining
+        };
+    } catch (error) {
+        console.error('[Background] TOTP generation failed:', error);
+        return null;
+    }
+}
+
 
 // Handle autofill requests
 chrome.runtime.onMessage.addListener(
@@ -269,6 +448,66 @@ chrome.runtime.onMessage.addListener(
                 });
             return true;
         }
+
+        // Master password verification for 2FA
+        if ((request as VerifyMasterPasswordRequest).type === 'VERIFY_MASTER_PASSWORD') {
+            const verifyRequest = request as VerifyMasterPasswordRequest;
+            verifyMasterPassword(verifyRequest.password)
+                .then((verified) => {
+                    sendResponse({ success: true, verified } as VerifyMasterPasswordResponse);
+                })
+                .catch((error) => {
+                    sendResponse({ success: false, verified: false, error: error.message } as VerifyMasterPasswordResponse);
+                });
+            return true;
+        }
+
+        // 2FA/TOTP handlers
+        if ((request as GetTotpsRequest).type === 'GET_TOTPS_FOR_AUTOFILL') {
+            const totpRequest = request as GetTotpsRequest;
+            getTotpsFromStorage().then((totps) => {
+                const matched = matchTotpsByUrl(totps, totpRequest.url);
+                sendResponse({
+                    success: true,
+                    totps,
+                    matchedTotps: matched,
+                } as GetTotpsResponse);
+            }).catch(() => {
+                sendResponse({
+                    success: false,
+                    totps: [],
+                    matchedTotps: [],
+                } as GetTotpsResponse);
+            });
+            return true;
+        }
+
+        if ((request as GenerateTotpRequest).type === 'GENERATE_TOTP_CODE') {
+            const totpRequest = request as GenerateTotpRequest;
+            getTotpsFromStorage().then((totps) => {
+                const totp = totps.find(t => t.id === totpRequest.totpId);
+                if (totp) {
+                    const result = generateTotpCode(totp);
+                    sendResponse({
+                        success: true,
+                        code: result?.code,
+                        timeRemaining: result?.timeRemaining,
+                    } as GenerateTotpResponse);
+                } else {
+                    sendResponse({
+                        success: false,
+                        error: 'TOTP not found',
+                    } as GenerateTotpResponse);
+                }
+            }).catch((error) => {
+                sendResponse({
+                    success: false,
+                    error: error.message,
+                } as GenerateTotpResponse);
+            });
+            return true;
+        }
+
         return false;
     }
 );
