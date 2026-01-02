@@ -13,6 +13,7 @@ namespace Monica.Windows
     {
         public static Window? MainWindow { get; set; }
         public IServiceProvider Services { get; }
+
         
         // Version marker for schema changes - increment when adding new tables
         private const int DB_SCHEMA_VERSION = 2;
@@ -41,6 +42,9 @@ namespace Monica.Windows
             services.AddTransient<SettingsViewModel>();
             services.AddTransient<SecureItemsViewModel>();
 
+            // Local API Server for browser sync
+
+
             return services.BuildServiceProvider();
         }
 
@@ -51,6 +55,11 @@ namespace Monica.Windows
 
             MainWindow = new MainWindow();
             MainWindow.Activate();
+
+            // Start local API server for browser extension sync
+
+
+
         }
 
         private async Task InitializeDatabaseAsync()

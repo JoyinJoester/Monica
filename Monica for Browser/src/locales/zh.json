@@ -69,5 +69,19 @@
             "light": "浅色模式",
             "dark": "深色模式"
         }
+    },
+    "import": {
+        "title": "导入数据",
+        "selectFormat": "选择导入格式",
+        "autoDetect": "自动检测",
+        "chromePasswords": "Chrome 密码",
+        "monicaCsv": "Monica CSV",
+        "aegisTotp": "Aegis TOTP",
+        "selectFile": "选择文件",
+        "dragHint": "拖放文件到此处，或点击选择",
+        "importing": "导入中...",
+        "startImport": "开始导入",
+        "success": "导入完成",
+        "error": "导入失败"
     }
 }

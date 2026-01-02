@@ -9,16 +9,17 @@ import { DocumentList } from './features/documents/DocumentList';
 import { AuthenticatorList } from './features/authenticator/AuthenticatorList';
 import { Settings } from './features/settings/Settings';
 import { WebDavSettings, BackupPage } from './features/backup';
+import { ImportPage } from './features/import';
 import { MasterPasswordProvider, useMasterPassword } from './contexts/MasterPasswordContext';
 import { UnlockScreen } from './components/auth/UnlockScreen';
 
-// Wrapper component for BackupPage to provide navigation
 function BackupPageWrapper() {
   const navigate = useNavigate();
   return (
     <BackupPage
       onBack={() => navigate('/settings')}
       onOpenSettings={() => navigate('/backup/settings')}
+      onNavigateToImport={() => navigate('/import')}
     />
   );
 }
@@ -32,6 +33,16 @@ function WebDavSettingsWrapper() {
     />
   );
 }
+
+function ImportPageWrapper() {
+  const navigate = useNavigate();
+  return (
+    <ImportPage
+      onBack={() => navigate('/backup')}
+    />
+  );
+}
+
 
 // Main app content (only shown when unlocked)
 function AppContent() {
@@ -68,6 +79,7 @@ function AppContent() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/backup" element={<BackupPageWrapper />} />
         <Route path="/backup/settings" element={<WebDavSettingsWrapper />} />
+        <Route path="/import" element={<ImportPageWrapper />} />
       </Routes>
     </Layout>
   );

@@ -69,5 +69,19 @@
             "light": "Light",
             "dark": "Dark"
         }
+    },
+    "import": {
+        "title": "Import Data",
+        "selectFormat": "Select Format",
+        "autoDetect": "Auto Detect",
+        "chromePasswords": "Chrome Passwords",
+        "monicaCsv": "Monica CSV",
+        "aegisTotp": "Aegis TOTP",
+        "selectFile": "Select File",
+        "dragHint": "Drop file here or click to select",
+        "importing": "Importing...",
+        "startImport": "Start Import",
+        "success": "Import Complete",
+        "error": "Import Failed"
     }
 }

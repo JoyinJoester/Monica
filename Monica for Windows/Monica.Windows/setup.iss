@@ -2,7 +2,7 @@
 ; Built with Inno Setup 6
 
 #define MyAppName "Monica"
-#define MyAppVersion "1.0.15"
+#define MyAppVersion "1.0.16"
 #define MyAppPublisher "joyins"
 #define MyAppExeName "Monica.Windows.exe"
 #define MyAppSourceDir "bin\x64\Release\net8.0-windows10.0.19041.0"

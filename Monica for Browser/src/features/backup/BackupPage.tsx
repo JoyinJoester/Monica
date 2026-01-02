@@ -187,9 +187,10 @@ const ModalContent = styled.div`
 interface BackupPageProps {
     onBack: () => void;
     onOpenSettings: () => void;
+    onNavigateToImport?: () => void;
 }
 
-export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings }) => {
+export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings, onNavigateToImport }) => {
     const { i18n } = useTranslation();
     const isZh = i18n.language.startsWith('zh');
 
@@ -456,6 +457,17 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings }
                     {isCreatingBackup ? <Loader2 size={16} className="animate-spin" /> : <CloudUpload size={16} />}
                     {isZh ? '立即备份' : 'Create Backup'}
                 </Button>
+
+                {onNavigateToImport && (
+                    <Button
+                        variant="secondary"
+                        onClick={onNavigateToImport}
+                        style={{ width: '100%', marginTop: 8 }}
+                    >
+                        <CloudDownload size={16} />
+                        {isZh ? '导入数据' : 'Import Data'}
+                    </Button>
+                )}
             </Section>
 
             {/* Backup List */}

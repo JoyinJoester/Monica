@@ -271,10 +271,27 @@ class BackupManagerService {
                         const content = await file.async('text');
                         const entry: NoteBackupEntry = JSON.parse(content);
 
-                        if (existingNoteTitles.has(entry.title)) continue;
+                        if (existingNoteTitles.has(entry.title.toLowerCase())) continue;
 
                         const { saveItem } = await import('../storage');
-                        const noteData: NoteData = entry.itemData ? JSON.parse(entry.itemData) : { content: '' };
+
+                        // Parse itemData - handle both string and object formats
+                        let noteData: NoteData;
+                        if (entry.itemData) {
+                            if (typeof entry.itemData === 'string') {
+                                try {
+                                    noteData = JSON.parse(entry.itemData);
+                                } catch {
+                                    // If parsing fails, use the string as content
+                                    noteData = { content: entry.itemData };
+                                }
+                            } else {
+                                // Already an object
+                                noteData = entry.itemData as unknown as NoteData;
+                            }
+                        } else {
+                            noteData = { content: '' };
+                        }
 
                         await saveItem({
                             itemType: ItemType.Note,
@@ -286,73 +303,45 @@ class BackupManagerService {
                         });
                         notesRestored++;
                     } catch (e) {
+                        console.error('[BackupManager] Note restore error:', e, file.name);
                         errors.push(`笔记恢复失败: ${file.name}`);
                     }
                 }
             }
 
-            // 3. Restore TOTPs from CSV
-            // Android CSV format: ID,Type,Title,Data,Notes,IsFavorite,ImagePaths,CreatedAt,UpdatedAt
-            // Data column contains JSON like {"secret":"xxx","issuer":"xxx",...}
-            const totpFiles = Object.keys(zip.files).filter(name => name.includes('_totp.csv'));
-            for (const filename of totpFiles) {
+
+
+            // 3b. Restore TOTPs from CSV (Browser/WebDAV format)
+            // Browser CSV format: title,issuer,accountName,secret,period,digits,algorithm,otpType
+            const totpCsvFiles = Object.keys(zip.files).filter(name => name.includes('_totp.csv'));
+            for (const filename of totpCsvFiles) {
                 try {
                     const content = await zip.file(filename)?.async('text');
                     if (content) {
                         const items = this.parseCSV(content);
                         for (const item of items) {
-                            // Skip non-TOTP items
-                            if (item.Type && item.Type !== 'TOTP') continue;
+                            // Get title from column directly
+                            const title = item.title || item.Title || 'Unnamed';
 
-                            const title = item.Title || item.title || 'Unnamed';
+                            // Get secret from column directly (browser format has direct columns)
+                            const secret = item.secret || item.Secret || '';
 
-                            // Parse itemData from Data column (Android format)
-                            let totpData: TotpData = {
-                                secret: '',
-                                issuer: '',
-                                accountName: '',
-                                period: 30,
-                                digits: 6,
-                                algorithm: 'SHA1',
-                                otpType: OtpType.TOTP,
-                            };
-
-                            const dataField = item.Data || item.data || item.itemData || '';
-                            if (dataField) {
-                                try {
-                                    // Try parsing as JSON first
-                                    const parsed = JSON.parse(dataField);
-                                    totpData = {
-                                        secret: parsed.secret || '',
-                                        issuer: parsed.issuer || '',
-                                        accountName: parsed.accountName || parsed.account_name || '',
-                                        period: parsed.period || 30,
-                                        digits: parsed.digits || 6,
-                                        algorithm: parsed.algorithm || 'SHA1',
-                                        otpType: OtpType.TOTP,
-                                    };
-                                } catch {
-                                    // Try parsing as key:value;key:value format
-                                    const parts = dataField.split(';');
-                                    for (const part of parts) {
-                                        const [key, value] = part.split(':').map((s: string) => s.trim());
-                                        if (key && value) {
-                                            if (key.toLowerCase() === 'secret') totpData.secret = value;
-                                            else if (key.toLowerCase() === 'issuer') totpData.issuer = value;
-                                            else if (key.toLowerCase() === 'accountname' || key.toLowerCase() === 'account') totpData.accountName = value;
-                                            else if (key.toLowerCase() === 'period') totpData.period = parseInt(value) || 30;
-                                            else if (key.toLowerCase() === 'digits') totpData.digits = parseInt(value) || 6;
-                                            else if (key.toLowerCase() === 'algorithm') totpData.algorithm = value;
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Skip if no secret found
-                            if (!totpData.secret) {
-                                console.warn('[BackupManager] TOTP has no secret:', title);
+                            // Skip if no secret
+                            if (!secret) {
+                                console.warn('[BackupManager] TOTP CSV has no secret:', title);
                                 continue;
                             }
+
+                            // Build TOTP data from direct columns
+                            const totpData: TotpData = {
+                                secret,
+                                issuer: item.issuer || item.Issuer || '',
+                                accountName: item.accountName || item.AccountName || '',
+                                period: parseInt(item.period || item.Period || '30') || 30,
+                                digits: parseInt(item.digits || item.Digits || '6') || 6,
+                                algorithm: item.algorithm || item.Algorithm || 'SHA1',
+                                otpType: OtpType.TOTP,
+                            };
 
                             // Check duplicate with composite key
                             const totpKey = `${title}|${totpData.issuer || ''}|${totpData.accountName || ''}`.toLowerCase();
@@ -365,8 +354,8 @@ class BackupManagerService {
                             await saveItem({
                                 itemType: ItemType.Totp,
                                 title,
-                                notes: item.Notes || item.notes || '',
-                                isFavorite: item.IsFavorite === 'true' || item.isFavorite === 'true',
+                                notes: '',
+                                isFavorite: false,
                                 sortOrder: 0,
                                 itemData: totpData,
                             });
@@ -374,13 +363,13 @@ class BackupManagerService {
                         }
                     }
                 } catch (e) {
-                    console.error('[BackupManager] TOTP restore error:', e);
+                    console.error('[BackupManager] TOTP CSV restore error:', e);
                     errors.push(`TOTP 恢复失败: ${filename}`);
                 }
             }
 
-            // 4. Restore Documents from CSV
-            // Android CSV format: ID,Type,Title,Data,Notes,IsFavorite,ImagePaths,CreatedAt,UpdatedAt
+            // 4. Restore Documents from CSV (Browser/WebDAV format)
+            // Browser CSV format: itemType,title,documentType,documentNumber,fullName,issuedDate,expiryDate,issuedBy
             const docFiles = Object.keys(zip.files).filter(name => name.includes('_cards_docs.csv'));
             for (const filename of docFiles) {
                 try {
@@ -388,63 +377,32 @@ class BackupManagerService {
                     if (content) {
                         const items = this.parseCSV(content);
                         for (const item of items) {
-                            // Check Type column (Android format uses uppercase DOCUMENT)
-                            const itemType = item.Type || item.type || item.itemType || '';
+                            // Check itemType column
+                            const itemType = item.itemType || item.ItemType || item.Type || item.type || '';
                             if (itemType.toUpperCase() !== 'DOCUMENT') continue;
 
-                            const title = item.Title || item.title || 'Unnamed';
+                            const title = item.title || item.Title || 'Unnamed';
                             if (existingDocTitles.has(title.toLowerCase())) {
                                 console.log('[BackupManager] Skipping duplicate document:', title);
                                 continue;
                             }
 
-                            // Parse document data from Data column (Android format)
-                            let docData: DocumentData = {
-                                documentType: 'OTHER',
-                                documentNumber: '',
-                                fullName: '',
-                                issuedDate: '',
-                                expiryDate: '',
-                                issuedBy: '',
+                            // Build document data from direct columns
+                            const docData: DocumentData = {
+                                documentType: (item.documentType || item.DocumentType || 'OTHER') as DocumentType,
+                                documentNumber: item.documentNumber || item.DocumentNumber || '',
+                                fullName: item.fullName || item.FullName || '',
+                                issuedDate: item.issuedDate || item.IssuedDate || '',
+                                expiryDate: item.expiryDate || item.ExpiryDate || '',
+                                issuedBy: item.issuedBy || item.IssuedBy || '',
                             };
-
-                            const dataField = item.Data || item.data || item.itemData || '';
-                            if (dataField) {
-                                try {
-                                    // Try parsing as JSON first
-                                    const parsed = JSON.parse(dataField);
-                                    docData = {
-                                        documentType: parsed.documentType || parsed.document_type || 'OTHER',
-                                        documentNumber: parsed.documentNumber || parsed.document_number || '',
-                                        fullName: parsed.fullName || parsed.full_name || '',
-                                        issuedDate: parsed.issuedDate || parsed.issued_date || '',
-                                        expiryDate: parsed.expiryDate || parsed.expiry_date || '',
-                                        issuedBy: parsed.issuedBy || parsed.issued_by || '',
-                                    };
-                                } catch {
-                                    // Try parsing as key:value;key:value format
-                                    const parts = dataField.split(';');
-                                    for (const part of parts) {
-                                        const [key, value] = part.split(':').map((s: string) => s.trim());
-                                        if (key && value) {
-                                            const lowerKey = key.toLowerCase();
-                                            if (lowerKey === 'documenttype' || lowerKey === 'type') docData.documentType = value as DocumentType;
-                                            else if (lowerKey === 'documentnumber' || lowerKey === 'number') docData.documentNumber = value;
-                                            else if (lowerKey === 'fullname' || lowerKey === 'name') docData.fullName = value;
-                                            else if (lowerKey === 'issueddate' || lowerKey === 'issued') docData.issuedDate = value;
-                                            else if (lowerKey === 'expirydate' || lowerKey === 'expiry') docData.expiryDate = value;
-                                            else if (lowerKey === 'issuedby' || lowerKey === 'issuer') docData.issuedBy = value;
-                                        }
-                                    }
-                                }
-                            }
 
                             const { saveItem } = await import('../storage');
                             await saveItem({
                                 itemType: ItemType.Document,
                                 title,
-                                notes: item.Notes || item.notes || '',
-                                isFavorite: item.IsFavorite === 'true' || item.isFavorite === 'true',
+                                notes: '',
+                                isFavorite: false,
                                 sortOrder: 0,
                                 itemData: docData,
                             });
