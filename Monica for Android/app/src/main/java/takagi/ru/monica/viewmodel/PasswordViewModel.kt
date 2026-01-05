@@ -79,7 +79,17 @@ class PasswordViewModel(
             initialValue = emptyList()
         )
 
-    val allPasswords: Flow<List<PasswordEntry>> = repository.getAllPasswordEntries()
+    val allPasswords: StateFlow<List<PasswordEntry>> = repository.getAllPasswordEntries()
+        .map { entries ->
+            entries.map { entry ->
+                entry.copy(password = securityManager.decryptData(entry.password))
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
     
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -337,6 +347,67 @@ class PasswordViewModel(
     fun updateAppAssociationByTitle(title: String, packageName: String, appName: String) {
         viewModelScope.launch {
             repository.updateAppAssociationByTitle(title, packageName, appName)
+        }
+    }
+
+    // ==========================================
+    // Grouping Helpers
+    // ==========================================
+
+    private fun getPasswordInfoKey(entry: PasswordEntry): String {
+        return "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+    }
+
+    private fun isSameGroup(entry1: PasswordEntry, entry2: PasswordEntry): Boolean {
+        return getPasswordInfoKey(entry1) == getPasswordInfoKey(entry2)
+    }
+
+    /**
+     * Save a group of passwords.
+     * Updates existing entries to preserve IDs (and TOTP links), creates new ones if needed,
+     * and deletes removed ones.
+     * The callback receives the ID of the first password (for TOTP binding).
+     */
+    fun saveGroupedPasswords(
+        originalIds: List<Long>,
+        commonEntry: PasswordEntry, // Contains common info and ONE password (ignored)
+        passwords: List<String>,
+        onComplete: (firstPasswordId: Long?) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            var firstId: Long? = null
+            
+            // 1. Process each password
+            passwords.forEachIndexed { index, password ->
+                if (index < originalIds.size) {
+                    // Update existing
+                    val id = originalIds[index]
+                    if (index == 0) firstId = id
+                    val updatedEntry = commonEntry.copy(
+                        id = id,
+                        password = password
+                    )
+                    updatePasswordEntry(updatedEntry)
+                } else {
+                    // Create new
+                    val newEntry = commonEntry.copy(
+                        id = 0, // Reset ID for new entry
+                        password = password
+                    )
+                    val newId = repository.insertPasswordEntry(newEntry)
+                    if (index == 0) firstId = newId
+                }
+            }
+
+            // 2. Delete leftovers
+            if (originalIds.size > passwords.size) {
+                val toDelete = originalIds.subList(passwords.size, originalIds.size)
+                toDelete.forEach { id ->
+                    repository.getPasswordEntryById(id)?.let { deletePasswordEntry(it) }
+                }
+            }
+            
+            onComplete(firstId)
         }
     }
 }

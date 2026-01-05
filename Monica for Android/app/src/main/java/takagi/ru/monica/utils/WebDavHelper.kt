@@ -50,6 +50,8 @@ private data class PasswordBackupEntry(
     val isFavorite: Boolean = false,
     val categoryId: Long? = null,
     val categoryName: String? = null,  // ✅ 添加分类名称用于跨设备同步
+    val email: String = "",
+    val phone: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -557,6 +559,8 @@ class WebDavHelper(
                                 isFavorite = password.isFavorite,
                                 categoryId = password.categoryId,
                                 categoryName = categoryName,
+                                email = password.email,
+                                phone = password.phone,
                                 createdAt = password.createdAt.time,
                                 updatedAt = password.updatedAt.time
                             )
@@ -782,7 +786,7 @@ class WebDavHelper(
                 writer.write("\uFEFF")
                 
                 // 写入列标题
-                writer.write("name,url,username,password,note")
+                writer.write("name,url,username,password,note,email,phone")
                 writer.newLine()
                 
                 // 写入数据行
@@ -793,7 +797,9 @@ class WebDavHelper(
                         escapeCsvField(entry.website),
                         escapeCsvField(entry.username),
                         escapeCsvField(entry.password),
-                        escapeCsvField(buildPasswordNoteWithMetadata(entry))
+                        escapeCsvField(buildPasswordNoteWithMetadata(entry)),
+                        escapeCsvField(entry.email),
+                        escapeCsvField(entry.phone)
                     )
                     writer.write(row.joinToString(","))
                     writer.newLine()
@@ -1268,6 +1274,8 @@ class WebDavHelper(
                 notes = backup.notes,
                 isFavorite = backup.isFavorite,
                 categoryId = null, // ✅ 先设为null，稍后根据categoryName解析
+                email = backup.email,
+                phone = backup.phone,
                 createdAt = Date(backup.createdAt),
                 updatedAt = Date(backup.updatedAt)
             )
@@ -1356,6 +1364,8 @@ class WebDavHelper(
                 val (note, metadata) = extractNoteAndMetadata(rawNote)
                 val createdAt = metadata["createdAt"]?.toLongOrNull()?.let(::Date) ?: now
                 val updatedAt = metadata["updatedAt"]?.toLongOrNull()?.let(::Date) ?: createdAt
+                val email = fields.getOrNull(5)?.trim().orEmpty()
+                val phone = fields.getOrNull(6)?.trim().orEmpty()
 
                 PasswordEntry(
                     id = 0,
@@ -1364,6 +1374,8 @@ class WebDavHelper(
                     username = username,
                     password = password,
                     notes = note,
+                    email = email,
+                    phone = phone,
                     isFavorite = metadata["isFavorite"]?.toBoolean() ?: false,
                     createdAt = createdAt,
                     updatedAt = updatedAt,

@@ -46,6 +46,12 @@ class DataExportImportViewModel(
                     if (entry.website.isNotEmpty()) {
                         append(";website:${entry.website}")
                     }
+                    if (entry.email.isNotEmpty()) {
+                        append(";email:${entry.email}")
+                    }
+                    if (entry.phone.isNotEmpty()) {
+                        append(";phone:${entry.phone}")
+                    }
                 }
                 
                 SecureItem(
@@ -114,6 +120,8 @@ class DataExportImportViewModel(
                                         username = username,
                                         password = passwordData["password"] ?: "",
                                         notes = exportItem.notes,
+                                        email = passwordData["email"] ?: "",
+                                        phone = passwordData["phone"] ?: "",
                                         isFavorite = exportItem.isFavorite,
                                         createdAt = Date(exportItem.createdAt),
                                         updatedAt = Date(exportItem.updatedAt)
@@ -383,6 +391,12 @@ class DataExportImportViewModel(
                     append("password:${entry.password}")
                     if (entry.website.isNotEmpty()) {
                         append(";website:${entry.website}")
+                    }
+                    if (entry.email.isNotEmpty()) {
+                        append(";email:${entry.email}")
+                    }
+                    if (entry.phone.isNotEmpty()) {
+                        append(";phone:${entry.phone}")
                     }
                 }
                 

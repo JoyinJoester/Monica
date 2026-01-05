@@ -80,7 +80,9 @@ fun PasswordDetailScreen(
     
     // 密码条目状态
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
+    var groupPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var itemToDelete by remember { mutableStateOf<PasswordEntry?>(null) } // For specific password deletion
     
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
@@ -88,10 +90,26 @@ fun PasswordDetailScreen(
     
     // Helper function for deletion
     fun executeDeletion() {
-        passwordEntry?.let { entry ->
-            viewModel.deletePasswordEntry(entry)
-            onNavigateBack()
+        if (itemToDelete != null) {
+            // Delete specific password
+            viewModel.deletePasswordEntry(itemToDelete!!)
+            // If it was the only one, navigate back is handled by Flow collection update or check
+            // logic below will handle UI update via groupPasswords flow
+        } else {
+            // Delete ALL (current entry context) - usually from top menu
+            // If top menu delete is clicked, we probably want to delete ALL in group or just this one?
+            // "Delete" usually implies deleting the "Item". 
+            // If we have multiple passwords, maybe we should ask?
+            // User said: "essentially multiple items ... joined". 
+            // If I click delete on the main screen, I probably delete the whole group.
+            // Let's assume delete = delete current entry for now.
+            passwordEntry?.let { entry ->
+                viewModel.deletePasswordEntry(entry)
+                onNavigateBack()
+            }
         }
+        showDeleteDialog = false
+        itemToDelete = null
     }
 
     // Biometric Helper
@@ -149,15 +167,34 @@ fun PasswordDetailScreen(
     // 密码可见性
     var passwordVisible by remember { mutableStateOf(false) }
     var cvvVisible by remember { mutableStateOf(false) }
-    
+
     // 加载密码详情
-    LaunchedEffect(passwordId) {
-        viewModel.getPasswordEntryById(passwordId)?.let { entry ->
-            passwordEntry = entry
-            // 根据数据内容设置折叠状态
-            personalInfoExpanded = hasPersonalInfo(entry)
-            addressInfoExpanded = hasAddressInfo(entry)
-            paymentInfoExpanded = hasPaymentInfo(entry)
+    // We need to observe all passwords to detect updates/siblings
+    val allPasswords by viewModel.allPasswords.collectAsState(initial = emptyList())
+    
+    LaunchedEffect(passwordId, allPasswords) {
+        if (allPasswords.isNotEmpty()) {
+            val entry = allPasswords.find { it.id == passwordId }
+            if (entry != null) {
+                passwordEntry = entry
+                
+                // Find siblings
+                val key = "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+                groupPasswords = allPasswords.filter { 
+                    val itKey = "${it.title}|${it.website}|${it.username}|${it.notes}|${it.appPackageName}|${it.appName}"
+                    itKey == key
+                }
+                
+                // 根据数据内容设置折叠状态
+                personalInfoExpanded = hasPersonalInfo(entry)
+                addressInfoExpanded = hasAddressInfo(entry)
+                paymentInfoExpanded = hasPaymentInfo(entry)
+            } else {
+                // Entry deleted or not found
+                // If groupPasswords was not empty, maybe we switched to another sibling? 
+                // But passwordId is fixed param.
+                // onNavigateBack() // Only if we want to auto-close
+            }
         }
     }
     
@@ -206,7 +243,9 @@ fun PasswordDetailScreen(
                         onClick = { showDeleteDialog = true },
                         tint = MaterialTheme.colorScheme.error
                     )
-                )
+                ),
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
             )
         }
     ) { paddingValues ->
@@ -227,12 +266,39 @@ fun PasswordDetailScreen(
                 // ==========================================
                 // 🔐 基本信息卡片
                 // ==========================================
-                BasicInfoCard(
-                    entry = entry,
-                    passwordVisible = passwordVisible,
-                    onTogglePasswordVisibility = { passwordVisible = !passwordVisible },
-                    context = context
-                )
+                // ==========================================
+                // 🔐 基本信息卡片 (Common Info)
+                // ==========================================
+                if (entry.username.isNotEmpty()) {
+                    BasicInfoCard(
+                        entry = entry,
+                        context = context
+                    )
+                }
+
+                // ==========================================
+                // 🔑 密码列表
+                // ==========================================
+                if (groupPasswords.isNotEmpty()) {
+                    PasswordListCard(
+                        passwords = groupPasswords,
+                        onDelete = { item ->
+                            itemToDelete = item
+                            showDeleteDialog = true
+                        },
+                        context = context
+                    )
+                } else {
+                     // Fallback
+                     PasswordListCard(
+                        passwords = listOf(entry),
+                        onDelete = { 
+                            itemToDelete = entry
+                            showDeleteDialog = true
+                        },
+                        context = context
+                     )
+                }
                 
                 // ==========================================
                 // 🔑 2FA / TOTP 卡片 (如果有关联应用)
@@ -304,8 +370,8 @@ fun PasswordDetailScreen(
                     NotesCard(notes = entry.notes)
                 }
                 
-                // 底部间距
-                Spacer(modifier = Modifier.height(32.dp))
+                // 底部间距 (避免 ActionStrip 遮挡)
+                Spacer(modifier = Modifier.height(80.dp))
             }
         }
     }
@@ -360,40 +426,23 @@ fun PasswordDetailScreen(
 }
 
 // ============================================
-// 🎯 头部区域组件
+// 🎯 头部区域组件 - 左对齐
 // ============================================
 @Composable
 private fun HeaderSection(entry: PasswordEntry) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // 大图标容器
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = MonicaIcons.Security.lock,
-                contentDescription = null,
-                modifier = Modifier.size(40.dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-        }
-        
         // 标题
         Text(
             text = entry.title,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center
+            color = MaterialTheme.colorScheme.onSurface
         )
         
         // 网站
@@ -401,8 +450,7 @@ private fun HeaderSection(entry: PasswordEntry) {
             Text(
                 text = entry.website,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -414,8 +462,6 @@ private fun HeaderSection(entry: PasswordEntry) {
 @Composable
 private fun BasicInfoCard(
     entry: PasswordEntry,
-    passwordVisible: Boolean,
-    onTogglePasswordVisibility: () -> Unit,
     context: Context
 ) {
     Card(
@@ -434,17 +480,6 @@ private fun BasicInfoCard(
                 InfoFieldWithCopy(
                     label = stringResource(R.string.username),
                     value = entry.username,
-                    context = context
-                )
-            }
-            
-            // 密码
-            if (entry.password.isNotEmpty()) {
-                PasswordField(
-                    label = stringResource(R.string.password),
-                    value = entry.password,
-                    visible = passwordVisible,
-                    onToggleVisibility = onTogglePasswordVisibility,
                     context = context
                 )
             }
@@ -1015,6 +1050,111 @@ private fun hasPaymentInfo(entry: PasswordEntry): Boolean {
            entry.creditCardHolder.isNotEmpty() ||
            entry.creditCardExpiry.isNotEmpty() ||
            entry.creditCardCVV.isNotEmpty()
+}
+
+@Composable
+private fun PasswordListCard(
+    passwords: List<PasswordEntry>,
+    onDelete: (PasswordEntry) -> Unit,
+    context: Context
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.password),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+
+            passwords.forEachIndexed { index, entry ->
+                PasswordItemRow(
+                    entry = entry,
+                    index = index + 1,
+                    showIndex = passwords.size > 1,
+                    onDelete = { onDelete(entry) },
+                    context = context,
+                    canDelete = passwords.size > 1 
+                )
+                if (index < passwords.size - 1) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PasswordItemRow(
+    entry: PasswordEntry,
+    index: Int,
+    showIndex: Boolean,
+    onDelete: () -> Unit,
+    context: Context,
+    canDelete: Boolean
+) {
+    var visible by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (showIndex) stringResource(R.string.password) + " $index" else stringResource(R.string.password),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Row {
+                IconButton(onClick = { visible = !visible }) {
+                    Icon(
+                        if (visible) MonicaIcons.Security.visibilityOff else MonicaIcons.Security.visibility,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                
+                IconButton(onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("password", entry.password)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, context.getString(R.string.password_copied), Toast.LENGTH_SHORT).show()
+                }) {
+                    Icon(MonicaIcons.Action.copy, contentDescription = null, modifier = Modifier.size(20.dp))
+                }
+                
+                if (canDelete) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            MonicaIcons.Action.delete, 
+                            contentDescription = null, 
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+        }
+        
+        Text(
+            text = if (visible) entry.password else "•".repeat(8),
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontFamily = if (visible) androidx.compose.ui.text.font.FontFamily.Monospace else androidx.compose.ui.text.font.FontFamily.Default
+            ),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
 }
 
 

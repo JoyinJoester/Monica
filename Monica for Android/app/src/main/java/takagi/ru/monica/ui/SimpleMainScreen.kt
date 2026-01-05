@@ -85,7 +85,6 @@ fun SimpleMainScreen(
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit = {},
-    onNavigateToMultiPasswordDetail: (Long) -> Unit = {},
     @Suppress("UNUSED_PARAMETER")
     onNavigateToDocumentDetail: (Long) -> Unit, // 保留以保持API兼容性，但当前未使用
     onNavigateToChangePassword: () -> Unit = {},
@@ -669,7 +668,6 @@ fun SimpleMainScreen(
                         },
                         onNavigateToAddPassword = onNavigateToAddPassword,
                         onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onNavigateToMultiPasswordDetail = onNavigateToMultiPasswordDetail,
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
                             isPasswordSelectionMode = isSelectionMode
                             selectedPasswordCount = count
@@ -851,7 +849,6 @@ private fun PasswordListContent(
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit,
-    onNavigateToMultiPasswordDetail: (Long) -> Unit,
     onSelectionModeChange: (
         isSelectionMode: Boolean,
         selectedCount: Int,
@@ -1359,8 +1356,8 @@ private fun PasswordListContent(
                             }
                         },
                         onOpenMultiPasswordDialog = { passwords ->
-                            // 导航到多密码详情页面
-                            onNavigateToMultiPasswordDetail(passwords.first().id)
+                            // 导航到详情页面 (现在详情页面支持多密码)
+                            onNavigateToPasswordDetail(passwords.first().id)
                         }
                     )
                     
