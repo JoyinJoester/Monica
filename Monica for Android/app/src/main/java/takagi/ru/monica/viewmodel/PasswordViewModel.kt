@@ -11,6 +11,9 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.ItemType
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Date
@@ -201,6 +204,22 @@ class PasswordViewModel(
         return repository.getPasswordEntryById(id)?.let { entry ->
             entry.copy(password = securityManager.decryptData(entry.password))
         }
+    }
+
+    /**
+     * Get linked TOTP data for a password entry
+     */
+    fun getLinkedTotpFlow(passwordId: Long): Flow<TotpData?> {
+        return secureItemRepository?.getItemsByType(ItemType.TOTP)
+            ?.map { items ->
+                items.mapNotNull { item ->
+                    try {
+                        Json.decodeFromString<TotpData>(item.itemData)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }.find { it.boundPasswordId == passwordId }
+            } ?: flowOf(null)
     }
     
     /**

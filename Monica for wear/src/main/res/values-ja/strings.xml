@@ -62,7 +62,7 @@
     <string name="settings_clear_data_subtitle">ローカルのすべての認証アプリを削除</string>
     
     <string name="settings_about_app">Monica Wear</string>
-    <string name="settings_version">バージョン 1.0.16</string>
+    <string name="settings_version">バージョン 1.0.17</string>
     <string name="settings_about_description">Monicaベースの軽量版\n小型画面に最適化されたTOTP認証アプリ</string>
     
     <!-- 同期 -->

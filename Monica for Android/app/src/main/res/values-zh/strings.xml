@@ -579,7 +579,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">V1.0.16</string>
+    <string name="settings_version_number">V1.0.17</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1243,4 +1243,18 @@
     <string name="select_password_to_bind">选择要绑定的密码</string>
     <string name="link_example">https://example.com</string>
     <string name="app_name_placeholder">应用名称</string>
+    
+    <!-- Password Detail Screen -->
+    <string name="password_details">密码详情</string>
+    <string name="delete_password">删除密码</string>
+    <string name="delete_password_confirmation">确定要删除此密码吗？此操作无法撤销。</string>
+    
+    <!-- Multi Password Dialog -->
+    <string name="common_info">共同信息</string>
+    <string name="password_list">密码列表 (%d)</string>
+    <string name="password_item_title">密码 %d</string>
+    <string name="label_website">网站</string>
+    <string name="label_username">用户名</string>
+    <string name="label_notes">备注</string>
+    <string name="copied_text">已复制 %s</string>
 </resources>

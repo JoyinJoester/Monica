@@ -78,6 +78,7 @@ import takagi.ru.monica.ui.screens.SecurityQuestionsVerificationScreen
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.PermissionManagementScreen
 import takagi.ru.monica.ui.screens.MonicaPlusScreen
+import takagi.ru.monica.ui.screens.MultiPasswordDetailScreen
 import takagi.ru.monica.ui.screens.PaymentScreen
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
@@ -382,6 +383,12 @@ fun MonicaContent(
                 onNavigateToAddNote = { noteId ->
                     navController.navigate(Screen.AddEditNote.createRoute(noteId))
                 },
+                onNavigateToPasswordDetail = { passwordId ->
+                    navController.navigate(Screen.PasswordDetail.createRoute(passwordId))
+                },
+                onNavigateToMultiPasswordDetail = { passwordId ->
+                    navController.navigate(Screen.MultiPasswordDetail.createRoute(passwordId))
+                },
                 onNavigateToDocumentDetail = { documentId ->
                     navController.navigate(Screen.DocumentDetail.createRoute(documentId))
                 },
@@ -610,6 +617,43 @@ fun MonicaContent(
                     },
                     onEditDocument = { id ->
                         navController.navigate(Screen.AddEditDocument.createRoute(id))
+                    }
+                )
+            }
+        }
+
+        composable(Screen.PasswordDetail.route) { backStackEntry ->
+            val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+
+            if (passwordId > 0) {
+                takagi.ru.monica.ui.screens.PasswordDetailScreen(
+                    viewModel = viewModel,
+                    passwordId = passwordId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onEditPassword = { id ->
+                        navController.navigate(Screen.AddEditPassword.createRoute(id))
+                    }
+                )
+            }
+        }
+
+        composable(Screen.MultiPasswordDetail.route) { backStackEntry ->
+            val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+
+            if (passwordId > 0) {
+                MultiPasswordDetailScreen(
+                    viewModel = viewModel,
+                    passwordId = passwordId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onEditPassword = { id ->
+                        navController.navigate(Screen.AddEditPassword.createRoute(id))
+                    },
+                    onAddPassword = { id ->
+                        navController.navigate(Screen.AddEditPassword.createRoute(id))
                     }
                 )
             }

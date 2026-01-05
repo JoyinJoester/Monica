@@ -1,4 +1,4 @@
-package takagi.ru.monica.ui.components
+package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,47 +17,61 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
-import takagi.ru.monica.utils.BiometricHelper
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
+import takagi.ru.monica.ui.components.MasterPasswordDialog
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.viewmodel.PasswordViewModel
 
 /**
- * 多密码详情对话框 (Multi-Password Detail Dialog)
- * Refactored with Material 3 design and Deletion Verification.
+ * 多密码详情页 (Multi-Password Detail Screen)
+ * Refactored from Dialog to Full-Screen Page.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MultiPasswordDetailDialog(
-    passwords: List<PasswordEntry>,
-    onDismiss: () -> Unit,
-    onAddPassword: () -> Unit,
-    onEditPassword: (PasswordEntry) -> Unit,
-    onDeletePassword: (PasswordEntry) -> Unit,
-    onToggleFavorite: (PasswordEntry) -> Unit,
-    onVerifyMasterPassword: (String) -> Boolean,
-    onPasswordClick: (PasswordEntry) -> Unit
+fun MultiPasswordDetailScreen(
+    viewModel: PasswordViewModel,
+    passwordId: Long,
+    onNavigateBack: () -> Unit,
+    onEditPassword: (Long) -> Unit,
+    onAddPassword: (Long) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    if (passwords.isEmpty()) {
-        onDismiss()
-        return
+    val context = LocalContext.current
+    val allPasswords by viewModel.passwordEntries.collectAsState(initial = emptyList())
+    var primaryEntry by remember { mutableStateOf<PasswordEntry?>(null) }
+    
+    // Load primary entry
+    LaunchedEffect(passwordId) {
+        primaryEntry = viewModel.getPasswordEntryById(passwordId)
+    }
+    
+    // Filter grouped passwords
+    val groupPasswords = remember(allPasswords, primaryEntry) {
+        if (primaryEntry == null) emptyList()
+        else {
+            val key = getPasswordInfoKey(primaryEntry!!)
+            allPasswords.filter { getPasswordInfoKey(it) == key }
+        }
+    }
+    
+    if (primaryEntry == null && allPasswords.isNotEmpty()) {
+        // Handle case where item might have been deleted while on screen
+        // or initial load haven't finished? 
+        // If it's empty and we have data, maybe it's gone.
     }
 
-    val context = LocalContext.current
-    val firstEntry = passwords.first()
-    
     // Deletion State
     var itemToDelete by remember { mutableStateOf<PasswordEntry?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -69,16 +83,21 @@ fun MultiPasswordDetailDialog(
     // Logic to perform actual deletion after verification
     fun performDeletion() {
         itemToDelete?.let { entry ->
-            onDeletePassword(entry)
+            viewModel.deletePasswordEntry(entry)
             itemToDelete = null
             showDeleteConfirmDialog = false
             showMasterPasswordDialog = false
+            
+            // If it was the last one, go back
+            if (groupPasswords.size <= 1) {
+                onNavigateBack()
+            }
         }
     }
     
     // Verification Flow
     fun startVerification() {
-        showDeleteConfirmDialog = false // Close confirm dialog
+        showDeleteConfirmDialog = false 
         
         if (biometricHelper.isBiometricAvailable()) {
             (context as? FragmentActivity)?.let { activity ->
@@ -97,159 +116,174 @@ fun MultiPasswordDetailDialog(
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.85f),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-            elevation = CardDefaults.cardElevation(8.dp),
-            shape = RoundedCornerShape(28.dp)
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        topBar = {
+            TopAppBar(
+                title = { Text(primaryEntry?.title ?: stringResource(R.string.password_details)) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = MonicaIcons.Navigation.back,
+                            contentDescription = stringResource(R.string.back)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        },
+        floatingActionButton = {
+            ActionStrip(
+                actions = listOf(
+                    ActionStripItem(
+                        icon = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.add_password),
+                        onClick = { onAddPassword(passwordId) }, // Pass ID to know common info
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                )
+            )
+        }
+    ) { paddingValues ->
+        if (groupPasswords.isNotEmpty()) {
+            val firstEntry = groupPasswords.first()
+            
+            LazyColumn(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(vertical = 16.dp)
+            ) {
                 // ==========================================
                 // 🎯 Header Section (Centered)
                 // ==========================================
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Box(
+                item {
+                    Column(
                         modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Icon(
-                            imageVector = MonicaIcons.Security.lock, // Use MonicaIcons
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                    
-                    Text(
-                        text = firstEntry.title,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
-                    
-                    if (firstEntry.website.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = MonicaIcons.Security.lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        
                         Text(
-                            text = firstEntry.website,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = firstEntry.title,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
                             textAlign = TextAlign.Center
                         )
+                        
+                        if (firstEntry.website.isNotEmpty()) {
+                            Text(
+                                text = firstEntry.website,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
-                
-                // HorizontalDivider moved/removed as per design preference, or kept minimal
-                // HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(vertical = 16.dp)
-                ) {
-                    // Common Info Section
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                            )
+                // ==========================================
+                // 📝 Common Info Card
+                // ==========================================
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = "📝 " + stringResource(R.string.common_info),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                
-                                if (firstEntry.website.isNotEmpty()) {
-                                    InfoItem(label = stringResource(R.string.label_website), value = firstEntry.website)
-                                }
-                                if (firstEntry.username.isNotEmpty()) {
-                                    InfoItem(label = stringResource(R.string.label_username), value = firstEntry.username)
-                                }
-                                if (firstEntry.notes.isNotEmpty()) {
-                                    InfoItem(label = stringResource(R.string.label_notes), value = firstEntry.notes)
-                                }
-                                if (firstEntry.appName.isNotEmpty()) {
-                                    InfoItem(label = stringResource(R.string.linked_app), value = firstEntry.appName)
-                                }
+                            Text(
+                                text = "📝 " + stringResource(R.string.common_info),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            
+                            if (firstEntry.website.isNotEmpty()) {
+                                InfoItem(label = stringResource(R.string.label_website), value = firstEntry.website)
+                            }
+                            if (firstEntry.username.isNotEmpty()) {
+                                InfoItem(label = stringResource(R.string.label_username), value = firstEntry.username)
+                            }
+                            if (firstEntry.notes.isNotEmpty()) {
+                                InfoItem(label = stringResource(R.string.label_notes), value = firstEntry.notes)
+                            }
+                            if (firstEntry.appName.isNotEmpty()) {
+                                InfoItem(label = stringResource(R.string.linked_app), value = firstEntry.appName)
                             }
                         }
                     }
-                    
-                    // Password List Header
-                    item {
-                        Text(
-                            text = stringResource(R.string.password_list, passwords.size),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    
-                    // Passwords
-                    itemsIndexed(passwords) { index, password ->
-                        PasswordItemCardRefactored(
-                            password = password,
-                            index = index + 1,
-                            onEdit = { onEditPassword(password) },
-                            onDelete = { 
-                                itemToDelete = password
-                                showDeleteConfirmDialog = true
-                            },
-                            onToggleFavorite = { onToggleFavorite(password) },
-                            onClick = { onPasswordClick(password) }
-                        )
-                    }
+                }
+                
+                // ==========================================
+                // 🔑 Password List Header
+                // ==========================================
+                item {
+                    Text(
+                        text = stringResource(R.string.password_list, groupPasswords.size),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                
+                // ==========================================
+                // 🔑 Passwords
+                // ==========================================
+                itemsIndexed(groupPasswords) { index, password ->
+                    PasswordItemCardRefactored(
+                        password = password,
+                        index = index + 1,
+                        onEdit = { onEditPassword(password.id) },
+                        onDelete = { 
+                            itemToDelete = password
+                            showDeleteConfirmDialog = true
+                        },
+                        onToggleFavorite = { 
+                            viewModel.toggleFavorite(password.id, !password.isFavorite)
+                        },
+                        onClick = { /* Could auto-copy or just stay here */ }
+                    )
+                }
+                
+                // Bottom Spacer
+                item {
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
             }
-
-            ActionStrip(
-                actions = listOf(
-                   ActionStripItem(
-                       icon = Icons.Default.Add,
-                       contentDescription = stringResource(R.string.add_password),
-                       onClick = onAddPassword,
-                       tint = MaterialTheme.colorScheme.primary
-                   )
-                ),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-            )
+        } else {
+            // Loading or Empty State
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         }
-    }
     }
     
     // Delete Confirmation Dialog
@@ -282,7 +316,7 @@ fun MultiPasswordDetailDialog(
                 passwordVerificationError = false
             },
             onConfirm = { inputPassword ->
-                if (onVerifyMasterPassword(inputPassword)) {
+                if (viewModel.verifyMasterPassword(inputPassword)) {
                      performDeletion()
                 } else {
                     passwordVerificationError = true
@@ -291,6 +325,10 @@ fun MultiPasswordDetailDialog(
             isError = passwordVerificationError
         )
     }
+}
+
+private fun getPasswordInfoKey(entry: PasswordEntry): String {
+    return "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
 }
 
 @Composable
@@ -331,10 +369,6 @@ private fun PasswordItemCardRefactored(
             else 
                 MaterialTheme.colorScheme.surface
         ),
-        border = if (password.isFavorite) 
-            null // or BorderStroke(1.dp, MaterialTheme.colorScheme.primary) 
-        else 
-            null, // MaterialTheme.colorScheme.outlineVariant?
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(
@@ -367,7 +401,7 @@ private fun PasswordItemCardRefactored(
                 }
                 
                 // Actions
-                Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                Row {
                     IconButton(onClick = onToggleFavorite) {
                         Icon(
                             if (password.isFavorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,

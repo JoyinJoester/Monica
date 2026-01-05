@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Monica",
-    "version": "1.0.16",
+    "version": "1.0.17",
     "description": "Monica Password Manager Browser Extension",
     "icons": {
         "128": "icons/icon.png"

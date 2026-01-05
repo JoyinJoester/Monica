@@ -430,6 +430,15 @@
     <string name="error_password_required">Password is required</string>
     <string name="password_min_6_digits">Minimum 6 digits required</string>
     
+    <!-- Multi Password Dialog -->
+    <string name="common_info">Common Info</string>
+    <string name="password_list">Password List (%d)</string>
+    <string name="password_item_title">Password %d</string>
+    <string name="label_website">Website</string>
+    <string name="label_username">Username</string>
+    <string name="label_notes">Notes</string>
+    <string name="copied_text">%s copied</string>
+    
     <!-- Settings Screen -->
     <string name="settings_title">Settings</string>
     <string name="language">Language</string>
@@ -518,6 +527,9 @@
     <string name="incorrect_answers">Incorrect answers. Please try again.</string>
     <string name="verification_attempts" formatted="false">Attempts: %d of %d</string>
     <string name="too_many_attempts">Too many incorrect attempts. Please contact support or use the complete reset option.</string>
+    <string name="verify_identity_to_delete">Verify identity to delete</string>
+    <string name="verify_master_password_desc">Please enter your master password to continue</string>
+    <string name="wrong_password">Wrong password</string>
     <string name="back_to_login">Back to Login</string>
     
     <!-- Main Screen Bottom Navigation -->
@@ -597,7 +609,7 @@
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.16</string>
+    <string name="settings_version_number">V1.0.17</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -1396,4 +1408,9 @@
     <string name="select_password_to_bind">Select Password to Bind</string>
     <string name="link_example">https://example.com</string>
     <string name="app_name_placeholder">App Name</string>
+    
+    <!-- Password Detail Screen -->
+    <string name="password_details">Password Details</string>
+    <string name="delete_password">Delete Password</string>
+    <string name="delete_password_confirmation">Are you sure you want to delete this password? This action cannot be undone.</string>
 </resources>

@@ -84,6 +84,8 @@ fun SimpleMainScreen(
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
+    onNavigateToPasswordDetail: (Long) -> Unit = {},
+    onNavigateToMultiPasswordDetail: (Long) -> Unit = {},
     @Suppress("UNUSED_PARAMETER")
     onNavigateToDocumentDetail: (Long) -> Unit, // 保留以保持API兼容性，但当前未使用
     onNavigateToChangePassword: () -> Unit = {},
@@ -659,12 +661,15 @@ fun SimpleMainScreen(
                     // 密码页面 - 使用现有的密码列表
                     PasswordListContent(
                         viewModel = passwordViewModel,
+                        securityManager = securityManager,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
                         onPasswordClick = { password ->
                             onNavigateToAddPassword(password.id)
                         },
                         onNavigateToAddPassword = onNavigateToAddPassword,
+                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                        onNavigateToMultiPasswordDetail = onNavigateToMultiPasswordDetail,
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
                             isPasswordSelectionMode = isSelectionMode
                             selectedPasswordCount = count
@@ -840,10 +845,13 @@ fun SimpleMainScreen(
 @Composable
 private fun PasswordListContent(
     viewModel: PasswordViewModel,
+    securityManager: SecurityManager,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onNavigateToAddPassword: (Long?) -> Unit,
+    onNavigateToPasswordDetail: (Long) -> Unit,
+    onNavigateToMultiPasswordDetail: (Long) -> Unit,
     onSelectionModeChange: (
         isSelectionMode: Boolean,
         selectedCount: Int,
@@ -870,9 +878,6 @@ private fun PasswordListContent(
     var passwordInput by remember { mutableStateOf("") }
     var showPasswordVerify by remember { mutableStateOf(false) }
     
-    // 多密码详情对话框状态
-    var showMultiPasswordDialog by remember { mutableStateOf(false) }
-    var selectedMultiPasswords by remember { mutableStateOf<List<takagi.ru.monica.data.PasswordEntry>>(emptyList()) }
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1244,9 +1249,8 @@ private fun PasswordListContent(
                                     selectedPasswords + password.id
                                 }
                             } else {
-                                // 普通模式：显示详情对话框
-                                selectedPasswordForDetail = password
-                                showDetailDialog = true
+                                // 普通模式：显示详情页面
+                                onNavigateToPasswordDetail(password.id)
                             }
                         },
                         onSwipeLeft = { password ->
@@ -1355,9 +1359,8 @@ private fun PasswordListContent(
                             }
                         },
                         onOpenMultiPasswordDialog = { passwords ->
-                            // 打开多密码详情对话框
-                            showMultiPasswordDialog = true
-                            selectedMultiPasswords = passwords
+                            // 导航到多密码详情页面
+                            onNavigateToMultiPasswordDetail(passwords.first().id)
                         }
                     )
                     
@@ -1461,102 +1464,10 @@ private fun PasswordListContent(
         }
     }
     
-    // 密码详情对话框
-    if (showDetailDialog && selectedPasswordForDetail != null) {
-        takagi.ru.monica.ui.components.PasswordDetailDialog(
-            passwordEntry = selectedPasswordForDetail!!,
-            onDismiss = {
-                showDetailDialog = false
-                selectedPasswordForDetail = null
-            },
-            onEdit = {
-                showDetailDialog = false
-                onPasswordClick(selectedPasswordForDetail!!)
-                selectedPasswordForDetail = null
-            },
-            onDelete = {
-                coroutineScope.launch {
-                    viewModel.deletePasswordEntry(selectedPasswordForDetail!!)
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.deleted_items, 1),
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                    showDetailDialog = false
-                    selectedPasswordForDetail = null
-                }
-            },
-            onAddPassword = {
-                // 关闭详情对话框后，导航到编辑页面
-                // 编辑页面会检测到要复制的密码ID并预填充信息
-                val currentEntry = selectedPasswordForDetail!!
-                showDetailDialog = false
-                selectedPasswordForDetail = null
-                // 使用负数ID表示"复制模式" - 导航到添加页面时会复制该密码的信息
-                onNavigateToAddPassword(-currentEntry.id.toLong())
-            }
-        )
-    }
+
     
-    // 多密码详情对话框
-    if (showMultiPasswordDialog && selectedMultiPasswords.isNotEmpty()) {
-        takagi.ru.monica.ui.components.MultiPasswordDetailDialog(
-            passwords = selectedMultiPasswords,
-            onDismiss = {
-                showMultiPasswordDialog = false
-                selectedMultiPasswords = emptyList()
-            },
-            onAddPassword = {
-                // 关闭多密码详情对话框，导航到添加页面（复制模式）
-                val firstEntry = selectedMultiPasswords.first()
-                showMultiPasswordDialog = false
-                selectedMultiPasswords = emptyList()
-                onNavigateToAddPassword(-firstEntry.id.toLong())
-            },
-            onEditPassword = { password ->
-                // 关闭多密码详情对话框，导航到编辑页面
-                showMultiPasswordDialog = false
-                selectedMultiPasswords = emptyList()
-                onPasswordClick(password)
-            },
-            onDeletePassword = { password ->
-                // 删除单个密码
-                coroutineScope.launch {
-                    viewModel.deletePasswordEntry(password)
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.deleted_items, 1),
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                    // 从列表中移除已删除的密码
-                    val updatedList = selectedMultiPasswords.filter { it.id != password.id }
-                    if (updatedList.isEmpty()) {
-                        // 如果删除后没有密码了，关闭对话框
-                        showMultiPasswordDialog = false
-                        selectedMultiPasswords = emptyList()
-                    } else {
-                        // 更新列表
-                        selectedMultiPasswords = updatedList
-                    }
-                }
-            },
-            onToggleFavorite = { password ->
-                // 切换收藏状态
-                coroutineScope.launch {
-                    viewModel.toggleFavorite(password.id, !password.isFavorite)
-                    // 更新列表中的密码状态
-                    selectedMultiPasswords = selectedMultiPasswords.map {
-                        if (it.id == password.id) {
-                            it.copy(isFavorite = !it.isFavorite)
-                        } else {
-                            it
-                        }
-                    }
-                }
-            }
-        )
-    }
     
+
     // 单项删除确认对话框(支持指纹和密码验证)
     itemToDelete?.let { item ->
         DeleteConfirmDialog(

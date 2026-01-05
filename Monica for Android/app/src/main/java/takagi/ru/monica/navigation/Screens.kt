@@ -64,6 +64,16 @@ sealed class Screen(val route: String) {
             return "document_detail/$documentId"
         }
     }
+    object PasswordDetail : Screen("password_detail/{passwordId}") {
+        fun createRoute(passwordId: Long): String {
+            return "password_detail/$passwordId"
+        }
+    }
+    object MultiPasswordDetail : Screen("multi_password_detail/{passwordId}") {
+        fun createRoute(passwordId: Long): String {
+            return "multi_password_detail/$passwordId"
+        }
+    }
     object QrScanner : Screen("qr_scanner")
     object Settings : Screen("settings")
     object ResetPassword : Screen("reset_password?skipCurrentPassword={skipCurrentPassword}") {
