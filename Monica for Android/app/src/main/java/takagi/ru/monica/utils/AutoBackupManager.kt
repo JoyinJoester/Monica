@@ -44,7 +44,7 @@ class AutoBackupManager(private val context: Context) {
         
         // 创建周期性工作请求
         val workRequest = PeriodicWorkRequestBuilder<AutoBackupWorker>(
-            24, TimeUnit.HOURS // 每24小时执行一次
+            12, TimeUnit.HOURS // 每12小时执行一次
         )
             .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
             .setConstraints(constraints)
@@ -97,8 +97,14 @@ class AutoBackupManager(private val context: Context) {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
         
+        // ✅ 添加参数标记这是手动触发的备份，应跳过时间检查
+        val inputData = androidx.work.Data.Builder()
+            .putBoolean(AutoBackupWorker.KEY_MANUAL_TRIGGER, true)
+            .build()
+        
         val workRequest = OneTimeWorkRequestBuilder<AutoBackupWorker>()
             .setConstraints(constraints)
+            .setInputData(inputData)  // ✅ 传递手动触发标志
             .addTag("manual_backup")
             .build()
         

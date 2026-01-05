@@ -7,6 +7,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+// Ensure Bookmark icons are available (using wildcards in original line 9 covers it if they are in filled, else explicit import)
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.BookmarkRemove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +37,9 @@ import java.util.Locale
 import kotlinx.coroutines.flow.first
 import java.text.DateFormat
 import android.text.format.DateUtils
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -593,11 +599,12 @@ fun WebDavBackupScreen(
                                 // 获取所有其他数据(TOTP、银行卡、证件)
                                 val allSecureItems = secureItemRepository.getAllItems().first()
                                 
-                                // 创建并上传备份（使用偏好设置）
+                                // 创建并上传永久备份
                                 val result = webDavHelper.createAndUploadBackup(
-                                    decryptedPasswords, 
-                                    allSecureItems,
-                                    backupPreferences
+                                    passwords = decryptedPasswords, 
+                                    secureItems = allSecureItems,
+                                    preferences = backupPreferences,
+                                    isPermanent = true // Manual backups are permanent
                                 )
                                 
                                 if (result.isSuccess) {
@@ -651,7 +658,7 @@ fun WebDavBackupScreen(
                 ) {
                     Icon(Icons.Default.CloudUpload, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.webdav_create_new_backup))
+                    Text("创建永久备份")  // Changed from "创建新备份"
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -719,6 +726,18 @@ fun WebDavBackupScreen(
                                             "数据已成功恢复",
                                             Toast.LENGTH_SHORT
                                         ).show()
+                                    },
+                                    onStatusChanged = {
+                                        // Refresh list when status changes
+                                        // (Simplest way to update UI for now)
+                                        isLoading = true
+                                        coroutineScope.launch {
+                                            loadBackups(webDavHelper) { list, error ->
+                                                backupList = list
+                                                isLoading = false
+                                                error?.let { errorMessage = it }
+                                            }
+                                        }
                                     }
                                 )
                             }
@@ -737,7 +756,8 @@ private fun BackupItem(
     passwordRepository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
     onDeleted: () -> Unit,
-    onRestoreSuccess: () -> Unit
+    onRestoreSuccess: () -> Unit,
+    onStatusChanged: () -> Unit // Callback for status change
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -746,6 +766,7 @@ private fun BackupItem(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
     
     // New state variables for smart decryption
     var showPasswordInputDialog by remember { mutableStateOf(false) }
@@ -765,6 +786,9 @@ private fun BackupItem(
             android.util.Log.d("WebDavBackup", "备份中安全项数量: ${secureItems.size}")
             android.util.Log.d("WebDavBackup", "报告: ${report.getSummary()}")
             
+            // ID Mapping: Old ID -> New ID
+            val passwordIdMap = mutableMapOf<Long, Long>()
+            
             // 导入密码数据到数据库(带去重)
             var passwordCount = 0
             var passwordSkipped = 0
@@ -777,11 +801,32 @@ private fun BackupItem(
                         password.username,
                         password.website
                     )
+                    
+                    // Keep track of the original ID from the backup
+                    val originalId = password.id
+                    
                     if (!isDuplicate) {
                         val newPassword = password.copy(id = 0)
-                        passwordRepository.insertPasswordEntry(newPassword)
-                        passwordCount++
+                        // Capture the new ID returned by insert
+                        val newId = passwordRepository.insertPasswordEntry(newPassword)
+                        if (newId > 0) {
+                            passwordIdMap[originalId] = newId
+                            passwordCount++
+                        } else {
+                            passwordFailed++
+                            android.util.Log.e("WebDavBackup", "Failed to insert password, returned ID <= 0")
+                        }
                     } else {
+                        // If duplicate, try to find the existing entry to map the ID
+                        // This ensures TOTP items can still bind to the existing password
+                        val existingEntry = passwordRepository.getDuplicateEntry(
+                             password.title,
+                             password.username,
+                             password.website
+                        )
+                        if (existingEntry != null) {
+                             passwordIdMap[originalId] = existingEntry.id
+                        }
                         passwordSkipped++
                     }
                 } catch (e: Exception) {
@@ -797,6 +842,10 @@ private fun BackupItem(
             var secureItemSkipped = 0
             var secureItemFailed = 0
             val failedSecureItemDetails = mutableListOf<String>()
+            
+            // JSON Parser for TOTP data
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            
             secureItems.forEach { exportItem ->
                 try {
                     val itemType = takagi.ru.monica.data.ItemType.valueOf(exportItem.itemType)
@@ -804,12 +853,33 @@ private fun BackupItem(
                         itemType,
                         exportItem.title
                     )
+                    
                     if (!isDuplicate) {
+                        // Handle TOTP binding update
+                        var finalItemData = exportItem.itemData
+                        if (itemType == takagi.ru.monica.data.ItemType.TOTP) {
+                            try {
+                                val totpData = json.decodeFromString<takagi.ru.monica.data.model.TotpData>(exportItem.itemData)
+                                if (totpData.boundPasswordId != null && totpData.boundPasswordId > 0) {
+                                    val newBoundId = passwordIdMap[totpData.boundPasswordId]
+                                    if (newBoundId != null) {
+                                        val updatedTotpData = totpData.copy(boundPasswordId = newBoundId)
+                                        finalItemData = json.encodeToString(updatedTotpData)
+                                        android.util.Log.d("WebDavBackup", "Updated TOTP binding: ${exportItem.title} -> Password ID $newBoundId")
+                                    } else {
+                                        android.util.Log.w("WebDavBackup", "Could not find new password ID for TOTP binding: ${exportItem.title} (Old ID: ${totpData.boundPasswordId})")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.w("WebDavBackup", "Failed to parse/update TOTP data for ${exportItem.title}: ${e.message}")
+                            }
+                        }
+
                         val secureItem = takagi.ru.monica.data.SecureItem(
                             id = 0,
                             itemType = itemType,
                             title = exportItem.title,
-                            itemData = exportItem.itemData,
+                            itemData = finalItemData, // Use potentially updated data
                             notes = exportItem.notes,
                             isFavorite = exportItem.isFavorite,
                             imagePaths = exportItem.imagePaths,
@@ -925,6 +995,39 @@ private fun BackupItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                
+                // Tags
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (backup.isPermanent) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                text = "永久",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                    if (backup.isExpiring) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                text = "即将清理",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
             }
             
             // 恢复按钮
@@ -946,15 +1049,53 @@ private fun BackupItem(
                 }
             }
             
-            // 删除按钮
-            IconButton(
-                onClick = { showDeleteDialog = true }
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = context.getString(R.string.delete),
-                    tint = MaterialTheme.colorScheme.error
-                )
+            // More Menu
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "更多选项")
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    // Mark/Unmark Permanent
+                     DropdownMenuItem(
+                        text = { Text(if (backup.isPermanent) "取消永久标记" else "标记为永久") },
+                        onClick = {
+                            menuExpanded = false
+                            coroutineScope.launch {
+                                val result = if (backup.isPermanent) {
+                                    webDavHelper.unmarkPermanent(backup)
+                                } else {
+                                    webDavHelper.markBackupAsPermanent(backup)
+                                }
+                                
+                                result.onSuccess {
+                                    Toast.makeText(context, if (backup.isPermanent) "已取消永久标记" else "已标记为永久备份", Toast.LENGTH_SHORT).show()
+                                    onStatusChanged()
+                                }.onFailure { e ->
+                                    Toast.makeText(context, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        leadingIcon = { 
+                            Icon(
+                                if (backup.isPermanent) Icons.Default.BookmarkRemove else Icons.Default.BookmarkAdd, 
+                                contentDescription = null
+                            ) 
+                        }
+                    )
+                    
+                    // Delete
+                    DropdownMenuItem(
+                        text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            menuExpanded = false
+                            showDeleteDialog = true
+                        },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
+                    )
+                }
             }
         }
     }

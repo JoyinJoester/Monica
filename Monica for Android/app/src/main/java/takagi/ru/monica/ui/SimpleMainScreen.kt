@@ -1550,6 +1550,11 @@ private fun TotpListContent(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val haptic = rememberHapticFeedback()
     
+    // 时间同步状态
+    var showTimeSyncDialog by remember { mutableStateOf(false) }
+    var isSyncing by remember { mutableStateOf(false) }
+    var syncResult by remember { mutableStateOf<String?>(null) }
+    
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<Long>()) }
@@ -1605,26 +1610,46 @@ private fun TotpListContent(
     }
 
     Column {
-        // 搜索框 - 非选择模式下显示
+        // 搜索框和时间同步按钮 - 非选择模式下显示
         if (!isSelectionMode) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = viewModel::updateSearchQuery,
-                label = { Text(stringResource(R.string.search_authenticator)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear))
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                // 搜索框
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = viewModel::updateSearchQuery,
+                    label = { Text(stringResource(R.string.search_authenticator)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear))
+                            }
                         }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(28.dp)
-            )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    singleLine = true,
+                    shape = RoundedCornerShape(28.dp)
+                )
+                
+                // 时间同步按钮
+                OutlinedButton(
+                    onClick = { showTimeSyncDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 8.dp),
+                    enabled = !isSyncing
+                ) {
+                    Icon(
+                        Icons.Default.Sync,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isSyncing) "正在同步时间..." else "自动校正时间")
+                }
+            }
         } else {
             // 选择模式下添加顶部间距
             Spacer(modifier = Modifier.height(8.dp))
@@ -1879,6 +1904,87 @@ private fun TotpListContent(
                     }
                 ) {
                     Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+    
+    // 时间同步对话框
+    if (showTimeSyncDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                if (!isSyncing) {
+                    showTimeSyncDialog = false
+                    syncResult = null
+                }
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Sync,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text("自动校正时间") },
+            text = {
+                Column {
+                    if (isSyncing) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(16.dp)
+                        )
+                        Text(
+                            "正在从网络获取标准时间...",
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    } else if (syncResult != null) {
+                        Text(syncResult!!)
+                    } else {
+                        Text("将通过网络获取标准时间，自动校正验证器的时间偏差，确保验证码准确。\n\n需要网络连接。")
+                    }
+                }
+            },
+            confirmButton = {
+                if (!isSyncing && syncResult == null) {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            isSyncing = true
+                            coroutineScope.launch {
+                                try {
+                                    val result = takagi.ru.monica.util.TimeSync.detectTimeOffset()
+                                    result.fold(
+                                        onSuccess = { offset ->
+                                            val settingsManager = takagi.ru.monica.utils.SettingsManager(context)
+                                            settingsManager.updateTotpTimeOffset(offset)
+                                            syncResult = "时间校正成功！\n\n检测到时间偏移: ${takagi.ru.monica.util.TimeSync.formatOffset(offset)}\n\n验证器已自动调整。"
+                                        },
+                                        onFailure = { error ->
+                                            syncResult = "时间同步失败\n\n${error.message ?: "网络连接错误"}\n\n请检查网络连接后重试。"
+                                        }
+                                    )
+                                } catch (e: Exception) {
+                                    syncResult = "时间同步失败\n\n${e.message ?: "未知错误"}"
+                                } finally {
+                                    isSyncing = false
+                                }
+                            }
+                        }
+                    ) {
+                        Text("开始校正")
+                    }
+                }
+            },
+            dismissButton = {
+                if (!isSyncing) {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            showTimeSyncDialog = false
+                            syncResult = null
+                        }
+                    ) {
+                        Text(if (syncResult != null) "关闭" else stringResource(R.string.cancel))
+                    }
                 }
             }
         )

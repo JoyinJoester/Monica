@@ -18,6 +18,7 @@ import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.RestoreReport
 import takagi.ru.monica.data.ItemCounts
 import takagi.ru.monica.data.FailedItem
+import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.Serializable
@@ -53,7 +54,8 @@ private data class PasswordBackupEntry(
     val email: String = "",
     val phone: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val authenticatorKey: String = ""  // ✅ 直接存储验证器密钥
 )
 
 @Serializable
@@ -97,7 +99,7 @@ class WebDavHelper(
         private const val KEY_AUTO_BACKUP_ENABLED = "auto_backup_enabled"
         private const val KEY_LAST_BACKUP_TIME = "last_backup_time"
         private const val PASSWORD_META_MARKER = "[MonicaMeta]"
-        
+        private const val PERMANENT_SUFFIX = "_permanent"        
         // Backup preferences keys
         private const val KEY_BACKUP_INCLUDE_PASSWORDS = "backup_include_passwords"
         private const val KEY_BACKUP_INCLUDE_AUTHENTICATORS = "backup_include_authenticators"
@@ -549,6 +551,7 @@ class WebDavHelper(
                     filteredPasswords.forEach { password ->
                         try {
                             val categoryName = password.categoryId?.let { id -> categoryMap[id]?.name }
+                            
                             val backup = PasswordBackupEntry(
                                 id = password.id,
                                 title = password.title,
@@ -562,7 +565,8 @@ class WebDavHelper(
                                 email = password.email,
                                 phone = password.phone,
                                 createdAt = password.createdAt.time,
-                                updatedAt = password.updatedAt.time
+                                updatedAt = password.updatedAt.time,
+                                authenticatorKey = password.authenticatorKey  // ✅ 直接备份验证器密钥
                             )
                             val fileName = "password_${password.id}_${password.createdAt.time}.json"
                             val target = File(passwordsDir, fileName)
@@ -743,7 +747,8 @@ class WebDavHelper(
     suspend fun createAndUploadBackup(
         passwords: List<PasswordEntry>,
         secureItems: List<SecureItem>,
-        preferences: BackupPreferences = getBackupPreferences()
+        preferences: BackupPreferences = getBackupPreferences(),
+        isPermanent: Boolean = false
     ): Result<BackupReport> = withContext(Dispatchers.IO) {
         try {
             // 调用重构后的创建方法
@@ -757,10 +762,14 @@ class WebDavHelper(
 
             try {
                 // 上传
-                val uploadResult = uploadBackup(backupFile)
+                val uploadResult = uploadBackup(backupFile, isPermanent)
                 
                 if (uploadResult.isSuccess) {
                     updateLastBackupTime()
+
+                    // Trigger cleanup after successful upload
+                    cleanupBackups()
+
                     // 更新报告状态为 true (如果之前没有失败项)
                     val finalReport = report.copy(success = report.success)
                     Result.success(finalReport)
@@ -899,7 +908,7 @@ class WebDavHelper(
             }
             
             try {
-                val passwordsWithCategories = mutableListOf<Pair<PasswordEntry, String?>>()  // ✅ 存储密码和分类名称
+                val passwordsWithMetadata = mutableListOf<Pair<PasswordEntry, String?>>()  // ✅ 存储密码和分类名称
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
                 
@@ -934,7 +943,7 @@ class WebDavHelper(
                                     backupPasswordCount++
                                     val result = restorePasswordFromJson(tempFile)
                                     if (result != null) {
-                                        passwordsWithCategories.add(result)  // ✅ 存储密码和分类名称
+                                        passwordsWithMetadata.add(result)  // ✅ 存储密码、分类名称和TOTP密钥
                                         restoredPasswordCount++
                                     } else {
                                         failedItems.add(FailedItem(
@@ -1066,8 +1075,8 @@ class WebDavHelper(
                     }
                 }
                 
-                // ✅ 解析分类并创建缺失的分类
-                if (passwordsWithCategories.isNotEmpty()) {
+                // ✅ 解析分类并创建缺失的分类，同时处理TOTP关联
+                if (passwordsWithMetadata.isNotEmpty()) {
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                     val categoryDao = database.categoryDao()
                     
@@ -1076,7 +1085,7 @@ class WebDavHelper(
                     val categoryByName = existingCategories.associateBy { it.name }.toMutableMap()
                     
                     // 收集需要创建的分类名称
-                    val categoryNamesToCreate = passwordsWithCategories
+                    val categoryNamesToCreate = passwordsWithMetadata
                         .mapNotNull { it.second }
                         .distinct()
                         .filter { it.isNotBlank() && !categoryByName.containsKey(it) }
@@ -1098,10 +1107,13 @@ class WebDavHelper(
                         }
                     }
                     
+                    // ✅ 存储密码和分类名称（authenticatorKey已经在PasswordEntry中）
+                    
                     // 将密码与分类关联
-                    passwordsWithCategories.forEach { (entry, categoryName) ->
+                    passwordsWithMetadata.forEach { (entry, categoryName) ->
                         val categoryId = categoryName?.let { categoryByName[it]?.id }
-                        passwords.add(entry.copy(categoryId = categoryId))
+                        val passwordEntry = entry.copy(categoryId = categoryId)
+                        passwords.add(passwordEntry)
                     }
                     
                     android.util.Log.d("WebDavHelper", "Resolved ${passwords.size} passwords with categories")
@@ -1160,7 +1172,10 @@ class WebDavHelper(
                 )
                 
                 Result.success(RestoreResult(
-                    content = BackupContent(passwords, secureItems),
+                    content = BackupContent(
+                        passwords = passwords,
+                        secureItems = secureItems
+                    ),
                     report = report
                 ))
             } finally {
@@ -1234,6 +1249,9 @@ class WebDavHelper(
                 val fields = splitCsvLine(firstLine)
                 format = detectPasswordCsvFormat(fields)
                 isHeader = when (format) {
+                    PasswordCsvFormat.APP_EXPORT -> fields.map { it.lowercase(Locale.getDefault()) }.let {
+                        it.contains("type") && it.contains("data")
+                    }
                     PasswordCsvFormat.CHROME -> fields.map { it.lowercase(Locale.getDefault()) }.let {
                         it.contains("name") && it.contains("password") && it.contains("username")
                     }
@@ -1260,6 +1278,10 @@ class WebDavHelper(
      * 从JSON文件恢复密码
      * @return Pair of (PasswordEntry, categoryName) - categoryName用于创建/查找分类
      */
+    /**
+     * 从JSON文件恢复密码条目
+     * @return Pair<PasswordEntry, categoryName>
+     */
     private fun restorePasswordFromJson(file: File): Pair<PasswordEntry, String?>? {
         return try {
             val content = file.readText(Charsets.UTF_8)
@@ -1277,7 +1299,8 @@ class WebDavHelper(
                 email = backup.email,
                 phone = backup.phone,
                 createdAt = Date(backup.createdAt),
-                updatedAt = Date(backup.updatedAt)
+                updatedAt = Date(backup.updatedAt),
+                authenticatorKey = backup.authenticatorKey  // ✅ 直接恢复验证器密钥
             )
             Pair(entry, backup.categoryName)
         } catch (e: Exception) {
@@ -1311,6 +1334,8 @@ class WebDavHelper(
     private fun detectPasswordCsvFormat(fields: List<String>): PasswordCsvFormat {
         val lowered = fields.map { it.lowercase(Locale.getDefault()) }
         return when {
+            lowered.contains("type") && lowered.contains("data") && 
+            lowered.contains("id") -> PasswordCsvFormat.APP_EXPORT
             lowered.contains("name") && lowered.contains("url") &&
                 lowered.contains("username") && lowered.contains("password") -> PasswordCsvFormat.CHROME
             lowered.contains("title") && lowered.contains("password") -> PasswordCsvFormat.LEGACY
@@ -1321,10 +1346,59 @@ class WebDavHelper(
     private fun parsePasswordEntry(line: String, format: PasswordCsvFormat): PasswordEntry? {
         val fields = splitCsvLine(line)
         return when (format) {
+            PasswordCsvFormat.APP_EXPORT -> parseAppPasswordFields(fields)
             PasswordCsvFormat.CHROME -> parseChromePasswordFields(fields)
             PasswordCsvFormat.LEGACY -> parseLegacyPasswordFields(fields)
-            PasswordCsvFormat.UNKNOWN -> parseLegacyPasswordFields(fields) ?: parseChromePasswordFields(fields)
+            PasswordCsvFormat.UNKNOWN -> parseAppPasswordFields(fields) ?: parseLegacyPasswordFields(fields) ?: parseChromePasswordFields(fields)
         }
+    }
+
+    private fun parseAppPasswordFields(fields: List<String>): PasswordEntry? {
+        return try {
+            // ID, Type, Title, Data, Notes, IsFavorite, ImagePaths, CreatedAt, UpdatedAt
+            if (fields.size >= 9 && fields.getOrNull(1) == "PASSWORD") {
+                val id = fields.getOrNull(0)?.toLongOrNull() ?: 0L
+                val title = fields.getOrNull(2) ?: ""
+                val dataStr = fields.getOrNull(3) ?: ""
+                val notes = fields.getOrNull(4) ?: ""
+                val isFavorite = fields.getOrNull(5)?.toBoolean() ?: false
+                val createdAt = fields.getOrNull(7)?.toLongOrNull()?.let { Date(it) } ?: Date()
+                val updatedAt = fields.getOrNull(8)?.toLongOrNull()?.let { Date(it) } ?: Date()
+
+                // Parse Data string (username:x;password:y;...)
+                val dataMap = parsePasswordDataString(dataStr)
+                
+                PasswordEntry(
+                    id = id, // Preserve ID!
+                    title = title,
+                    username = dataMap["username"] ?: "",
+                    password = dataMap["password"] ?: "",
+                    website = dataMap["website"] ?: "",
+                    email = dataMap["email"] ?: "",
+                    phone = dataMap["phone"] ?: "",
+                    notes = notes,
+                    isFavorite = isFavorite,
+                    createdAt = createdAt,
+                    updatedAt = updatedAt
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("WebDavHelper", "Failed to parse APP_EXPORT password CSV line: ${e.message}")
+            null
+        }
+    }
+
+    private fun parsePasswordDataString(data: String): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        data.split(";").forEach { pair ->
+            val parts = pair.split(":", limit = 2)
+            if (parts.size == 2) {
+                result[parts[0].trim()] = parts[1].trim()
+            }
+        }
+        return result
     }
 
     private fun parseLegacyPasswordFields(fields: List<String>): PasswordEntry? {
@@ -1434,6 +1508,7 @@ class WebDavHelper(
     }
 
     private enum class PasswordCsvFormat {
+        APP_EXPORT,
         LEGACY,
         CHROME,
         UNKNOWN
@@ -1452,7 +1527,7 @@ class WebDavHelper(
     /**
      * 上传备份文件
      */
-    suspend fun uploadBackup(file: File): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun uploadBackup(file: File, isPermanent: Boolean = false): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
                 return@withContext Result.failure(Exception("WebDAV not configured"))
@@ -1466,7 +1541,8 @@ class WebDavHelper(
             
             // 生成带时间戳的文件名
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val fileName = "monica_backup_$timestamp.zip"
+            val suffix = if (isPermanent) PERMANENT_SUFFIX else ""
+            val fileName = "monica_backup_$timestamp$suffix.zip"
             val remotePath = "$backupDir/$fileName"
             
             // 上传文件
@@ -1541,6 +1617,98 @@ class WebDavHelper(
     }
     
     /**
+     * Delete backups older than 60 days (only temporary ones)
+     */
+    suspend fun cleanupBackups(): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            if (sardine == null) {
+                return@withContext Result.failure(Exception("WebDAV not configured"))
+            }
+
+            val result = listBackups()
+            if (result.isFailure) {
+                return@withContext Result.failure(result.exceptionOrNull()!!)
+            }
+
+            val backups = result.getOrNull() ?: emptyList()
+            var deletedCount = 0
+
+            val sixtyDaysAgo = System.currentTimeMillis() - (60L * 24 * 60 * 60 * 1000)
+
+            backups.forEach { backup ->
+                if (!backup.isPermanent && backup.modified.time < sixtyDaysAgo) {
+                    android.util.Log.d("WebDavHelper", "Deleting expired backup: ${backup.name}")
+                    try {
+                        deleteBackup(backup)
+                        deletedCount++
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to delete expired backup ${backup.name}: ${e.message}")
+                    }
+                }
+            }
+
+            Result.success(deletedCount)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Mark a backup as permanent by renaming it
+     */
+    suspend fun markBackupAsPermanent(backup: BackupFile): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            if (sardine == null) {
+                return@withContext Result.failure(Exception("WebDAV not configured"))
+            }
+
+            if (backup.isPermanent) {
+                return@withContext Result.success(true)
+            }
+
+            val oldPath = "$serverUrl/Monica_Backups/${backup.name}"
+            // Insert _permanent before .zip
+            val newName = backup.name.replace(".zip", "${PERMANENT_SUFFIX}.zip")
+            val newPath = "$serverUrl/Monica_Backups/$newName"
+
+            sardine!!.move(oldPath, newPath)
+            android.util.Log.d("WebDavHelper", "Marked backup as permanent: ${backup.name} -> $newName")
+            
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Unmark a permanent backup (revert to temporary)
+     */
+    suspend fun unmarkPermanent(backup: BackupFile): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            if (sardine == null) {
+                return@withContext Result.failure(Exception("WebDAV not configured"))
+            }
+
+            if (!backup.isPermanent) {
+                return@withContext Result.success(true)
+            }
+
+            val oldPath = "$serverUrl/Monica_Backups/${backup.name}"
+            // Remove _permanent suffix
+            val newName = backup.name.replace(PERMANENT_SUFFIX, "")
+            val newPath = "$serverUrl/Monica_Backups/$newName"
+
+            sardine!!.move(oldPath, newPath)
+            android.util.Log.d("WebDavHelper", "Unmarked permanent backup: ${backup.name} -> $newName")
+
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+
+    /**
      * 删除备份文件
      */
     suspend fun deleteBackup(backupFile: BackupFile): Result<Boolean> = withContext(Dispatchers.IO) {
@@ -1592,7 +1760,7 @@ class WebDavHelper(
 }
 
 /**
- * 备份文件信息
+ * Backup file info
  */
 data class BackupFile(
     val name: String,
@@ -1600,6 +1768,17 @@ data class BackupFile(
     val size: Long,
     val modified: Date
 ) {
+    val isPermanent: Boolean
+        get() = name.contains("_permanent")
+    
+    val isExpiring: Boolean
+        get() {
+            if (isPermanent) return false
+            // Expiring if older than 50 days (10 days left until 60 days limit)
+            val fiftyDaysAgo = System.currentTimeMillis() - (50L * 24 * 60 * 60 * 1000)
+            return modified.time < fiftyDaysAgo
+        }
+
     /**
      * 判断是否为加密文件
      */

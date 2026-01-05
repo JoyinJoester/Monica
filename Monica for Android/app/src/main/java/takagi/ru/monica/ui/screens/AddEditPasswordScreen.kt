@@ -158,6 +158,7 @@ fun AddEditPasswordScreen(
                     creditCardExpiry = entry.creditCardExpiry
                     creditCardCVV = entry.creditCardCVV
                     categoryId = entry.categoryId
+                    authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
 
                     if (isEditing) {
                         isFavorite = entry.isFavorite
@@ -177,14 +178,6 @@ fun AddEditPasswordScreen(
                         } else {
                             passwords.add(entry.password)
                             originalIds = listOf(entry.id)
-                        }
-                        
-                        // Load linked TOTP if exists
-                        viewModel.getLinkedTotpFlow(actualId).first()?.let { totpData ->
-                            authenticatorKey = totpData.secret
-                            // Find the TOTP item ID for update
-                            // We need to query the SecureItem by boundPasswordId
-                            // This is a simplification - ideally we'd get the ID directly
                         }
                     } else {
                         passwords.add("")
@@ -256,7 +249,8 @@ fun AddEditPasswordScreen(
                                     creditCardHolder = creditCardHolder,
                                     creditCardExpiry = creditCardExpiry,
                                     creditCardCVV = creditCardCVV,
-                                    categoryId = categoryId
+                                    categoryId = categoryId,
+                                    authenticatorKey = currentAuthKey  // ✅ 保存验证器密钥
                                 )
                                 
                                 viewModel.saveGroupedPasswords(

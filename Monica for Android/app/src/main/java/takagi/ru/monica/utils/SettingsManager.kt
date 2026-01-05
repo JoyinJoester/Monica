@@ -50,6 +50,7 @@ class SettingsManager(private val context: Context) {
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
         private val STACK_CARD_MODE_KEY = stringPreferencesKey("stack_card_mode")
         private val PASSWORD_GROUP_MODE_KEY = stringPreferencesKey("password_group_mode")
+        private val TOTP_TIME_OFFSET_KEY = intPreferencesKey("totp_time_offset") // TOTP时间偏移（秒）
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -104,7 +105,8 @@ class SettingsManager(private val context: Context) {
             notificationValidatorId = preferences[NOTIFICATION_VALIDATOR_ID_KEY] ?: -1L,
             isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
-            passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart"
+            passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart",
+            totpTimeOffset = preferences[TOTP_TIME_OFFSET_KEY] ?: 0
         )
     }
     
@@ -231,6 +233,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePasswordGroupMode(mode: String) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_GROUP_MODE_KEY] = mode
+        }
+    }
+
+    suspend fun updateTotpTimeOffset(offset: Int) {
+        dataStore.edit { preferences ->
+            preferences[TOTP_TIME_OFFSET_KEY] = offset
         }
     }
 }

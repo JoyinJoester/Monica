@@ -19,15 +19,17 @@ object TotpGenerator {
      * 通用OTP生成方法 - 根据TotpData配置自动选择算法
      * @param totpData OTP配置数据
      * @param currentCounter 可选的当前计数器值(用于HOTP,如果不提供则使用totpData中的counter)
+     * @param timeOffset 时间偏移（秒），用于校正TOTP时间误差
      * @return 生成的OTP验证码
      */
-    fun generateOtp(totpData: TotpData, currentCounter: Long? = null): String {
+    fun generateOtp(totpData: TotpData, currentCounter: Long? = null, timeOffset: Int = 0): String {
         return when (totpData.otpType) {
             OtpType.TOTP -> generateTotp(
                 secret = totpData.secret,
                 period = totpData.period,
                 digits = totpData.digits,
-                algorithm = totpData.algorithm
+                algorithm = totpData.algorithm,
+                timeOffset = timeOffset
             )
             OtpType.HOTP -> generateHotp(
                 secret = totpData.secret,
@@ -59,6 +61,7 @@ object TotpGenerator {
      * @param period 时间周期（默认30秒）
      * @param digits 验证码位数（默认6位）
      * @param algorithm HMAC算法（SHA1, SHA256, SHA512）
+     * @param timeOffset 时间偏移（秒），用于校正系统时间误差
      * @return TOTP验证码
      */
     fun generateTotp(
@@ -66,11 +69,15 @@ object TotpGenerator {
         timeSeconds: Long = System.currentTimeMillis() / 1000,
         period: Int = 30,
         digits: Int = 6,
-        algorithm: String = "SHA1"
+        algorithm: String = "SHA1",
+        timeOffset: Int = 0
     ): String {
         try {
+            // 应用时间偏移校正
+            val correctedTime = timeSeconds + timeOffset
+            
             // 计算时间步长
-            val timeStep = timeSeconds / period
+            val timeStep = correctedTime / period
             
             // 解码Base32密钥
             val key = decodeBase32(secret)

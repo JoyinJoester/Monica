@@ -239,7 +239,7 @@ fun MonicaApp(
         PasswordViewModel(repository, securityManager, secureItemRepository, navController.context)
     }
     val totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel = viewModel {
-        takagi.ru.monica.viewmodel.TotpViewModel(secureItemRepository)
+        takagi.ru.monica.viewmodel.TotpViewModel(secureItemRepository, repository)
     }
     val bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel = viewModel {
         takagi.ru.monica.viewmodel.BankCardViewModel(secureItemRepository)

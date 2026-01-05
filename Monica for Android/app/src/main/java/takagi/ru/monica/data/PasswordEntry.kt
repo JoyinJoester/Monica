@@ -44,5 +44,8 @@ data class PasswordEntry(
     val creditCardExpiry: String = "",       // 格式: MM/YY
     val creditCardCVV: String = "",           // 加密存储
     
-    val categoryId: Long? = null // 分类ID
+    val categoryId: Long? = null, // 分类ID
+    
+    // 关联的验证器密钥 (TOTP Secret)
+    val authenticatorKey: String = ""  // 用于存储绑定的TOTP验证器密钥
 ) : Parcelable

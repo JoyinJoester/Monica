@@ -21,6 +21,10 @@ class AutoBackupWorker(
     override suspend fun doWork(): androidx.work.ListenableWorker.Result {
         android.util.Log.d("AutoBackupWorker", "Starting auto backup work...")
         
+        // ✅ 检查是否为手动触发的备份
+        val isManualTrigger = inputData.getBoolean(KEY_MANUAL_TRIGGER, false)
+        android.util.Log.d("AutoBackupWorker", "Manual trigger: $isManualTrigger")
+        
         try {
             val webDavHelper = WebDavHelper(applicationContext)
             
@@ -30,17 +34,19 @@ class AutoBackupWorker(
                 return androidx.work.ListenableWorker.Result.success()
             }
             
-            // 检查是否启用自动备份
-            if (!webDavHelper.isAutoBackupEnabled()) {
+            // 检查是否启用自动备份（手动触发时跳过此检查）
+            if (!isManualTrigger && !webDavHelper.isAutoBackupEnabled()) {
                 android.util.Log.w("AutoBackupWorker", "Auto backup disabled, skipping backup")
                 return androidx.work.ListenableWorker.Result.success()
             }
             
-            // 检查是否需要备份（防止重复备份）
-            if (!webDavHelper.shouldAutoBackup()) {
+            // ✅ 检查是否需要备份（防止重复备份）- 手动触发时跳过此检查
+            if (!isManualTrigger && !webDavHelper.shouldAutoBackup()) {
                 android.util.Log.d("AutoBackupWorker", "Backup not needed yet (< 24 hours since last backup)")
                 return androidx.work.ListenableWorker.Result.success()
             }
+            
+            android.util.Log.d("AutoBackupWorker", "Proceeding with backup (manual=$isManualTrigger)")
             
             // 获取所有数据
             val database = PasswordDatabase.getDatabase(applicationContext)
@@ -69,7 +75,12 @@ class AutoBackupWorker(
             android.util.Log.d("AutoBackupWorker", "Backup preferences: $backupPreferences")
             
             // 创建并上传备份（使用偏好设置）
-            val backupResult = webDavHelper.createAndUploadBackup(decryptedPasswords, secureItems, backupPreferences)
+            val backupResult = webDavHelper.createAndUploadBackup(
+                passwords = decryptedPasswords,
+                secureItems = secureItems,
+                preferences = backupPreferences,
+                isPermanent = false  // Auto backups are temporary
+            )
             
             return if (backupResult.isSuccess) {
                 val report = backupResult.getOrNull()
@@ -94,5 +105,6 @@ class AutoBackupWorker(
     
     companion object {
         const val WORK_NAME = "auto_webdav_backup"
+        const val KEY_MANUAL_TRIGGER = "manual_trigger"  // ✅ 手动触发标志的键
     }
 }

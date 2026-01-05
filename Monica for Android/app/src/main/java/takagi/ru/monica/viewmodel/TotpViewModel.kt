@@ -8,6 +8,7 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.repository.PasswordRepository
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
@@ -16,27 +17,78 @@ import java.util.Date
  * TOTP验证器ViewModel
  */
 class TotpViewModel(
-    private val repository: SecureItemRepository
+    private val repository: SecureItemRepository,
+    private val passwordRepository: PasswordRepository
 ) : ViewModel() {
     
     // 搜索查询
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
     
-    // TOTP项目列表
-    val totpItems: StateFlow<List<SecureItem>> = _searchQuery
-        .flatMapLatest { query ->
-            if (query.isBlank()) {
-                repository.getItemsByType(ItemType.TOTP)
-            } else {
-                repository.searchItemsByType(ItemType.TOTP, query)
+    // TOTP项目列表 - 合并实际存储的TOTP和从密码authenticatorKey生成的虚拟TOTP
+    val totpItems: StateFlow<List<SecureItem>> = combine(
+        _searchQuery,
+        repository.getItemsByType(ItemType.TOTP),
+        passwordRepository.getAllPasswordEntries()
+    ) { query, storedTotps, allPasswords ->
+        // 收集所有已存储的TOTP密钥（用于去重）
+        val existingSecrets = storedTotps.mapNotNull { item ->
+            try {
+                Json.decodeFromString<TotpData>(item.itemData).secret
+            } catch (e: Exception) {
+                null
+            }
+        }.toSet()
+        
+        // 从密码的authenticatorKey生成虚拟TOTP项目（仅当密钥不存在于实际TOTP中时）
+        val virtualTotps = allPasswords
+            .filter { it.authenticatorKey.isNotBlank() && it.authenticatorKey !in existingSecrets }
+            .distinctBy { it.authenticatorKey }  // 去重相同的authenticatorKey
+            .map { password ->
+                // 创建虚拟TOTP项目（使用负ID以区分实际存储的项目）
+                val totpData = TotpData(
+                    secret = password.authenticatorKey,
+                    issuer = password.website.takeIf { it.isNotBlank() } ?: password.title,
+                    accountName = password.username.takeIf { it.isNotBlank() } ?: password.title,
+                    boundPasswordId = password.id
+                )
+                SecureItem(
+                    id = -password.id, // 使用负ID标识这是虚拟项目
+                    itemType = ItemType.TOTP,
+                    title = password.title,
+                    notes = "来自密码: ${password.title}",
+                    itemData = Json.encodeToString(totpData),
+                    isFavorite = false,
+                    createdAt = password.createdAt,
+                    updatedAt = password.updatedAt,
+                    imagePaths = ""
+                )
+            }
+        
+        // 合并实际TOTP和虚拟TOTP
+        val allTotps = storedTotps + virtualTotps
+        
+        // 应用搜索过滤
+        if (query.isBlank()) {
+            allTotps
+        } else {
+            allTotps.filter { item ->
+                item.title.contains(query, ignoreCase = true) ||
+                item.notes.contains(query, ignoreCase = true) ||
+                try {
+                    val data = Json.decodeFromString<TotpData>(item.itemData)
+                    data.issuer.contains(query, ignoreCase = true) ||
+                    data.accountName.contains(query, ignoreCase = true)
+                } catch (e: Exception) {
+                    false
+                }
             }
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
     
     /**
      * 更新搜索查询

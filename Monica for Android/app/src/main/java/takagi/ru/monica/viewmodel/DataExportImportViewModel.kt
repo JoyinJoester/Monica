@@ -92,80 +92,122 @@ class DataExportImportViewModel(
                     var count = 0
                     var errorCount = 0
                     var skippedCount = 0
-                    // 将导入的数据添加到数据库
-                    items.forEach { exportItem ->
+                    
+                    // Separate items into Passwords and Others
+                    val passwordItems = items.filter { ItemType.valueOf(it.itemType) == ItemType.PASSWORD }
+                    val otherItems = items.filter { ItemType.valueOf(it.itemType) != ItemType.PASSWORD }
+                    
+                    val passwordIdMap = mutableMapOf<Long, Long>() // Old ID -> New ID (or existing ID)
+                    
+                    // 1. Process Passwords First
+                    passwordItems.forEach { exportItem ->
+                        try {
+                            // PASSWORD类型存入PasswordEntry表
+                            val passwordData = parsePasswordData(exportItem.itemData)
+                            val website = passwordData["website"] ?: ""
+                            val username = passwordData["username"] ?: ""
+                            val originalId = exportItem.id
+                            
+                            // 检查是否重复
+                            val existingEntry = passwordRepository.getDuplicateEntry(
+                                exportItem.title,
+                                username,
+                                website
+                            )
+                            
+                            if (existingEntry == null) {
+                                val passwordEntry = PasswordEntry(
+                                    id = 0, // 让数据库自动生成新ID
+                                    title = exportItem.title,
+                                    website = website,
+                                    username = username,
+                                    password = passwordData["password"] ?: "",
+                                    notes = exportItem.notes,
+                                    email = passwordData["email"] ?: "",
+                                    phone = passwordData["phone"] ?: "",
+                                    isFavorite = exportItem.isFavorite,
+                                    createdAt = Date(exportItem.createdAt),
+                                    updatedAt = Date(exportItem.updatedAt)
+                                )
+                                val newId = passwordRepository.insertPasswordEntry(passwordEntry)
+                                if (originalId > 0 && newId > 0) {
+                                    passwordIdMap[originalId] = newId
+                                }
+                                android.util.Log.d("DataImport", "成功插入到PasswordEntry表: ${exportItem.title}")
+                                count++
+                            } else {
+                                android.util.Log.d("DataImport", "跳过重复密码: ${exportItem.title}")
+                                if (originalId > 0) {
+                                    passwordIdMap[originalId] = existingEntry.id
+                                }
+                                skippedCount++
+                            }
+                        } catch (e: Exception) {
+                            errorCount++
+                            android.util.Log.e("DataImport", "插入密码失败: ${exportItem.title}, 错误: ${e.message}", e)
+                        }
+                    }
+                    
+                    // 2. Process Other Items (SecureItems) and update bindings
+                    otherItems.forEach { exportItem ->
                         try {
                             android.util.Log.d("DataImport", "处理项: ${exportItem.title}, 类型: ${exportItem.itemType}")
                             val itemType = ItemType.valueOf(exportItem.itemType)
                             
-                            // 根据类型选择不同的存储方式
-                            if (itemType == ItemType.PASSWORD) {
-                                // PASSWORD类型存入PasswordEntry表
-                                val passwordData = parsePasswordData(exportItem.itemData)
-                                val website = passwordData["website"] ?: ""
-                                val username = passwordData["username"] ?: ""
+                            // 其他类型存入SecureItem表
+                            // 检查是否重复
+                            val isDuplicate = secureItemRepository.isDuplicateItem(
+                                itemType,
+                                exportItem.title
+                            )
+                            
+                            if (!isDuplicate) {
+                                var itemData = exportItem.itemData
                                 
-                                // 检查是否重复
-                                val isDuplicate = passwordRepository.isDuplicateEntry(
-                                    exportItem.title,
-                                    username,
-                                    website
-                                )
-                                
-                                if (!isDuplicate) {
-                                    val passwordEntry = PasswordEntry(
-                                        id = 0, // 让数据库自动生成新ID
-                                        title = exportItem.title,
-                                        website = website,
-                                        username = username,
-                                        password = passwordData["password"] ?: "",
-                                        notes = exportItem.notes,
-                                        email = passwordData["email"] ?: "",
-                                        phone = passwordData["phone"] ?: "",
-                                        isFavorite = exportItem.isFavorite,
-                                        createdAt = Date(exportItem.createdAt),
-                                        updatedAt = Date(exportItem.updatedAt)
-                                    )
-                                    passwordRepository.insertPasswordEntry(passwordEntry)
-                                    android.util.Log.d("DataImport", "成功插入到PasswordEntry表: ${exportItem.title}")
-                                    count++
-                                } else {
-                                    android.util.Log.d("DataImport", "跳过重复密码: ${exportItem.title}")
-                                    skippedCount++
+                                // Update TOTP binding if applicable
+                                if (itemType == ItemType.TOTP) {
+                                    try {
+                                        val totpData = Json.decodeFromString<TotpData>(itemData)
+                                        val originalBoundId = totpData.boundPasswordId
+                                        if (originalBoundId != null && originalBoundId > 0) {
+                                            val newBoundId = passwordIdMap[originalBoundId]
+                                            if (newBoundId != null) {
+                                                val updatedTotpData = totpData.copy(boundPasswordId = newBoundId)
+                                                itemData = Json.encodeToString(updatedTotpData)
+                                                android.util.Log.d("DataImport", "Updated TOTP boundPasswordId from $originalBoundId to $newBoundId")
+                                            } else {
+                                                android.util.Log.w("DataImport", "Could not map password ID for TOTP: ${exportItem.title} (Old: $originalBoundId)")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("DataImport", "Failed to parse/update TOTP data: ${e.message}")
+                                    }
                                 }
+                                
+                                val secureItem = SecureItem(
+                                    id = 0, // 让数据库自动生成新ID
+                                    itemType = itemType,
+                                    title = exportItem.title,
+                                    itemData = itemData,
+                                    notes = exportItem.notes,
+                                    isFavorite = exportItem.isFavorite,
+                                    imagePaths = exportItem.imagePaths,
+                                    createdAt = Date(exportItem.createdAt),
+                                    updatedAt = Date(exportItem.updatedAt)
+                                )
+                                secureItemRepository.insertItem(secureItem)
+                                android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
+                                count++
                             } else {
-                                // 其他类型存入SecureItem表
-                                // 检查是否重复
-                                val isDuplicate = secureItemRepository.isDuplicateItem(
-                                    itemType,
-                                    exportItem.title
-                                )
-                                
-                                if (!isDuplicate) {
-                                    val secureItem = SecureItem(
-                                        id = 0, // 让数据库自动生成新ID
-                                        itemType = itemType,
-                                        title = exportItem.title,
-                                        itemData = exportItem.itemData,
-                                        notes = exportItem.notes,
-                                        isFavorite = exportItem.isFavorite,
-                                        imagePaths = exportItem.imagePaths,
-                                        createdAt = Date(exportItem.createdAt),
-                                        updatedAt = Date(exportItem.updatedAt)
-                                    )
-                                    secureItemRepository.insertItem(secureItem)
-                                    android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
-                                    count++
-                                } else {
-                                    android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
-                                    skippedCount++
-                                }
+                                android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
+                                skippedCount++
                             }
                         } catch (e: Exception) {
                             errorCount++
                             android.util.Log.e("DataImport", "插入数据库失败: ${exportItem.title}, 错误: ${e.message}", e)
                         }
                     }
+                    
                     android.util.Log.d("DataImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
                     Result.success(count)
                 },
@@ -681,11 +723,37 @@ class DataExportImportViewModel(
                                     }
                                     count++
                                 } else {
-                                    // 已存在，记录现有ID以便映射
+                                    // ✅ 已存在，检查哪个版本更新
                                     if (originalId > 0) {
                                         passwordIdMap[originalId] = existingEntry.id
                                     }
-                                    skippedCount++
+                                    
+                                    // ✅ 比较更新时间，如果备份的更新，则覆盖现有数据
+                                    if (entry.updatedAt.after(existingEntry.updatedAt)) {
+                                        // 备份的版本更新，覆盖现有条目（保留现有ID）
+                                        val updatedEntry = entry.copy(
+                                            id = existingEntry.id,
+                                            categoryId = entry.categoryId ?: existingEntry.categoryId,
+                                            isFavorite = existingEntry.isFavorite, // 保留收藏状态
+                                            sortOrder = existingEntry.sortOrder,    // 保留排序
+                                            isGroupCover = existingEntry.isGroupCover // 保留分组封面
+                                        )
+                                        passwordRepository.updatePasswordEntry(updatedEntry)
+                                        android.util.Log.d("DataImport", "Updated existing password with newer version: ${entry.title}")
+                                        count++ // 计入更新数量
+                                    } else if (entry.authenticatorKey.isNotBlank() && existingEntry.authenticatorKey.isBlank()) {
+                                        // 备份版本不是更新的，但有authenticatorKey，现有条目没有，则只更新密钥
+                                        val updatedEntry = existingEntry.copy(
+                                            authenticatorKey = entry.authenticatorKey,
+                                            updatedAt = java.util.Date()
+                                        )
+                                        passwordRepository.updatePasswordEntry(updatedEntry)
+                                        android.util.Log.d("DataImport", "Updated authenticatorKey for existing password: ${entry.title}")
+                                        count++
+                                    } else {
+                                        // 现有版本更新或相同，跳过
+                                        skippedCount++
+                                    }
                                 }
                             } catch (e: Exception) {
                                 errorCount++

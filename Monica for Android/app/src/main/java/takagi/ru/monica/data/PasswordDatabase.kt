@@ -15,7 +15,7 @@ import androidx.room.TypeConverters
         SecureItem::class,
         Category::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -275,6 +275,14 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 17 → 18 - 添加authenticatorKey字段
+        private val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // Add authenticatorKey to password_entries
+                database.execSQL("ALTER TABLE `password_entries` ADD COLUMN `authenticatorKey` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -299,7 +307,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_13_14,
                         MIGRATION_14_15,  // 扩展OTP支持
                         MIGRATION_15_16,  // 版本占位
-                        MIGRATION_16_17   // 添加分类功能
+                        MIGRATION_16_17,  // 添加分类功能
+                        MIGRATION_17_18   // 添加authenticatorKey字段
                     )
                     .build()
                 INSTANCE = instance
