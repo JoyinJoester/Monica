@@ -46,6 +46,20 @@ class TotpViewModel(
     }
     
     /**
+     * 根据密钥查找现有的TOTP项目
+     */
+    fun findTotpBySecret(secret: String): SecureItem? {
+        return totpItems.value.find { item ->
+            try {
+                val data = Json.decodeFromString<TotpData>(item.itemData)
+                data.secret == secret
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    /**
      * 根据ID获取TOTP项目
      */
     suspend fun getTotpItemById(id: Long): SecureItem? {

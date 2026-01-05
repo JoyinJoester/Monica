@@ -266,18 +266,28 @@ fun AddEditPasswordScreen(
                                     onComplete = { firstPasswordId ->
                                         // Save TOTP if authenticatorKey is provided
                                         if (currentAuthKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
+                                            // 检查是否已有相同密钥的验证器
+                                            val existingTotp = totpViewModel.findTotpBySecret(currentAuthKey)
+                                            val totpIdToSave = existingTotp?.id ?: existingTotpId // 优先选择相同密钥的，其次是原本绑定的
+
                                             val totpData = TotpData(
                                                 secret = currentAuthKey,
-                                                issuer = currentTitle,
-                                                accountName = currentUsername,
-                                                boundPasswordId = firstPasswordId
+                                                issuer = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).issuer } ?: currentTitle,
+                                                accountName = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).accountName } ?: currentUsername,
+                                                boundPasswordId = firstPasswordId,
+                                                otpType = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).otpType } ?: takagi.ru.monica.data.model.OtpType.TOTP,
+                                                digits = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).digits } ?: 6,
+                                                period = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).period } ?: 30,
+                                                algorithm = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).algorithm } ?: "SHA1",
+                                                counter = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).counter } ?: 0
                                             )
+                                            
                                             totpViewModel.saveTotpItem(
-                                                id = null, // Always create new
-                                                title = currentTitle,
-                                                notes = "",
+                                                id = totpIdToSave,
+                                                title = existingTotp?.title ?: currentTitle,
+                                                notes = existingTotp?.notes ?: "",
                                                 totpData = totpData,
-                                                isFavorite = false
+                                                isFavorite = existingTotp?.isFavorite ?: false
                                             )
                                         }
                                         

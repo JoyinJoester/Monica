@@ -660,21 +660,31 @@ class DataExportImportViewModel(
                         var skippedCount = 0
                         
                         val content = restoreResult.content
+                        val passwordIdMap = mutableMapOf<Long, Long>() // originalId -> newId (or existingId)
                         
-                        // 插入密码
+                        // 1. 插入密码并建立ID映射
                         content.passwords.forEach { entry ->
                             try {
-                                val isDuplicate = passwordRepository.isDuplicateEntry(
+                                val originalId = entry.id
+                                val existingEntry = passwordRepository.getDuplicateEntry(
                                     entry.title,
                                     entry.username,
                                     entry.website
                                 )
-                                if (!isDuplicate) {
+                                
+                                if (existingEntry == null) {
                                     // 重置ID为0以让数据库生成新ID
                                     val newEntry = entry.copy(id = 0)
-                                    passwordRepository.insertPasswordEntry(newEntry)
+                                    val newId = passwordRepository.insertPasswordEntry(newEntry)
+                                    if (originalId > 0) {
+                                        passwordIdMap[originalId] = newId
+                                    }
                                     count++
                                 } else {
+                                    // 已存在，记录现有ID以便映射
+                                    if (originalId > 0) {
+                                        passwordIdMap[originalId] = existingEntry.id
+                                    }
                                     skippedCount++
                                 }
                             } catch (e: Exception) {
@@ -683,7 +693,7 @@ class DataExportImportViewModel(
                             }
                         }
                         
-                        // 插入安全项目
+                        // 2. 插入其他安全项目并修复TOTP关联
                         content.secureItems.forEach { item ->
                             try {
                                 val itemType = ItemType.valueOf(item.itemType)
@@ -692,15 +702,31 @@ class DataExportImportViewModel(
                                     item.title
                                 )
                                 if (!isDuplicate) {
-                                    // SecureItem 和 ExportItem 结构略有不同，需要转换
-                                    // ExportItem 定义在 DataExportImportManager 中
-                                    // 但是 restoreFromBackupFile 返回的 content.secureItems 是 List<DataExportImportManager.ExportItem>
+                                    var itemData = item.itemData
+                                    
+                                    // 如果是TOTP，尝试更新关联的密码ID
+                                    if (itemType == ItemType.TOTP) {
+                                        try {
+                                            val totpData = Json.decodeFromString<TotpData>(itemData)
+                                            val originalBoundId = totpData.boundPasswordId
+                                            if (originalBoundId != null && originalBoundId > 0) {
+                                                val newBoundId = passwordIdMap[originalBoundId]
+                                                if (newBoundId != null) {
+                                                    val updatedTotpData = totpData.copy(boundPasswordId = newBoundId)
+                                                    itemData = Json.encodeToString(updatedTotpData)
+                                                    android.util.Log.d("DataImport", "Updated TOTP boundPasswordId from $originalBoundId to $newBoundId")
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.w("DataImport", "Failed to parse/update TotpData for linkage", e)
+                                        }
+                                    }
                                     
                                     val secureItem = SecureItem(
                                         id = 0,
                                         itemType = itemType,
                                         title = item.title,
-                                        itemData = item.itemData,
+                                        itemData = itemData,
                                         notes = item.notes,
                                         isFavorite = item.isFavorite,
                                         imagePaths = item.imagePaths,

@@ -112,6 +112,13 @@ class PasswordRepository(
     suspend fun isDuplicateEntry(title: String, username: String, website: String): Boolean {
         return passwordEntryDao.findDuplicateEntry(title, username, website) != null
     }
+
+    /**
+     * 获取重复的密码条目
+     */
+    suspend fun getDuplicateEntry(title: String, username: String, website: String): PasswordEntry? {
+        return passwordEntryDao.findDuplicateEntry(title, username, website)
+    }
     
     /**
      * 按包名和用户名查询密码(自动填充保存功能)

@@ -1266,7 +1266,7 @@ class WebDavHelper(
             val json = Json { ignoreUnknownKeys = true }
             val backup = json.decodeFromString<PasswordBackupEntry>(content)
             val entry = PasswordEntry(
-                id = 0, // 重置id以避免冲突
+                id = backup.id, // 暂存原始ID，用于后续TOTP关联映射
                 title = backup.title,
                 username = backup.username,
                 password = backup.password,
