@@ -11,6 +11,9 @@ jobs:
   test:
     name: Run Unit Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Android"
     
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +30,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('Monica for Android/**/*.gradle*', 'Monica for Android/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
       
@@ -41,6 +44,9 @@ jobs:
     name: Build APK
     needs: test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Android"
     
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +63,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('Monica for Android/**/*.gradle*', 'Monica for Android/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
       
@@ -71,4 +77,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: "Monica for Android/app/build/outputs/apk/debug/*.apk"
