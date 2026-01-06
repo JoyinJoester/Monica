@@ -1550,11 +1550,6 @@ private fun TotpListContent(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val haptic = rememberHapticFeedback()
     
-    // 时间同步状态
-    var showTimeSyncDialog by remember { mutableStateOf(false) }
-    var isSyncing by remember { mutableStateOf(false) }
-    var syncResult by remember { mutableStateOf<String?>(null) }
-    
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<Long>()) }
@@ -1563,6 +1558,14 @@ private fun TotpListContent(
     var showPasswordVerify by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    val sharedTickSeconds by produceState(initialValue = System.currentTimeMillis() / 1000) {
+        while (true) {
+            value = System.currentTimeMillis() / 1000
+            delay(1000)
+        }
+    }
     
     // 添加单项删除对话框状态
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
@@ -1628,27 +1631,10 @@ private fun TotpListContent(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp),
+                        .padding(top = 16.dp, bottom = 12.dp),
                     singleLine = true,
                     shape = RoundedCornerShape(28.dp)
                 )
-                
-                // 时间同步按钮
-                OutlinedButton(
-                    onClick = { showTimeSyncDialog = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp, bottom = 8.dp),
-                    enabled = !isSyncing
-                ) {
-                    Icon(
-                        Icons.Default.Sync,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isSyncing) "正在同步时间..." else "自动校正时间")
-                }
             }
         } else {
             // 选择模式下添加顶部间距
@@ -1721,15 +1707,12 @@ private fun TotpListContent(
                     ) {
                         TotpItemCard(
                             item = item,
-                            onClick = {
-                                if (isSelectionMode) {
-                                    selectedItems = if (selectedItems.contains(item.id)) {
-                                        selectedItems - item.id
-                                    } else {
-                                        selectedItems + item.id
-                                    }
+                            onEdit = { onTotpClick(item.id) },
+                            onToggleSelect = {
+                                selectedItems = if (selectedItems.contains(item.id)) {
+                                    selectedItems - item.id
                                 } else {
-                                    onTotpClick(item.id)
+                                    selectedItems + item.id
                                 }
                             },
                             onDelete = {
@@ -1769,7 +1752,9 @@ private fun TotpListContent(
                                 itemToShowQr = item
                             },
                             isSelectionMode = isSelectionMode,
-                            isSelected = selectedItems.contains(item.id)
+                            isSelected = selectedItems.contains(item.id),
+                            sharedTickSeconds = sharedTickSeconds,
+                            appSettings = appSettings
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1909,87 +1894,6 @@ private fun TotpListContent(
         )
     }
     
-    // 时间同步对话框
-    if (showTimeSyncDialog) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = {
-                if (!isSyncing) {
-                    showTimeSyncDialog = false
-                    syncResult = null
-                }
-            },
-            icon = {
-                Icon(
-                    Icons.Default.Sync,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            title = { Text("自动校正时间") },
-            text = {
-                Column {
-                    if (isSyncing) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .padding(16.dp)
-                        )
-                        Text(
-                            "正在从网络获取标准时间...",
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        )
-                    } else if (syncResult != null) {
-                        Text(syncResult!!)
-                    } else {
-                        Text("将通过网络获取标准时间，自动校正验证器的时间偏差，确保验证码准确。\n\n需要网络连接。")
-                    }
-                }
-            },
-            confirmButton = {
-                if (!isSyncing && syncResult == null) {
-                    androidx.compose.material3.TextButton(
-                        onClick = {
-                            isSyncing = true
-                            coroutineScope.launch {
-                                try {
-                                    val result = takagi.ru.monica.util.TimeSync.detectTimeOffset()
-                                    result.fold(
-                                        onSuccess = { offset ->
-                                            val settingsManager = takagi.ru.monica.utils.SettingsManager(context)
-                                            settingsManager.updateTotpTimeOffset(offset)
-                                            syncResult = "时间校正成功！\n\n检测到时间偏移: ${takagi.ru.monica.util.TimeSync.formatOffset(offset)}\n\n验证器已自动调整。"
-                                        },
-                                        onFailure = { error ->
-                                            syncResult = "时间同步失败\n\n${error.message ?: "网络连接错误"}\n\n请检查网络连接后重试。"
-                                        }
-                                    )
-                                } catch (e: Exception) {
-                                    syncResult = "时间同步失败\n\n${e.message ?: "未知错误"}"
-                                } finally {
-                                    isSyncing = false
-                                }
-                            }
-                        }
-                    ) {
-                        Text("开始校正")
-                    }
-                }
-            },
-            dismissButton = {
-                if (!isSyncing) {
-                    androidx.compose.material3.TextButton(
-                        onClick = {
-                            showTimeSyncDialog = false
-                            syncResult = null
-                        }
-                    ) {
-                        Text(if (syncResult != null) "关闭" else stringResource(R.string.cancel))
-                    }
-                }
-            }
-        )
-    }
-    
     // 批量删除验证
     if (showPasswordVerify) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -2031,7 +1935,8 @@ private fun TotpListContent(
 @Composable
 private fun TotpItemCard(
     item: takagi.ru.monica.data.SecureItem,
-    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onToggleSelect: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onToggleFavorite: (Long, Boolean) -> Unit,
     onGenerateNext: ((Long) -> Unit)? = null,
@@ -2039,28 +1944,33 @@ private fun TotpItemCard(
     onMoveDown: (() -> Unit)? = null,
     onShowQrCode: ((takagi.ru.monica.data.SecureItem) -> Unit)? = null,
     isSelectionMode: Boolean = false,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    sharedTickSeconds: Long? = null,
+    appSettings: takagi.ru.monica.data.AppSettings? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     
     // 直接使用修改后的 TotpCodeCard 组件
     takagi.ru.monica.ui.components.TotpCodeCard(
         item = item,
-        onClick = onClick,
         onCopyCode = { code ->
             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val clip = android.content.ClipData.newPlainText("TOTP Code", code)
             clipboard.setPrimaryClip(clip)
             android.widget.Toast.makeText(context, "验证码已复制", android.widget.Toast.LENGTH_SHORT).show()
         },
+        onToggleSelect = onToggleSelect,
         onDelete = onDelete,
         onToggleFavorite = onToggleFavorite,
         onGenerateNext = onGenerateNext,
         onMoveUp = onMoveUp,
         onMoveDown = onMoveDown,
         onShowQrCode = onShowQrCode,
+        onEdit = onEdit,
         isSelectionMode = isSelectionMode,
-        isSelected = isSelected
+        isSelected = isSelected,
+        sharedTickSeconds = sharedTickSeconds,
+        appSettings = appSettings
     )
 }
 

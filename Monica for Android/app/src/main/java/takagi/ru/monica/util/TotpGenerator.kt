@@ -22,10 +22,17 @@ object TotpGenerator {
      * @param timeOffset 时间偏移（秒），用于校正TOTP时间误差
      * @return 生成的OTP验证码
      */
-    fun generateOtp(totpData: TotpData, currentCounter: Long? = null, timeOffset: Int = 0): String {
+    fun generateOtp(
+        totpData: TotpData,
+        currentCounter: Long? = null,
+        timeOffset: Int = 0,
+        currentSeconds: Long? = null
+    ): String {
+        val nowSeconds = currentSeconds ?: System.currentTimeMillis() / 1000
         return when (totpData.otpType) {
             OtpType.TOTP -> generateTotp(
                 secret = totpData.secret,
+                timeSeconds = nowSeconds,
                 period = totpData.period,
                 digits = totpData.digits,
                 algorithm = totpData.algorithm,
@@ -39,17 +46,17 @@ object TotpGenerator {
             )
             OtpType.STEAM -> generateSteamCode(
                 secret = totpData.secret,
-                timeSeconds = System.currentTimeMillis() / 1000
+                timeSeconds = nowSeconds
             )
             OtpType.YANDEX -> generateYandexCode(
                 secret = totpData.secret,
                 pin = totpData.pin,
-                timeSeconds = System.currentTimeMillis() / 1000
+                timeSeconds = nowSeconds
             )
             OtpType.MOTP -> generateMobileOtp(
                 secret = totpData.secret,
                 pin = totpData.pin,
-                timeSeconds = System.currentTimeMillis() / 1000
+                timeSeconds = nowSeconds
             )
         }
     }
@@ -96,16 +103,25 @@ object TotpGenerator {
     /**
      * 计算当前验证码的剩余有效时间（秒）
      */
-    fun getRemainingSeconds(period: Int = 30): Int {
-        val currentSeconds = System.currentTimeMillis() / 1000
-        return period - (currentSeconds % period).toInt()
+    fun getRemainingSeconds(
+        period: Int = 30,
+        timeOffset: Int = 0,
+        currentSeconds: Long = System.currentTimeMillis() / 1000
+    ): Int {
+        val correctedSeconds = currentSeconds + timeOffset
+        val remainder = (correctedSeconds % period).toInt()
+        return period - remainder
     }
     
     /**
      * 获取当前时间步长的进度（0.0 - 1.0）
      */
-    fun getProgress(period: Int = 30): Float {
-        val remaining = getRemainingSeconds(period)
+    fun getProgress(
+        period: Int = 30,
+        timeOffset: Int = 0,
+        currentSeconds: Long = System.currentTimeMillis() / 1000
+    ): Float {
+        val remaining = getRemainingSeconds(period, timeOffset, currentSeconds)
         return 1.0f - (remaining.toFloat() / period)
     }
     

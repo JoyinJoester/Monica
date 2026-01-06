@@ -36,10 +36,12 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.util.TotpGenerator
+import takagi.ru.monica.utils.SettingsManager
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -51,8 +53,8 @@ import kotlin.math.sin
 @Composable
 fun TotpCodeCard(
     item: SecureItem,
-    onClick: () -> Unit,
     onCopyCode: (String) -> Unit,
+    onToggleSelect: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onDelete: (() -> Unit)? = null,
     onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
@@ -60,14 +62,20 @@ fun TotpCodeCard(
     onMoveDown: (() -> Unit)? = null,
     onGenerateNext: ((Long) -> Unit)? = null,
     onShowQrCode: ((SecureItem) -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    sharedTickSeconds: Long? = null,
+    appSettings: AppSettings? = null
 ) {
     val context = LocalContext.current
     
-    // 获取设置以读取进度条样式
-    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
-    val settings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    // 共享设置，避免每张卡片单独读取 DataStore
+    val settings = appSettings ?: run {
+        val settingsManager = remember { SettingsManager(context) }
+        val state by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+        state
+    }
     
     // 解析TOTP数据
     val totpData = try {
@@ -76,10 +84,18 @@ fun TotpCodeCard(
         TotpData(secret = "")
     }
     
-    // 实时更新验证码
-    var currentCode by remember { mutableStateOf("") }
-    var remainingSeconds by remember { mutableIntStateOf(30) }
-    var progress by remember { mutableFloatStateOf(0f) }
+    // 共享定时器（外部传入时不再单独启动）
+    val internalTickSeconds by produceState(initialValue = System.currentTimeMillis() / 1000, key1 = sharedTickSeconds) {
+        if (sharedTickSeconds != null) {
+            value = sharedTickSeconds
+            return@produceState
+        }
+        while (true) {
+            value = System.currentTimeMillis() / 1000
+            delay(1000)
+        }
+    }
+    val currentSeconds = sharedTickSeconds ?: internalTickSeconds
     
     // 震动服务
     val vibrator = remember {
@@ -92,48 +108,71 @@ fun TotpCodeCard(
         }
     }
     
-    // 根据OTP类型更新验证码
-    LaunchedEffect(item.itemData, totpData.otpType) {
+    // 根据当前秒数计算验证码/倒计时/进度
+    val currentCode = remember(currentSeconds, totpData, settings.totpTimeOffset) {
         when (totpData.otpType) {
-            OtpType.HOTP -> {
-                // HOTP不需要自动刷新，只生成一次
-                currentCode = TotpGenerator.generateOtp(totpData)
-            }
-            else -> {
-                // TOTP/Steam/Yandex/mOTP 需要每秒更新
-                while (true) {
-                    currentCode = TotpGenerator.generateOtp(totpData)
-                    val newRemainingSeconds = TotpGenerator.getRemainingSeconds(totpData.period)
-                    remainingSeconds = newRemainingSeconds
-                    progress = TotpGenerator.getProgress(totpData.period)
-                    
-                    // 倒计时<=5秒时每秒震动一次
-                    if (settings.validatorVibrationEnabled && newRemainingSeconds <= 5 && newRemainingSeconds > 0) {
-                        android.util.Log.d("TotpCodeCard", "Vibrating at ${newRemainingSeconds}s, enabled=${settings.validatorVibrationEnabled}")
-                        vibrator?.let {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                it.vibrate(
-                                    android.os.VibrationEffect.createOneShot(
-                                        100,
-                                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
-                                    )
-                                )
-                            } else {
-                                @Suppress("DEPRECATION")
-                                it.vibrate(100)
-                            }
-                            android.util.Log.d("TotpCodeCard", "Vibration executed")
-                        } ?: android.util.Log.w("TotpCodeCard", "Vibrator is null")
-                    }
-                    
-                    delay(1000)
+            OtpType.HOTP -> TotpGenerator.generateOtp(totpData)
+            else -> TotpGenerator.generateOtp(
+                totpData = totpData,
+                timeOffset = settings.totpTimeOffset,
+                currentSeconds = currentSeconds
+            )
+        }
+    }
+
+    val remainingSeconds = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+        if (totpData.otpType == OtpType.HOTP) {
+            0
+        } else {
+            TotpGenerator.getRemainingSeconds(
+                period = totpData.period,
+                timeOffset = settings.totpTimeOffset,
+                currentSeconds = currentSeconds
+            )
+        }
+    }
+
+    val progress = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+        if (totpData.otpType == OtpType.HOTP) {
+            0f
+        } else {
+            TotpGenerator.getProgress(
+                period = totpData.period,
+                timeOffset = settings.totpTimeOffset,
+                currentSeconds = currentSeconds
+            )
+        }
+    }
+
+    // 倒计时<=5秒时提示震动
+    LaunchedEffect(remainingSeconds, totpData.otpType, settings.validatorVibrationEnabled) {
+        if (settings.validatorVibrationEnabled && totpData.otpType != OtpType.HOTP && remainingSeconds in 1..5) {
+            android.util.Log.d("TotpCodeCard", "Vibrating at ${remainingSeconds}s, enabled=${settings.validatorVibrationEnabled}")
+            vibrator?.let {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    it.vibrate(
+                        android.os.VibrationEffect.createOneShot(
+                            100,
+                            android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                        )
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.vibrate(100)
                 }
-            }
+                android.util.Log.d("TotpCodeCard", "Vibration executed")
+            } ?: android.util.Log.w("TotpCodeCard", "Vibrator is null")
         }
     }
     
     Card(
-        onClick = onClick,
+        onClick = {
+            if (isSelectionMode) {
+                onToggleSelect?.invoke()
+            } else {
+                onCopyCode(currentCode)
+            }
+        },
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
@@ -266,6 +305,23 @@ fun TotpCodeCard(
                                     )
                                 }
 
+                                // 编辑
+                                if (onEdit != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.edit)) },
+                                        onClick = {
+                                            expanded = false
+                                            onEdit()
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+                                }
+
                                 // 显示二维码选项
                                 if (onShowQrCode != null) {
                                     DropdownMenuItem(
@@ -324,14 +380,38 @@ fun TotpCodeCard(
                     }
                 )
                 
-                // 复制按钮
-                IconButton(
-                    onClick = { onCopyCode(currentCode) }
-                ) {
-                    Icon(
-                        Icons.Default.ContentCopy,
-                        contentDescription = "复制验证码"
-                    )
+                // 下一次验证码预览
+                if (totpData.otpType != OtpType.HOTP) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "Next",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        val nextCode = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+                            TotpGenerator.generateOtp(
+                                totpData = totpData,
+                                timeOffset = settings.totpTimeOffset,
+                                currentSeconds = currentSeconds + totpData.period
+                            )
+                        }
+                        Text(
+                            text = formatOtpCode(nextCode, totpData.otpType),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    IconButton(
+                        onClick = { onCopyCode(currentCode) }
+                    ) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "复制验证码"
+                        )
+                    }
                 }
             }
             

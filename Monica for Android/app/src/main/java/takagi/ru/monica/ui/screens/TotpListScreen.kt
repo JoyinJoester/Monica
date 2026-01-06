@@ -22,6 +22,9 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.ui.components.TotpCodeCard
 import takagi.ru.monica.ui.components.QrCodeDialog
+import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.utils.SettingsManager
+import kotlinx.coroutines.delay
 
 /**
  * TOTP验证器列表页面
@@ -38,6 +41,14 @@ fun TotpListScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val settingsManager = remember { SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val sharedTickSeconds by produceState(initialValue = System.currentTimeMillis() / 1000) {
+        while (true) {
+            value = System.currentTimeMillis() / 1000
+            delay(1000)
+        }
+    }
     var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
     var itemToShowQr by remember { mutableStateOf<SecureItem?>(null) }
     
@@ -78,11 +89,11 @@ fun TotpListScreen(
                 ) { item ->
                     TotpCodeCard(
                         item = item,
-                        onClick = { onItemClick(item.id) },
                         onCopyCode = { code ->
                             copyToClipboard(context, code)
                             Toast.makeText(context, "验证码已复制", Toast.LENGTH_SHORT).show()
                         },
+                        onEdit = { onItemClick(item.id) },
                         onDelete = {
                             itemToDelete = item
                         },
@@ -90,6 +101,8 @@ fun TotpListScreen(
                         onShowQrCode = {
                             itemToShowQr = item
                         },
+                        sharedTickSeconds = sharedTickSeconds,
+                        appSettings = settings,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
