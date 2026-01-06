@@ -65,6 +65,7 @@ import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
 
 import takagi.ru.monica.ui.components.QrCodeDialog
+import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.security.SecurityManager
 
 /**
@@ -370,8 +371,12 @@ fun SimpleMainScreen(
                         onFavorite = if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onFavoriteBankCards else null
                     )
                 }
-                // 生成器页面、CardWallet页面不需要默认顶栏 (CardWallet使用自定义M3E顶栏)
-                currentTab == BottomNavItem.Generator || currentTab == BottomNavItem.Notes || currentTab == BottomNavItem.CardWallet -> {
+                // 生成器页面、CardWallet页面、以及新的密码和验证器页面（使用自定义M3E顶栏）
+                currentTab == BottomNavItem.Generator || 
+                currentTab == BottomNavItem.Notes || 
+                currentTab == BottomNavItem.CardWallet ||
+                currentTab == BottomNavItem.Passwords ||
+                currentTab == BottomNavItem.Authenticator -> {
                     // 不显示顶部栏
                 }
                 // 正常顶栏
@@ -662,6 +667,7 @@ fun SimpleMainScreen(
                     // 密码页面 - 使用现有的密码列表
                     PasswordListContent(
                         viewModel = passwordViewModel,
+                        settingsViewModel = settingsViewModel, // Pass SettingsViewModel
                         securityManager = securityManager,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
@@ -670,6 +676,7 @@ fun SimpleMainScreen(
                         },
                         onNavigateToAddPassword = onNavigateToAddPassword,
                         onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                        onMenuClick = { scope.launch { drawerState.open() } }, // Pass menu click
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
                             isPasswordSelectionMode = isSelectionMode
                             selectedPasswordCount = count
@@ -838,15 +845,18 @@ fun SimpleMainScreen(
 /**
  * 密码列表内容
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PasswordListContent(
     viewModel: PasswordViewModel,
+    settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit,
+    onMenuClick: () -> Unit,
     onSelectionModeChange: (
         isSelectionMode: Boolean,
         selectedCount: Int,
@@ -1191,23 +1201,274 @@ private fun PasswordListContent(
         )
     }
 
+    // Display options menu state (moved from global top bar)
+    var displayMenuExpanded by remember { mutableStateOf(false) }
+
     Column {
-        // 搜索框 - 非选择模式下显示
+        // M3E Top Bar with integrated search
         if (!isSelectionMode) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = viewModel::updateSearchQuery,
-                label = { Text(stringResource(R.string.search_passwords_hint)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(28.dp)
+            val currentFilter by viewModel.categoryFilter.collectAsState()
+            val title = when(currentFilter) {
+                is CategoryFilter.All -> stringResource(R.string.app_name)
+                is CategoryFilter.Starred -> "标星"
+                is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+            }
+
+            // Search state hoisted for morphing animation
+            var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+            // Category sheet state
+            var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
+
+            ExpressiveTopBar(
+                title = title,
+                searchQuery = searchQuery,
+                onSearchQueryChange = viewModel::updateSearchQuery,
+                isSearchExpanded = isSearchExpanded,
+                onSearchExpandedChange = { isSearchExpanded = it },
+                searchHint = stringResource(R.string.search_passwords_hint),
+                actions = {
+                    // 1. Search Trigger
+                    IconButton(onClick = { isSearchExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "搜索",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // 2. Category Folder Trigger
+                    IconButton(onClick = { isCategorySheetVisible = true }) {
+                         Icon(
+                            imageVector = Icons.Default.Folder, // Or CreateNewFolder
+                            contentDescription = "分类",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // 3. Display Options Trigger
+                    IconButton(onClick = { displayMenuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Default.DashboardCustomize,
+                            contentDescription = stringResource(R.string.display_options_menu_title),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             )
+
+            // Category Bottom Sheet
+            if (isCategorySheetVisible) {
+                ModalBottomSheet(
+                    onDismissRequest = { isCategorySheetVisible = false },
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                ) {
+                   Column(
+                       modifier = Modifier
+                           .fillMaxWidth()
+                           .padding(bottom = 32.dp)
+                   ) {
+                       Text(
+                           text = "选择分类",
+                           style = MaterialTheme.typography.titleLarge,
+                           modifier = Modifier.padding(24.dp)
+                       )
+                       
+                       // Filter options... simplified for now, mimicking drawer logic
+                       val categories = viewModel.categories.collectAsState(initial = emptyList()).value
+                       
+                       LazyColumn {
+                           item {
+                               NavigationDrawerItem(
+                                   label = { Text(stringResource(R.string.category_all)) },
+                                   selected = currentFilter is CategoryFilter.All,
+                                   onClick = {
+                                       viewModel.setCategoryFilter(CategoryFilter.All)
+                                       isCategorySheetVisible = false
+                                   },
+                                   icon = { Icon(Icons.Default.List, null) },
+                                   modifier = Modifier.padding(horizontal = 12.dp)
+                               )
+                           }
+                           item {
+                               NavigationDrawerItem(
+                                   label = { Text("标星") },
+                                   selected = currentFilter is CategoryFilter.Starred,
+                                   onClick = {
+                                       viewModel.setCategoryFilter(CategoryFilter.Starred)
+                                       isCategorySheetVisible = false
+                                   },
+                                   icon = { Icon(Icons.Outlined.CheckCircle, null) }, // Using CheckCircle temporarily as Star might not be imported
+                                   modifier = Modifier.padding(horizontal = 12.dp)
+                               )
+                           }
+                            
+                           items(categories) { category ->
+                               NavigationDrawerItem(
+                                   label = { Text(category.name) },
+                                   selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id,
+                                   onClick = {
+                                       viewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
+                                       isCategorySheetVisible = false
+                                   },
+                                   icon = { Icon(Icons.Default.Folder, null) },
+                                   modifier = Modifier.padding(horizontal = 12.dp)
+                               )
+                           }
+                       }
+                   }
+                }
+            }
         } else {
             // 选择模式下添加顶部间距,避免内容被顶栏遮挡
+            // 注意：因为隐藏了Scaffold顶栏，这里其实不需要顶出那么多，或者说需要顶出状态栏高度
+            // 简单起见，这里假设SelectionModeTopBar会处理
             Spacer(modifier = Modifier.height(8.dp))
         }
+
+    // Display Options Bottom Sheet
+    if (displayMenuExpanded) {
+        ModalBottomSheet(
+            onDismissRequest = { displayMenuExpanded = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                 modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+            ) {
+                 Text(
+                    text = stringResource(R.string.display_options_menu_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                )
+
+                // Stack Mode Section
+                Text(
+                    text = stringResource(R.string.stack_mode_menu_title),
+                     style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                )
+
+                val stackModes = listOf(
+                    StackCardMode.AUTO,
+                    StackCardMode.ALWAYS_EXPANDED
+                )
+
+                stackModes.forEach { mode ->
+                    val selected = mode == stackCardMode
+                    val (modeTitle, desc, icon) = when (mode) {
+                        StackCardMode.AUTO -> Triple(
+                            stringResource(R.string.stack_mode_auto),
+                            stringResource(R.string.stack_mode_auto_desc),
+                            Icons.Default.AutoAwesome
+                        )
+                        StackCardMode.ALWAYS_EXPANDED -> Triple(
+                            stringResource(R.string.stack_mode_expand),
+                            stringResource(R.string.stack_mode_expand_desc),
+                            Icons.Default.UnfoldMore
+                        )
+                    }
+
+                    NavigationDrawerItem(
+                        label = {
+                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = modeTitle,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        selected = selected,
+                        onClick = {
+                            settingsViewModel.updateStackCardMode(mode.name)
+                            displayMenuExpanded = false
+                        },
+                        icon = { Icon(icon, null) },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                 HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+
+                // Group Mode Section
+                Text(
+                    text = stringResource(R.string.group_mode_menu_title),
+                     style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                )
+
+                val groupModes = listOf(
+                    "smart" to Triple(
+                        stringResource(R.string.group_mode_smart),
+                        stringResource(R.string.group_mode_smart_desc),
+                        Icons.Default.DashboardCustomize
+                    ),
+                    "note" to Triple(
+                        stringResource(R.string.group_mode_note),
+                        stringResource(R.string.group_mode_note_desc),
+                        Icons.Default.Description
+                    ),
+                    "website" to Triple(
+                        stringResource(R.string.group_mode_website),
+                        stringResource(R.string.group_mode_website_desc),
+                        Icons.Default.Language
+                    ),
+                    "app" to Triple(
+                        stringResource(R.string.group_mode_app),
+                        stringResource(R.string.group_mode_app_desc),
+                        Icons.Default.Apps
+                    ),
+                    "title" to Triple(
+                        stringResource(R.string.group_mode_title),
+                        stringResource(R.string.group_mode_title_desc),
+                        Icons.Default.Title
+                    )
+                )
+
+                groupModes.forEach { (modeKey, meta) ->
+                    val selected = groupMode == modeKey
+                    val (modeTitle, desc, icon) = meta
+
+                    NavigationDrawerItem(
+                        label = {
+                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = modeTitle,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        selected = selected,
+                        onClick = {
+                            settingsViewModel.updatePasswordGroupMode(modeKey)
+                            displayMenuExpanded = false
+                        },
+                        icon = { Icon(icon, null) },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+        }
+    }
 
         // 密码列表 - 使用堆叠分组视图
         LazyColumn(
@@ -1611,29 +1872,26 @@ private fun TotpListContent(
     }
 
     Column {
-        // 搜索框和时间同步按钮 - 非选择模式下显示
+        // M3E Top Bar with integrated search
         if (!isSelectionMode) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                // 搜索框
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = viewModel::updateSearchQuery,
-                    label = { Text(stringResource(R.string.search_authenticator)) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear))
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp, bottom = 12.dp),
-                    singleLine = true,
-                    shape = RoundedCornerShape(28.dp)
-                )
-            }
+            var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+            ExpressiveTopBar(
+                title = "验证器", // Or stringResource(R.string.authenticator)
+                searchQuery = searchQuery,
+                onSearchQueryChange = viewModel::updateSearchQuery,
+                isSearchExpanded = isSearchExpanded,
+                onSearchExpandedChange = { isSearchExpanded = it },
+                searchHint = stringResource(R.string.search_authenticator),
+                actions = {
+                     IconButton(onClick = { isSearchExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "搜索",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            )
         } else {
             // 选择模式下添加顶部间距
             Spacer(modifier = Modifier.height(8.dp))
