@@ -315,24 +315,22 @@ fun AddEditPasswordScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // Header Section - Title Input
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text(stringResource(R.string.title_required)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    shape = RoundedCornerShape(12.dp)
-                )
-            }
-
             // Credentials Card
             item {
                 InfoCard(title = "凭据") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Title
+                        OutlinedTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text(stringResource(R.string.title_required)) },
+                            leadingIcon = { Icon(Icons.Default.Label, null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
                         // Website
                         OutlinedTextField(
                             value = website,

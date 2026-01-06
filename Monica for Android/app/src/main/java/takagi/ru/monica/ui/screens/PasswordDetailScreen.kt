@@ -613,18 +613,36 @@ private fun PersonalInfoContent(
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (entry.email.isNotEmpty()) {
+        val emails = entry.email.split("|").filter { it.isNotBlank() }
+        if (emails.size > 1) {
+            emails.forEachIndexed { index, email ->
+                InfoFieldWithCopy(
+                    label = "${stringResource(R.string.email)}${index + 1}",
+                    value = email,
+                    context = context
+                )
+            }
+        } else if (emails.isNotEmpty()) {
             InfoFieldWithCopy(
                 label = stringResource(R.string.email),
-                value = entry.email,
+                value = emails[0],
                 context = context
             )
         }
         
-        if (entry.phone.isNotEmpty()) {
+        val phones = entry.phone.split("|").filter { it.isNotBlank() }
+        if (phones.size > 1) {
+            phones.forEachIndexed { index, phone ->
+                InfoFieldWithCopy(
+                    label = "${stringResource(R.string.phone)}${index + 1}",
+                    value = FieldValidation.formatPhone(phone),
+                    context = context
+                )
+            }
+        } else if (phones.isNotEmpty()) {
             InfoFieldWithCopy(
                 label = stringResource(R.string.phone),
-                value = FieldValidation.formatPhone(entry.phone),
+                value = FieldValidation.formatPhone(phones[0]),
                 context = context
             )
         }
