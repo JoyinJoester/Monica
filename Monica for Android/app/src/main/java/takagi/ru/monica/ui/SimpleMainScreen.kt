@@ -1829,30 +1829,25 @@ private fun TotpListContent(
     }
 
     Column {
-        // M3E Top Bar with integrated search
-        if (!isSelectionMode) {
-            var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
-            ExpressiveTopBar(
-                title = "验证器", // Or stringResource(R.string.authenticator)
-                searchQuery = searchQuery,
-                onSearchQueryChange = viewModel::updateSearchQuery,
-                isSearchExpanded = isSearchExpanded,
-                onSearchExpandedChange = { isSearchExpanded = it },
-                searchHint = stringResource(R.string.search_authenticator),
-                actions = {
-                     IconButton(onClick = { isSearchExpanded = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "搜索",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+        // M3E Top Bar with integrated search - 始终显示
+        var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+        ExpressiveTopBar(
+            title = "验证器", // Or stringResource(R.string.authenticator)
+            searchQuery = searchQuery,
+            onSearchQueryChange = viewModel::updateSearchQuery,
+            isSearchExpanded = isSearchExpanded,
+            onSearchExpandedChange = { isSearchExpanded = it },
+            searchHint = stringResource(R.string.search_authenticator),
+            actions = {
+                 IconButton(onClick = { isSearchExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "搜索",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            )
-        } else {
-            // 选择模式下添加顶部间距
-            Spacer(modifier = Modifier.height(8.dp))
-        }
+            }
+        )
 
         // TOTP列表
         if (filteredTotpItems.isEmpty()) {

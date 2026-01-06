@@ -2,7 +2,7 @@ package takagi.ru.monica.ui.gestures
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,7 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -54,164 +54,101 @@ fun SwipeActions(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    val animatedOffset = remember { Animatable(0f) }
+    // 使用非动画状态记录实时拖动偏移，避免高频创建协程
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    // 仅用于回弹动画的 Animatable
+    val animatableOffset = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     
-    // 卡片宽度（动态获取）
+    // 卡片宽度
     var cardWidth by remember { mutableFloatStateOf(0f) }
-    
-    // 最大滑动距离（用于显示效果）
     val maxSwipeDistance = 300f
     
-    // 自定义弹簧物理模型 - Q弹效果
+    // 弹性物理模型
     val springSpec = spring<Float>(
-        dampingRatio = Spring.DampingRatioMediumBouncy,  // 中等弹性
-        stiffness = Spring.StiffnessMedium,               // 中等刚度
-        visibilityThreshold = 0.2f                        // 精确停止（更容易触发）
-    )
-    
-    // 快速回弹动画（用于取消操作）
-    val quickSpringSpec = spring<Float>(
-        dampingRatio = Spring.DampingRatioLowBouncy,     // 低弹性
-        stiffness = Spring.StiffnessHigh,                 // 高刚度
+        dampingRatio = Spring.DampingRatioMediumBouncy,
+        stiffness = Spring.StiffnessMedium,
         visibilityThreshold = 0.2f
     )
     
-    // 动态计算滑动阈值（基于卡片宽度）
+    val quickSpringSpec = spring<Float>(
+        dampingRatio = Spring.DampingRatioLowBouncy,
+        stiffness = Spring.StiffnessHigh,
+        visibilityThreshold = 0.2f
+    )
+    
+    // 计算当前显示的总偏移量
+    val totalOffset = dragOffset + animatableOffset.value
+    
     val swipeThreshold = remember(cardWidth) {
-        if (cardWidth > 0f) cardWidth * 0.2f else 60f  // 20% 卡片宽度或默认 60px
+        if (cardWidth > 0f) cardWidth * 0.2f else 60f
     }
     
-    // 计算背景透明度（渐进式显示）
-    val backgroundAlpha = remember(offsetX, swipeThreshold) {
-        (abs(offsetX) / swipeThreshold).coerceIn(0f, 1f)
-    }
+    // 背景透明度和图标缩放
+    val backgroundAlpha = (abs(totalOffset) / swipeThreshold).coerceIn(0f, 1f)
+    val iconScale = 0.8f + ((abs(totalOffset) / swipeThreshold).coerceIn(0f, 1.2f) * 0.4f)
     
-    // 计算图标缩放（动态缩放效果）
-    val iconScale = remember(offsetX, swipeThreshold) {
-        val progress = (abs(offsetX) / swipeThreshold).coerceIn(0f, 1.2f)
-        0.8f + (progress * 0.4f) // 0.8 -> 1.2
-    }
-    
-    // 🎨 右滑时卡片渐变色（跟随滑动距离）
-    val cardTintAlpha = remember(offsetX, swipeThreshold) {
-        if (offsetX > 0) {
-            // 右滑时，根据滑动进度渐变到主题色
-            (offsetX / swipeThreshold).coerceIn(0f, 0.6f)
-        } else {
-            0f
-        }
-    }
+    // 右滑遮罩透明度
+    val cardTintAlpha = if (totalOffset > 0) (totalOffset / swipeThreshold).coerceIn(0f, 0.6f) else 0f
     
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp)) // 统一圆角，避免锯齿
+            .clip(RoundedCornerShape(16.dp))
     ) {
-        // 左侧背景（右滑显示 - 选择）
-        if (offsetX > 0) {
+        // 左侧背景
+        if (totalOffset > 0) {
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .matchParentSize(),
+                modifier = Modifier.fillMaxWidth().matchParentSize(),
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = backgroundAlpha),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.CenterStart // 左对齐
-                ) {
+                Box(contentAlignment = Alignment.CenterStart) {
                     Row(
-                        modifier = Modifier
-                            .padding(start = 24.dp)
-                            .graphicsLayer {
-                                // 背景内容微动画（从左侧跟随）
-                                translationX = (offsetX * 0.3f).coerceIn(0f, 40f)
-                                alpha = backgroundAlpha
-                            },
+                        modifier = Modifier.padding(start = 24.dp).graphicsLayer {
+                            translationX = (totalOffset * 0.3f).coerceIn(0f, 40f)
+                            alpha = backgroundAlpha
+                        },
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "选择",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .graphicsLayer {
-                                    scaleX = iconScale
-                                    scaleY = iconScale
-                                }
-                        )
-                        Text(
-                            text = stringResource(R.string.swipe_action_select),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale })
+                        Text(stringResource(R.string.swipe_action_select), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
             }
         }
         
-        // 右侧背景（左滑显示 - 删除）
-        if (offsetX < 0) {
+        // 右侧背景
+        if (totalOffset < 0) {
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .matchParentSize(),
+                modifier = Modifier.fillMaxWidth().matchParentSize(),
                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = backgroundAlpha),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.CenterEnd // 右对齐
-                ) {
+                Box(contentAlignment = Alignment.CenterEnd) {
                     Row(
-                        modifier = Modifier
-                            .padding(end = 24.dp)
-                            .graphicsLayer {
-                                // 背景内容微动画（从右侧跟随）
-                                translationX = (offsetX * 0.3f).coerceIn(-40f, 0f)
-                                alpha = backgroundAlpha
-                            },
+                        modifier = Modifier.padding(end = 24.dp).graphicsLayer {
+                            translationX = (totalOffset * 0.3f).coerceIn(-40f, 0f)
+                            alpha = backgroundAlpha
+                        },
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "删除",
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .graphicsLayer {
-                                    scaleX = iconScale
-                                    scaleY = iconScale
-                                }
-                        )
-                        Text(
-                            text = stringResource(R.string.swipe_action_delete),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
+                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale })
+                        Text(stringResource(R.string.swipe_action_delete), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
         }
         
         // 前景内容
-        Box(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // 🎨 渐变色遮罩层（右滑时显示）
+        Box(modifier = Modifier.fillMaxWidth()) {
             if (cardTintAlpha > 0f) {
                 Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            translationX = animatedOffset.value
-                            alpha = cardTintAlpha
-                        },
+                    modifier = Modifier.fillMaxSize().graphicsLayer { translationX = totalOffset; alpha = cardTintAlpha },
                     color = MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(16.dp)
                 ) {}
@@ -221,98 +158,55 @@ fun SwipeActions(
                 modifier = Modifier
                     .fillMaxWidth()
                     .graphicsLayer {
-                        translationX = animatedOffset.value
-                        // 添加微妙的阴影效果
-                        shadowElevation = (abs(animatedOffset.value) / 100f).coerceIn(0f, 8f)
+                        translationX = totalOffset
+                        shadowElevation = (abs(totalOffset) / 100f).coerceIn(0f, 8f)
                     }
                     .pointerInput(enabled) {
-                    if (!enabled) return@pointerInput
-                    
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            // 记录卡片宽度（首次滑动时获取）
-                            if (cardWidth == 0f) {
-                                cardWidth = size.width.toFloat()
-                            }
-                            android.util.Log.d("SwipeActions", "Drag started, cardWidth: $cardWidth")
-                        },
-                        onDragEnd = {
-                            android.util.Log.d("SwipeActions", "Drag ended, offsetX: $offsetX, threshold: ${cardWidth * 0.5f}")
-                            android.util.Log.d("SwipeActions", "Drag ended, offsetX: $offsetX, threshold: ${cardWidth * 0.2f}")
-                            scope.launch {
-                                // 动态计算阈值（20% 卡片宽度）
-                                val dynamicThreshold = cardWidth * 0.2f
-                                when {
-                                    // 左滑超过50%宽度 - 触发删除
-                                    offsetX < -dynamicThreshold -> {
-                                        android.util.Log.d("SwipeActions", "Triggering LEFT swipe (delete)")
-                                        // 使用快速弹簧动画滑出
-                                        animatedOffset.animateTo(
-                                            targetValue = -cardWidth,
-                                            animationSpec = tween(
-                                                durationMillis = 300,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        )
+                        if (!enabled) return@pointerInput
+                        detectHorizontalDragGestures(
+                            onDragStart = { if (cardWidth == 0f) cardWidth = size.width.toFloat() },
+                            onDragEnd = {
+                                scope.launch {
+                                    // 将实时状态转移到 Animatable 中处理动画
+                                    animatableOffset.snapTo(dragOffset)
+                                    dragOffset = 0f
+                                    
+                                    val dynamicThreshold = cardWidth * 0.2f
+                                    if (animatableOffset.value < -dynamicThreshold) {
+                                        animatableOffset.animateTo(-cardWidth, tween(300, easing = FastOutSlowInEasing))
                                         onSwipeLeft()
-                                    }
-                                    // 右滑超过50%宽度 - 触发选择
-                                    offsetX > dynamicThreshold -> {
-                                        android.util.Log.d("SwipeActions", "Triggering RIGHT swipe (select)")
-                                        // Q弹回弹效果
-                                        animatedOffset.animateTo(
-                                            targetValue = 0f,
-                                            animationSpec = springSpec
-                                        )
+                                    } else if (animatableOffset.value > dynamicThreshold) {
+                                        animatableOffset.animateTo(0f, springSpec)
                                         onSwipeRight()
-                                    }
-                                    // 未达到50%阈值 - 操作无效，Q弹回弹
-                                    else -> {
-                                        android.util.Log.d("SwipeActions", "Swipe cancelled (not enough distance)")
-                                        animatedOffset.animateTo(
-                                            targetValue = 0f,
-                                            animationSpec = quickSpringSpec
-                                        )
+                                    } else {
+                                        animatableOffset.animateTo(0f, quickSpringSpec)
                                     }
                                 }
-                                offsetX = 0f
-                            }
-                        },
-                        onDragCancel = {
-                            scope.launch {
-                                // 取消时快速回弹
-                                animatedOffset.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = quickSpringSpec
-                                )
-                                offsetX = 0f
-                            }
-                        },
-                        onHorizontalDrag = { _, dragAmount ->
-                            scope.launch {
-                                // 添加阻尼效果，接近边界时减速
-                                val currentOffset = animatedOffset.value
+                            },
+                            onDragCancel = {
+                                scope.launch {
+                                    animatableOffset.snapTo(dragOffset)
+                                    dragOffset = 0f
+                                    animatableOffset.animateTo(0f, quickSpringSpec)
+                                }
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                // 高频拖动：仅更新 FloatState，不创建协程
+                                val current = dragOffset
                                 val resistance = when {
-                                    abs(currentOffset) > maxSwipeDistance -> 0.1f  // 强阻尼
-                                    abs(currentOffset) > maxSwipeDistance * 0.8f -> 0.5f  // 中阻尼
-                                    else -> 1f  // 无阻尼
+                                    abs(current) > maxSwipeDistance -> 0.1f
+                                    abs(current) > maxSwipeDistance * 0.8f -> 0.5f
+                                    else -> 1f
                                 }
-                                
-                                val newOffset = (currentOffset + dragAmount * resistance)
+                                dragOffset = (current + dragAmount * resistance)
                                     .coerceIn(-maxSwipeDistance * 1.2f, maxSwipeDistance * 1.2f)
-                                
-                                animatedOffset.snapTo(newOffset)
-                                offsetX = newOffset
                             }
-                        }
-                    )
-                },
-            shape = RoundedCornerShape(16.dp),
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            content()
-        }
+                        )
+                    },
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                content()
+            }
         }
     }
 }
