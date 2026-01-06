@@ -228,10 +228,8 @@ class SecurityManager(private val context: Context) {
             keyGenerator.init(256)
             
             // Use the master key for encryption
-            val secretKey = javax.crypto.spec.SecretKeySpec(
-                masterKey.toString().toByteArray().sliceArray(0..31), 
-                "AES"
-            )
+            val keyBytes = masterKey.toString().toByteArray().copyOf(32)
+            val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
             
             cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey)
             val iv = cipher.iv
@@ -250,16 +248,18 @@ class SecurityManager(private val context: Context) {
     fun decryptData(encryptedData: String): String {
         return try {
             val combined = android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
-            
+            if (combined.size <= 12) {
+                android.util.Log.e("SecurityManager", "Decryption failed: payload too short (len=${combined.size})")
+                return encryptedData
+            }
+
             // Extract IV and encrypted data
-            val iv = combined.sliceArray(0..11) // GCM IV is 12 bytes
-            val encrypted = combined.sliceArray(12 until combined.size)
-            
+            val iv = combined.copyOfRange(0, 12) // GCM IV is 12 bytes
+            val encrypted = combined.copyOfRange(12, combined.size)
+
             val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            val secretKey = javax.crypto.spec.SecretKeySpec(
-                masterKey.toString().toByteArray().sliceArray(0..31), 
-                "AES"
-            )
+            val keyBytes = masterKey.toString().toByteArray().copyOf(32)
+            val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
             
             val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, gcmSpec)

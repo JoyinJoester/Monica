@@ -12,18 +12,24 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -67,6 +73,99 @@ import kotlin.math.absoluteValue
 import takagi.ru.monica.ui.components.QrCodeDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.security.SecurityManager
+
+@Composable
+private fun SelectionActionBar(
+    modifier: Modifier = Modifier,
+    selectedCount: Int,
+    onExit: () -> Unit,
+    onSelectAll: () -> Unit,
+    onFavorite: (() -> Unit)? = null,
+    onMoveToCategory: (() -> Unit)? = null,
+    onDelete: () -> Unit,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+        color = containerColor,
+        contentColor = contentColor
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // 选中数量徽章
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Text(
+                    text = selectedCount.toString(),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            ActionIcon(
+                icon = Icons.Outlined.CheckCircle,
+                contentDescription = stringResource(id = R.string.select_all),
+                onClick = onSelectAll
+            )
+
+            onFavorite?.let {
+                ActionIcon(
+                    icon = Icons.Outlined.FavoriteBorder,
+                    contentDescription = stringResource(id = R.string.favorite),
+                    onClick = it
+                )
+            }
+
+            onMoveToCategory?.let {
+                ActionIcon(
+                    icon = Icons.Outlined.Label,
+                    contentDescription = stringResource(id = R.string.move_to_category),
+                    onClick = it
+                )
+            }
+
+            ActionIcon(
+                icon = Icons.Outlined.Delete,
+                contentDescription = stringResource(id = R.string.delete),
+                onClick = onDelete
+            )
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            ActionIcon(
+                icon = Icons.Default.Close,
+                contentDescription = stringResource(id = R.string.close),
+                onClick = onExit
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionIcon(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(40.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
 
 /**
  * 带有底部导航的主屏幕
@@ -182,8 +281,6 @@ fun SimpleMainScreen(
 
     // CardWallet state
     var cardWalletSubTab by rememberSaveable { mutableStateOf(CardWalletTab.BANK_CARDS) }
-    // Computed selection mode for CardWallet top bar logic
-    val isCardWalletSelectionMode = if (cardWalletSubTab == CardWalletTab.BANK_CARDS) isBankCardSelectionMode else isDocumentSelectionMode
 
     val bottomNavVisibility = appSettings.bottomNavVisibility
 
@@ -237,15 +334,16 @@ fun SimpleMainScreen(
                 }
 
                 NavigationDrawerItem(
-                    label = { Text("全部") },
+                    label = { Text(stringResource(R.string.category_all)) },
                     selected = currentFilter is CategoryFilter.All,
                     onClick = {
                         passwordViewModel.setCategoryFilter(CategoryFilter.All)
                         scope.launch { drawerState.close() }
                     },
-                    icon = { Icon(Icons.Default.AllInclusive, null) },
+                    icon = { Icon(Icons.Default.List, null) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
+
                 NavigationDrawerItem(
                     label = { Text("标星") },
                     selected = currentFilter is CategoryFilter.Starred,
@@ -256,19 +354,30 @@ fun SimpleMainScreen(
                     icon = { Icon(Icons.Default.Star, null) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
-                
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                
-                Text(
-                    text = "分类",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)
+
+                NavigationDrawerItem(
+                    label = { Text("未分类") },
+                    selected = currentFilter is CategoryFilter.Uncategorized,
+                    onClick = {
+                        passwordViewModel.setCategoryFilter(CategoryFilter.Uncategorized)
+                        scope.launch { drawerState.close() }
+                    },
+                    icon = { Icon(Icons.Default.FolderOff, null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
-                
+
+                if (categories.isNotEmpty()) {
+                    Text(
+                        text = "分类",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                }
+
                 categories.forEach { category ->
-                    var showMenu by remember { mutableStateOf(false) }
-                    
+                    var showMenu by remember(category.id) { mutableStateOf(false) }
+
                     NavigationDrawerItem(
                         label = { Text(category.name) },
                         selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id,
@@ -276,48 +385,39 @@ fun SimpleMainScreen(
                             passwordViewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
                             scope.launch { drawerState.close() }
                         },
-                        icon = { Icon(Icons.Default.Folder, null) },
+                        icon = { Icon(Icons.Default.Label, null) },
                         badge = {
-                            Box {
-                                IconButton(
-                                    onClick = { showMenu = true },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.MoreVert,
-                                        contentDescription = "更多",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = showMenu,
-                                    onDismissRequest = { showMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("重命名") },
-                                        onClick = {
-                                            showMenu = false
-                                            categoryNameInput = category.name
-                                            showEditCategoryDialog = category
-                                        },
-                                        leadingIcon = { Icon(Icons.Default.Edit, null) }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("删除") },
-                                        onClick = {
-                                            showMenu = false
-                                            passwordViewModel.deleteCategory(category)
-                                        },
-                                        leadingIcon = { Icon(Icons.Default.Delete, null) }
-                                    )
-                                }
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = null)
                             }
                         },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("重命名") },
+                            onClick = {
+                                showMenu = false
+                                categoryNameInput = category.name
+                                showEditCategoryDialog = category
+                            },
+                            leadingIcon = { Icon(Icons.Default.Edit, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("删除") },
+                            onClick = {
+                                showMenu = false
+                                passwordViewModel.deleteCategory(category)
+                            },
+                            leadingIcon = { Icon(Icons.Default.Delete, null) }
+                        )
+                    }
                 }
-                
+
                 NavigationDrawerItem(
                     label = { Text("新建分类") },
                     selected = false,
@@ -333,265 +433,7 @@ fun SimpleMainScreen(
     ) {
     Scaffold(
         topBar = {
-            // 根据不同页面的选择模式显示对应的顶栏
-            when {
-                // 密码页面选择模式
-                currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
-                    SelectionModeTopBar(
-                        selectedCount = selectedPasswordCount,
-                        onExit = { onExitPasswordSelection() },
-                        onSelectAll = { onSelectAllPasswords() },
-                        onFavorite = { onFavoriteSelectedPasswords() },
-                        onMoveToCategory = { onMoveToCategoryPasswords() },
-                        onDelete = { onDeleteSelectedPasswords() }
-                    )
-                }
-                // TOTP页面选择模式
-                currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
-                    SelectionModeTopBar(
-                        selectedCount = selectedTotpCount,
-                        onExit = { onExitTotpSelection() },
-                        onSelectAll = { onSelectAllTotp() },
-                        onDelete = { onDeleteSelectedTotp() }
-                    )
-                }
-                // 卡包页面选择模式
-                currentTab == BottomNavItem.CardWallet && isCardWalletSelectionMode -> {
-                    SelectionModeTopBar(
-                        selectedCount = if (cardWalletSubTab == CardWalletTab.BANK_CARDS) selectedBankCardCount else selectedDocumentCount,
-                        onExit = {
-                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onExitBankCardSelection() else onExitDocumentSelection()
-                        },
-                        onSelectAll = {
-                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onSelectAllBankCards() else onSelectAllDocuments()
-                        },
-                        onDelete = {
-                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onDeleteSelectedBankCards() else onDeleteSelectedDocuments()
-                        },
-                        onFavorite = if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onFavoriteBankCards else null
-                    )
-                }
-                // 生成器页面、CardWallet页面、以及新的密码和验证器页面（使用自定义M3E顶栏）
-                currentTab == BottomNavItem.Generator || 
-                currentTab == BottomNavItem.Notes || 
-                currentTab == BottomNavItem.CardWallet ||
-                currentTab == BottomNavItem.Passwords ||
-                currentTab == BottomNavItem.Authenticator -> {
-                    // 不显示顶部栏
-                }
-                // 正常顶栏
-                else -> {
-                    TopAppBar(
-                        title = {
-                            if (currentTab == BottomNavItem.Passwords) {
-                                Text(
-                                    text = when(currentFilter) {
-                                        is CategoryFilter.All -> stringResource(R.string.app_name)
-                                        is CategoryFilter.Starred -> "标星"
-                                        is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
-                                    }
-                                )
-                            } else {
-                                Text(currentTabLabel)
-                            }
-                        },
-                        navigationIcon = {
-                            if (currentTab == BottomNavItem.Passwords) {
-                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(Icons.Default.Menu, contentDescription = "打开菜单")
-                                }
-                            }
-                        },
-                        actions = {
-                            // 只在密码页面显示分组/堆叠模式的统一菜单
-                            if (currentTab == BottomNavItem.Passwords) {
-                                Box {
-                                    IconButton(onClick = { displayMenuExpanded = true }) {
-                                        Icon(
-                                            imageVector = Icons.Default.DashboardCustomize,
-                                            contentDescription = stringResource(R.string.display_options_menu_title)
-                                        )
-                                    }
-
-                                    DropdownMenu(
-                                        expanded = displayMenuExpanded,
-                                        onDismissRequest = { displayMenuExpanded = false }
-                                    ) {
-                                        // 堆叠模式
-                                        DropdownMenuItem(
-                                            onClick = {},
-                                            enabled = false,
-                                            text = {
-                                                Text(
-                                                    text = stringResource(R.string.stack_mode_menu_title),
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        )
-
-                                        val stackModes = listOf(
-                                            StackCardMode.AUTO,
-                                            StackCardMode.ALWAYS_EXPANDED
-                                        )
-
-                                        stackModes.forEach { mode ->
-                                            val selected = mode == stackCardMode
-                                            val (title, desc, icon) = when (mode) {
-                                                StackCardMode.AUTO -> Triple(
-                                                    stringResource(R.string.stack_mode_auto),
-                                                    stringResource(R.string.stack_mode_auto_desc),
-                                                    Icons.Default.AutoAwesome
-                                                )
-                                                StackCardMode.ALWAYS_EXPANDED -> Triple(
-                                                    stringResource(R.string.stack_mode_expand),
-                                                    stringResource(R.string.stack_mode_expand_desc),
-                                                    Icons.Default.UnfoldMore
-                                                )
-                                            }
-
-                                            DropdownMenuItem(
-                                                onClick = {
-                                                    settingsViewModel.updateStackCardMode(mode.name)
-                                                    displayMenuExpanded = false
-                                                },
-                                                text = {
-                                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                        Row(
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                        ) {
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(12.dp)
-                                                                    .background(
-                                                                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                                                        shape = RoundedCornerShape(4.dp)
-                                                                    )
-                                                            )
-                                                            Text(
-                                                                text = title,
-                                                                style = MaterialTheme.typography.titleSmall,
-                                                                color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
-                                                            )
-                                                        }
-                                                        Text(
-                                                            text = desc,
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            maxLines = 2
-                                                        )
-                                                    }
-                                                },
-                                                leadingIcon = {
-                                                    Icon(
-                                                        imageVector = icon,
-                                                        contentDescription = null,
-                                                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                            )
-                                        }
-
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 12.dp),
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                                        )
-
-                                        // 分组模式
-                                        DropdownMenuItem(
-                                            onClick = {},
-                                            enabled = false,
-                                            text = {
-                                                Text(
-                                                    text = stringResource(R.string.group_mode_menu_title),
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        )
-
-                                        val groupModes = listOf(
-                                            "smart" to Triple(
-                                                stringResource(R.string.group_mode_smart),
-                                                stringResource(R.string.group_mode_smart_desc),
-                                                Icons.Default.DashboardCustomize
-                                            ),
-                                            "note" to Triple(
-                                                stringResource(R.string.group_mode_note),
-                                                stringResource(R.string.group_mode_note_desc),
-                                                Icons.Default.Description
-                                            ),
-                                            "website" to Triple(
-                                                stringResource(R.string.group_mode_website),
-                                                stringResource(R.string.group_mode_website_desc),
-                                                Icons.Default.Language
-                                            ),
-                                            "app" to Triple(
-                                                stringResource(R.string.group_mode_app),
-                                                stringResource(R.string.group_mode_app_desc),
-                                                Icons.Default.Apps
-                                            ),
-                                            "title" to Triple(
-                                                stringResource(R.string.group_mode_title),
-                                                stringResource(R.string.group_mode_title_desc),
-                                                Icons.Default.Title
-                                            )
-                                        )
-
-                                        groupModes.forEach { (modeKey, meta) ->
-                                            val selected = passwordGroupMode == modeKey
-                                            val (title, desc, icon) = meta
-
-                                            DropdownMenuItem(
-                                                onClick = {
-                                                    settingsViewModel.updatePasswordGroupMode(modeKey)
-                                                    displayMenuExpanded = false
-                                                },
-                                                text = {
-                                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                        Row(
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                        ) {
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(12.dp)
-                                                                    .background(
-                                                                        color = if (selected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                                                        shape = RoundedCornerShape(4.dp)
-                                                                    )
-                                                            )
-                                                            Text(
-                                                                text = title,
-                                                                style = MaterialTheme.typography.titleSmall,
-                                                                color = if (selected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurface
-                                                            )
-                                                        }
-                                                        Text(
-                                                            text = desc,
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            maxLines = 2
-                                                        )
-                                                    }
-                                                },
-                                                leadingIcon = {
-                                                    Icon(
-                                                        imageVector = icon,
-                                                        contentDescription = null,
-                                                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    )
-                }
-            }
+            // 顶部栏由各自页面内部控制（如 ExpressiveTopBar），这里保持为空以避免叠加
         },
         bottomBar = {
             NavigationBar(
@@ -671,6 +513,17 @@ fun SimpleMainScreen(
                         securityManager = securityManager,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
+                        onCreateCategory = {
+                            categoryNameInput = ""
+                            showAddCategoryDialog = true
+                        },
+                        onRenameCategory = { category ->
+                            categoryNameInput = category.name
+                            showEditCategoryDialog = category
+                        },
+                        onDeleteCategory = { category ->
+                            passwordViewModel.deleteCategory(category)
+                        },
                         onPasswordClick = { password ->
                             onNavigateToAddPassword(password.id)
                         },
@@ -775,6 +628,59 @@ fun SimpleMainScreen(
                     )
                 }
             }
+
+            when {
+                currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                        selectedCount = selectedPasswordCount,
+                        onExit = onExitPasswordSelection,
+                        onSelectAll = onSelectAllPasswords,
+                        onFavorite = onFavoriteSelectedPasswords,
+                        onMoveToCategory = onMoveToCategoryPasswords,
+                        onDelete = onDeleteSelectedPasswords
+                    )
+                }
+
+                currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                        selectedCount = selectedTotpCount,
+                        onExit = onExitTotpSelection,
+                        onSelectAll = onSelectAllTotp,
+                        onDelete = onDeleteSelectedTotp
+                    )
+                }
+
+                currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.BANK_CARDS && isBankCardSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                        selectedCount = selectedBankCardCount,
+                        onExit = onExitBankCardSelection,
+                        onSelectAll = onSelectAllBankCards,
+                        onFavorite = onFavoriteBankCards,
+                        onDelete = onDeleteSelectedBankCards
+                    )
+                }
+
+                currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                        selectedCount = selectedDocumentCount,
+                        onExit = onExitDocumentSelection,
+                        onSelectAll = onSelectAllDocuments,
+                        onDelete = onDeleteSelectedDocuments
+                    )
+                }
+            }
         }
     }
     } // End of ModalNavigationDrawer
@@ -853,6 +759,9 @@ private fun PasswordListContent(
     securityManager: SecurityManager,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
+    onCreateCategory: () -> Unit,
+    onRenameCategory: (Category) -> Unit,
+    onDeleteCategory: (Category) -> Unit,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit,
@@ -1204,20 +1113,20 @@ private fun PasswordListContent(
     // Display options menu state (moved from global top bar)
     var displayMenuExpanded by remember { mutableStateOf(false) }
 
-    Column {
-        // M3E Top Bar with integrated search
-        if (!isSelectionMode) {
-            val currentFilter by viewModel.categoryFilter.collectAsState()
-            val title = when(currentFilter) {
-                is CategoryFilter.All -> stringResource(R.string.app_name)
-                is CategoryFilter.Starred -> "标星"
-                is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
-            }
+    // Search state hoisted for morphing animation
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    // Category sheet state
+    var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
 
-            // Search state hoisted for morphing animation
-            var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
-            // Category sheet state
-            var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
+    Column {
+        // M3E Top Bar with integrated search - 始终显示
+        val currentFilter by viewModel.categoryFilter.collectAsState()
+        val title = when(currentFilter) {
+            is CategoryFilter.All -> stringResource(R.string.app_name)
+            is CategoryFilter.Starred -> "标星"
+            is CategoryFilter.Uncategorized -> "未分类"
+            is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+        }
 
             ExpressiveTopBar(
                 title = title,
@@ -1262,68 +1171,116 @@ private fun PasswordListContent(
                     onDismissRequest = { isCategorySheetVisible = false },
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 ) {
+                   val categoryList = viewModel.categories.collectAsState(initial = emptyList()).value
+                   var expandedMenuId by remember { mutableStateOf<Long?>(null) }
+
                    Column(
                        modifier = Modifier
                            .fillMaxWidth()
-                           .padding(bottom = 32.dp)
+                           .padding(horizontal = 20.dp, vertical = 16.dp)
                    ) {
                        Text(
                            text = "选择分类",
                            style = MaterialTheme.typography.titleLarge,
-                           modifier = Modifier.padding(24.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                        )
-                       
-                       // Filter options... simplified for now, mimicking drawer logic
-                       val categories = viewModel.categories.collectAsState(initial = emptyList()).value
-                       
-                       LazyColumn {
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                           LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(bottom = 10.dp)
+                           ) {
                            item {
-                               NavigationDrawerItem(
-                                   label = { Text(stringResource(R.string.category_all)) },
-                                   selected = currentFilter is CategoryFilter.All,
+                               val selected = currentFilter is CategoryFilter.All
+                               CategoryListItem(
+                                   title = stringResource(R.string.category_all),
+                                    icon = Icons.Default.List,
+                                   selected = selected,
                                    onClick = {
                                        viewModel.setCategoryFilter(CategoryFilter.All)
-                                       isCategorySheetVisible = false
-                                   },
-                                   icon = { Icon(Icons.Default.List, null) },
-                                   modifier = Modifier.padding(horizontal = 12.dp)
+                                   }
                                )
                            }
                            item {
-                               NavigationDrawerItem(
-                                   label = { Text("标星") },
-                                   selected = currentFilter is CategoryFilter.Starred,
+                               val selected = currentFilter is CategoryFilter.Starred
+                               CategoryListItem(
+                                   title = "标星",
+                                   icon = Icons.Outlined.CheckCircle,
+                                   selected = selected,
                                    onClick = {
                                        viewModel.setCategoryFilter(CategoryFilter.Starred)
-                                       isCategorySheetVisible = false
-                                   },
-                                   icon = { Icon(Icons.Outlined.CheckCircle, null) }, // Using CheckCircle temporarily as Star might not be imported
-                                   modifier = Modifier.padding(horizontal = 12.dp)
+                                   }
                                )
                            }
-                            
-                           items(categories) { category ->
-                               NavigationDrawerItem(
-                                   label = { Text(category.name) },
-                                   selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id,
+                           item {
+                               val selected = currentFilter is CategoryFilter.Uncategorized
+                               CategoryListItem(
+                                   title = "未分类",
+                                   icon = Icons.Default.FolderOff,
+                                   selected = selected,
                                    onClick = {
-                                       viewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
-                                       isCategorySheetVisible = false
-                                   },
-                                   icon = { Icon(Icons.Default.Folder, null) },
-                                   modifier = Modifier.padding(horizontal = 12.dp)
+                                       viewModel.setCategoryFilter(CategoryFilter.Uncategorized)
+                                   }
                                )
                            }
+                           items(categoryList, key = { it.id }) { category ->
+                               val selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id
+                               CategoryListItem(
+                                   title = category.name,
+                                   icon = Icons.Default.Folder,
+                                   selected = selected,
+                                   onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
+                                   },
+                                   menu = {
+                                       IconButton(onClick = { expandedMenuId = category.id }) {
+                                           Icon(Icons.Default.MoreVert, contentDescription = null)
+                                       }
+                                       DropdownMenu(
+                                           expanded = expandedMenuId == category.id,
+                                           onDismissRequest = { expandedMenuId = null },
+                                           modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                                       ) {
+                                           DropdownMenuItem(
+                                               text = { Text("重命名") },
+                                               leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                               onClick = {
+                                                   expandedMenuId = null
+                                                   onRenameCategory(category)
+                                               }
+                                           )
+                                           DropdownMenuItem(
+                                               text = { Text("删除") },
+                                               leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                               onClick = {
+                                                   expandedMenuId = null
+                                                   onDeleteCategory(category)
+                                               }
+                                           )
+                                       }
+                                   }
+                               )
+                           }
+                            item {
+                                Spacer(modifier = Modifier.height(18.dp))
+
+                                Button(
+                                    onClick = onCreateCategory,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp),
+                                    shape = RoundedCornerShape(18.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("新建分类")
+                                }
+                            }
                        }
                    }
                 }
             }
-        } else {
-            // 选择模式下添加顶部间距,避免内容被顶栏遮挡
-            // 注意：因为隐藏了Scaffold顶栏，这里其实不需要顶出那么多，或者说需要顶出状态栏高度
-            // 简单起见，这里假设SelectionModeTopBar会处理
-            Spacer(modifier = Modifier.height(8.dp))
-        }
 
     // Display Options Bottom Sheet
     if (displayMenuExpanded) {
@@ -4229,6 +4186,45 @@ private fun SelectionModeTopBar(
 }
 
 private const val SETTINGS_TAB_KEY = "SETTINGS"
+
+@Composable
+private fun CategoryListItem(
+    title: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    menu: (@Composable () -> Unit)? = null
+) {
+    val containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
+    val contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+
+    ListItem(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(
+            containerColor = containerColor,
+            headlineColor = contentColor,
+            leadingIconColor = contentColor,
+            trailingIconColor = contentColor
+        ),
+        leadingContent = {
+            Icon(icon, contentDescription = null)
+        },
+        headlineContent = {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+        },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (selected) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = contentColor)
+                }
+                menu?.invoke()
+            }
+        }
+    )
+}
 
 sealed class BottomNavItem(
     val contentTab: BottomNavContentTab?,

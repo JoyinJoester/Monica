@@ -155,6 +155,7 @@ fun PasswordListScreen(
                                     text = when(currentFilter) {
                                         is CategoryFilter.All -> context.getString(R.string.app_name)
                                         is CategoryFilter.Starred -> "标星"
+                                        is CategoryFilter.Uncategorized -> "未分类"
                                         is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
                                     },
                                     style = MaterialTheme.typography.titleLarge,

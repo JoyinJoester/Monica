@@ -685,6 +685,193 @@ private val ParliamentFogDarkColorScheme = darkColorScheme(
 )
 
 // ============================================
+// 🐱 Catppuccin (Plus)
+// ============================================
+private val CatLatteLightColorScheme = lightColorScheme(
+    primary = CatLattePrimary,
+    onPrimary = CatLatteOnPrimary,
+    primaryContainer = CatLattePrimaryContainer,
+    onPrimaryContainer = CatLatteOnPrimaryContainer,
+    secondary = CatLatteSecondary,
+    onSecondary = CatLatteOnSecondary,
+    secondaryContainer = CatLatteSecondaryContainer,
+    onSecondaryContainer = CatLatteOnSecondaryContainer,
+    tertiary = CatLatteTertiary,
+    onTertiary = CatLatteOnTertiary,
+    tertiaryContainer = CatLatteTertiaryContainer,
+    onTertiaryContainer = CatLatteOnTertiaryContainer,
+    background = CatLatteBackground,
+    onBackground = CatLatteOnBackground,
+    surface = CatLatteSurface,
+    onSurface = CatLatteOnSurface,
+    surfaceVariant = CatLatteSurfaceVariant,
+    onSurfaceVariant = CatLatteOnSurfaceVariant,
+    outline = CatLatteOutline,
+    outlineVariant = CatLatteOutlineVariant,
+)
+
+private val CatLatteDarkColorScheme = darkColorScheme(
+    primary = CatLattePrimaryDark,
+    onPrimary = CatLatteOnPrimaryDark,
+    primaryContainer = CatLattePrimaryContainerDark,
+    onPrimaryContainer = CatLatteOnPrimaryContainerDark,
+    secondary = CatLatteSecondaryDark,
+    onSecondary = CatLatteOnSecondaryDark,
+    secondaryContainer = CatLatteSecondaryContainerDark,
+    onSecondaryContainer = CatLatteOnSecondaryContainerDark,
+    tertiary = CatLatteTertiaryDark,
+    onTertiary = CatLatteOnTertiaryDark,
+    tertiaryContainer = CatLatteTertiaryContainerDark,
+    onTertiaryContainer = CatLatteOnTertiaryContainerDark,
+    background = CatLatteBackgroundDark,
+    onBackground = CatLatteOnBackgroundDark,
+    surface = CatLatteSurfaceDark,
+    onSurface = CatLatteOnSurfaceDark,
+    surfaceVariant = CatLatteSurfaceVariantDark,
+    onSurfaceVariant = CatLatteOnSurfaceVariantDark,
+    outline = CatLatteOutlineDark,
+    outlineVariant = CatLatteOutlineVariantDark,
+)
+
+private val CatFrappeLightColorScheme = lightColorScheme(
+    primary = CatFrappePrimaryLight,
+    onPrimary = CatFrappeOnPrimaryLight,
+    primaryContainer = CatFrappePrimaryContainerLight,
+    onPrimaryContainer = CatFrappeOnPrimaryContainerLight,
+    secondary = CatFrappeSecondaryLight,
+    onSecondary = CatFrappeOnSecondaryLight,
+    secondaryContainer = CatFrappeSecondaryContainerLight,
+    onSecondaryContainer = CatFrappeOnSecondaryContainerLight,
+    tertiary = CatFrappeTertiaryLight,
+    onTertiary = CatFrappeOnTertiaryLight,
+    tertiaryContainer = CatFrappeTertiaryContainerLight,
+    onTertiaryContainer = CatFrappeOnTertiaryContainerLight,
+    background = CatFrappeBackgroundLight,
+    onBackground = CatFrappeOnBackgroundLight,
+    surface = CatFrappeSurfaceLight,
+    onSurface = CatFrappeOnSurfaceLight,
+    surfaceVariant = CatFrappeSurfaceVariantLight,
+    onSurfaceVariant = CatFrappeOnSurfaceVariantLight,
+    outline = CatFrappeOutlineLight,
+    outlineVariant = CatFrappeOutlineVariantLight,
+)
+
+private val CatFrappeDarkColorScheme = darkColorScheme(
+    primary = CatFrappePrimary,
+    onPrimary = CatFrappeOnPrimary,
+    primaryContainer = CatFrappePrimaryContainer,
+    onPrimaryContainer = CatFrappeOnPrimaryContainer,
+    secondary = CatFrappeSecondary,
+    onSecondary = CatFrappeOnSecondary,
+    secondaryContainer = CatFrappeSecondaryContainer,
+    onSecondaryContainer = CatFrappeOnSecondaryContainer,
+    tertiary = CatFrappeTertiary,
+    onTertiary = CatFrappeOnTertiary,
+    tertiaryContainer = CatFrappeTertiaryContainer,
+    onTertiaryContainer = CatFrappeOnTertiaryContainer,
+    background = CatFrappeBackground,
+    onBackground = CatFrappeOnBackground,
+    surface = CatFrappeSurface,
+    onSurface = CatFrappeOnSurface,
+    surfaceVariant = CatFrappeSurfaceVariant,
+    onSurfaceVariant = CatFrappeOnSurfaceVariant,
+    outline = CatFrappeOutline,
+    outlineVariant = CatFrappeOutlineVariant,
+)
+
+private val CatMacchiatoLightColorScheme = lightColorScheme(
+    primary = CatMacchiatoPrimaryLight,
+    onPrimary = CatMacchiatoOnPrimaryLight,
+    primaryContainer = CatMacchiatoPrimaryContainerLight,
+    onPrimaryContainer = CatMacchiatoOnPrimaryContainerLight,
+    secondary = CatMacchiatoSecondaryLight,
+    onSecondary = CatMacchiatoOnSecondaryLight,
+    secondaryContainer = CatMacchiatoSecondaryContainerLight,
+    onSecondaryContainer = CatMacchiatoOnSecondaryContainerLight,
+    tertiary = CatMacchiatoTertiaryLight,
+    onTertiary = CatMacchiatoOnTertiaryLight,
+    tertiaryContainer = CatMacchiatoTertiaryContainerLight,
+    onTertiaryContainer = CatMacchiatoOnTertiaryContainerLight,
+    background = CatMacchiatoBackgroundLight,
+    onBackground = CatMacchiatoOnBackgroundLight,
+    surface = CatMacchiatoSurfaceLight,
+    onSurface = CatMacchiatoOnSurfaceLight,
+    surfaceVariant = CatMacchiatoSurfaceVariantLight,
+    onSurfaceVariant = CatMacchiatoOnSurfaceVariantLight,
+    outline = CatMacchiatoOutlineLight,
+    outlineVariant = CatMacchiatoOutlineVariantLight,
+)
+
+private val CatMacchiatoDarkColorScheme = darkColorScheme(
+    primary = CatMacchiatoPrimary,
+    onPrimary = CatMacchiatoOnPrimary,
+    primaryContainer = CatMacchiatoPrimaryContainer,
+    onPrimaryContainer = CatMacchiatoOnPrimaryContainer,
+    secondary = CatMacchiatoSecondary,
+    onSecondary = CatMacchiatoOnSecondary,
+    secondaryContainer = CatMacchiatoSecondaryContainer,
+    onSecondaryContainer = CatMacchiatoOnSecondaryContainer,
+    tertiary = CatMacchiatoTertiary,
+    onTertiary = CatMacchiatoOnTertiary,
+    tertiaryContainer = CatMacchiatoTertiaryContainer,
+    onTertiaryContainer = CatMacchiatoOnTertiaryContainer,
+    background = CatMacchiatoBackground,
+    onBackground = CatMacchiatoOnBackground,
+    surface = CatMacchiatoSurface,
+    onSurface = CatMacchiatoOnSurface,
+    surfaceVariant = CatMacchiatoSurfaceVariant,
+    onSurfaceVariant = CatMacchiatoOnSurfaceVariant,
+    outline = CatMacchiatoOutline,
+    outlineVariant = CatMacchiatoOutlineVariant,
+)
+
+private val CatMochaLightColorScheme = lightColorScheme(
+    primary = CatMochaPrimaryLight,
+    onPrimary = CatMochaOnPrimaryLight,
+    primaryContainer = CatMochaPrimaryContainerLight,
+    onPrimaryContainer = CatMochaOnPrimaryContainerLight,
+    secondary = CatMochaSecondaryLight,
+    onSecondary = CatMochaOnSecondaryLight,
+    secondaryContainer = CatMochaSecondaryContainerLight,
+    onSecondaryContainer = CatMochaOnSecondaryContainerLight,
+    tertiary = CatMochaTertiaryLight,
+    onTertiary = CatMochaOnTertiaryLight,
+    tertiaryContainer = CatMochaTertiaryContainerLight,
+    onTertiaryContainer = CatMochaOnTertiaryContainerLight,
+    background = CatMochaBackgroundLight,
+    onBackground = CatMochaOnBackgroundLight,
+    surface = CatMochaSurfaceLight,
+    onSurface = CatMochaOnSurfaceLight,
+    surfaceVariant = CatMochaSurfaceVariantLight,
+    onSurfaceVariant = CatMochaOnSurfaceVariantLight,
+    outline = CatMochaOutlineLight,
+    outlineVariant = CatMochaOutlineVariantLight,
+)
+
+private val CatMochaDarkColorScheme = darkColorScheme(
+    primary = CatMochaPrimary,
+    onPrimary = CatMochaOnPrimary,
+    primaryContainer = CatMochaPrimaryContainer,
+    onPrimaryContainer = CatMochaOnPrimaryContainer,
+    secondary = CatMochaSecondary,
+    onSecondary = CatMochaOnSecondary,
+    secondaryContainer = CatMochaSecondaryContainer,
+    onSecondaryContainer = CatMochaOnSecondaryContainer,
+    tertiary = CatMochaTertiary,
+    onTertiary = CatMochaOnTertiary,
+    tertiaryContainer = CatMochaTertiaryContainer,
+    onTertiaryContainer = CatMochaOnTertiaryContainer,
+    background = CatMochaBackground,
+    onBackground = CatMochaOnBackground,
+    surface = CatMochaSurface,
+    onSurface = CatMochaOnSurface,
+    surfaceVariant = CatMochaSurfaceVariant,
+    onSurfaceVariant = CatMochaOnSurfaceVariant,
+    outline = CatMochaOutline,
+    outlineVariant = CatMochaOutlineVariant,
+)
+
+// ============================================
 // 🎨 自定义方案
 // ============================================
 private fun customDarkColorScheme(primary: Long, secondary: Long, tertiary: Long) = darkColorScheme(
@@ -711,7 +898,7 @@ fun MonicaTheme(
     content: @Composable () -> Unit
 ) {
     val finalColorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        colorScheme == ColorScheme.DEFAULT && dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
@@ -762,6 +949,22 @@ fun MonicaTheme(
 
         colorScheme == ColorScheme.PARLIAMENT_FOG -> {
             if (darkTheme) ParliamentFogDarkColorScheme else ParliamentFogLightColorScheme
+        }
+
+        colorScheme == ColorScheme.CATPPUCCIN_LATTE -> {
+            if (darkTheme) CatLatteDarkColorScheme else CatLatteLightColorScheme
+        }
+
+        colorScheme == ColorScheme.CATPPUCCIN_FRAPPE -> {
+            if (darkTheme) CatFrappeDarkColorScheme else CatFrappeLightColorScheme
+        }
+
+        colorScheme == ColorScheme.CATPPUCCIN_MACCHIATO -> {
+            if (darkTheme) CatMacchiatoDarkColorScheme else CatMacchiatoLightColorScheme
+        }
+
+        colorScheme == ColorScheme.CATPPUCCIN_MOCHA -> {
+            if (darkTheme) CatMochaDarkColorScheme else CatMochaLightColorScheme
         }
         
         colorScheme == ColorScheme.CUSTOM -> {

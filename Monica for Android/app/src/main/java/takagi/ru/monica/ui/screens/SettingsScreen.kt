@@ -1422,6 +1422,10 @@ private fun getColorSchemeDisplayName(colorScheme: takagi.ru.monica.data.ColorSc
         takagi.ru.monica.data.ColorScheme.HAYSTACKS -> context.getString(R.string.haystacks_scheme)
         takagi.ru.monica.data.ColorScheme.ROUEN_CATHEDRAL -> context.getString(R.string.rouen_cathedral_scheme)
         takagi.ru.monica.data.ColorScheme.PARLIAMENT_FOG -> context.getString(R.string.parliament_fog_scheme)
+        takagi.ru.monica.data.ColorScheme.CATPPUCCIN_LATTE -> context.getString(R.string.catppuccin_latte_scheme)
+        takagi.ru.monica.data.ColorScheme.CATPPUCCIN_FRAPPE -> context.getString(R.string.catppuccin_frappe_scheme)
+        takagi.ru.monica.data.ColorScheme.CATPPUCCIN_MACCHIATO -> context.getString(R.string.catppuccin_macchiato_scheme)
+        takagi.ru.monica.data.ColorScheme.CATPPUCCIN_MOCHA -> context.getString(R.string.catppuccin_mocha_scheme)
         takagi.ru.monica.data.ColorScheme.CUSTOM -> context.getString(R.string.custom_color_scheme)
     }
 }

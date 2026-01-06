@@ -21,6 +21,10 @@ enum class ColorScheme {
     HAYSTACKS,       // 干草堆
     ROUEN_CATHEDRAL, // 鲁昂大教堂
     PARLIAMENT_FOG,  // 国会大厦
+    CATPPUCCIN_LATTE,     // Catppuccin · Latte（Plus）
+    CATPPUCCIN_FRAPPE,    // Catppuccin · Frappé（Plus）
+    CATPPUCCIN_MACCHIATO, // Catppuccin · Macchiato（Plus）
+    CATPPUCCIN_MOCHA,     // Catppuccin · Mocha（Plus）
     CUSTOM           // 自定义
 }
 

@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -463,44 +464,81 @@ fun AddEditPasswordScreen(
                         var showAddCategoryDialog by remember { mutableStateOf(false) }
                         var newCategoryName by remember { mutableStateOf("") }
                         
-                        Box {
+                        ExposedDropdownMenuBox(
+                            expanded = categoryExpanded,
+                            onExpandedChange = { categoryExpanded = it }
+                        ) {
+                            val selectedCategoryName = categories.find { it.id == categoryId }?.name ?: "无分类"
+
                             OutlinedTextField(
-                                value = categories.find { it.id == categoryId }?.name ?: "无分类",
+                                value = selectedCategoryName,
                                 onValueChange = {},
                                 readOnly = true,
                                 label = { Text("分类") },
                                 leadingIcon = { Icon(Icons.Default.Category, null) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
-                                modifier = Modifier.fillMaxWidth().clickable { categoryExpanded = true },
-                                enabled = false, // Disable text input, handle click on Box or Overlay
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth(),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                    disabledLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    focusedLeadingIconColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    focusedTrailingIconColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    focusedLabelColor = MaterialTheme.colorScheme.primary
                                 ),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(14.dp)
                             )
-                            // Invisible overlay to capture clicks since TextField is disabled for readOnly look
-                            Box(modifier = Modifier.matchParentSize().clickable { categoryExpanded = true })
-                        }
 
-                        // Dropdown Logic (kept simple but functional)
-                        DropdownMenu(
-                            expanded = categoryExpanded,
-                            onDismissRequest = { categoryExpanded = false },
-                            modifier = Modifier.fillMaxWidth(0.9f)
-                        ) {
-                            DropdownMenuItem(text = { Text("无分类") }, onClick = { categoryId = null; categoryExpanded = false })
-                            categories.forEach { category ->
-                                DropdownMenuItem(text = { Text(category.name) }, onClick = { categoryId = category.id; categoryExpanded = false })
+                            ExposedDropdownMenu(
+                                expanded = categoryExpanded,
+                                onDismissRequest = { categoryExpanded = false },
+                                modifier = Modifier
+                                    .exposedDropdownSize()
+                                    .clip(RoundedCornerShape(18.dp))
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("无分类") },
+                                    leadingIcon = { Icon(Icons.Default.FolderOff, null) },
+                                    trailingIcon = if (categoryId == null) { { Icon(Icons.Default.Check, null) } } else null,
+                                    onClick = {
+                                        categoryId = null
+                                        categoryExpanded = false
+                                    }
+                                )
+
+                                categories.forEach { category ->
+                                    val selected = categoryId == category.id
+                                    DropdownMenuItem(
+                                        text = { Text(category.name) },
+                                        leadingIcon = { Icon(Icons.Default.Folder, null) },
+                                        trailingIcon = if (selected) { { Icon(Icons.Default.Check, null) } } else null,
+                                        onClick = {
+                                            categoryId = category.id
+                                            categoryExpanded = false
+                                        }
+                                    )
+                                }
+
+                                HorizontalDivider()
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Add, null, Modifier.size(16.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("新建分类")
+                                        }
+                                    },
+                                    onClick = {
+                                        categoryExpanded = false
+                                        showAddCategoryDialog = true
+                                    }
+                                )
                             }
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Add, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("新建分类") } },
-                                onClick = { categoryExpanded = false; showAddCategoryDialog = true }
-                            )
                         }
                         
                         // Add Category Dialog

@@ -280,6 +280,67 @@ fun ColorSchemeSelectionScreen(
                         }
                     }
                 )
+
+                // Catppuccin (Plus exclusive)
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.CATPPUCCIN_LATTE,
+                    name = stringResource(R.string.catppuccin_latte_scheme),
+                    primaryColor = Color(0xFF7287FD),
+                    secondaryColor = Color(0xFF40A02B),
+                    tertiaryColor = Color(0xFFDC8A78),
+                    isSelected = previewColorScheme == ColorScheme.CATPPUCCIN_LATTE,
+                    onClick = {
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.CATPPUCCIN_LATTE
+                            settingsViewModel.updateColorScheme(ColorScheme.CATPPUCCIN_LATTE)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.CATPPUCCIN_FRAPPE,
+                    name = stringResource(R.string.catppuccin_frappe_scheme),
+                    primaryColor = Color(0xFFBABBF1),
+                    secondaryColor = Color(0xFFA6D189),
+                    tertiaryColor = Color(0xFFE6A0B6),
+                    isSelected = previewColorScheme == ColorScheme.CATPPUCCIN_FRAPPE,
+                    onClick = {
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.CATPPUCCIN_FRAPPE
+                            settingsViewModel.updateColorScheme(ColorScheme.CATPPUCCIN_FRAPPE)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.CATPPUCCIN_MACCHIATO,
+                    name = stringResource(R.string.catppuccin_macchiato_scheme),
+                    primaryColor = Color(0xFFB7BDF8),
+                    secondaryColor = Color(0xFFA6DA95),
+                    tertiaryColor = Color(0xFFF0C6C6),
+                    isSelected = previewColorScheme == ColorScheme.CATPPUCCIN_MACCHIATO,
+                    onClick = {
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.CATPPUCCIN_MACCHIATO
+                            settingsViewModel.updateColorScheme(ColorScheme.CATPPUCCIN_MACCHIATO)
+                        }
+                    }
+                )
+
+                ColorSchemeOption(
+                    colorScheme = ColorScheme.CATPPUCCIN_MOCHA,
+                    name = stringResource(R.string.catppuccin_mocha_scheme),
+                    primaryColor = Color(0xFFCBA6F7),
+                    secondaryColor = Color(0xFFA6E3A1),
+                    tertiaryColor = Color(0xFFF2CDCD),
+                    isSelected = previewColorScheme == ColorScheme.CATPPUCCIN_MOCHA,
+                    onClick = {
+                        if (!isNavigatingOut) {
+                            previewColorScheme = ColorScheme.CATPPUCCIN_MOCHA
+                            settingsViewModel.updateColorScheme(ColorScheme.CATPPUCCIN_MOCHA)
+                        }
+                    }
+                )
             }
             
             ColorSchemeOption(

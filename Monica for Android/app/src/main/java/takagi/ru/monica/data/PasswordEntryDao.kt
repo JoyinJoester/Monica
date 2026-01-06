@@ -15,6 +15,9 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE categoryId = :categoryId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesByCategory(categoryId: Long): Flow<List<PasswordEntry>>
 
+    @Query("SELECT * FROM password_entries WHERE categoryId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getUncategorizedPasswordEntries(): Flow<List<PasswordEntry>>
+
     @Query("SELECT * FROM password_entries WHERE isFavorite = 1 ORDER BY sortOrder ASC, updatedAt DESC")
     fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>>
     

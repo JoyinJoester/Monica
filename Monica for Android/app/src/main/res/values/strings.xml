@@ -637,7 +637,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.17</string>
+    <string name="settings_version_number">V1.0.18</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -735,6 +735,10 @@
     <string name="haystacks_scheme">Haystacks</string>
     <string name="rouen_cathedral_scheme">Rouen Cathedral</string>
     <string name="parliament_fog_scheme">Parliament Fog</string>
+    <string name="catppuccin_latte_scheme">Catppuccin Latte</string>
+    <string name="catppuccin_frappe_scheme">Catppuccin Frappé</string>
+    <string name="catppuccin_macchiato_scheme">Catppuccin Macchiato</string>
+    <string name="catppuccin_mocha_scheme">Catppuccin Mocha</string>
     <string name="custom_color_scheme">Custom Colors</string>
     <string name="custom_color_scheme_description">Set your own three colors for the app theme</string>
     <string name="current_colors">Current Colors</string>
@@ -829,6 +833,7 @@
     <string name="selected_items">%d items selected</string>
     <string name="exit_selection_mode">Exit selection mode</string>
     <string name="select_all">Select all</string>
+    <string name="move_to_category">Move to category</string>
     <string name="batch_delete">Batch delete</string>
     <string name="batch_delete_passwords_title">Batch Delete Passwords</string>
     <string name="batch_delete_passwords_message">Are you sure you want to delete %d passwords?</string>

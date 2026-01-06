@@ -21,6 +21,7 @@ import java.util.Date
 sealed class CategoryFilter {
     object All : CategoryFilter()
     object Starred : CategoryFilter()
+    object Uncategorized : CategoryFilter()
     data class Custom(val categoryId: Long) : CategoryFilter()
 }
 
@@ -63,6 +64,7 @@ class PasswordViewModel(
                 when (filter) {
                     is CategoryFilter.All -> repository.getAllPasswordEntries()
                     is CategoryFilter.Starred -> repository.getFavoritePasswordEntries()
+                    is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
                 }
             }
