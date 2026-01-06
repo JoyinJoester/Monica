@@ -26,7 +26,7 @@ import kotlinx.serialization.json.Json
  * 银行卡卡片组件
  * 显示卡号（脱敏）、有效期等信息
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun BankCardCard(
     item: SecureItem,
@@ -35,7 +35,10 @@ fun BankCardCard(
     onDelete: (() -> Unit)? = null,
     onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    onMoveDown: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null
 ) {
     // 解析银行卡数据
     val cardData = try {
@@ -69,22 +72,32 @@ fun BankCardCard(
     }
     
     Card(
-        onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
         ),
-        colors = CardDefaults.cardColors(
-            containerColor = when (cardData.cardType) {
-                CardType.CREDIT -> MaterialTheme.colorScheme.primaryContainer
-                CardType.DEBIT -> MaterialTheme.colorScheme.secondaryContainer
-                CardType.PREPAID -> MaterialTheme.colorScheme.tertiaryContainer
-            }
-        )
+        colors = if (isSelected) {
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        } else {
+            CardDefaults.cardColors(
+                containerColor = when (cardData.cardType) {
+                    CardType.CREDIT -> MaterialTheme.colorScheme.primaryContainer
+                    CardType.DEBIT -> MaterialTheme.colorScheme.secondaryContainer
+                    CardType.PREPAID -> MaterialTheme.colorScheme.tertiaryContainer
+                }
+            )
+        }
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
+                .padding(16.dp)
         ) {
             // 标题和菜单
             Row(
@@ -92,6 +105,20 @@ fun BankCardCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                 // 添加复选框（选择模式）
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = null,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MaterialTheme.colorScheme.primary,
+                            uncheckedColor = contentColor.copy(alpha = 0.6f),
+                            checkmarkColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,

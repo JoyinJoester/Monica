@@ -530,6 +530,8 @@
     <string name="nav_authenticator_short">验证</string>
     <string name="nav_documents_short">证件</string>
     <string name="nav_bank_cards_short">银行</string>
+    <string name="nav_card_wallet">卡包</string>
+    <string name="nav_card_wallet_short">卡包</string>
     <string name="nav_notes_short">笔记</string>
     <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_settings_short">设置</string>
@@ -561,6 +563,23 @@
     <string name="generator_copied">已复制到剪贴板</string>
     <string name="generator_invalid_length">长度无效</string>
     <string name="generator_action">生成</string>  <!-- 新增：生成按钮文字 -->
+
+    <!-- Detail Screens -->
+    <string name="bank_card_details">银行卡详情</string>
+    <string name="card_details">卡片信息</string>
+    <string name="card_number">卡号</string>
+    <string name="delete_card_title">删除银行卡</string>
+    <string name="delete_card_message">确定要删除这张银行卡吗？</string>
+    <string name="document_details">证件详情</string>
+    <string name="document_number">证件号码</string>
+    <string name="full_name">姓名</string>
+    <string name="details">详情</string>
+    <string name="issued_date">签发日期</string>
+    <string name="issued_by">签发机关</string>
+    <string name="nationality">国籍</string>
+    <string name="document_images">证件照片</string>
+    <string name="front_image">正面照片</string>
+    <string name="back_image">反面照片</string>
 
     <!-- Settings Screen -->
     <string name="settings_general">通用</string>

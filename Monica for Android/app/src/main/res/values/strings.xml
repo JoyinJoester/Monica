@@ -541,6 +541,7 @@
     <string name="nav_authenticator">Authenticator</string>
     <string name="nav_documents">ID Cards</string>
     <string name="nav_bank_cards">Bank Cards</string>
+    <string name="nav_card_wallet">Card Wallet</string>
     <string name="nav_notes">Notes</string>
     <string name="nav_ledger">Ledger</string>
     <string name="nav_generator">Generator</string>  <!-- 添加生成器导航标签 -->
@@ -552,10 +553,32 @@
     <string name="nav_authenticator_short">Auth</string>
     <string name="nav_documents_short">ID</string>
     <string name="nav_bank_cards_short">Card</string>
+    <string name="nav_card_wallet_short">Wallet</string>
     <string name="nav_notes_short">Note</string>
     <string name="nav_ledger_short">Ledger</string>
     <string name="nav_generator_short">Gen</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_settings_short">Set</string>
+
+    <!-- Detail Screens -->
+    <string name="bank_card_details">Bank Card Details</string>
+    <string name="card_details">Card Details</string>
+    <string name="card_number">Card Number</string>
+    <string name="delete_card_title">Delete Card</string>
+    <string name="delete_card_message">Are you sure you want to delete this card?</string>
+    <string name="document_details">Document Details</string>
+    <string name="document_number">Document Number</string>
+    <string name="full_name">Full Name</string>
+    <string name="details">Details</string>
+    <string name="issued_date">Issued Date</string>
+    <string name="issued_by">Issued By</string>
+    <string name="nationality">Nationality</string>
+    <string name="document_images">Document Images</string>
+    <string name="front_image">Front Image</string>
+    <string name="back_image">Back Image</string>
+
+    <!-- Selection Mode -->
+    <string name="batch_delete_title">Batch Delete</string>
+    <string name="batch_delete_message">Delete %d items?</string>
 
     <!-- Notes -->
     <string name="add_note_title">Add Note</string>

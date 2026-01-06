@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -37,7 +38,8 @@ fun DocumentCard(
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null
 ) {
     // 解析证件数据
     val documentData = try {
@@ -79,7 +81,10 @@ fun DocumentCard(
     ) {
         Column(
             modifier = Modifier
-                .clickable { onClick() }
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
                 .padding(16.dp)
         ) {
             // 标题和菜单

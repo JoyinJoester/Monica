@@ -46,6 +46,9 @@ import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.data.model.TotpData
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import takagi.ru.monica.ui.components.InfoField
+import takagi.ru.monica.ui.components.InfoFieldWithCopy
+import takagi.ru.monica.ui.components.PasswordField
 
 /**
  * 密码详情页 (Password Detail Screen)
@@ -902,141 +905,7 @@ private fun CollapsibleSection(
     }
 }
 
-// ============================================
-// 🔧 信息字段组件
-// ============================================
-@Composable
-private fun InfoField(
-    label: String,
-    value: String
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
 
-@Composable
-private fun InfoFieldWithCopy(
-    label: String,
-    value: String,
-    copyValue: String = value,
-    context: Context
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(
-                onClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText(label, copyValue)
-                    clipboard.setPrimaryClip(clip)
-                    Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
-                }
-            ) {
-                Icon(
-                    imageVector = MonicaIcons.Action.copy,
-                    contentDescription = stringResource(R.string.copy),
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PasswordField(
-    label: String,
-    value: String,
-    visible: Boolean,
-    onToggleVisibility: () -> Unit,
-    context: Context
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (visible) value else "•".repeat(value.length.coerceAtMost(12)),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            Row {
-                // 显示/隐藏按钮
-                IconButton(onClick = onToggleVisibility) {
-                    Icon(
-                        imageVector = if (visible) 
-                            MonicaIcons.Security.visibilityOff 
-                        else 
-                            MonicaIcons.Security.visibility,
-                        contentDescription = if (visible) 
-                            stringResource(R.string.hide) 
-                        else 
-                            stringResource(R.string.show),
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                // 复制按钮
-                IconButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText(label, value)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
-                    }
-                ) {
-                    Icon(
-                        imageVector = MonicaIcons.Action.copy,
-                        contentDescription = stringResource(R.string.copy),
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
 
 // ============================================
 // 🔧 辅助函数

@@ -34,8 +34,7 @@ class SettingsManager(private val context: Context) {
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
         private val SHOW_AUTHENTICATOR_TAB_KEY = booleanPreferencesKey("show_authenticator_tab")
-        private val SHOW_DOCUMENTS_TAB_KEY = booleanPreferencesKey("show_documents_tab")
-        private val SHOW_BANK_CARDS_TAB_KEY = booleanPreferencesKey("show_bank_cards_tab")
+        private val SHOW_CARD_WALLET_TAB_KEY = booleanPreferencesKey("show_card_wallet_tab")
         private val SHOW_NOTES_TAB_KEY = booleanPreferencesKey("show_notes_tab")
         private val SHOW_LEDGER_TAB_KEY = booleanPreferencesKey("show_ledger_tab")
         private val SHOW_GENERATOR_TAB_KEY = booleanPreferencesKey("show_generator_tab")  // 添加生成器标签键
@@ -85,8 +84,7 @@ class SettingsManager(private val context: Context) {
             bottomNavVisibility = BottomNavVisibility(
                 passwords = preferences[SHOW_PASSWORDS_TAB_KEY] ?: true,
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
-                documents = preferences[SHOW_DOCUMENTS_TAB_KEY] ?: true,
-                bankCards = preferences[SHOW_BANK_CARDS_TAB_KEY] ?: false,
+                cardWallet = preferences[SHOW_CARD_WALLET_TAB_KEY] ?: true,
                 generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false,
                 notes = preferences[SHOW_NOTES_TAB_KEY] ?: false
             ),
@@ -157,8 +155,7 @@ class SettingsManager(private val context: Context) {
             when (tab) {
                 BottomNavContentTab.PASSWORDS -> preferences[SHOW_PASSWORDS_TAB_KEY] = visible
                 BottomNavContentTab.AUTHENTICATOR -> preferences[SHOW_AUTHENTICATOR_TAB_KEY] = visible
-                BottomNavContentTab.DOCUMENTS -> preferences[SHOW_DOCUMENTS_TAB_KEY] = visible
-                BottomNavContentTab.BANK_CARDS -> preferences[SHOW_BANK_CARDS_TAB_KEY] = visible
+                BottomNavContentTab.CARD_WALLET -> preferences[SHOW_CARD_WALLET_TAB_KEY] = visible
                 BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible  // 添加生成器分支
                 BottomNavContentTab.NOTES -> preferences[SHOW_NOTES_TAB_KEY] = visible
             }

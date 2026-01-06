@@ -36,8 +36,7 @@ enum class ProgressBarStyle {
 enum class BottomNavContentTab {
     PASSWORDS,
     AUTHENTICATOR,
-    DOCUMENTS,
-    BANK_CARDS,
+    CARD_WALLET,
     GENERATOR,
     NOTES;
 
@@ -45,8 +44,7 @@ enum class BottomNavContentTab {
         val DEFAULT_ORDER: List<BottomNavContentTab> = listOf(
             PASSWORDS,
             AUTHENTICATOR,
-            DOCUMENTS,
-            BANK_CARDS,
+            CARD_WALLET,
             NOTES
         )
 
@@ -71,21 +69,19 @@ enum class BottomNavContentTab {
 data class BottomNavVisibility(
     val passwords: Boolean = true,
     val authenticator: Boolean = true,
-    val documents: Boolean = true,
-    val bankCards: Boolean = false,  // 银行卡功能默认关闭
+    val cardWallet: Boolean = true,
     val generator: Boolean = false,   // 生成器功能默认关闭
     val notes: Boolean = true        // 笔记功能默认开启
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
         BottomNavContentTab.PASSWORDS -> passwords
         BottomNavContentTab.AUTHENTICATOR -> authenticator
-        BottomNavContentTab.DOCUMENTS -> documents
-        BottomNavContentTab.BANK_CARDS -> bankCards
+        BottomNavContentTab.CARD_WALLET -> cardWallet
         BottomNavContentTab.GENERATOR -> generator
         BottomNavContentTab.NOTES -> notes
     }
 
-    fun visibleCount(): Int = listOf(passwords, authenticator, documents, bankCards, generator, notes).count { it }
+    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes).count { it }
 }
 
 data class AppSettings(

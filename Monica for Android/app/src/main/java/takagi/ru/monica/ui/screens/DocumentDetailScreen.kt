@@ -1,9 +1,11 @@
 package takagi.ru.monica.ui.screens
 
 import android.graphics.Bitmap
-import android.widget.Toast
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -11,24 +13,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.ui.components.ActionStrip
+import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.components.ImageDialog
+import takagi.ru.monica.ui.components.InfoFieldWithCopy
+import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import kotlinx.serialization.json.Json
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.foundation.Image
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +43,6 @@ fun DocumentDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val imageManager = remember { ImageManager(context) }
     
     var documentItem by remember { mutableStateOf<SecureItem?>(null) }
@@ -49,35 +51,27 @@ fun DocumentDetailScreen(
     var backBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showFrontImageDialog by remember { mutableStateOf(false) }
     var showBackImageDialog by remember { mutableStateOf(false) }
-    var imagePathsList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     
-    // 加载证件详情
+    // Load document details
     LaunchedEffect(documentId) {
         viewModel.getDocumentById(documentId)?.let { item ->
             documentItem = item
             
-            // 解析证件数据
             try {
                 documentData = Json.decodeFromString<DocumentData>(item.itemData)
             } catch (e: Exception) {
-                Toast.makeText(context, "解析证件数据失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                // Handle parsing error
             }
             
-            // 解析图片路径
             try {
                 if (item.imagePaths.isNotBlank()) {
-                    imagePathsList = Json.decodeFromString<List<String>>(item.imagePaths)
-                    if (imagePathsList.isNotEmpty() && imagePathsList[0].isNotBlank()) {
-                        // 加载正面图片
-                        frontBitmap = imageManager.loadImage(imagePathsList[0])
-                    }
-                    if (imagePathsList.size > 1 && imagePathsList[1].isNotBlank()) {
-                        // 加载背面图片
-                        backBitmap = imageManager.loadImage(imagePathsList[1])
-                    }
+                    val paths = Json.decodeFromString<List<String>>(item.imagePaths)
+                    if (paths.isNotEmpty() && paths[0].isNotBlank()) frontBitmap = imageManager.loadImage(paths[0])
+                    if (paths.size > 1 && paths[1].isNotBlank()) backBitmap = imageManager.loadImage(paths[1])
                 }
             } catch (e: Exception) {
-                // 忽略解析错误
+                // Handle image loading error
             }
         }
     }
@@ -85,65 +79,42 @@ fun DocumentDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(documentItem?.title ?: "证件详情") },
+                title = { Text(documentItem?.title ?: stringResource(R.string.document_details)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
-                },
-                actions = {
-                    // 编辑按钮
-                    IconButton(onClick = { onEditDocument(documentId) }) {
-                        Icon(Icons.Default.Edit, contentDescription = "编辑")
-                    }
-                    
-                    // 更多选项菜单
-                    var showMenu by remember { mutableStateOf(false) }
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "更多")
-                    }
-                    
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        // 收藏/取消收藏
-                        DropdownMenuItem(
-                            text = { Text(if (documentItem?.isFavorite == true) "取消收藏" else "收藏") },
-                            onClick = {
-                                documentItem?.let { item ->
-                                    viewModel.toggleFavorite(item.id)
-                                    showMenu = false
-                                }
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    if (documentItem?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = null
-                                )
-                            }
-                        )
-                        
-                        // 删除
-                        DropdownMenuItem(
-                            text = { Text("删除") },
-                            onClick = {
-                                documentItem?.let { item ->
-                                    viewModel.deleteDocument(item.id)
-                                    showMenu = false
-                                    onNavigateBack()
-                                }
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        )
-                    }
                 }
+            )
+        },
+        floatingActionButton = {
+            ActionStrip(
+                actions = listOf(
+                    ActionStripItem(
+                        icon = if (documentItem?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = stringResource(R.string.favorite),
+                        onClick = {
+                            documentItem?.let { item ->
+                                viewModel.toggleFavorite(item.id)
+                                documentItem = item.copy(isFavorite = !item.isFavorite)
+                            }
+                        },
+                        tint = if (documentItem?.isFavorite == true) MaterialTheme.colorScheme.primary else null
+                    ),
+                    ActionStripItem(
+                        icon = Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.edit),
+                        onClick = { onEditDocument(documentId) }
+                    ),
+                    ActionStripItem(
+                        icon = Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.delete),
+                        onClick = { showDeleteDialog = true },
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                ),
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
             )
         }
     ) { paddingValues ->
@@ -156,17 +127,16 @@ fun DocumentDetailScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 证件类型和基本信息
+                // Header Card using M3E color roles based on type
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = when (data.documentType) {
                             DocumentType.ID_CARD -> MaterialTheme.colorScheme.primaryContainer
                             DocumentType.PASSPORT -> MaterialTheme.colorScheme.secondaryContainer
                             DocumentType.DRIVER_LICENSE -> MaterialTheme.colorScheme.tertiaryContainer
-                            DocumentType.SOCIAL_SECURITY -> MaterialTheme.colorScheme.surfaceVariant
-                            DocumentType.OTHER -> MaterialTheme.colorScheme.surfaceVariant
+                            else -> MaterialTheme.colorScheme.surfaceVariant
                         }
                     )
                 ) {
@@ -174,248 +144,163 @@ fun DocumentDetailScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // 证件类型
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = "证件类型",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    when (data.documentType) {
-                                        DocumentType.ID_CARD -> Icons.Default.Badge
-                                        DocumentType.PASSPORT -> Icons.Default.FlightTakeoff
-                                        DocumentType.DRIVER_LICENSE -> Icons.Default.DirectionsCar
-                                        DocumentType.SOCIAL_SECURITY -> Icons.Default.HealthAndSafety
-                                        DocumentType.OTHER -> Icons.Default.Description
-                                    },
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = getDocumentTypeName(data.documentType),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
-                            }
-                        }
-                        
-                        // 证件号码
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "证件号码",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Icon(
+                                imageVector = when (data.documentType) {
+                                    DocumentType.ID_CARD -> Icons.Default.Badge
+                                    DocumentType.PASSPORT -> Icons.Default.FlightTakeoff
+                                    DocumentType.DRIVER_LICENSE -> Icons.Default.DirectionsCar
+                                    else -> Icons.Default.Description
+                                },
+                                contentDescription = null
                             )
                             Text(
-                                text = data.documentNumber,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                text = getDocumentTypeName(data.documentType),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                         
-                        // 持有人
-                        if (data.fullName.isNotBlank()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "持有人",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = data.fullName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
-                            }
+                        Divider(color = LocalContentColor.current.copy(alpha = 0.2f))
+                        
+                        InfoFieldWithCopy(
+                            label = stringResource(R.string.document_number),
+                            value = data.documentNumber,
+                            context = context
+                        )
+                        
+                         if (data.fullName.isNotBlank()) {
+                            InfoFieldWithCopy(
+                                label = stringResource(R.string.full_name),
+                                value = data.fullName,
+                                context = context
+                            )
                         }
                     }
                 }
                 
-                // 日期信息
+                // Details Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // 签发日期
-                        if (data.issuedDate.isNotBlank()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "签发日期",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = data.issuedDate,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
+                         Text(
+                            text = stringResource(R.string.details),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        
+                        if (data.issuedDate.isNotBlank() || data.expiryDate.isNotBlank()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                if (data.issuedDate.isNotBlank()) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        InfoField(
+                                            label = stringResource(R.string.issued_date),
+                                            value = data.issuedDate
+                                        )
+                                    }
+                                }
+                                if (data.expiryDate.isNotBlank()) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        InfoField(
+                                            label = stringResource(R.string.expiry_date),
+                                            value = data.expiryDate
+                                        )
+                                    }
+                                }
                             }
                         }
                         
-                        // 有效期至
-                        if (data.expiryDate.isNotBlank()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "有效期至",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = data.expiryDate,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
-                            }
-                        }
-                        
-                        // 签发机关
                         if (data.issuedBy.isNotBlank()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "签发机关",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = data.issuedBy,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
-                            }
+                             InfoField(
+                                label = stringResource(R.string.issued_by),
+                                value = data.issuedBy
+                            )
                         }
                         
-                        // 国籍（仅护照显示）
-                        if (data.documentType == DocumentType.PASSPORT && data.nationality.isNotBlank()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "国籍",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = data.nationality,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
-                            }
+                         if (data.nationality.isNotBlank()) {
+                             InfoField(
+                                label = stringResource(R.string.nationality),
+                                value = data.nationality
+                            )
                         }
                     }
                 }
                 
-                // 照片部分
+                // Images
                 if (frontBitmap != null || backBitmap != null) {
-                    Card(
+                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             Text(
-                                text = "证件照片",
+                                text = stringResource(R.string.document_images),
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                fontWeight = FontWeight.Bold
                             )
-                            
-                            // 正面照片
-                            if (frontBitmap != null) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "正面照片",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Image(
-                                        bitmap = frontBitmap!!.asImageBitmap(),
-                                        contentDescription = "正面照片",
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(200.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { showFrontImageDialog = true },
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
+                             if (frontBitmap != null) {
+                                Image(
+                                    bitmap = frontBitmap!!.asImageBitmap(),
+                                    contentDescription = stringResource(R.string.front_image),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { showFrontImageDialog = true },
+                                    contentScale = ContentScale.Crop
+                                )
                             }
-                            
-                            // 背面照片
                             if (backBitmap != null) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "背面照片",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Image(
-                                        bitmap = backBitmap!!.asImageBitmap(),
-                                        contentDescription = "背面照片",
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(200.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { showBackImageDialog = true },
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
+                                Image(
+                                    bitmap = backBitmap!!.asImageBitmap(),
+                                    contentDescription = stringResource(R.string.back_image),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { showBackImageDialog = true },
+                                    contentScale = ContentScale.Crop
+                                )
                             }
                         }
                     }
                 }
                 
-                // 备注
-                if (!documentItem?.notes.isNullOrBlank()) {
-                    Card(
+                // Notes
+                 if (!documentItem?.notes.isNullOrBlank()) {
+                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = "备注",
+                             Text(
+                                text = stringResource(R.string.notes),
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = documentItem?.notes ?: "",
                                 style = MaterialTheme.typography.bodyMedium
@@ -423,29 +308,46 @@ fun DocumentDetailScreen(
                         }
                     }
                 }
+                
+                Spacer(modifier = Modifier.height(80.dp))
             }
         }
     }
     
-    // 全屏图片查看对话框
+    // Dialogs
     if (showFrontImageDialog && frontBitmap != null) {
-        ImageDialog(
-            bitmap = frontBitmap!!,
-            onDismiss = { showFrontImageDialog = false }
-        )
+        ImageDialog(bitmap = frontBitmap!!, onDismiss = { showFrontImageDialog = false })
     }
     
     if (showBackImageDialog && backBitmap != null) {
-        ImageDialog(
-            bitmap = backBitmap!!,
-            onDismiss = { showBackImageDialog = false }
+        ImageDialog(bitmap = backBitmap!!, onDismiss = { showBackImageDialog = false })
+    }
+    
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text(stringResource(R.string.delete_document_title)) },
+            text = { Text(stringResource(R.string.delete_document_message)) },
+            confirmButton = {
+                TextButton(
+                     onClick = {
+                        documentItem?.let { viewModel.deleteDocument(it.id) }
+                        showDeleteDialog = false
+                        onNavigateBack()
+                    }
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
         )
     }
 }
 
-/**
- * 获取证件类型名称
- */
 private fun getDocumentTypeName(type: DocumentType): String {
     return when (type) {
         DocumentType.ID_CARD -> "身份证"

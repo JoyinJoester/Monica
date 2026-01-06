@@ -68,8 +68,10 @@ import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
 import takagi.ru.monica.ui.screens.AutofillSettingsScreen
+import takagi.ru.monica.ui.screens.BankCardDetailScreen
 import takagi.ru.monica.ui.screens.BottomNavSettingsScreen
 import takagi.ru.monica.ui.screens.ChangePasswordScreen
+import takagi.ru.monica.ui.screens.DocumentDetailScreen
 import takagi.ru.monica.ui.screens.ExportDataScreen
 import takagi.ru.monica.ui.screens.ForgotPasswordScreen
 import takagi.ru.monica.ui.screens.ImportDataScreen
@@ -434,6 +436,9 @@ fun MonicaContent(
                 onNavigateToPasswordDetail = { passwordId ->
                     navController.navigate(Screen.PasswordDetail.createRoute(passwordId))
                 },
+                onNavigateToBankCardDetail = { cardId ->
+                    navController.navigate("bank_card_detail/$cardId")
+                },
                 onNavigateToDocumentDetail = { documentId ->
                     navController.navigate(Screen.DocumentDetail.createRoute(documentId))
                 },
@@ -637,6 +642,23 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+        }
+
+        composable("bank_card_detail/{cardId}") { backStackEntry ->
+            val cardId = backStackEntry.arguments?.getString("cardId")?.toLongOrNull() ?: -1L
+
+            if (cardId > 0) {
+                takagi.ru.monica.ui.screens.BankCardDetailScreen(
+                    viewModel = bankCardViewModel,
+                    cardId = cardId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onEditCard = { id ->
+                        navController.navigate(Screen.AddEditBankCard.createRoute(id))
+                    }
+                )
+            }
         }
 
         composable(Screen.AddEditNote.route) { backStackEntry ->

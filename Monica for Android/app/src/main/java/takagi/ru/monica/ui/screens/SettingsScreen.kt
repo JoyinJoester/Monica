@@ -1195,18 +1195,16 @@ private fun BottomNavConfigRow(
 private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.PASSWORDS -> Icons.Default.Lock
     BottomNavContentTab.AUTHENTICATOR -> Icons.Default.Security
-    BottomNavContentTab.DOCUMENTS -> Icons.Default.Description
-    BottomNavContentTab.BANK_CARDS -> Icons.Default.CreditCard
-    BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome  // 添加生成器图标
+    BottomNavContentTab.CARD_WALLET -> Icons.Default.Wallet
+    BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome
     BottomNavContentTab.NOTES -> Icons.Default.Note
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.PASSWORDS -> R.string.nav_passwords
     BottomNavContentTab.AUTHENTICATOR -> R.string.nav_authenticator
-    BottomNavContentTab.DOCUMENTS -> R.string.nav_documents
-    BottomNavContentTab.BANK_CARDS -> R.string.nav_bank_cards
-    BottomNavContentTab.GENERATOR -> R.string.nav_generator  // 添加生成器标签
+    BottomNavContentTab.CARD_WALLET -> R.string.nav_card_wallet
+    BottomNavContentTab.GENERATOR -> R.string.nav_generator
     BottomNavContentTab.NOTES -> R.string.nav_notes
 }
 

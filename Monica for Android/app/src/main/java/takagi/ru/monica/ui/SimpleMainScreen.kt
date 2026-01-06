@@ -58,6 +58,8 @@ import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.screens.NoteListScreen
 import takagi.ru.monica.ui.screens.NoteListContent
+import takagi.ru.monica.ui.screens.CardWalletScreen
+import takagi.ru.monica.ui.screens.CardWalletTab
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
@@ -85,8 +87,8 @@ fun SimpleMainScreen(
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit = {},
-    @Suppress("UNUSED_PARAMETER")
-    onNavigateToDocumentDetail: (Long) -> Unit, // 保留以保持API兼容性，但当前未使用
+    onNavigateToBankCardDetail: (Long) -> Unit, // Add this
+    onNavigateToDocumentDetail: (Long) -> Unit, // Keep this
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
     onNavigateToExportData: () -> Unit = {},
@@ -176,6 +178,11 @@ fun SimpleMainScreen(
     var onSelectAllBankCards by remember { mutableStateOf({}) }
     var onDeleteSelectedBankCards by remember { mutableStateOf({}) }
     var onFavoriteBankCards by remember { mutableStateOf({}) }  // 添加收藏回调
+
+    // CardWallet state
+    var cardWalletSubTab by rememberSaveable { mutableStateOf(CardWalletTab.BANK_CARDS) }
+    // Computed selection mode for CardWallet top bar logic
+    val isCardWalletSelectionMode = if (cardWalletSubTab == CardWalletTab.BANK_CARDS) isBankCardSelectionMode else isDocumentSelectionMode
 
     val bottomNavVisibility = appSettings.bottomNavVisibility
 
@@ -347,27 +354,24 @@ fun SimpleMainScreen(
                         onDelete = { onDeleteSelectedTotp() }
                     )
                 }
-                // 证件页面选择模式
-                currentTab == BottomNavItem.Documents && isDocumentSelectionMode -> {
+                // 卡包页面选择模式
+                currentTab == BottomNavItem.CardWallet && isCardWalletSelectionMode -> {
                     SelectionModeTopBar(
-                        selectedCount = selectedDocumentCount,
-                        onExit = { onExitDocumentSelection() },
-                        onSelectAll = { onSelectAllDocuments() },
-                        onDelete = { onDeleteSelectedDocuments() }
+                        selectedCount = if (cardWalletSubTab == CardWalletTab.BANK_CARDS) selectedBankCardCount else selectedDocumentCount,
+                        onExit = {
+                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onExitBankCardSelection() else onExitDocumentSelection()
+                        },
+                        onSelectAll = {
+                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onSelectAllBankCards() else onSelectAllDocuments()
+                        },
+                        onDelete = {
+                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onDeleteSelectedBankCards() else onDeleteSelectedDocuments()
+                        },
+                        onFavorite = if (cardWalletSubTab == CardWalletTab.BANK_CARDS) onFavoriteBankCards else null
                     )
                 }
-                // 银行卡页面选择模式
-                currentTab == BottomNavItem.BankCards && isBankCardSelectionMode -> {
-                    SelectionModeTopBar(
-                        selectedCount = selectedBankCardCount,
-                        onExit = { onExitBankCardSelection() },
-                        onSelectAll = { onSelectAllBankCards() },
-                        onDelete = { onDeleteSelectedBankCards() },
-                        onFavorite = { onFavoriteBankCards() }  // 添加收藏按钮
-                    )
-                }
-                // 生成器页面不需要顶栏
-                currentTab == BottomNavItem.Generator || currentTab == BottomNavItem.Notes -> {
+                // 生成器页面、CardWallet页面不需要默认顶栏 (CardWallet使用自定义M3E顶栏)
+                currentTab == BottomNavItem.Generator || currentTab == BottomNavItem.Notes || currentTab == BottomNavItem.CardWallet -> {
                     // 不显示顶部栏
                 }
                 // 正常顶栏
@@ -622,17 +626,15 @@ fun SimpleMainScreen(
                     }
                 }
 
-                BottomNavItem.Documents -> {
+                BottomNavItem.CardWallet -> {
                     FloatingActionButton(
-                        onClick = { onNavigateToAddDocument(null) }
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                    }
-                }
-
-                BottomNavItem.BankCards -> {
-                    FloatingActionButton(
-                        onClick = { onNavigateToAddBankCard(null) }
+                        onClick = {
+                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+                                onNavigateToAddBankCard(null)
+                            } else {
+                                onNavigateToAddDocument(null)
+                            }
+                        }
                     ) {
                         Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
                     }
@@ -698,13 +700,18 @@ fun SimpleMainScreen(
                         }
                     )
                 }
-                BottomNavItem.Documents -> {
-                    // 文档页面
-                    DocumentListContent(
-                        viewModel = documentViewModel,
-                        onDocumentClick = { documentId -> 
-                            // 直接导航到编辑页面而不是详情页面
-                            onNavigateToAddDocument(documentId)
+                BottomNavItem.CardWallet -> {
+                    // 卡包页面
+                    CardWalletScreen(
+                        bankCardViewModel = bankCardViewModel,
+                        documentViewModel = documentViewModel,
+                        currentTab = cardWalletSubTab,
+                        onTabSelected = { cardWalletSubTab = it },
+                        onCardClick = { cardId ->
+                            onNavigateToBankCardDetail(cardId)
+                        },
+                        onDocumentClick = { documentId ->
+                            onNavigateToDocumentDetail(documentId)
                         },
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
                             isDocumentSelectionMode = isSelectionMode
@@ -712,23 +719,14 @@ fun SimpleMainScreen(
                             onExitDocumentSelection = onExit
                             onSelectAllDocuments = onSelectAll
                             onDeleteSelectedDocuments = onDelete
-                        }
-                    )
-                }
-                BottomNavItem.BankCards -> {
-                    // 银行卡页面
-                    BankCardListContent(
-                        viewModel = bankCardViewModel,
-                        onCardClick = { cardId ->
-                            onNavigateToAddBankCard(cardId)
                         },
-                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
+                        onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
                             isBankCardSelectionMode = isSelectionMode
                             selectedBankCardCount = count
                             onExitBankCardSelection = onExit
                             onSelectAllBankCards = onSelectAll
                             onDeleteSelectedBankCards = onDelete
-                            onFavoriteBankCards = onFavorite  // 添加收藏回调
+                            onFavoriteBankCards = onFavorite
                         }
                     )
                 }
@@ -3982,8 +3980,7 @@ sealed class BottomNavItem(
 
     object Passwords : BottomNavItem(BottomNavContentTab.PASSWORDS, Icons.Default.Lock)
     object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
-    object Documents : BottomNavItem(BottomNavContentTab.DOCUMENTS, Icons.Default.Description)
-    object BankCards : BottomNavItem(BottomNavContentTab.BANK_CARDS, Icons.Default.CreditCard)
+    object CardWallet : BottomNavItem(BottomNavContentTab.CARD_WALLET, Icons.Default.Wallet)
     object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)  // 添加生成器导航项
     object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
     object Settings : BottomNavItem(null, Icons.Default.Settings)
@@ -3992,8 +3989,7 @@ sealed class BottomNavItem(
 private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.PASSWORDS -> BottomNavItem.Passwords
     BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
-    BottomNavContentTab.DOCUMENTS -> BottomNavItem.Documents
-    BottomNavContentTab.BANK_CARDS -> BottomNavItem.BankCards
+    BottomNavContentTab.CARD_WALLET -> BottomNavItem.CardWallet
     BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
     BottomNavContentTab.NOTES -> BottomNavItem.Notes
 }
@@ -4001,8 +3997,7 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.Passwords -> R.string.nav_passwords
     BottomNavItem.Authenticator -> R.string.nav_authenticator
-    BottomNavItem.Documents -> R.string.nav_documents
-    BottomNavItem.BankCards -> R.string.nav_bank_cards
+    BottomNavItem.CardWallet -> R.string.nav_card_wallet
     BottomNavItem.Generator -> R.string.nav_generator  // 添加生成器标签资源
     BottomNavItem.Notes -> R.string.nav_notes
     BottomNavItem.Settings -> R.string.nav_settings
@@ -4011,8 +4006,7 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
 private fun BottomNavItem.shortLabelRes(): Int = when (this) {
     BottomNavItem.Passwords -> R.string.nav_passwords_short
     BottomNavItem.Authenticator -> R.string.nav_authenticator_short
-    BottomNavItem.Documents -> R.string.nav_documents_short
-    BottomNavItem.BankCards -> R.string.nav_bank_cards_short
+    BottomNavItem.CardWallet -> R.string.nav_card_wallet_short
     BottomNavItem.Generator -> R.string.nav_generator_short  // 添加生成器短标签资源
     BottomNavItem.Notes -> R.string.nav_notes_short
     BottomNavItem.Settings -> R.string.nav_settings_short
@@ -4021,11 +4015,10 @@ private fun BottomNavItem.shortLabelRes(): Int = when (this) {
 private fun indexToDefaultTabKey(index: Int): String = when (index) {
     0 -> BottomNavContentTab.PASSWORDS.name
     1 -> BottomNavContentTab.AUTHENTICATOR.name
-    2 -> BottomNavContentTab.DOCUMENTS.name
-    3 -> BottomNavContentTab.BANK_CARDS.name
-    4 -> BottomNavContentTab.GENERATOR.name
-    5 -> BottomNavContentTab.NOTES.name
-    6 -> SETTINGS_TAB_KEY
+    2 -> BottomNavContentTab.CARD_WALLET.name
+    3 -> BottomNavContentTab.GENERATOR.name
+    4 -> BottomNavContentTab.NOTES.name
+    5 -> SETTINGS_TAB_KEY
     else -> BottomNavContentTab.PASSWORDS.name
 }
 
