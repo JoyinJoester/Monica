@@ -402,6 +402,10 @@
     <string name="auto_lock_5_minutes">5分</string>
     <string name="auto_lock_15_minutes">15分</string>
     <string name="auto_lock_30_minutes">30分</string>
+    <string name="auto_lock_10_minutes">10分</string>
+    <string name="auto_lock_1_hour">1時間</string>
+    <string name="auto_lock_5_hours">5時間</string>
+    <string name="auto_lock_1_day">1日</string>
     <string name="auto_lock_never">なし</string>
     
     <!-- Reset Password Screen -->

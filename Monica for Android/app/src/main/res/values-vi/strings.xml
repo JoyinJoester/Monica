@@ -404,6 +404,10 @@
     <string name="auto_lock_5_minutes">5 phút</string>
     <string name="auto_lock_15_minutes">15 phút</string>
     <string name="auto_lock_30_minutes">30 phút</string>
+    <string name="auto_lock_10_minutes">10 phút</string>
+    <string name="auto_lock_1_hour">1 giờ</string>
+    <string name="auto_lock_5_hours">5 giờ</string>
+    <string name="auto_lock_1_day">1 ngày</string>
     <string name="auto_lock_never">Không bao giờ</string>
     
     <!-- Reset Password Screen -->

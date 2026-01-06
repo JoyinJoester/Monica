@@ -22,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,9 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.NavType
@@ -327,6 +331,51 @@ fun MonicaContent(
     onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
+    val settings by settingsViewModel.settings.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var lastBackgroundTimestamp by remember { mutableStateOf<Long?>(null) }
+
+    DisposableEffect(lifecycleOwner, settings.autoLockMinutes, isAuthenticated) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    // Record when the app leaves foreground
+                    lastBackgroundTimestamp = System.currentTimeMillis()
+                }
+                Lifecycle.Event.ON_START -> {
+                    val minutes = settings.autoLockMinutes
+                    val timeoutMs = when {
+                        minutes == -1 -> null // Never auto-lock
+                        minutes <= 0 -> 0L // Immediate lock after background
+                        else -> minutes.toLong() * 60_000L
+                    }
+
+                    val lastBackground = lastBackgroundTimestamp
+                    if (
+                        isAuthenticated &&
+                        timeoutMs != null &&
+                        lastBackground != null &&
+                        System.currentTimeMillis() - lastBackground >= timeoutMs
+                    ) {
+                        viewModel.logout()
+                        lastBackgroundTimestamp = null
+                        navController.navigate(Screen.Login.route) {
+                            launchSingleTop = true
+                            popUpTo(0) { inclusive = true }
+                        }
+                    } else if (timeoutMs == null) {
+                        lastBackgroundTimestamp = null
+                    }
+                }
+                else -> Unit
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     NavHost(
         navController = navController,

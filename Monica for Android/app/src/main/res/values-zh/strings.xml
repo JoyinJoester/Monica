@@ -456,6 +456,10 @@
     <string name="auto_lock_5_minutes">5分钟</string>
     <string name="auto_lock_15_minutes">15分钟</string>
     <string name="auto_lock_30_minutes">30分钟</string>
+    <string name="auto_lock_10_minutes">10分钟</string>
+    <string name="auto_lock_1_hour">1小时</string>
+    <string name="auto_lock_5_hours">5小时</string>
+    <string name="auto_lock_1_day">1天</string>
     <string name="auto_lock_never">从不</string>
     
     <!-- Reset Password Screen -->

@@ -76,6 +76,7 @@ fun SettingsScreen(
     
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showAutoLockDialog by remember { mutableStateOf(false) }
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
     var developerPasswordInput by remember { mutableStateOf("") }
     
@@ -291,6 +292,13 @@ fun SettingsScreen(
                     onClick = { 
                         viewModel.updateScreenshotProtectionEnabled(!settings.screenshotProtectionEnabled)
                     }
+                )
+                
+                SettingsItem(
+                    icon = Icons.Default.Timer,
+                    title = context.getString(R.string.auto_lock),
+                    subtitle = getAutoLockDisplayName(settings.autoLockMinutes, context),
+                    onClick = { showAutoLockDialog = true }
                 )
                 
                 SettingsItem(
@@ -589,6 +597,18 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+    
+    // Auto Lock Selection Dialog
+    if (showAutoLockDialog) {
+        AutoLockSelectionSheet(
+            currentMinutes = settings.autoLockMinutes,
+            onMinutesSelected = { minutes ->
+                viewModel.updateAutoLockMinutes(minutes)
+                showAutoLockDialog = false
+            },
+            onDismiss = { showAutoLockDialog = false }
         )
     }
     
@@ -1266,43 +1286,92 @@ fun LanguageSelectionDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AutoLockSelectionDialog(
+fun AutoLockSelectionSheet(
     currentMinutes: Int,
     onMinutesSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val options = listOf(1, 5, 15, 30, -1) // 删除了 0 (立即锁定), -1 represents "Never"
+    val options = listOf(0, 1, 5, 10, 60, 300, 1440, -1) // 0=立即, 1/5/10分钟, 60=1小时, 300=5小时, 1440=1天, -1=从不
+    val sheetState = rememberModalBottomSheetState()
     
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(context.getString(R.string.auto_lock)) },
-        text = {
-            Column {
-                options.forEach { minutes ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = minutes == currentMinutes,
-                            onClick = { onMinutesSelected(minutes) }
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = context.getString(R.string.auto_lock),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            
+            options.forEach { minutes ->
+                val isSelected = minutes == currentMinutes
+                val containerColor = if (isSelected) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    androidx.compose.ui.graphics.Color.Transparent
+                }
+                
+                val contentColor = if (isSelected) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(containerColor)
+                        .clickable { onMinutesSelected(minutes) }
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = when {
+                            minutes == 0 -> Icons.Default.LockOpen
+                            minutes == -1 -> Icons.Default.Lock
+                            minutes >= 1440 -> Icons.Default.Bedtime
+                            else -> Icons.Default.Timer
+                        },
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
+                    Text(
+                        text = getAutoLockDisplayName(minutes, context),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = contentColor,
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = contentColor
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(getAutoLockDisplayName(minutes, context))
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(context.getString(R.string.ok))
-            }
         }
-    )
+    }
 }
 
 // Helper functions
@@ -1329,8 +1398,12 @@ private fun getAutoLockDisplayName(minutes: Int, context: android.content.Contex
         0 -> context.getString(R.string.auto_lock_immediately)
         1 -> context.getString(R.string.auto_lock_1_minute)
         5 -> context.getString(R.string.auto_lock_5_minutes)
+        10 -> context.getString(R.string.auto_lock_10_minutes)
         15 -> context.getString(R.string.auto_lock_15_minutes)
         30 -> context.getString(R.string.auto_lock_30_minutes)
+        60 -> context.getString(R.string.auto_lock_1_hour)
+        300 -> context.getString(R.string.auto_lock_5_hours)
+        1440 -> context.getString(R.string.auto_lock_1_day)
         -1 -> context.getString(R.string.auto_lock_never)
         else -> "$minutes ${context.getString(R.string.auto_lock_5_minutes).substringAfter("5")}"
     }
