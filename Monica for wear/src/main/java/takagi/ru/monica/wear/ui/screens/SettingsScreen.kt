@@ -40,7 +40,21 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material.Icon as WearIcon
+import androidx.wear.compose.material.ToggleChip
+import androidx.wear.compose.material.Switch
 import takagi.ru.monica.wear.R
 import takagi.ru.monica.wear.security.WearSecurityManager
 import takagi.ru.monica.wear.ui.components.ChangeLockDialog
@@ -65,7 +79,6 @@ fun SettingsScreen(
     onLanguageChanged: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
     val syncState by viewModel.syncState.collectAsState()
     val lastSyncTime by viewModel.lastSyncTime.collectAsState()
     val isWebDavConfigured by viewModel.isWebDavConfigured.collectAsState()
@@ -90,7 +103,6 @@ fun SettingsScreen(
     }
     
     SettingsScreenContent(
-        scrollState = scrollState,
         syncState = syncState,
         lastSyncTime = lastSyncTime,
         isWebDavConfigured = isWebDavConfigured,
@@ -112,71 +124,69 @@ fun SettingsScreen(
     
     // 备份确认对话框
     if (showBackupDialog) {
-        AlertDialog(
-            onDismissRequest = { showBackupDialog = false },
-            title = { Text("备份到云端") },
-            text = { Text("确定要将当前所有验证器数据上传到 WebDAV 吗？这将创建一个新的备份文件。") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showBackupDialog = false
-                        viewModel.backupNow { success, msg ->
-                            // 可以在这里显示 Toast，但 ViewModel 已经更新了 syncState
-                        }
-                    }
-                ) {
-                    Text("备份")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBackupDialog = false }) {
-                    Text("取消")
-                }
-            }
-        )
+        WearDialogContainer(
+            onDismiss = { showBackupDialog = false },
+            title = "备份到云端",
+            icon = Icons.Default.Upload
+        ) {
+            Text(
+                text = "确定要将当前所有验证器数据上传到 WebDAV 吗？这将创建一个新的备份文件。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            DialogActionButtons(
+                primaryLabel = "备份",
+                onPrimary = {
+                    showBackupDialog = false
+                    viewModel.backupNow { _, _ -> }
+                },
+                secondaryLabel = stringResource(R.string.common_cancel),
+                onSecondary = { showBackupDialog = false }
+            )
+        }
     }
     
     // 解密密码输入对话框
     if (showPasswordDialog) {
         var tempPassword by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { 
+        WearDialogContainer(
+            onDismiss = {
                 showPasswordDialog = false
                 viewModel.resetSyncState()
             },
-            title = { Text("输入解密密码") },
-            text = { 
-                Column {
-                    Text("检测到加密的备份文件，请输入密码进行解密：")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = tempPassword,
-                        onValueChange = { tempPassword = it },
-                        label = { Text("密码") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showPasswordDialog = false
-                        viewModel.syncNow(tempPassword)
-                    }
-                ) {
-                    Text("确定")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { 
+            title = "输入解密密码",
+            icon = Icons.Default.Lock
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "检测到加密的备份文件，请输入密码进行解密：",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                OutlinedTextField(
+                    value = tempPassword,
+                    onValueChange = { tempPassword = it },
+                    label = { Text("密码") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            DialogActionButtons(
+                primaryLabel = "确定",
+                onPrimary = {
+                    showPasswordDialog = false
+                    viewModel.syncNow(tempPassword)
+                },
+                secondaryLabel = stringResource(R.string.common_cancel),
+                onSecondary = {
                     showPasswordDialog = false
                     viewModel.resetSyncState()
-                }) {
-                    Text("取消")
-                }
-            }
-        )
+                },
+                primaryEnabled = tempPassword.isNotBlank()
+            )
+        }
     }
 
     // WebDAV配置对话框
@@ -258,7 +268,6 @@ fun SettingsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreenContent(
-    scrollState: androidx.compose.foundation.ScrollState,
     syncState: SyncState,
     lastSyncTime: String,
     isWebDavConfigured: Boolean,
@@ -277,185 +286,125 @@ private fun SettingsScreenContent(
     onChangeLockClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    val listState = rememberScalingLazyListState()
+
+    ScalingLazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(scrollState)
-            .padding(horizontal = 16.dp, vertical = 24.dp), // 增加顶部 padding
-        verticalArrangement = Arrangement.spacedBy(20.dp) // 增加间距
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        state = listState
     ) {
-        // 标题区域
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        item {
             Text(
                 text = stringResource(R.string.settings_title),
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 6.dp)
             )
-            
-            // 可选：添加一个小的返回按钮，虽然通常物理返回键或手势就够了
-            // 但为了明确导航，保留一个小的图标也不错
-            /* IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            } */
         }
 
-        // 同步状态卡片
-        SyncStatusCard(
-            syncState = syncState,
-            lastSyncTime = lastSyncTime,
-            onSyncClick = onSyncClick,
-            isConfigured = isWebDavConfigured
-        )
-        
-        // 云端同步分组
-        SettingsSection(title = stringResource(R.string.settings_section_sync)) {
-            SettingsItem(
-                icon = Icons.Default.Cloud,
-                title = stringResource(R.string.settings_webdav_config),
-                subtitle = stringResource(if (isWebDavConfigured) R.string.settings_webdav_configured else R.string.settings_webdav_not_configured),
-                onClick = onWebDavClick,
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        item {
+            SyncStatusCard(
+                syncState = syncState,
+                lastSyncTime = lastSyncTime,
+                onSyncClick = onSyncClick,
+                isConfigured = isWebDavConfigured
             )
-            
-            if (isWebDavConfigured) {
-                SettingsItem(
-                    icon = Icons.Default.Upload,
-                    title = "备份到云端",
-                    subtitle = "手动上传当前数据",
-                    onClick = onBackupClick,
-                    trailingContent = {
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+        }
+
+        // Sync
+        item {
+            SectionLabel(text = stringResource(R.string.settings_section_sync))
+        }
+        item {
+            SettingChip(
+                chipIcon = Icons.Default.Cloud,
+                label = stringResource(R.string.settings_webdav_config),
+                secondaryLabel = stringResource(if (isWebDavConfigured) R.string.settings_webdav_configured else R.string.settings_webdav_not_configured),
+                onClick = onWebDavClick
+            )
+        }
+        if (isWebDavConfigured) {
+            item {
+                SettingChip(
+                    chipIcon = Icons.Default.Upload,
+                    label = "备份到云端",
+                    secondaryLabel = "手动上传当前数据",
+                    onClick = onBackupClick
                 )
             }
         }
 
-        // 验证器管理分组
-        SettingsSection(title = stringResource(R.string.settings_section_authenticator)) {
-            SettingsItem(
-                icon = Icons.Default.Add,
-                title = stringResource(R.string.settings_add_totp),
-                subtitle = stringResource(R.string.settings_add_totp_subtitle),
-                onClick = onAddTotpClick,
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        // Authenticator
+        item { SectionLabel(text = stringResource(R.string.settings_section_authenticator)) }
+        item {
+            SettingChip(
+                chipIcon = Icons.Default.Add,
+                label = stringResource(R.string.settings_add_totp),
+                secondaryLabel = stringResource(R.string.settings_add_totp_subtitle),
+                onClick = onAddTotpClick
             )
         }
 
-        // 外观设置分组
-        SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
-            SettingsItem(
-                icon = Icons.Default.Palette,
-                title = stringResource(R.string.settings_color_scheme),
-                subtitle = stringResource(currentColorScheme.displayNameResId),
-                onClick = onThemeClick,
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            )
-            
-            SettingsItem(
-                icon = Icons.Default.Palette,
-                title = stringResource(R.string.settings_oled_black),
-                subtitle = stringResource(if (useOledBlack) R.string.settings_oled_black_enabled else R.string.settings_oled_black_disabled),
-                onClick = { onOledBlackToggle(!useOledBlack) },
-                trailingContent = {
-                    Switch(
-                        checked = useOledBlack,
-                        onCheckedChange = onOledBlackToggle,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = MaterialTheme.colorScheme.primary,
-                            checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    )
-                }
-            )
-            
-            SettingsItem(
-                icon = Icons.Default.Language,
-                title = stringResource(R.string.settings_language),
-                subtitle = stringResource(currentLanguage.displayNameResId),
-                onClick = onLanguageClick,
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        // Appearance
+        item { SectionLabel(text = stringResource(R.string.settings_section_appearance)) }
+        item {
+            SettingChip(
+                chipIcon = Icons.Default.Palette,
+                label = stringResource(R.string.settings_color_scheme),
+                secondaryLabel = stringResource(currentColorScheme.displayNameResId),
+                onClick = onThemeClick
             )
         }
-        
-        // 安全设置分组
+        item {
+            SettingToggleChip(
+                chipIcon = Icons.Default.Palette,
+                label = stringResource(R.string.settings_oled_black),
+                secondaryLabel = stringResource(if (useOledBlack) R.string.settings_oled_black_enabled else R.string.settings_oled_black_disabled),
+                checked = useOledBlack,
+                onCheckedChange = onOledBlackToggle
+            )
+        }
+        item {
+            SettingChip(
+                chipIcon = Icons.Default.Language,
+                label = stringResource(R.string.settings_language),
+                secondaryLabel = stringResource(currentLanguage.displayNameResId),
+                onClick = onLanguageClick
+            )
+        }
+
+        // Security
         if (securityManager != null) {
-            SettingsSection(title = stringResource(R.string.settings_section_security)) {
-                // 重新设置PIN码
-                SettingsItem(
-                    icon = Icons.Default.Key,
-                    title = stringResource(R.string.settings_reset_pin),
-                    subtitle = stringResource(R.string.settings_reset_pin_subtitle),
-                    onClick = onChangeLockClick,
-                    trailingContent = {
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+            item { SectionLabel(text = stringResource(R.string.settings_section_security)) }
+            item {
+                SettingChip(
+                    chipIcon = Icons.Default.Key,
+                    label = stringResource(R.string.settings_reset_pin),
+                    secondaryLabel = stringResource(R.string.settings_reset_pin_subtitle),
+                    onClick = onChangeLockClick
                 )
             }
         }
-        
-        // 数据管理分组
-        SettingsSection(title = stringResource(R.string.settings_section_data)) {
-            SettingsItem(
-                icon = Icons.Default.DeleteForever,
-                title = stringResource(R.string.settings_clear_data),
-                subtitle = stringResource(R.string.settings_clear_data_subtitle),
+
+        // Data
+        item { SectionLabel(text = stringResource(R.string.settings_section_data)) }
+        item {
+            SettingChip(
+                chipIcon = Icons.Default.DeleteForever,
+                label = stringResource(R.string.settings_clear_data),
+                secondaryLabel = stringResource(R.string.settings_clear_data_subtitle),
                 onClick = onClearDataClick,
-                isDestructive = true,
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
+                isDestructive = true
             )
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // 关于信息
-        AboutSection()
-        
-        // 底部留白，防止被圆角屏幕遮挡
-        Spacer(modifier = Modifier.height(32.dp))
+
+        item { AboutSection() }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
     }
 }
 
@@ -468,30 +417,7 @@ private fun SettingsSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-        
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.elevatedCardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.elevatedCardElevation(
-                defaultElevation = 2.dp
-            )
-        ) {
-            Column {
-                content()
-            }
-        }
-    }
+    // Legacy section container no longer used after chip refactor
 }
 
 /**
@@ -526,7 +452,7 @@ private fun SyncStatusCard(
                 enabled = isConfigured && syncState != SyncState.Syncing,
                 onClick = onSyncClick
             ),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.elevatedCardColors(
             containerColor = containerColor
         ),
@@ -538,7 +464,7 @@ private fun SyncStatusCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
@@ -682,53 +608,239 @@ private fun SettingsItem(
     isDestructive: Boolean = false,
     trailingContent: @Composable () -> Unit = {}
 ) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        color = Color.Transparent
+    // Legacy list row retained for reference; chips now used instead
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+    )
+}
+
+@Composable
+private fun WearDialogContainer(
+    onDismiss: () -> Unit,
+    title: String,
+    icon: ImageVector? = null,
+    modifier: Modifier = Modifier,
+    fullScreen: Boolean = false,
+    showHeader: Boolean = true,
+    actions: @Composable ColumnScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (isDestructive) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                modifier = Modifier.size(28.dp)
-            )
-            
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+        BoxWithConstraints {
+            val cardWidth = if (fullScreen) maxWidth else maxWidth * 0.9f
+            val cardHeight = if (fullScreen) maxHeight else maxHeight * 0.9f
+
+            Surface(
+                modifier = modifier
+                    .width(cardWidth)
+                    .heightIn(max = cardHeight)
+                    .clip(if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(20.dp)),
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(20.dp)
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isDestructive) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (showHeader) {
+                        if (icon != null) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+                    content()
+
+                    actions()
+                }
             }
-            
-            trailingContent()
         }
     }
+}
+
+@Composable
+private fun DialogActionButtons(
+    primaryLabel: String,
+    onPrimary: () -> Unit,
+    secondaryLabel: String,
+    onSecondary: () -> Unit,
+    primaryEnabled: Boolean = true,
+    primaryIsDestructive: Boolean = false
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Chip(
+            onClick = onSecondary,
+            modifier = Modifier.weight(1f),
+            label = {
+                Text(
+                    text = secondaryLabel,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            colors = ChipDefaults.secondaryChipColors()
+        )
+
+        Chip(
+            onClick = onPrimary,
+            enabled = primaryEnabled,
+            modifier = Modifier.weight(1f),
+            label = {
+                Text(
+                    text = primaryLabel,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            colors = if (primaryIsDestructive) {
+                ChipDefaults.primaryChipColors(
+                    backgroundColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            } else {
+                ChipDefaults.primaryChipColors()
+            }
+        )
+    }
+}
+
+
+@Composable
+private fun SettingChip(
+    chipIcon: ImageVector,
+    label: String,
+    secondaryLabel: String? = null,
+    isDestructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    Chip(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        label = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        secondaryLabel = if (secondaryLabel != null) {
+            {
+                Text(
+                    text = secondaryLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        } else null,
+        icon = {
+            WearIcon(
+                imageVector = chipIcon,
+                contentDescription = null,
+                tint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
+        },
+        colors = ChipDefaults.primaryChipColors(
+            backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        )
+    )
+}
+
+@Composable
+private fun SettingToggleChip(
+    chipIcon: ImageVector,
+    label: String,
+    secondaryLabel: String? = null,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    ToggleChip(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        secondaryLabel = if (secondaryLabel != null) {
+            {
+                Text(
+                    text = secondaryLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        } else null,
+        toggleControl = {
+            androidx.wear.compose.material.Switch(
+                checked = checked,
+                onCheckedChange = null, // ToggleChip handles click
+                colors = androidx.wear.compose.material.SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            )
+        },
+        appIcon = {
+            WearIcon(
+                imageVector = chipIcon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        colors = androidx.wear.compose.material.ToggleChipDefaults.toggleChipColors(
+            checkedStartBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            checkedEndBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            uncheckedStartBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            uncheckedEndBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            checkedContentColor = MaterialTheme.colorScheme.onSurface,
+            uncheckedContentColor = MaterialTheme.colorScheme.onSurface
+        )
+    )
 }
 
 /**
@@ -738,45 +850,43 @@ private fun SettingsItem(
 private fun AboutSection(
     modifier: Modifier = Modifier
 ) {
-    ElevatedCard(
+    androidx.wear.compose.material.Card(
+        onClick = {},
+        enabled = false,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        backgroundPainter = androidx.wear.compose.material.CardDefaults.cardBackgroundPainter(
+            startBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            endBackgroundColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = RoundedCornerShape(18.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(
+            WearIcon(
                 imageVector = Icons.Default.Info,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(24.dp)
             )
-            
+
             Text(
                 text = stringResource(R.string.settings_about_app),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold
             )
-            
+
             Text(
                 text = stringResource(R.string.settings_version),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
-            
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = MaterialTheme.colorScheme.outlineVariant
-            )
-            
+
             Text(
                 text = stringResource(R.string.settings_about_description),
                 style = MaterialTheme.typography.bodySmall,
@@ -808,133 +918,182 @@ private fun WebDavConfigDialog(
     var encryptionPassword by remember { mutableStateOf(currentConfig.encryptionPassword) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Cloud,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+    WearDialogContainer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.webdav_config_title),
+        icon = Icons.Default.Cloud,
+        fullScreen = true,
+        showHeader = false
+    ) {
+        val listState = rememberScalingLazyListState()
+        val isRound = LocalConfiguration.current.isScreenRound
+        val inputWidthFraction = if (isRound) 0.95f else 1f
+
+        ScalingLazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            state = listState
+        ) {
+            item {
+                Text(
+                    text = stringResource(R.string.webdav_config_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Text(stringResource(R.string.webdav_config_title))
             }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    label = { Text(stringResource(R.string.webdav_server_url)) },
-                    placeholder = { Text(stringResource(R.string.webdav_server_url_hint)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = {
-                        Icon(Icons.Default.Link, contentDescription = null)
-                    }
-                )
-                
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text(stringResource(R.string.webdav_username)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = {
-                        Icon(Icons.Default.Person, contentDescription = null)
-                    }
-                )
-                
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text(stringResource(R.string.webdav_password)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = {
-                        Icon(Icons.Default.Lock, contentDescription = null)
-                    }
-                )
-                
-                // 加密设置
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "加密备份",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Switch(
-                        checked = enableEncryption,
-                        onCheckedChange = { enableEncryption = it }
-                    )
-                }
-                
-                if (enableEncryption) {
+
+            item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     OutlinedTextField(
-                        value = encryptionPassword,
-                        onValueChange = { encryptionPassword = it },
-                        label = { Text("加密密码") },
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = {
-                            Icon(Icons.Default.Key, contentDescription = null)
-                        }
+                        value = serverUrl,
+                        onValueChange = { serverUrl = it },
+                        placeholder = { Text(stringResource(R.string.webdav_server_url), maxLines = 1) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri),
+                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth(inputWidthFraction)
                     )
                 }
-                
-                if (errorMessage.isNotEmpty()) {
+            }
+
+            item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        placeholder = { Text(stringResource(R.string.webdav_username), maxLines = 1) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii),
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth(inputWidthFraction)
+                    )
+                }
+            }
+
+            item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        placeholder = { Text(stringResource(R.string.webdav_password), maxLines = 1) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth(inputWidthFraction)
+                    )
+                }
+            }
+
+            item {
+                ToggleChip(
+                    checked = enableEncryption,
+                    onCheckedChange = { enableEncryption = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        Text(
+                            text = stringResource(R.string.webdav_encryption),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    },
+                    toggleControl = {
+                        Switch(checked = enableEncryption, onCheckedChange = null)
+                    },
+                    appIcon = {
+                        WearIcon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                )
+            }
+
+            if (enableEncryption) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        OutlinedTextField(
+                            value = encryptionPassword,
+                            onValueChange = { encryptionPassword = it },
+                            placeholder = { Text(stringResource(R.string.webdav_encryption_password), maxLines = 1) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall,
+                            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            shape = RoundedCornerShape(28.dp),
+                            modifier = Modifier.fillMaxWidth(inputWidthFraction)
+                        )
+                    }
+                }
+            }
+
+            if (errorMessage.isNotEmpty()) {
+                item {
                     Text(
                         text = errorMessage,
                         color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    isLoading = true
-                    viewModel.configureWebDav(
-                        serverUrl, 
-                        username, 
-                        password,
-                        enableEncryption,
-                        encryptionPassword
-                    ) { success, error ->
-                        isLoading = false
-                        if (success) {
-                            onDismiss()
-                        } else {
-                            errorMessage = error ?: context.getString(R.string.webdav_config_failed)
-                        }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                ) {
+                    androidx.wear.compose.material.Button(
+                        onClick = onDismiss,
+                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors()
+                    ) {
+                        WearIcon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_cancel)
+                        )
                     }
-                },
-                enabled = !isLoading && serverUrl.isNotBlank() && username.isNotBlank()
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(stringResource(R.string.common_save))
+
+                    androidx.wear.compose.material.Button(
+                        onClick = {
+                            isLoading = true
+                            viewModel.configureWebDav(
+                                serverUrl,
+                                username,
+                                password,
+                                enableEncryption,
+                                encryptionPassword
+                            ) { success, error ->
+                                isLoading = false
+                                if (success) onDismiss() else errorMessage = error ?: context.getString(R.string.webdav_config_failed)
+                            }
+                        },
+                        enabled = !isLoading && serverUrl.isNotBlank() && username.isNotBlank(),
+                        colors = androidx.wear.compose.material.ButtonDefaults.primaryButtonColors()
+                    ) {
+                        WearIcon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = stringResource(R.string.common_save)
+                        )
+                    }
                 }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
         }
-    )
+    }
 }
 
 /**
@@ -949,84 +1108,76 @@ private fun PasswordConfigDialog(
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Key,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text("加密密码配置")
-            }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "设置用于解密备份文件的密码",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("加密密码") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = {
-                        Icon(Icons.Default.Lock, contentDescription = null)
-                    }
-                )
-                
-                OutlinedTextField(
-                    value = confirmPassword,
-                    onValueChange = { confirmPassword = it },
-                    label = { Text("确认密码") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = {
-                        Icon(Icons.Default.Lock, contentDescription = null)
-                    }
-                )
-                
-                if (errorMessage.isNotEmpty()) {
-                    Text(
-                        text = errorMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (password != confirmPassword) {
-                        errorMessage = "两次密码输入不一致"
-                    } else {
-                        viewModel.configureEncryptionPassword(password)
-                        onDismiss()
-                    }
+
+    val canSave = password.isNotBlank() && confirmPassword.isNotBlank()
+
+    WearDialogContainer(
+        onDismiss = onDismiss,
+        title = "加密密码配置",
+        icon = Icons.Default.Key
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "设置用于解密备份文件的密码",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    errorMessage = ""
                 },
-                enabled = password.isNotBlank() && confirmPassword.isNotBlank()
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
+                label = { Text("加密密码") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                }
+            )
+
+            OutlinedTextField(
+                value = confirmPassword,
+                onValueChange = {
+                    confirmPassword = it
+                    errorMessage = ""
+                },
+                label = { Text("确认密码") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                }
+            )
+
+            if (errorMessage.isNotEmpty()) {
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
-    )
+
+        DialogActionButtons(
+            primaryLabel = "保存",
+            onPrimary = {
+                if (password != confirmPassword) {
+                    errorMessage = "两次密码输入不一致"
+                } else {
+                    viewModel.configureEncryptionPassword(password)
+                    onDismiss()
+                }
+            },
+            secondaryLabel = stringResource(R.string.common_cancel),
+            onSecondary = onDismiss,
+            primaryEnabled = canSave
+        )
+    }
 }
 
 /**
@@ -1038,44 +1189,25 @@ private fun ClearDataConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                imageVector = Icons.Default.Warning,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(48.dp)
-            )
-        },
-        title = {
-            Text(
-                text = stringResource(R.string.dialog_clear_data_title),
-                color = MaterialTheme.colorScheme.error
-            )
-        },
-        text = {
-            Text(
-                text = stringResource(R.string.dialog_clear_data_message),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Text(stringResource(R.string.common_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        }
-    )
+    WearDialogContainer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.dialog_clear_data_title),
+        icon = Icons.Default.Warning
+    ) {
+        Text(
+            text = stringResource(R.string.dialog_clear_data_message),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        DialogActionButtons(
+            primaryLabel = stringResource(R.string.common_confirm),
+            onPrimary = onConfirm,
+            secondaryLabel = stringResource(R.string.common_cancel),
+            onSecondary = onDismiss,
+            primaryIsDestructive = true
+        )
+    }
 }
 
 /**
@@ -1087,68 +1219,106 @@ private fun ColorSchemeSelectionDialog(
     onColorSchemeSelected: (WearColorScheme) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Palette,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(stringResource(R.string.dialog_color_scheme_title))
+    WearDialogContainer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.dialog_color_scheme_title),
+        icon = Icons.Default.Palette,
+        fullScreen = true,
+        showHeader = false
+    ) {
+        val listState = rememberScalingLazyListState()
+
+        ScalingLazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            state = listState
+        ) {
+            // 标题
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.dialog_color_scheme_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                WearColorScheme.values().forEach { scheme ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onColorSchemeSelected(scheme) }
-                            .background(
-                                if (scheme == currentColorScheme) 
-                                    MaterialTheme.colorScheme.primaryContainer 
-                                else 
-                                    Color.Transparent
-                            )
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RadioButton(
-                            selected = scheme == currentColorScheme,
-                            onClick = null // Handled by Row click
+
+            // 配色选项
+            items(WearColorScheme.values().size) { index ->
+                val scheme = WearColorScheme.values()[index]
+                Chip(
+                    onClick = {
+                        onColorSchemeSelected(scheme)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        Text(
+                            text = stringResource(scheme.displayNameResId),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Column {
-                            Text(
-                                text = stringResource(scheme.displayNameResId),
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                    },
+                    icon = {
+                        if (scheme == currentColorScheme) {
+                            WearIcon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
                             )
-                            Text(
-                                text = stringResource(scheme.descriptionResId),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            WearIcon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    },
+                    colors = if (scheme == currentColorScheme) {
+                        ChipDefaults.primaryChipColors()
+                    } else {
+                        ChipDefaults.secondaryChipColors()
+                    }
+                )
+            }
+
+            // 关闭按钮
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    androidx.wear.compose.material.Button(
+                        onClick = onDismiss,
+                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors()
+                    ) {
+                        WearIcon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_cancel)
+                        )
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
         }
-    )
+    }
 }
 
 /**
@@ -1160,61 +1330,106 @@ private fun LanguageSelectionDialog(
     onLanguageSelected: (takagi.ru.monica.wear.viewmodel.AppLanguage) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Language,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(stringResource(R.string.dialog_language_title))
+    WearDialogContainer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.dialog_language_title),
+        icon = Icons.Default.Language,
+        fullScreen = true,
+        showHeader = false
+    ) {
+        val listState = rememberScalingLazyListState()
+
+        ScalingLazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            state = listState
+        ) {
+            // 标题
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Language,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.dialog_language_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                takagi.ru.monica.wear.viewmodel.AppLanguage.values().forEach { language ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onLanguageSelected(language) }
-                            .background(
-                                if (language == currentLanguage) 
-                                    MaterialTheme.colorScheme.primaryContainer 
-                                else 
-                                    Color.Transparent
-                            )
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RadioButton(
-                            selected = language == currentLanguage,
-                            onClick = null // Handled by Row click
-                        )
+
+            // 语言选项
+            items(takagi.ru.monica.wear.viewmodel.AppLanguage.values().size) { index ->
+                val language = takagi.ru.monica.wear.viewmodel.AppLanguage.values()[index]
+                Chip(
+                    onClick = {
+                        onLanguageSelected(language)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
                         Text(
                             text = stringResource(language.displayNameResId),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    icon = {
+                        if (language == currentLanguage) {
+                            WearIcon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            WearIcon(
+                                imageVector = Icons.Default.Language,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    colors = if (language == currentLanguage) {
+                        ChipDefaults.primaryChipColors()
+                    } else {
+                        ChipDefaults.secondaryChipColors()
+                    }
+                )
+            }
+
+            // 关闭按钮
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    androidx.wear.compose.material.Button(
+                        onClick = onDismiss,
+                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors()
+                    ) {
+                        WearIcon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_cancel)
                         )
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
         }
-    )
+    }
 }
 
 /**
@@ -1230,122 +1445,194 @@ private fun AddTotpDialog(
     var secret by remember { mutableStateOf("") }
     var issuer by remember { mutableStateOf("") }
     var accountName by remember { mutableStateOf("") }
-    var secretError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-        },
-        title = {
-            Text(stringResource(R.string.totp_add_title))
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // 密钥输入
-                OutlinedTextField(
-                    value = secret,
-                    onValueChange = { 
-                        secret = it
-                        secretError = null
-                        errorMessage = null
-                    },
-                    label = { Text(stringResource(R.string.dialog_totp_secret)) },
-                    placeholder = { Text(stringResource(R.string.dialog_totp_secret_hint)) },
-                    isError = secretError != null,
-                    supportingText = secretError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    enabled = !isLoading
-                )
+    WearDialogContainer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.totp_add_title),
+        icon = Icons.Default.Add,
+        fullScreen = true,
+        showHeader = false
+    ) {
+        val listState = rememberScalingLazyListState()
+        val isRound = LocalConfiguration.current.isScreenRound
+        val inputWidthFraction = if (isRound) 0.95f else 1f
 
-                // 发行方输入
-                OutlinedTextField(
-                    value = issuer,
-                    onValueChange = { 
-                        issuer = it
-                        errorMessage = null
-                    },
-                    label = { Text(stringResource(R.string.dialog_totp_issuer)) },
-                    placeholder = { Text(stringResource(R.string.dialog_totp_issuer_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    enabled = !isLoading
-                )
+        ScalingLazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            state = listState
+        ) {
+            // 标题
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.totp_add_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
 
-                // 账户名输入
-                OutlinedTextField(
-                    value = accountName,
-                    onValueChange = { 
-                        accountName = it
-                        errorMessage = null
-                    },
-                    label = { Text(stringResource(R.string.dialog_totp_account)) },
-                    placeholder = { Text(stringResource(R.string.dialog_totp_account_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    enabled = !isLoading
-                )
+            // 密钥输入 (必填)
+            item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedTextField(
+                        value = secret,
+                        onValueChange = { 
+                            secret = it.uppercase().filter { c -> c.isLetterOrDigit() }
+                            errorMessage = null
+                        },
+                        placeholder = { Text(stringResource(R.string.dialog_totp_secret_required), maxLines = 1, style = MaterialTheme.typography.bodySmall) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii,
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters
+                        ),
+                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth(inputWidthFraction),
+                        enabled = !isLoading
+                    )
+                }
+            }
 
-                // 错误提示
-                if (errorMessage != null) {
+            // 服务名称 (可选)
+            item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedTextField(
+                        value = issuer,
+                        onValueChange = { 
+                            issuer = it
+                            errorMessage = null
+                        },
+                        placeholder = { Text(stringResource(R.string.dialog_totp_issuer), maxLines = 1, style = MaterialTheme.typography.bodySmall) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Text),
+                        leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth(inputWidthFraction),
+                        enabled = !isLoading
+                    )
+                }
+            }
+
+            // 账户名称 (可选)
+            item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedTextField(
+                        value = accountName,
+                        onValueChange = { 
+                            accountName = it
+                            errorMessage = null
+                        },
+                        placeholder = { Text(stringResource(R.string.dialog_totp_account), maxLines = 1, style = MaterialTheme.typography.bodySmall) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier.fillMaxWidth(inputWidthFraction),
+                        enabled = !isLoading
+                    )
+                }
+            }
+
+            // 错误信息
+            if (errorMessage != null) {
+                item {
                     Text(
                         text = errorMessage!!,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 4.dp)
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
+            }
 
-                if (isLoading) {
+            // 加载指示器
+            if (isLoading) {
+                item {
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    when {
-                        secret.isBlank() -> secretError = context.getString(R.string.dialog_totp_secret_error)
-                        else -> {
-                            isLoading = true
-                            errorMessage = null
-                            onConfirm(secret, issuer, accountName) { success, error ->
-                                isLoading = false
-                                if (!success) {
-                                    errorMessage = error ?: context.getString(R.string.totp_add_failed)
+
+            // 操作按钮
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                ) {
+                    // 取消按钮
+                    androidx.wear.compose.material.Button(
+                        onClick = onDismiss,
+                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors(),
+                        enabled = !isLoading
+                    ) {
+                        WearIcon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_cancel)
+                        )
+                    }
+
+                    // 保存按钮
+                    androidx.wear.compose.material.Button(
+                        onClick = {
+                            if (secret.isBlank()) {
+                                errorMessage = context.getString(R.string.dialog_totp_secret_error)
+                            } else {
+                                isLoading = true
+                                errorMessage = null
+                                onConfirm(secret, issuer, accountName) { success, error ->
+                                    isLoading = false
+                                    if (!success) {
+                                        errorMessage = error ?: context.getString(R.string.totp_add_failed)
+                                    } else {
+                                        onDismiss()
+                                    }
                                 }
                             }
-                        }
+                        },
+                        enabled = !isLoading && secret.isNotBlank(),
+                        colors = androidx.wear.compose.material.ButtonDefaults.primaryButtonColors()
+                    ) {
+                        WearIcon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = stringResource(R.string.common_save)
+                        )
                     }
-                },
-                enabled = !isLoading
-            ) {
-                Text(stringResource(R.string.common_save))
+                }
             }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !isLoading
-            ) {
-                Text(stringResource(R.string.common_cancel))
-            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
         }
-    )
+    }
 }
 
 

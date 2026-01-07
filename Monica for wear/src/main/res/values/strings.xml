@@ -28,9 +28,15 @@
     
     <!-- 搜索 -->
     <string name="search_title">搜索验证器</string>
-    <string name="search_hint">输入名称搜索...</string>
-    <string name="search_no_results">未找到匹配项</string>
+    <string name="search_hint">搜索</string>
+    <string name="no_entries">暂无验证器</string>
+    <string name="no_search_results">未找到匹配项</string>
     <string name="search_add_button">添加验证器</string>
+    <string name="add_totp">添加验证器</string>
+    <string name="edit_totp">编辑验证器</string>
+    <string name="close">关闭</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
     
     <!-- 设置 -->
     <string name="settings_title">设置</string>
@@ -84,6 +90,8 @@
     <string name="webdav_server_url_hint">https://example.com/webdav</string>
     <string name="webdav_username">用户名</string>
     <string name="webdav_password">密码</string>
+    <string name="webdav_encryption">加密备份</string>
+    <string name="webdav_encryption_password">加密密码</string>
     <string name="webdav_config_failed">配置失败</string>
     <string name="webdav_test_failed">连接测试失败，请检查服务器地址和凭据</string>
     <string name="webdav_empty_title">未绑定 WebDAV</string>
@@ -93,6 +101,8 @@
     <!-- 对话框 -->
     <string name="dialog_clear_data_title">确认清除数据</string>
     <string name="dialog_clear_data_message">确定要删除所有本地验证器吗？此操作不可恢复。</string>
+    
+    <string name="delete_confirm_title">确认删除</string>
     
     <string name="dialog_color_scheme_title">选择配色方案</string>
     
@@ -105,9 +115,10 @@
     <string name="dialog_totp_secret">密钥</string>
     <string name="dialog_totp_secret_hint">Base32编码的密钥</string>
     <string name="dialog_totp_secret_error">密钥不能为空</string>
-    <string name="dialog_totp_issuer">发行方</string>
+    <string name="dialog_totp_secret_required">密钥 *</string>
+    <string name="dialog_totp_issuer">服务</string>
     <string name="dialog_totp_issuer_hint">如：Google, GitHub</string>
-    <string name="dialog_totp_account">账户名</string>
+    <string name="dialog_totp_account">账户</string>
     <string name="dialog_totp_account_hint">如：user@example.com</string>
     
     <string name="dialog_menu_edit">编辑</string>

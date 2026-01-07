@@ -19,9 +19,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import android.content.ContextWrapper
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
+import androidx.wear.compose.navigation.SwipeDismissableNavHost
+import androidx.wear.compose.navigation.composable
+import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import takagi.ru.monica.wear.data.PasswordDatabase
@@ -165,9 +165,9 @@ fun MonicaWearApp(
             }
             else -> {
                 // 主应用界面
-                val navController = rememberNavController()
+                val navController = rememberSwipeDismissableNavController()
             
-                NavHost(
+                SwipeDismissableNavHost(
                     navController = navController,
                     startDestination = "totp_pager",
                     modifier = Modifier.fillMaxSize()

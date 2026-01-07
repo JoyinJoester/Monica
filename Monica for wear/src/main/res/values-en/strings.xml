@@ -28,9 +28,15 @@
     
     <!-- Search -->
     <string name="search_title">Search Authenticators</string>
-    <string name="search_hint">Search by name...</string>
-    <string name="search_no_results">No matches found</string>
+    <string name="search_hint">Search</string>
+    <string name="no_entries">No Authenticators</string>
+    <string name="no_search_results">No matches found</string>
     <string name="search_add_button">Add Authenticator</string>
+    <string name="add_totp">Add Authenticator</string>
+    <string name="edit_totp">Edit Authenticator</string>
+    <string name="close">Close</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
     
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -84,6 +90,8 @@
     <string name="webdav_server_url_hint">https://example.com/webdav</string>
     <string name="webdav_username">Username</string>
     <string name="webdav_password">Password</string>
+    <string name="webdav_encryption">Encrypt Backup</string>
+    <string name="webdav_encryption_password">Encryption Password</string>
     <string name="webdav_config_failed">Configuration failed</string>
     <string name="webdav_test_failed">Connection test failed, please check server address and credentials</string>
     <string name="webdav_empty_title">WebDAV Not Configured</string>
@@ -93,6 +101,8 @@
     <!-- Dialogs -->
     <string name="dialog_clear_data_title">Confirm Clear Data</string>
     <string name="dialog_clear_data_message">Are you sure you want to delete all local authenticators? This action cannot be undone.</string>
+    
+    <string name="delete_confirm_title">Confirm Delete</string>
     
     <string name="dialog_color_scheme_title">Select Color Scheme</string>
     
@@ -105,9 +115,10 @@
     <string name="dialog_totp_secret">Secret Key</string>
     <string name="dialog_totp_secret_hint">Base32 encoded secret</string>
     <string name="dialog_totp_secret_error">Secret key cannot be empty</string>
-    <string name="dialog_totp_issuer">Issuer</string>
+    <string name="dialog_totp_secret_required">Secret *</string>
+    <string name="dialog_totp_issuer">Service</string>
     <string name="dialog_totp_issuer_hint">e.g., Google, GitHub</string>
-    <string name="dialog_totp_account">Account Name</string>
+    <string name="dialog_totp_account">Account</string>
     <string name="dialog_totp_account_hint">e.g., user@example.com</string>
     
     <string name="dialog_menu_edit">Edit</string>

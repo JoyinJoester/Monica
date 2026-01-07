@@ -1,44 +1,55 @@
 package takagi.ru.monica.wear.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import takagi.ru.monica.wear.R
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material3.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import takagi.ru.monica.wear.ui.components.TotpCard
-import takagi.ru.monica.wear.ui.components.SearchOverlay
-import takagi.ru.monica.wear.viewmodel.TotpViewModel
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.wear.compose.material.Button
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import takagi.ru.monica.wear.R
+import takagi.ru.monica.wear.ui.components.SearchOverlay
+import takagi.ru.monica.wear.ui.components.TotpCard
+import takagi.ru.monica.wear.viewmodel.SettingsViewModel
+import takagi.ru.monica.wear.viewmodel.TotpItemState
+import takagi.ru.monica.wear.viewmodel.TotpViewModel
 import kotlin.math.abs
+import kotlin.math.absoluteValue
 
 /**
- * TOTP分页浏览屏幕
- * 使用 HorizontalPager 实现分页，每页显示一个验证器
- * 支持手势：
- * - 左右滑动：切换验证器
- * - 下滑：打开搜索
- * - 上滑：打开设置
+ * TOTP分页浏览屏幕 - Wear OS M3E 设计
+ * 自动适配各种屏幕尺寸
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TotpPagerScreen(
     viewModel: TotpViewModel,
-    settingsViewModel: takagi.ru.monica.wear.viewmodel.SettingsViewModel,
+    settingsViewModel: SettingsViewModel,
     onShowSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -49,370 +60,372 @@ fun TotpPagerScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val isWebDavConfigured by viewModel.isWebDavConfigured.collectAsState()
     
-    // 搜索状态
     var showSearch by remember { mutableStateOf(false) }
+    val pagerState = rememberPagerState(pageCount = { allItems.size })
+    val coroutineScope = rememberCoroutineScope()
     
-    // 启动TOTP更新
     LaunchedEffect(Unit) {
         viewModel.startTotpUpdates()
         viewModel.checkWebDavConfig()
     }
     
-    // 停止TOTP更新（当组件销毁时）
     DisposableEffect(Unit) {
-        onDispose {
-            viewModel.stopTotpUpdates()
-        }
+        onDispose { viewModel.stopTotpUpdates() }
     }
     
-    Box(
+    // 入场动画
+    var isVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { isVisible = true }
+    
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn(animationSpec = tween(500)) + 
+                scaleIn(initialScale = 0.9f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
         modifier = modifier.fillMaxSize()
     ) {
-        when {
-            isLoading -> {
-                // 加载中
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
-            allItems.isEmpty() && !isWebDavConfigured -> {
-                // 未绑定 WebDAV 且无数据的空状态（支持上滑打开搜索/添加，下滑打开设置）
-                var dragOffset by remember { mutableStateOf(0f) }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onDragEnd = {
-                                    when {
-                                        dragOffset < -50f -> showSearch = true  // 上滑打开搜索
-                                        dragOffset > 50f -> onShowSettings()    // 下滑打开设置
-                                    }
-                                    dragOffset = 0f
-                                },
-                                onVerticalDrag = { _, dragAmount ->
-                                    dragOffset += dragAmount
-                                }
-                            )
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            when {
+                isLoading -> {
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val indicatorSize = maxWidth * 0.2f
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(indicatorSize)
+                        )
+                    }
+                }
+                allItems.isEmpty() && !isWebDavConfigured -> {
+                    DraggableEmptyState(
+                        content = { WebDavEmptyState(onGoToSettings = onShowSettings) },
+                        onSwipeUp = { showSearch = true },
+                        onSwipeDown = onShowSettings
+                    )
+                }
+                allItems.isEmpty() -> {
+                    DraggableEmptyState(
+                        content = { EmptyState() },
+                        onSwipeUp = { showSearch = true },
+                        onSwipeDown = onShowSettings
+                    )
+                }
+                else -> {
+                    TotpPagerContent(
+                        viewModel = viewModel,
+                        settingsViewModel = settingsViewModel,
+                        pagerState = pagerState,
+                        allItems = allItems,
+                        searchResults = searchResults,
+                        searchQuery = searchQuery,
+                        showSearch = showSearch,
+                        onSwipeUp = { showSearch = true },
+                        onSwipeDown = onShowSettings,
+                        onSearchDismiss = {
+                            showSearch = false
+                            viewModel.clearSearch()
                         }
-                ) {
-                    WebDavEmptyState(
-                        onGoToSettings = onShowSettings,
-                        modifier = Modifier.align(Alignment.Center)
                     )
                 }
             }
-            allItems.isEmpty() -> {
-                // 已配置 WebDAV 但暂无数据的空状态（支持上滑打开搜索/添加，下滑打开设置）
-                var dragOffset by remember { mutableStateOf(0f) }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onDragEnd = {
-                                    when {
-                                        dragOffset < -50f -> showSearch = true  // 上滑打开搜索
-                                        dragOffset > 50f -> onShowSettings()    // 下滑打开设置
-                                    }
-                                    dragOffset = 0f
-                                },
-                                onVerticalDrag = { _, dragAmount ->
-                                    dragOffset += dragAmount
-                                }
-                            )
-                        }
-                ) {
-                    EmptyState(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-            }
-            else -> {
-                // TOTP分页器（带搜索功能）
-                TotpPagerWithSearch(
-                    viewModel = viewModel,
-                    settingsViewModel = settingsViewModel,
-                    allItems = allItems,
-                    searchResults = searchResults,
+            
+            // 搜索覆盖层
+            AnimatedVisibility(
+                visible = showSearch,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                SearchOverlay(
                     searchQuery = searchQuery,
-                    showSearch = showSearch,
-                    onCopyCode = { code -> viewModel.copyCode(code) },
-                    onSwipeDown = { showSearch = true },
-                    onSwipeUp = onShowSettings,
-                    onSearchQueryChange = { query -> viewModel.searchTotpItems(query) },
-                    onSearchDismiss = {
+                    searchResults = if (searchQuery.isBlank()) allItems else searchResults,
+                    onSearchQueryChange = { viewModel.searchTotpItems(it) },
+                    onNavigateToItem = { item ->
+                        val targetIndex = allItems.indexOfFirst { it.item.id == item.item.id }
+                        if (targetIndex >= 0) {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(targetIndex)
+                            }
+                        }
                         showSearch = false
                         viewModel.clearSearch()
+                    },
+                    onDismiss = {
+                        showSearch = false
+                        viewModel.clearSearch()
+                    },
+                    onAddTotp = { secret, issuer, accountName, onResult ->
+                        settingsViewModel.addTotpItem(secret, issuer, accountName, onResult)
+                    },
+                    onEditTotp = { item, secret, issuer, accountName, onResult ->
+                        viewModel.updateTotpItem(item, secret, issuer, accountName) { success, error ->
+                            if (success) {
+                                Toast.makeText(context, context.getString(R.string.totp_update_success), Toast.LENGTH_SHORT).show()
+                                onResult(true, null)
+                            } else {
+                                Toast.makeText(context, error ?: context.getString(R.string.totp_update_failed), Toast.LENGTH_SHORT).show()
+                                onResult(false, error)
+                            }
+                        }
+                    },
+                    onDeleteTotp = { item ->
+                        viewModel.deleteTotpItem(item) { success, error ->
+                            if (success) {
+                                Toast.makeText(context, context.getString(R.string.totp_delete_success), Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, error ?: context.getString(R.string.totp_delete_failed), Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxSize()
                 )
             }
         }
-        
-        // 搜索覆盖层 - 在所有状态下都可用（包括空状态）
-        AnimatedVisibility(
-            visible = showSearch,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it }),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            SearchOverlay(
-                searchQuery = searchQuery,
-                searchResults = if (searchQuery.isBlank()) allItems else searchResults,
-                onSearchQueryChange = { query -> viewModel.searchTotpItems(query) },
-                onResultClick = { selectedItem ->
-                    // 关闭搜索，如果有数据会自动显示
-                    showSearch = false
-                    viewModel.clearSearch()
-                },
-                onDismiss = {
-                    showSearch = false
-                    viewModel.clearSearch()
-                },
-                onAddTotp = { secret, issuer, accountName, onResult ->
-                    settingsViewModel.addTotpItem(secret, issuer, accountName, onResult)
-                },
-                onEditTotp = { item, secret, issuer, accountName, onResult ->
-                    viewModel.updateTotpItem(item, secret, issuer, accountName) { success, error ->
-                        if (success) {
-                            android.widget.Toast.makeText(
-                                context,
-                                context.getString(R.string.totp_update_success),
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                            onResult(true, null)
-                        } else {
-                            android.widget.Toast.makeText(
-                                context,
-                                error ?: context.getString(R.string.totp_update_failed),
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                            onResult(false, error)
-                        }
-                    }
-                },
-                onDeleteTotp = { item ->
-                    viewModel.deleteTotpItem(item) { success, error ->
-                        if (success) {
-                            android.widget.Toast.makeText(
-                                context,
-                                context.getString(R.string.totp_delete_success),
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        } else {
-                            android.widget.Toast.makeText(
-                                context,
-                                error ?: context.getString(R.string.totp_delete_failed),
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
     }
 }
 
 /**
- * TOTP分页器组件（带搜索功能）
+ * 可拖拽的空状态容器
+ */
+@Composable
+private fun DraggableEmptyState(
+    content: @Composable () -> Unit,
+    onSwipeUp: () -> Unit,
+    onSwipeDown: () -> Unit
+) {
+    var dragOffset by remember { mutableStateOf(0f) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = {
+                        when {
+                            dragOffset < -50f -> onSwipeUp()
+                            dragOffset > 50f -> onSwipeDown()
+                        }
+                        dragOffset = 0f
+                    },
+                    onVerticalDrag = { _, dragAmount -> dragOffset += dragAmount }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+/**
+ * TOTP 分页器内容 - 带页面切换动画
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TotpPagerWithSearch(
+private fun TotpPagerContent(
     viewModel: TotpViewModel,
-    settingsViewModel: takagi.ru.monica.wear.viewmodel.SettingsViewModel,
-    allItems: List<takagi.ru.monica.wear.viewmodel.TotpItemState>,
-    searchResults: List<takagi.ru.monica.wear.viewmodel.TotpItemState>,
+    settingsViewModel: SettingsViewModel,
+    pagerState: PagerState,
+    allItems: List<TotpItemState>,
+    searchResults: List<TotpItemState>,
     searchQuery: String,
     showSearch: Boolean,
-    onCopyCode: (String) -> Unit,
-    onSwipeDown: () -> Unit,
     onSwipeUp: () -> Unit,
-    onSearchQueryChange: (String) -> Unit,
-    onSearchDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    onSwipeDown: () -> Unit,
+    onSearchDismiss: () -> Unit
 ) {
-    val pagerState = rememberPagerState(pageCount = { allItems.size })
-    val coroutineScope = rememberCoroutineScope()
     var dragOffset by remember { mutableStateOf(0f) }
     
-    Box(modifier = modifier) {
-        // 分页器
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val screenWidth = maxWidth
+        
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
-            val item = allItems[page]
+            val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
+            
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = 1f - pageOffset.coerceIn(0f, 1f) * 0.3f
+                        scaleX = 1f - pageOffset.coerceIn(0f, 1f) * 0.1f
+                        scaleY = 1f - pageOffset.coerceIn(0f, 1f) * 0.1f
+                    }
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
-                                // 检测手势方向
                                 when {
-                                    dragOffset < -100 -> onSwipeDown() // 上滑 (负值) -> 打开搜索
-                                    dragOffset > 100 -> onSwipeUp()    // 下滑 (正值) -> 打开设置
+                                    dragOffset < -80 -> onSwipeUp()
+                                    dragOffset > 80 -> onSwipeDown()
                                 }
                                 dragOffset = 0f
                             },
-                            onVerticalDrag = { _, dragAmount ->
-                                dragOffset += dragAmount
-                            }
+                            onVerticalDrag = { _, dragAmount -> dragOffset += dragAmount }
                         )
                     }
             ) {
                 TotpCard(
-                    state = item,
-                    onCopyCode = { onCopyCode(item.code) },
+                    state = allItems[page],
+                    onCopyCode = { viewModel.copyCode(allItems[page].code) },
                     modifier = Modifier.fillMaxSize()
                 )
             }
         }
         
-        // 页面指示器（圆点）
+        // 页面指示器 - 自适应尺寸
         if (allItems.size > 1) {
-            PageIndicator(
+            val dotSize = screenWidth * 0.025f
+            val dotSpacing = screenWidth * 0.015f
+            
+            AdaptivePageIndicator(
                 pageCount = allItems.size,
                 currentPage = pagerState.currentPage,
+                dotSize = dotSize,
+                dotSpacing = dotSpacing,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp)
-            )
-        }
-        
-        // 搜索覆盖层 (带动画) - 用于有数据时的搜索和跳转
-        AnimatedVisibility(
-            visible = showSearch,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it }),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            SearchOverlay(
-                searchQuery = searchQuery,
-                searchResults = if (searchQuery.isBlank()) allItems else searchResults,
-                onSearchQueryChange = onSearchQueryChange,
-                onResultClick = { selectedItem ->
-                    // 在完整列表中找到选中项的索引
-                    val targetIndex = allItems.indexOfFirst { it.item.id == selectedItem.item.id }
-                    if (targetIndex >= 0) {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(targetIndex)
-                        }
-                    }
-                    onSearchDismiss()
-                },
-                onDismiss = onSearchDismiss,
-                onAddTotp = { secret, issuer, accountName, onResult ->
-                    // 调用SettingsViewModel添加TOTP
-                    settingsViewModel.addTotpItem(secret, issuer, accountName, onResult)
-                },
-                modifier = Modifier.fillMaxSize()
+                    .padding(bottom = screenWidth * 0.06f)
             )
         }
     }
 }
 
 /**
- * 页面指示器（圆点）
+ * 自适应页面指示器
  */
 @Composable
-private fun PageIndicator(
+private fun AdaptivePageIndicator(
     pageCount: Int,
     currentPage: Int,
+    dotSize: androidx.compose.ui.unit.Dp,
+    dotSpacing: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(dotSpacing),
         verticalAlignment = Alignment.CenterVertically
     ) {
         repeat(pageCount) { index ->
             val isSelected = index == currentPage
+            val scale by animateFloatAsState(
+                targetValue = if (isSelected) 1.3f else 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                label = "indicatorScale"
+            )
+            val alpha by animateFloatAsState(
+                targetValue = if (isSelected) 1f else 0.4f,
+                animationSpec = tween(200),
+                label = "indicatorAlpha"
+            )
             Box(
                 modifier = Modifier
-                    .size(if (isSelected) 8.dp else 6.dp)
-                    .padding(2.dp)
-            ) {
-                androidx.compose.foundation.Canvas(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    drawCircle(
-                        color = if (isSelected) {
-                            androidx.compose.ui.graphics.Color.White
-                        } else {
-                            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.4f)
-                        }
-                    )
-                }
-            }
+                    .size(dotSize)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .alpha(alpha)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+            )
         }
     }
 }
 
 /**
- * 空状态组件
+ * 空状态组件 - 自适应尺寸
  */
 @Composable
-private fun EmptyState(
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+private fun EmptyState(modifier: Modifier = Modifier) {
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = stringResource(R.string.totp_empty_title),
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.totp_empty_subtitle),
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-            style = MaterialTheme.typography.bodySmall
-        )
+        val screenWidth = maxWidth
+        val titleSize = (screenWidth.value * 0.07f).sp
+        val subtitleSize = (screenWidth.value * 0.055f).sp
+        val padding = screenWidth * 0.08f
+        val spacing = screenWidth * 0.03f
+        
+        Column(
+            modifier = Modifier.padding(padding),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = stringResource(R.string.totp_empty_title),
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = titleSize,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(spacing))
+            Text(
+                text = stringResource(R.string.totp_empty_subtitle),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = subtitleSize,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
 /**
- * 未绑定 WebDAV 空状态组件
+ * 未绑定 WebDAV 空状态组件 - 自适应尺寸
  */
 @Composable
 private fun WebDavEmptyState(
     onGoToSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.CloudOff,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.webdav_empty_title),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.webdav_empty_subtitle),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onGoToSettings) {
-            Text(stringResource(R.string.webdav_empty_button))
+        val screenWidth = maxWidth
+        val screenHeight = maxHeight
+        
+        // 自适应尺寸计算
+        val iconSize = screenWidth * 0.2f
+        val titleSize = (screenWidth.value * 0.08f).sp
+        val subtitleSize = (screenWidth.value * 0.055f).sp
+        val padding = screenWidth * 0.1f
+        val spacing = screenHeight * 0.03f
+        val buttonHeight = screenHeight * 0.12f
+        
+        Column(
+            modifier = Modifier.padding(horizontal = padding),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.CloudOff,
+                contentDescription = null,
+                modifier = Modifier.size(iconSize),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(spacing))
+            Text(
+                text = stringResource(R.string.webdav_empty_title),
+                fontSize = titleSize,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(spacing * 0.5f))
+            Text(
+                text = stringResource(R.string.webdav_empty_subtitle),
+                fontSize = subtitleSize,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(spacing))
+            Button(
+                onClick = onGoToSettings,
+                modifier = Modifier.height(buttonHeight)
+            ) {
+                Text(
+                    text = stringResource(R.string.webdav_empty_button),
+                    fontSize = subtitleSize
+                )
+            }
         }
     }
 }
