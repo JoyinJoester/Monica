@@ -1299,6 +1299,109 @@ class WebDavHelper(
                                         warnings.add("操作历史恢复失败: ${e.message}")
                                     }
                                 }
+                                // ✅ 恢复回收站数据 - 密码
+                                normalizedEntryName.contains("/trash/") && entryName.equals("trash_passwords.json", ignoreCase = true) -> {
+                                    try {
+                                        val trashJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val trashPasswordBackups = json.decodeFromString<List<TrashPasswordBackupEntry>>(trashJson)
+                                        
+                                        if (trashPasswordBackups.isNotEmpty()) {
+                                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                                            val passwordEntryDao = database.passwordEntryDao()
+                                            
+                                            // 获取现有的已删除密码用于去重
+                                            val existingDeletedPasswords = passwordEntryDao.getDeletedEntriesSync()
+                                            val existingTitles = existingDeletedPasswords.map { "${it.title}_${it.createdAt.time}" }.toSet()
+                                            
+                                            var importedCount = 0
+                                            trashPasswordBackups.forEach { backup ->
+                                                val key = "${backup.title}_${backup.createdAt}"
+                                                if (key !in existingTitles) {
+                                                    try {
+                                                        val entry = PasswordEntry(
+                                                            id = 0, // 使用新ID
+                                                            title = backup.title,
+                                                            username = backup.username,
+                                                            password = backup.password,
+                                                            website = backup.website,
+                                                            notes = backup.notes,
+                                                            isFavorite = backup.isFavorite,
+                                                            categoryId = backup.categoryId,
+                                                            email = backup.email,
+                                                            phone = backup.phone,
+                                                            createdAt = java.util.Date(backup.createdAt),
+                                                            updatedAt = java.util.Date(backup.updatedAt),
+                                                            authenticatorKey = backup.authenticatorKey,
+                                                            isDeleted = true,
+                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) }
+                                                        )
+                                                        passwordEntryDao.insertPasswordEntry(entry)
+                                                        importedCount++
+                                                    } catch (e: Exception) {
+                                                        android.util.Log.w("WebDavHelper", "Failed to restore trash password ${backup.title}: ${e.message}")
+                                                    }
+                                                }
+                                            }
+                                            android.util.Log.d("WebDavHelper", "Restored $importedCount trash passwords (${trashPasswordBackups.size - importedCount} duplicates skipped)")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore trash passwords: ${e.message}")
+                                        warnings.add("回收站密码恢复失败: ${e.message}")
+                                    }
+                                }
+                                // ✅ 恢复回收站数据 - 安全项目
+                                normalizedEntryName.contains("/trash/") && entryName.equals("trash_secure_items.json", ignoreCase = true) -> {
+                                    try {
+                                        val trashJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val trashSecureItemBackups = json.decodeFromString<List<TrashSecureItemBackupEntry>>(trashJson)
+                                        
+                                        if (trashSecureItemBackups.isNotEmpty()) {
+                                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                                            val secureItemDao = database.secureItemDao()
+                                            
+                                            // 获取现有的已删除安全项用于去重
+                                            val existingDeletedItems = secureItemDao.getDeletedItemsSync()
+                                            val existingKeys = existingDeletedItems.map { "${it.title}_${it.createdAt.time}" }.toSet()
+                                            
+                                            var importedCount = 0
+                                            trashSecureItemBackups.forEach { backup ->
+                                                val key = "${backup.title}_${backup.createdAt}"
+                                                if (key !in existingKeys) {
+                                                    try {
+                                                        val itemType = try {
+                                                            ItemType.valueOf(backup.itemType)
+                                                        } catch (e: Exception) {
+                                                            ItemType.NOTE // 默认类型
+                                                        }
+                                                        val item = SecureItem(
+                                                            id = 0, // 使用新ID
+                                                            title = backup.title,
+                                                            itemType = itemType,
+                                                            itemData = backup.itemData,
+                                                            notes = backup.notes,
+                                                            isFavorite = backup.isFavorite,
+                                                            imagePaths = backup.imagePaths,
+                                                            createdAt = java.util.Date(backup.createdAt),
+                                                            updatedAt = java.util.Date(backup.updatedAt),
+                                                            isDeleted = true,
+                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) }
+                                                        )
+                                                        secureItemDao.insertItem(item)
+                                                        importedCount++
+                                                    } catch (e: Exception) {
+                                                        android.util.Log.w("WebDavHelper", "Failed to restore trash item ${backup.title}: ${e.message}")
+                                                    }
+                                                }
+                                            }
+                                            android.util.Log.d("WebDavHelper", "Restored $importedCount trash secure items (${trashSecureItemBackups.size - importedCount} duplicates skipped)")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore trash secure items: ${e.message}")
+                                        warnings.add("回收站项目恢复失败: ${e.message}")
+                                    }
+                                }
                                 normalizedEntryName.contains("/images/") || entryName.endsWith(".enc") -> {
                                     backupImageCount++
                                     // 恢复图片文件
