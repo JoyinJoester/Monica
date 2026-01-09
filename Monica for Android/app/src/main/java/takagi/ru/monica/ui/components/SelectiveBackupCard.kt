@@ -71,6 +71,7 @@ fun SelectiveBackupCard(
     documentCount: Int,
     bankCardCount: Int,
     noteCount: Int,
+    trashCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -104,11 +105,13 @@ fun SelectiveBackupCard(
                             preferences.includeBankCards,
                             preferences.includeNotes,
                             preferences.includeGeneratorHistory,
-                            preferences.includeImages
+                            preferences.includeImages,
+                            preferences.includeTimeline,
+                            preferences.includeTrash
                         ).count { it }
                         
                         Text(
-                            text = stringResource(R.string.selective_backup_summary, selectedCount, 7),
+                            text = stringResource(R.string.selective_backup_summary, selectedCount, 9),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -215,6 +218,15 @@ fun SelectiveBackupCard(
                         }
                     )
                     
+                    ContentTypeSwitch(
+                        label = stringResource(R.string.backup_content_trash),
+                        count = trashCount,
+                        checked = preferences.includeTrash,
+                        onCheckedChange = { 
+                            onPreferencesChange(preferences.copy(includeTrash = it))
+                        }
+                    )
+                    
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     // 全选/全不选按钮
@@ -233,7 +245,8 @@ fun SelectiveBackupCard(
                                         includeNotes = true,
                                         includeGeneratorHistory = true,
                                         includeImages = true,
-                                        includeTimeline = true
+                                        includeTimeline = true,
+                                        includeTrash = true
                                     )
                                 )
                             },
@@ -253,7 +266,8 @@ fun SelectiveBackupCard(
                                         includeNotes = false,
                                         includeGeneratorHistory = false,
                                         includeImages = false,
-                                        includeTimeline = false
+                                        includeTimeline = false,
+                                        includeTrash = false
                                     )
                                 )
                             },

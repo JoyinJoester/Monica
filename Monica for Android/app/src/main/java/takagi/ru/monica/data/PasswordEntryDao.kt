@@ -138,6 +138,12 @@ interface PasswordEntryDao {
     fun getDeletedEntries(): Flow<List<PasswordEntry>>
     
     /**
+     * 获取所有已删除的条目（同步版本，用于备份）
+     */
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    suspend fun getDeletedEntriesSync(): List<PasswordEntry>
+    
+    /**
      * 获取所有未删除的条目（正常条目）
      */
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")

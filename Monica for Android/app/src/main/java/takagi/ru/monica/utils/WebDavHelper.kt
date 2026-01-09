@@ -91,6 +91,39 @@ private data class OperationLogBackupEntry(
     val isReverted: Boolean = false
 )
 
+@Serializable
+private data class TrashPasswordBackupEntry(
+    val id: Long = 0,
+    val title: String = "",
+    val username: String = "",
+    val password: String = "",
+    val website: String = "",
+    val notes: String = "",
+    val isFavorite: Boolean = false,
+    val categoryId: Long? = null,
+    val categoryName: String? = null,
+    val email: String = "",
+    val phone: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val authenticatorKey: String = "",
+    val deletedAt: Long? = null
+)
+
+@Serializable
+private data class TrashSecureItemBackupEntry(
+    val id: Long = 0,
+    val title: String = "",
+    val itemType: String = "",
+    val itemData: String = "",
+    val notes: String = "",
+    val isFavorite: Boolean = false,
+    val imagePaths: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val deletedAt: Long? = null
+)
+
 /**
  * WebDAV 帮助类
  * 用于备份和恢复数据到 WebDAV 服务器
@@ -123,6 +156,7 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_IMAGES = "backup_include_images"
         private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
         private const val KEY_BACKUP_INCLUDE_TIMELINE = "backup_include_timeline"
+        private const val KEY_BACKUP_INCLUDE_TRASH = "backup_include_trash"
     }
     
     // 加密相关
@@ -357,6 +391,7 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_IMAGES, preferences.includeImages)
             putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
             putBoolean(KEY_BACKUP_INCLUDE_TIMELINE, preferences.includeTimeline)
+            putBoolean(KEY_BACKUP_INCLUDE_TRASH, preferences.includeTrash)
             apply()
         }
         android.util.Log.d("WebDavHelper", "Saved backup preferences: $preferences")
@@ -376,7 +411,8 @@ class WebDavHelper(
             includeGeneratorHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, true),
             includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true),
             includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true),
-            includeTimeline = prefs.getBoolean(KEY_BACKUP_INCLUDE_TIMELINE, true)
+            includeTimeline = prefs.getBoolean(KEY_BACKUP_INCLUDE_TIMELINE, true),
+            includeTrash = prefs.getBoolean(KEY_BACKUP_INCLUDE_TRASH, true)
         )
     }
     
@@ -744,6 +780,95 @@ class WebDavHelper(
                         } catch (e: Exception) {
                             android.util.Log.w("WebDavHelper", "Failed to backup timeline: ${e.message}")
                             warnings.add("操作历史备份失败: ${e.message}")
+                        }
+                    }
+                    
+                    // 7.6 备份回收站数据
+                    if (preferences.includeTrash) {
+                        try {
+                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                            val passwordEntryDao = database.passwordEntryDao()
+                            val secureItemDao = database.secureItemDao()
+                            
+                            // 获取已删除的密码
+                            val deletedPasswords = passwordEntryDao.getDeletedEntriesSync()
+                            // 获取已删除的安全项目
+                            val deletedSecureItems = secureItemDao.getDeletedItemsSync()
+                            
+                            val json = Json { prettyPrint = false }
+                            val trashDir = File(cacheBackupDir, "trash")
+                            if (!trashDir.exists()) trashDir.mkdirs()
+                            
+                            // 备份已删除的密码
+                            if (deletedPasswords.isNotEmpty()) {
+                                val categoryDao = database.categoryDao()
+                                val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
+                                val categoryMap = allCategories.associateBy { it.id }
+                                
+                                val trashPasswordBackups = deletedPasswords.map { password ->
+                                    val categoryName = password.categoryId?.let { id -> categoryMap[id]?.name }
+                                    TrashPasswordBackupEntry(
+                                        id = password.id,
+                                        title = password.title,
+                                        username = password.username,
+                                        password = password.password,
+                                        website = password.website,
+                                        notes = password.notes,
+                                        isFavorite = password.isFavorite,
+                                        categoryId = password.categoryId,
+                                        categoryName = categoryName,
+                                        email = password.email,
+                                        phone = password.phone,
+                                        createdAt = password.createdAt.time,
+                                        updatedAt = password.updatedAt.time,
+                                        authenticatorKey = password.authenticatorKey,
+                                        deletedAt = password.deletedAt?.time
+                                    )
+                                }
+                                val trashPasswordsFile = File(trashDir, "trash_passwords.json")
+                                trashPasswordsFile.writeText(
+                                    json.encodeToString(
+                                        kotlinx.serialization.builtins.ListSerializer(TrashPasswordBackupEntry.serializer()),
+                                        trashPasswordBackups
+                                    ),
+                                    Charsets.UTF_8
+                                )
+                                addFileToZip(zipOut, trashPasswordsFile, "trash/${trashPasswordsFile.name}")
+                            }
+                            
+                            // 备份已删除的安全项目
+                            if (deletedSecureItems.isNotEmpty()) {
+                                val trashSecureItemBackups = deletedSecureItems.map { item ->
+                                    TrashSecureItemBackupEntry(
+                                        id = item.id,
+                                        title = item.title,
+                                        itemType = item.itemType.name,
+                                        itemData = item.itemData,
+                                        notes = item.notes,
+                                        isFavorite = item.isFavorite,
+                                        imagePaths = item.imagePaths,
+                                        createdAt = item.createdAt.time,
+                                        updatedAt = item.updatedAt.time,
+                                        deletedAt = item.deletedAt?.time
+                                    )
+                                }
+                                val trashSecureItemsFile = File(trashDir, "trash_secure_items.json")
+                                trashSecureItemsFile.writeText(
+                                    json.encodeToString(
+                                        kotlinx.serialization.builtins.ListSerializer(TrashSecureItemBackupEntry.serializer()),
+                                        trashSecureItemBackups
+                                    ),
+                                    Charsets.UTF_8
+                                )
+                                addFileToZip(zipOut, trashSecureItemsFile, "trash/${trashSecureItemsFile.name}")
+                            }
+                            
+                            trashDir.deleteRecursively()
+                            val totalTrashCount = deletedPasswords.size + deletedSecureItems.size
+                            android.util.Log.d("WebDavHelper", "Backup $totalTrashCount trash items (${deletedPasswords.size} passwords, ${deletedSecureItems.size} secure items)")
+                        } catch (e: Exception) {
+                            android.util.Log.w("WebDavHelper", "Failed to backup trash: ${e.message}")
+                            warnings.add("回收站备份失败: ${e.message}")
                         }
                     }
                 }

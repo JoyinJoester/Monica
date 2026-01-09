@@ -1250,6 +1250,7 @@
     <string name="backup_content_generator_history">密码生成历史</string>
     <string name="backup_content_images">图片</string>
     <string name="backup_content_timeline">操作历史</string>
+    <string name="backup_content_trash">回收站</string>
     <string name="deselect_all">全不选</string>
     <string name="backup_validation_error">请至少选择一种备份内容</string>
 

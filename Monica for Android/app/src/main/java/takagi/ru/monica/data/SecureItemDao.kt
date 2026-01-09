@@ -96,6 +96,12 @@ interface SecureItemDao {
     fun getDeletedItems(): Flow<List<SecureItem>>
     
     /**
+     * 获取所有已删除的项目（同步版本，用于备份）
+     */
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    suspend fun getDeletedItemsSync(): List<SecureItem>
+    
+    /**
      * 获取所有未删除的项目（正常项目）
      */
     @Query("SELECT * FROM secure_items WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")

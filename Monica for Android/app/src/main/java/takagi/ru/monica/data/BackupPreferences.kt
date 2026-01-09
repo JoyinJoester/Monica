@@ -12,7 +12,8 @@ data class BackupPreferences(
     val includeGeneratorHistory: Boolean = true,
     val includeImages: Boolean = true,
     val includeNotes: Boolean = true,
-    val includeTimeline: Boolean = true  // 操作历史记录
+    val includeTimeline: Boolean = true,  // 操作历史记录
+    val includeTrash: Boolean = true      // 回收站
 ) {
     /**
      * 检查是否至少启用了一种内容类型
@@ -21,7 +22,7 @@ data class BackupPreferences(
         return includePasswords || includeAuthenticators || 
                includeDocuments || includeBankCards || 
                includeGeneratorHistory || includeImages || includeNotes ||
-               includeTimeline
+               includeTimeline || includeTrash
     }
     
     /**
@@ -31,6 +32,6 @@ data class BackupPreferences(
         return includePasswords && includeAuthenticators && 
                includeDocuments && includeBankCards && 
                includeGeneratorHistory && includeImages && includeNotes &&
-               includeTimeline
+               includeTimeline && includeTrash
     }
 }

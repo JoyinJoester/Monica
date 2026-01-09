@@ -79,6 +79,7 @@ fun WebDavBackupScreen(
     var documentCount by remember { mutableStateOf(0) }
     var bankCardCount by remember { mutableStateOf(0) }
     var noteCount by remember { mutableStateOf(0) }
+    var trashCount by remember { mutableStateOf(0) }
     
     val webDavHelper = remember { WebDavHelper(context) }
     val autoBackupManager = remember { AutoBackupManager(context) }
@@ -115,6 +116,12 @@ fun WebDavBackupScreen(
         documentCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
         bankCardCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
         noteCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
+        
+        // 获取回收站数量
+        val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+        val deletedPasswordCount = database.passwordEntryDao().getDeletedCount()
+        val deletedSecureItems = secureItemRepository.getDeletedItems().first()
+        trashCount = deletedPasswordCount + deletedSecureItems.size
     }
     
     Scaffold(
@@ -558,7 +565,8 @@ fun WebDavBackupScreen(
                     authenticatorCount = authenticatorCount,
                     documentCount = documentCount,
                     bankCardCount = bankCardCount,
-                    noteCount = noteCount
+                    noteCount = noteCount,
+                    trashCount = trashCount
                 )
             }
             
