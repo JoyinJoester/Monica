@@ -2040,14 +2040,19 @@ class WebDavHelper(
     suspend fun deleteBackup(backupFile: BackupFile): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
+                android.util.Log.e("WebDavHelper", "Delete failed: WebDAV not configured")
                 return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
             val remotePath = "$serverUrl/Monica_Backups/${backupFile.name}"
+            android.util.Log.d("WebDavHelper", "Deleting backup: $remotePath")
+            
             sardine!!.delete(remotePath)
             
+            android.util.Log.d("WebDavHelper", "Backup deleted successfully: ${backupFile.name}")
             Result.success(true)
         } catch (e: Exception) {
+            android.util.Log.e("WebDavHelper", "Delete failed: ${e.message}", e)
             Result.failure(e)
         }
     }
