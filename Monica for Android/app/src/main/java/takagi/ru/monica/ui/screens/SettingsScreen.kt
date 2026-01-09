@@ -140,9 +140,11 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
                 .verticalScroll(scrollState)
         ) {
+            // Top padding spacer for edge-to-edge scrolling
+            Spacer(modifier = Modifier.height(paddingValues.calculateTopPadding()))
+            
             // Monica Plus Card
             takagi.ru.monica.ui.components.MonicaPlusCard(
                 isPlusActivated = settings.isPlusActivated,
@@ -565,6 +567,9 @@ fun SettingsScreen(
             }
             
             Spacer(modifier = Modifier.height(32.dp))
+            
+            // Bottom padding spacer for edge-to-edge scrolling
+            Spacer(modifier = Modifier.height(paddingValues.calculateBottomPadding()))
         }
     }
     
