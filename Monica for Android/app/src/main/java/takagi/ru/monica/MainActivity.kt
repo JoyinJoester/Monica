@@ -337,12 +337,16 @@ fun MonicaContent(
     val lifecycleOwner = LocalLifecycleOwner.current
     var lastBackgroundTimestamp by remember { mutableStateOf<Long?>(null) }
 
-    DisposableEffect(lifecycleOwner, settings.autoLockMinutes, isAuthenticated) {
+    // Auto-lock logic: only use lifecycleOwner as key to prevent observer recreation
+    // The settings and auth state are captured by closure and always reflect latest values
+    DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
-                    // Record when the app leaves foreground
-                    lastBackgroundTimestamp = System.currentTimeMillis()
+                    // Only record timestamp when user is authenticated
+                    if (isAuthenticated) {
+                        lastBackgroundTimestamp = System.currentTimeMillis()
+                    }
                 }
                 Lifecycle.Event.ON_START -> {
                     val minutes = settings.autoLockMinutes
