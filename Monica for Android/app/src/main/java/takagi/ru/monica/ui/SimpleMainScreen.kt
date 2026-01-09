@@ -66,6 +66,7 @@ import takagi.ru.monica.ui.screens.NoteListScreen
 import takagi.ru.monica.ui.screens.NoteListContent
 import takagi.ru.monica.ui.screens.CardWalletScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
+import takagi.ru.monica.ui.screens.TimelineScreen
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
@@ -183,6 +184,7 @@ fun SimpleMainScreen(
     securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
+    onNavigateToQuickTotpScan: () -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
@@ -495,6 +497,10 @@ fun SimpleMainScreen(
                     // 笔记页面不需要 FAB (由 NoteListScreen 处理)
                 }
 
+                BottomNavItem.Timeline -> {
+                    // 时间线页面不需要 FAB
+                }
+
                 BottomNavItem.Settings -> {}
             }
         }
@@ -551,6 +557,7 @@ fun SimpleMainScreen(
                         onDeleteTotp = { totp ->
                             totpViewModel.deleteTotpItem(totp)
                         },
+                        onQuickScanTotp = onNavigateToQuickTotpScan,
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
                             isTotpSelectionMode = isSelectionMode
                             selectedTotpCount = count
@@ -605,6 +612,10 @@ fun SimpleMainScreen(
                         onNavigateToAddNote = onNavigateToAddNote,
                         securityManager = securityManager
                     )
+                }
+                BottomNavItem.Timeline -> {
+                    // 时间线页面
+                    TimelineScreen()
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -1136,16 +1147,7 @@ private fun PasswordListContent(
                 onSearchExpandedChange = { isSearchExpanded = it },
                 searchHint = stringResource(R.string.search_passwords_hint),
                 actions = {
-                    // 1. Search Trigger
-                    IconButton(onClick = { isSearchExpanded = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "搜索",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // 2. Category Folder Trigger
+                    // 1. Category Folder Trigger
                     IconButton(onClick = { isCategorySheetVisible = true }) {
                          Icon(
                             imageVector = Icons.Default.Folder, // Or CreateNewFolder
@@ -1154,11 +1156,20 @@ private fun PasswordListContent(
                         )
                     }
 
-                    // 3. Display Options Trigger
+                    // 2. Display Options Trigger
                     IconButton(onClick = { displayMenuExpanded = true }) {
                         Icon(
                             imageVector = Icons.Default.DashboardCustomize,
                             contentDescription = stringResource(R.string.display_options_menu_title),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // 3. Search Trigger (放在最右边)
+                    IconButton(onClick = { isSearchExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "搜索",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -1754,6 +1765,7 @@ private fun TotpListContent(
     viewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     onTotpClick: (Long) -> Unit,
     onDeleteTotp: (takagi.ru.monica.data.SecureItem) -> Unit,
+    onQuickScanTotp: () -> Unit,
     onSelectionModeChange: (
         isSelectionMode: Boolean,
         selectedCount: Int,
@@ -1839,7 +1851,16 @@ private fun TotpListContent(
             onSearchExpandedChange = { isSearchExpanded = it },
             searchHint = stringResource(R.string.search_authenticator),
             actions = {
-                 IconButton(onClick = { isSearchExpanded = true }) {
+                // 快速扫码按钮
+                IconButton(onClick = onQuickScanTotp) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = "扫码添加",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                // 搜索按钮
+                IconButton(onClick = { isSearchExpanded = true }) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "搜索",
@@ -4232,6 +4253,7 @@ sealed class BottomNavItem(
     object CardWallet : BottomNavItem(BottomNavContentTab.CARD_WALLET, Icons.Default.Wallet)
     object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)  // 添加生成器导航项
     object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
+    object Timeline : BottomNavItem(BottomNavContentTab.TIMELINE, Icons.Default.AccountTree)  // 时间线导航（Git分支图标）
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
 
@@ -4241,6 +4263,7 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.CARD_WALLET -> BottomNavItem.CardWallet
     BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
     BottomNavContentTab.NOTES -> BottomNavItem.Notes
+    BottomNavContentTab.TIMELINE -> BottomNavItem.Timeline
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
@@ -4249,6 +4272,7 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.CardWallet -> R.string.nav_card_wallet
     BottomNavItem.Generator -> R.string.nav_generator  // 添加生成器标签资源
     BottomNavItem.Notes -> R.string.nav_notes
+    BottomNavItem.Timeline -> R.string.nav_timeline
     BottomNavItem.Settings -> R.string.nav_settings
 }
 
@@ -4258,6 +4282,7 @@ private fun BottomNavItem.shortLabelRes(): Int = when (this) {
     BottomNavItem.CardWallet -> R.string.nav_card_wallet_short
     BottomNavItem.Generator -> R.string.nav_generator_short  // 添加生成器短标签资源
     BottomNavItem.Notes -> R.string.nav_notes_short
+    BottomNavItem.Timeline -> R.string.nav_timeline_short
     BottomNavItem.Settings -> R.string.nav_settings_short
 }
 

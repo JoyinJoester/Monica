@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -43,20 +44,20 @@ fun AddEditTotpScreen(
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var title by remember { mutableStateOf(initialTitle) }
-    var notes by remember { mutableStateOf(initialNotes) }
-    var secret by remember { mutableStateOf(initialData?.secret ?: "") }
-    var issuer by remember { mutableStateOf(initialData?.issuer ?: "") }
-    var accountName by remember { mutableStateOf(initialData?.accountName ?: "") }
-    var period by remember { mutableStateOf(initialData?.period?.toString() ?: "30") }
-    var digits by remember { mutableStateOf(initialData?.digits?.toString() ?: "6") }
-    var selectedOtpType by remember { mutableStateOf(initialData?.otpType ?: OtpType.TOTP) }
-    var counter by remember { mutableStateOf(initialData?.counter?.toString() ?: "0") }
-    var pin by remember { mutableStateOf(initialData?.pin ?: "") }
+    var title by rememberSaveable { mutableStateOf(initialTitle) }
+    var notes by rememberSaveable { mutableStateOf(initialNotes) }
+    var secret by rememberSaveable { mutableStateOf(initialData?.secret ?: "") }
+    var issuer by rememberSaveable { mutableStateOf(initialData?.issuer ?: "") }
+    var accountName by rememberSaveable { mutableStateOf(initialData?.accountName ?: "") }
+    var period by rememberSaveable { mutableStateOf(initialData?.period?.toString() ?: "30") }
+    var digits by rememberSaveable { mutableStateOf(initialData?.digits?.toString() ?: "6") }
+    var selectedOtpType by rememberSaveable { mutableStateOf(initialData?.otpType ?: OtpType.TOTP) }
+    var counter by rememberSaveable { mutableStateOf(initialData?.counter?.toString() ?: "0") }
+    var pin by rememberSaveable { mutableStateOf(initialData?.pin ?: "") }
     
-    var link by remember { mutableStateOf(initialData?.link ?: "") }
-    var associatedApp by remember { mutableStateOf(initialData?.associatedApp ?: "") }
-    var associatedAppName by remember { mutableStateOf("") }
+    var link by rememberSaveable { mutableStateOf(initialData?.link ?: "") }
+    var associatedApp by rememberSaveable { mutableStateOf(initialData?.associatedApp ?: "") }
+    var associatedAppName by rememberSaveable { mutableStateOf("") }
     var boundPasswordId by remember { mutableStateOf(initialData?.boundPasswordId) }
     
     val context = LocalContext.current

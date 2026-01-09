@@ -7,8 +7,11 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.utils.OperationLogger
+import takagi.ru.monica.utils.FieldChange
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
@@ -156,9 +159,33 @@ class TotpViewModel(
                 }
                 
                 if (id != null && id > 0) {
+                    // 更新操作 - 记录变更日志
+                    val existing = repository.getItemById(id)
                     repository.updateItem(item)
+                    if (existing != null) {
+                        val changes = mutableListOf<FieldChange>()
+                        if (existing.title != title) {
+                            changes.add(FieldChange("标题", existing.title, title))
+                        }
+                        if (existing.notes != notes) {
+                            changes.add(FieldChange("备注", existing.notes, notes))
+                        }
+                        // 始终记录更新操作，即使没有检测到字段变更
+                        OperationLogger.logUpdate(
+                            itemType = OperationLogItemType.TOTP,
+                            itemId = id,
+                            itemTitle = title,
+                            changes = if (changes.isEmpty()) listOf(FieldChange("更新", "编辑于", java.text.SimpleDateFormat("HH:mm").format(Date()))) else changes
+                        )
+                    }
                 } else {
-                    repository.insertItem(item)
+                    val newId = repository.insertItem(item)
+                    // 创建操作 - 记录日志
+                    OperationLogger.logCreate(
+                        itemType = OperationLogItemType.TOTP,
+                        itemId = newId,
+                        itemTitle = title
+                    )
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -169,10 +196,31 @@ class TotpViewModel(
     
     /**
      * 删除TOTP项目
+     * @param item 要删除的项目
+     * @param softDelete 是否软删除（移入回收站），默认为 true
      */
-    fun deleteTotpItem(item: SecureItem) {
+    fun deleteTotpItem(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
-            repository.deleteItem(item)
+            if (softDelete) {
+                // 软删除：移动到回收站
+                repository.softDeleteItem(item)
+                // 记录移入回收站操作
+                OperationLogger.logDelete(
+                    itemType = OperationLogItemType.TOTP,
+                    itemId = item.id,
+                    itemTitle = item.title,
+                    detail = "移入回收站"
+                )
+            } else {
+                // 永久删除
+                repository.deleteItem(item)
+                // 删除操作 - 记录日志
+                OperationLogger.logDelete(
+                    itemType = OperationLogItemType.TOTP,
+                    itemId = item.id,
+                    itemTitle = item.title
+                )
+            }
         }
     }
     

@@ -32,6 +32,8 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.ui.components.TrashSettingsSheet
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -357,6 +359,18 @@ fun SettingsScreen(
                     title = context.getString(R.string.autofill),
                     subtitle = context.getString(R.string.autofill_subtitle),
                     onClick = onNavigateToAutofill
+                )
+                
+                // 回收站设置
+                SettingsItemWithTrashConfig(
+                    trashEnabled = settings.trashEnabled,
+                    trashAutoDeleteDays = settings.trashAutoDeleteDays,
+                    onTrashEnabledChange = { enabled ->
+                        viewModel.updateTrashEnabled(enabled)
+                    },
+                    onAutoDeleteDaysChange = { days ->
+                        viewModel.updateTrashAutoDeleteDays(days)
+                    }
                 )
                 
                 SettingsItem(
@@ -1203,6 +1217,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.CARD_WALLET -> Icons.Default.Wallet
     BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome
     BottomNavContentTab.NOTES -> Icons.Default.Note
+    BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
@@ -1211,6 +1226,7 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.CARD_WALLET -> R.string.nav_card_wallet
     BottomNavContentTab.GENERATOR -> R.string.nav_generator
     BottomNavContentTab.NOTES -> R.string.nav_notes
+    BottomNavContentTab.TIMELINE -> R.string.nav_timeline
 }
 
 @Composable
@@ -1681,3 +1697,47 @@ fun NotificationValidatorCard(
         }
     }
 }
+
+/**
+ * 回收站设置项组件
+ */
+@Composable
+private fun SettingsItemWithTrashConfig(
+    trashEnabled: Boolean,
+    trashAutoDeleteDays: Int,
+    onTrashEnabledChange: (Boolean) -> Unit,
+    onAutoDeleteDaysChange: (Int) -> Unit
+) {
+    var showTrashSettingsSheet by remember { mutableStateOf(false) }
+    
+    val subtitleText = if (trashEnabled) {
+        if (trashAutoDeleteDays > 0) {
+            "已启用 · ${trashAutoDeleteDays}天后自动清空"
+        } else {
+            "已启用 · 不自动清空"
+        }
+    } else {
+        "已禁用 · 删除将永久删除"
+    }
+
+    SettingsItem(
+        icon = Icons.Default.Delete,
+        title = stringResource(R.string.trash_bin),
+        subtitle = subtitleText,
+        onClick = { showTrashSettingsSheet = true }
+    )
+
+    if (showTrashSettingsSheet) {
+        TrashSettingsSheet(
+            currentSettings = takagi.ru.monica.viewmodel.TrashSettings(trashEnabled, trashAutoDeleteDays),
+            onDismiss = { showTrashSettingsSheet = false },
+            onConfirm = { enabled, days ->
+                onTrashEnabledChange(enabled)
+                onAutoDeleteDaysChange(days)
+                showTrashSettingsSheet = false
+            }
+        )
+    }
+}
+
+

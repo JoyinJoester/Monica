@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -34,22 +35,22 @@ fun AddEditDocumentScreen(
 ) {
     val context = LocalContext.current
     
-    var title by remember { mutableStateOf("") }
-    var documentNumber by remember { mutableStateOf("") }
-    var fullName by remember { mutableStateOf("") }
-    var issuedDate by remember { mutableStateOf("") }
-    var expiryDate by remember { mutableStateOf("") }
-    var issuedBy by remember { mutableStateOf("") }
-    var nationality by remember { mutableStateOf("") } // 添加国籍字段
-    var documentType by remember { mutableStateOf(DocumentType.ID_CARD) }
-    var notes by remember { mutableStateOf("") }
-    var isFavorite by remember { mutableStateOf(false) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var documentNumber by rememberSaveable { mutableStateOf("") }
+    var fullName by rememberSaveable { mutableStateOf("") }
+    var issuedDate by rememberSaveable { mutableStateOf("") }
+    var expiryDate by rememberSaveable { mutableStateOf("") }
+    var issuedBy by rememberSaveable { mutableStateOf("") }
+    var nationality by rememberSaveable { mutableStateOf("") } // 添加国籍字段
+    var documentType by rememberSaveable { mutableStateOf(DocumentType.ID_CARD) }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var isFavorite by rememberSaveable { mutableStateOf(false) }
     var showDocumentTypeMenu by remember { mutableStateOf(false) }
     var showDocumentNumber by remember { mutableStateOf(false) }
     
     // 图片路径管理
-    var frontImageFileName by remember { mutableStateOf<String?>(null) }
-    var backImageFileName by remember { mutableStateOf<String?>(null) }
+    var frontImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var backImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     
     // 如果是编辑模式，加载现有数据
     LaunchedEffect(documentId) {

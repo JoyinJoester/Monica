@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,43 +78,43 @@ fun AddEditPasswordScreen(
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
 
-    var title by remember { mutableStateOf("") }
-    var website by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var website by rememberSaveable { mutableStateOf("") }
+    var username by rememberSaveable { mutableStateOf("") }
     // CHANGE: Support multiple passwords
-    val passwords = remember { mutableStateListOf("") }
+    val passwords = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) { mutableStateListOf("") }
     var originalIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     
-    var authenticatorKey by remember { mutableStateOf("") }
+    var authenticatorKey by rememberSaveable { mutableStateOf("") }
     var existingTotpId by remember { mutableStateOf<Long?>(null) }
-    var notes by remember { mutableStateOf("") }
-    var isFavorite by remember { mutableStateOf(false) }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var isFavorite by rememberSaveable { mutableStateOf(false) }
     // Control which password field is showing generator/visibility (simplified: global visibility)
     var passwordVisible by remember { mutableStateOf(false) }
     var showPasswordGenerator by remember { mutableStateOf(false) }
     var currentPasswordIndexForGenerator by remember { mutableStateOf(-1) }
 
-    var appPackageName by remember { mutableStateOf("") }
-    var appName by remember { mutableStateOf("") }
+    var appPackageName by rememberSaveable { mutableStateOf("") }
+    var appName by rememberSaveable { mutableStateOf("") }
 
     // 绑定选项状态
-    var bindTitle by remember { mutableStateOf(false) }
-    var bindWebsite by remember { mutableStateOf(false) }
+    var bindTitle by rememberSaveable { mutableStateOf(false) }
+    var bindWebsite by rememberSaveable { mutableStateOf(false) }
 
     // 新增字段状态 - 支持多个邮箱和电话
-    val emails = remember { mutableStateListOf("") }
-    val phones = remember { mutableStateListOf("") }
-    var addressLine by remember { mutableStateOf("") }
-    var city by remember { mutableStateOf("") }
-    var state by remember { mutableStateOf("") }
-    var zipCode by remember { mutableStateOf("") }
-    var country by remember { mutableStateOf("") }
-    var creditCardNumber by remember { mutableStateOf("") }
-    var creditCardHolder by remember { mutableStateOf("") }
-    var creditCardExpiry by remember { mutableStateOf("") }
-    var creditCardCVV by remember { mutableStateOf("") }
+    val emails = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) { mutableStateListOf("") }
+    val phones = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) { mutableStateListOf("") }
+    var addressLine by rememberSaveable { mutableStateOf("") }
+    var city by rememberSaveable { mutableStateOf("") }
+    var state by rememberSaveable { mutableStateOf("") }
+    var zipCode by rememberSaveable { mutableStateOf("") }
+    var country by rememberSaveable { mutableStateOf("") }
+    var creditCardNumber by rememberSaveable { mutableStateOf("") }
+    var creditCardHolder by rememberSaveable { mutableStateOf("") }
+    var creditCardExpiry by rememberSaveable { mutableStateOf("") }
+    var creditCardCVV by rememberSaveable { mutableStateOf("") }
 
-    var categoryId by remember { mutableStateOf<Long?>(null) }
+    var categoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     val categories by viewModel.categories.collectAsState()
 
     // 折叠面板状态

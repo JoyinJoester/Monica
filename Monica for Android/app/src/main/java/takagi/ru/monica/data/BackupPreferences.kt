@@ -11,7 +11,8 @@ data class BackupPreferences(
     val includeBankCards: Boolean = true,
     val includeGeneratorHistory: Boolean = true,
     val includeImages: Boolean = true,
-    val includeNotes: Boolean = true
+    val includeNotes: Boolean = true,
+    val includeTimeline: Boolean = true  // 操作历史记录
 ) {
     /**
      * 检查是否至少启用了一种内容类型
@@ -19,7 +20,8 @@ data class BackupPreferences(
     fun hasAnyEnabled(): Boolean {
         return includePasswords || includeAuthenticators || 
                includeDocuments || includeBankCards || 
-               includeGeneratorHistory || includeImages || includeNotes
+               includeGeneratorHistory || includeImages || includeNotes ||
+               includeTimeline
     }
     
     /**
@@ -28,6 +30,7 @@ data class BackupPreferences(
     fun allEnabled(): Boolean {
         return includePasswords && includeAuthenticators && 
                includeDocuments && includeBankCards && 
-               includeGeneratorHistory && includeImages && includeNotes
+               includeGeneratorHistory && includeImages && includeNotes &&
+               includeTimeline
     }
 }

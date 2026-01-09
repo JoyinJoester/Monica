@@ -131,6 +131,14 @@ class AutofillSaveActivity : ComponentActivity() {
                         updatedAt = Date()
                     )
                     passwordRepository.updatePasswordEntry(updated)
+                    
+                    // 记录更新操作
+                    takagi.ru.monica.utils.OperationLogger.logUpdate(
+                        itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                        itemId = updated.id,
+                        itemTitle = updated.title,
+                        changes = listOf(takagi.ru.monica.utils.FieldChange("密码", "***", "***"))
+                    )
                 } else {
                     // 创建新密码条目
                     val newEntry = PasswordEntry(
@@ -144,7 +152,14 @@ class AutofillSaveActivity : ComponentActivity() {
                         createdAt = Date(),
                         updatedAt = Date()
                     )
-                    passwordRepository.insertPasswordEntry(newEntry)
+                    val newId = passwordRepository.insertPasswordEntry(newEntry)
+                    
+                    // 记录创建操作
+                    takagi.ru.monica.utils.OperationLogger.logCreate(
+                        itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                        itemId = newId,
+                        itemTitle = newEntry.title
+                    )
                 }
                 
                 setResult(RESULT_OK)

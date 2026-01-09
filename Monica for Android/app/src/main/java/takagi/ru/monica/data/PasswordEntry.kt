@@ -1,7 +1,9 @@
 package takagi.ru.monica.data
 
 import android.os.Parcelable
+import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.parcelize.Parcelize
 import java.util.Date
@@ -10,7 +12,10 @@ import java.util.Date
  * Password entry entity for Room database
  */
 @Parcelize
-@Entity(tableName = "password_entries")
+@Entity(
+    tableName = "password_entries",
+    indices = [Index(value = ["isDeleted"])]
+)
 data class PasswordEntry(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -47,5 +52,11 @@ data class PasswordEntry(
     val categoryId: Long? = null, // 分类ID
     
     // 关联的验证器密钥 (TOTP Secret)
-    val authenticatorKey: String = ""  // 用于存储绑定的TOTP验证器密钥
+    val authenticatorKey: String = "",  // 用于存储绑定的TOTP验证器密钥
+    
+    // 回收站功能 - 软删除字段
+    @ColumnInfo(defaultValue = "0")
+    val isDeleted: Boolean = false,      // 是否已删除（在回收站中）
+    @ColumnInfo(defaultValue = "NULL")
+    val deletedAt: java.util.Date? = null // 删除时间（用于自动清空）
 ) : Parcelable

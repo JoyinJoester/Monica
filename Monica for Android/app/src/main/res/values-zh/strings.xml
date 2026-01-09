@@ -522,6 +522,7 @@
     <string name="nav_bank_cards">银行卡</string>
     <string name="nav_notes">笔记</string>
     <string name="nav_generator">生成器</string>  <!-- 添加生成器导航标签 -->
+    <string name="nav_timeline">时间线</string>
     <string name="nav_settings">设置</string>
     <string name="add">添加</string>
     
@@ -534,6 +535,15 @@
     <string name="nav_card_wallet_short">卡包</string>
     <string name="nav_notes_short">笔记</string>
     <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
+    <string name="nav_timeline_short">历史</string>
+    
+    <!-- Timeline Screen -->
+    <string name="no_history_records">暂无历史记录</string>
+    <string name="sync_conflict">同步冲突</string>
+    <string name="modified_field">修改了 %1$s</string>
+    <string name="restore_version">恢复此版本</string>
+    <string name="save_as_new_entry">保存为新条目</string>
+    <string name="no_changes">无变更</string>
     <string name="nav_settings_short">设置</string>
     
     <!-- Generator Screen -->  <!-- 添加生成器页面相关字符串 -->
@@ -580,6 +590,10 @@
     <string name="document_images">证件照片</string>
     <string name="front_image">正面照片</string>
     <string name="back_image">反面照片</string>
+    <string name="card_photos">银行卡照片</string>
+    <string name="card_front">正面</string>
+    <string name="card_back">背面</string>
+    <string name="reset_zoom">重置缩放</string>
 
     <!-- Settings Screen -->
     <string name="settings_general">通用</string>
@@ -602,7 +616,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">V1.0.18</string>
+    <string name="settings_version_number">V1.0.19</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1235,6 +1249,7 @@
     <string name="backup_content_notes">笔记</string>
     <string name="backup_content_generator_history">密码生成历史</string>
     <string name="backup_content_images">图片</string>
+    <string name="backup_content_timeline">操作历史</string>
     <string name="deselect_all">全不选</string>
     <string name="backup_validation_error">请至少选择一种备份内容</string>
 

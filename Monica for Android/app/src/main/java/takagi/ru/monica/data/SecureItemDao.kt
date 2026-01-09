@@ -9,24 +9,24 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SecureItemDao {
     
-    // 获取所有项目
-    @Query("SELECT * FROM secure_items ORDER BY updatedAt DESC")
+    // 获取所有项目（排除已删除）
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 0 ORDER BY updatedAt DESC")
     fun getAllItems(): Flow<List<SecureItem>>
     
-    // 根据类型获取项目
-    @Query("SELECT * FROM secure_items WHERE itemType = :type ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    // 根据类型获取项目（排除已删除）
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND itemType = :type ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getItemsByType(type: ItemType): Flow<List<SecureItem>>
     
-    // 搜索项目
-    @Query("SELECT * FROM secure_items WHERE title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%' ORDER BY updatedAt DESC")
+    // 搜索项目（排除已删除）
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND (title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%') ORDER BY updatedAt DESC")
     fun searchItems(query: String): Flow<List<SecureItem>>
     
-    // 根据类型搜索
-    @Query("SELECT * FROM secure_items WHERE itemType = :type AND (title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%') ORDER BY isFavorite DESC, updatedAt DESC")
+    // 根据类型搜索（排除已删除）
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND itemType = :type AND (title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%') ORDER BY isFavorite DESC, updatedAt DESC")
     fun searchItemsByType(type: ItemType, query: String): Flow<List<SecureItem>>
     
-    // 获取收藏项目
-    @Query("SELECT * FROM secure_items WHERE isFavorite = 1 ORDER BY updatedAt DESC")
+    // 获取收藏项目（排除已删除）
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND isFavorite = 1 ORDER BY updatedAt DESC")
     fun getFavoriteItems(): Flow<List<SecureItem>>
     
     // 根据ID获取项目
@@ -86,4 +86,66 @@ interface SecureItemDao {
      */
     @Query("DELETE FROM secure_items")
     suspend fun deleteAllItems()
+    
+    // =============== 回收站相关方法 ===============
+    
+    /**
+     * 获取所有已删除的项目（回收站）
+     */
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedItems(): Flow<List<SecureItem>>
+    
+    /**
+     * 获取所有未删除的项目（正常项目）
+     */
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getActiveItems(): Flow<List<SecureItem>>
+    
+    /**
+     * 根据类型获取未删除的项目
+     */
+    @Query("SELECT * FROM secure_items WHERE itemType = :type AND isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getActiveItemsByType(type: ItemType): Flow<List<SecureItem>>
+    
+    /**
+     * 软删除项目（移动到回收站）
+     */
+    @Query("UPDATE secure_items SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
+    suspend fun softDelete(id: Long, deletedAt: Long = System.currentTimeMillis())
+    
+    /**
+     * 恢复已删除的项目
+     */
+    @Query("UPDATE secure_items SET isDeleted = 0, deletedAt = NULL WHERE id = :id")
+    suspend fun restore(id: Long)
+    
+    /**
+     * 永久删除所有回收站中的项目
+     */
+    @Query("DELETE FROM secure_items WHERE isDeleted = 1")
+    suspend fun permanentlyDeleteAll()
+    
+    /**
+     * 删除过期的回收站项目（超过指定天数）
+     */
+    @Query("DELETE FROM secure_items WHERE isDeleted = 1 AND deletedAt < :cutoffDate")
+    suspend fun deleteExpiredItems(cutoffDate: java.util.Date)
+    
+    /**
+     * 获取回收站项目数量
+     */
+    @Query("SELECT COUNT(*) FROM secure_items WHERE isDeleted = 1")
+    suspend fun getDeletedCount(): Int
+    
+    /**
+     * 更新项目（用于恢复等操作）
+     */
+    @Update
+    suspend fun update(item: SecureItem)
+    
+    /**
+     * 删除项目
+     */
+    @Delete
+    suspend fun delete(item: SecureItem)
 }

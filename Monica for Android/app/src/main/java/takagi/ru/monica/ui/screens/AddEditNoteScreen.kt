@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -53,8 +54,8 @@ fun AddEditNoteScreen(
     val biometricHelper = remember { BiometricHelper(context) }
     val securityManager = remember { SecurityManager(context) }
 
-    var content by remember { mutableStateOf("") }
-    var isFavorite by remember { mutableStateOf(false) }
+    var content by rememberSaveable { mutableStateOf("") }
+    var isFavorite by rememberSaveable { mutableStateOf(false) }
     var createdAt by remember { mutableStateOf(java.util.Date()) }
     var currentNote by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
     var showConfirmDelete by remember { mutableStateOf(false) }

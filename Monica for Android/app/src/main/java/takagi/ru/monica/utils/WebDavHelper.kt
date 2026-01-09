@@ -77,6 +77,20 @@ private data class CategoryBackupEntry(
     val sortOrder: Int = 0
 )
 
+@Serializable
+private data class OperationLogBackupEntry(
+    val id: Long = 0,
+    val itemType: String = "",
+    val itemId: Long = 0,
+    val itemTitle: String = "",
+    val operationType: String = "",
+    val changesJson: String = "",
+    val deviceId: String = "",
+    val deviceName: String = "",
+    val timestamp: Long = 0,
+    val isReverted: Boolean = false
+)
+
 /**
  * WebDAV 帮助类
  * 用于备份和恢复数据到 WebDAV 服务器
@@ -108,6 +122,7 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_GENERATOR_HISTORY = "backup_include_generator_history"
         private const val KEY_BACKUP_INCLUDE_IMAGES = "backup_include_images"
         private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
+        private const val KEY_BACKUP_INCLUDE_TIMELINE = "backup_include_timeline"
     }
     
     // 加密相关
@@ -341,6 +356,7 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, preferences.includeGeneratorHistory)
             putBoolean(KEY_BACKUP_INCLUDE_IMAGES, preferences.includeImages)
             putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
+            putBoolean(KEY_BACKUP_INCLUDE_TIMELINE, preferences.includeTimeline)
             apply()
         }
         android.util.Log.d("WebDavHelper", "Saved backup preferences: $preferences")
@@ -359,7 +375,8 @@ class WebDavHelper(
             includeBankCards = prefs.getBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, true),
             includeGeneratorHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, true),
             includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true),
-            includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true)
+            includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true),
+            includeTimeline = prefs.getBoolean(KEY_BACKUP_INCLUDE_TIMELINE, true)
         )
     }
     
@@ -690,6 +707,45 @@ class WebDavHelper(
                             warnings.add("图片备份失败: ${e.message}")
                         }
                     }
+                    
+                    // 7.5 备份操作历史记录 (时间线)
+                    if (preferences.includeTimeline) {
+                        try {
+                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                            val operationLogDao = database.operationLogDao()
+                            val allLogs = operationLogDao.getAllLogsSync()
+                            
+                            if (allLogs.isNotEmpty()) {
+                                val logBackups = allLogs.map { log ->
+                                    OperationLogBackupEntry(
+                                        id = log.id,
+                                        itemType = log.itemType,
+                                        itemId = log.itemId,
+                                        itemTitle = log.itemTitle,
+                                        operationType = log.operationType,
+                                        changesJson = log.changesJson,
+                                        deviceId = log.deviceId,
+                                        deviceName = log.deviceName,
+                                        timestamp = log.timestamp,
+                                        isReverted = log.isReverted
+                                    )
+                                }
+                                val json = Json { prettyPrint = false }
+                                val timelineJson = json.encodeToString(
+                                    kotlinx.serialization.builtins.ListSerializer(OperationLogBackupEntry.serializer()),
+                                    logBackups
+                                )
+                                val timelineFile = File(cacheBackupDir, "timeline_history.json")
+                                timelineFile.writeText(timelineJson, Charsets.UTF_8)
+                                addFileToZip(zipOut, timelineFile, timelineFile.name)
+                                timelineFile.delete()
+                                android.util.Log.d("WebDavHelper", "Backup ${allLogs.size} timeline entries")
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("WebDavHelper", "Failed to backup timeline: ${e.message}")
+                            warnings.add("操作历史备份失败: ${e.message}")
+                        }
+                    }
                 }
 
                 // 8. 加密
@@ -748,7 +804,8 @@ class WebDavHelper(
         passwords: List<PasswordEntry>,
         secureItems: List<SecureItem>,
         preferences: BackupPreferences = getBackupPreferences(),
-        isPermanent: Boolean = false
+        isPermanent: Boolean = false,
+        isManualTrigger: Boolean = true  // 默认为手动触发
     ): Result<BackupReport> = withContext(Dispatchers.IO) {
         try {
             // 调用重构后的创建方法
@@ -769,6 +826,33 @@ class WebDavHelper(
 
                     // Trigger cleanup after successful upload
                     cleanupBackups()
+                    
+                    // 记录 WebDAV 上传操作到时间线
+                    val uploadDetails = mutableListOf<FieldChange>()
+                    if (passwords.isNotEmpty()) {
+                        uploadDetails.add(FieldChange("密码", "", "${passwords.size}项"))
+                    }
+                    val totpCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
+                    if (totpCount > 0) {
+                        uploadDetails.add(FieldChange("验证器", "", "${totpCount}项"))
+                    }
+                    val cardCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
+                    if (cardCount > 0) {
+                        uploadDetails.add(FieldChange("卡片", "", "${cardCount}项"))
+                    }
+                    val noteCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
+                    if (noteCount > 0) {
+                        uploadDetails.add(FieldChange("笔记", "", "${noteCount}项"))
+                    }
+                    val docCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
+                    if (docCount > 0) {
+                        uploadDetails.add(FieldChange("证件", "", "${docCount}项"))
+                    }
+                    OperationLogger.logWebDavUpload(
+                        isAutomatic = !isManualTrigger,
+                        isPermanent = isPermanent,
+                        details = uploadDetails
+                    )
 
                     // 更新报告状态为 true (如果之前没有失败项)
                     val finalReport = report.copy(success = report.success)
@@ -1045,6 +1129,51 @@ class WebDavHelper(
                                         warnings.add("分类恢复失败: ${e.message}")
                                     }
                                 }
+                                // ✅ 恢复操作历史记录 (时间线)
+                                entryName.equals("timeline_history.json", ignoreCase = true) -> {
+                                    try {
+                                        val timelineJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val logBackups = json.decodeFromString<List<OperationLogBackupEntry>>(timelineJson)
+                                        
+                                        if (logBackups.isNotEmpty()) {
+                                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                                            val operationLogDao = database.operationLogDao()
+                                            
+                                            // 获取现有日志的时间戳用于去重
+                                            val existingLogs = operationLogDao.getAllLogsSync()
+                                            val existingTimestamps = existingLogs.map { it.timestamp }.toSet()
+                                            
+                                            // 只导入不存在的日志
+                                            val newLogs = logBackups.filter { backup ->
+                                                backup.timestamp !in existingTimestamps
+                                            }.map { backup ->
+                                                takagi.ru.monica.data.OperationLog(
+                                                    id = 0, // 使用新ID，避免冲突
+                                                    itemType = backup.itemType,
+                                                    itemId = backup.itemId,
+                                                    itemTitle = backup.itemTitle,
+                                                    operationType = backup.operationType,
+                                                    changesJson = backup.changesJson,
+                                                    deviceId = backup.deviceId,
+                                                    deviceName = backup.deviceName,
+                                                    timestamp = backup.timestamp,
+                                                    isReverted = backup.isReverted
+                                                )
+                                            }
+                                            
+                                            if (newLogs.isNotEmpty()) {
+                                                operationLogDao.insertAll(newLogs)
+                                                android.util.Log.d("WebDavHelper", "Restored ${newLogs.size} new timeline entries (${logBackups.size - newLogs.size} duplicates skipped)")
+                                            } else {
+                                                android.util.Log.d("WebDavHelper", "All ${logBackups.size} timeline entries already exist, skipped")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore timeline: ${e.message}")
+                                        warnings.add("操作历史恢复失败: ${e.message}")
+                                    }
+                                }
                                 normalizedEntryName.contains("/images/") || entryName.endsWith(".enc") -> {
                                     backupImageCount++
                                     // 恢复图片文件
@@ -1220,7 +1349,79 @@ class WebDavHelper(
                     return@withContext Result.failure(ex ?: Exception("恢复失败"))
                 }
                 
-                Result.success(restoreResult.getOrThrow())
+                // 记录 WebDAV 下载/同步操作到时间线
+                // 注意：此时数据还未真正写入数据库，result 包含的是备份文件中解析出的条目
+                // 实际新增/修改的统计需要在合并逻辑中完成
+                val result = restoreResult.getOrThrow()
+                val downloadDetails = mutableListOf<FieldChange>()
+                val newItemNames = mutableListOf<FieldChange>()
+                
+                // 密码统计
+                if (result.content.passwords.isNotEmpty()) {
+                    val passwordCount = result.content.passwords.size
+                    downloadDetails.add(FieldChange("密码", "", "${passwordCount}项"))
+                    // 收集密码名称用于git-branch风格展示（最多10个）
+                    result.content.passwords.take(10).forEach { pwd ->
+                        newItemNames.add(FieldChange("密码", "", pwd.title.ifBlank { pwd.username }))
+                    }
+                    if (passwordCount > 10) {
+                        newItemNames.add(FieldChange("密码", "", "...还有${passwordCount - 10}项"))
+                    }
+                }
+                
+                // 安全项统计
+                val secureItems = result.content.secureItems
+                val totpItems = secureItems.filter { it.itemType == "TOTP" }
+                if (totpItems.isNotEmpty()) {
+                    downloadDetails.add(FieldChange("验证器", "", "${totpItems.size}项"))
+                    totpItems.take(10).forEach { item ->
+                        newItemNames.add(FieldChange("验证器", "", item.title))
+                    }
+                    if (totpItems.size > 10) {
+                        newItemNames.add(FieldChange("验证器", "", "...还有${totpItems.size - 10}项"))
+                    }
+                }
+                
+                val cardItems = secureItems.filter { it.itemType == "BANK_CARD" }
+                if (cardItems.isNotEmpty()) {
+                    downloadDetails.add(FieldChange("卡片", "", "${cardItems.size}项"))
+                    cardItems.take(10).forEach { item ->
+                        newItemNames.add(FieldChange("卡片", "", item.title))
+                    }
+                    if (cardItems.size > 10) {
+                        newItemNames.add(FieldChange("卡片", "", "...还有${cardItems.size - 10}项"))
+                    }
+                }
+                
+                val noteItems = secureItems.filter { it.itemType == "NOTE" }
+                if (noteItems.isNotEmpty()) {
+                    downloadDetails.add(FieldChange("笔记", "", "${noteItems.size}项"))
+                    noteItems.take(10).forEach { item ->
+                        newItemNames.add(FieldChange("笔记", "", item.title))
+                    }
+                    if (noteItems.size > 10) {
+                        newItemNames.add(FieldChange("笔记", "", "...还有${noteItems.size - 10}项"))
+                    }
+                }
+                
+                val docItems = secureItems.filter { it.itemType == "DOCUMENT" }
+                if (docItems.isNotEmpty()) {
+                    downloadDetails.add(FieldChange("证件", "", "${docItems.size}项"))
+                    docItems.take(10).forEach { item ->
+                        newItemNames.add(FieldChange("证件", "", item.title))
+                    }
+                    if (docItems.size > 10) {
+                        newItemNames.add(FieldChange("证件", "", "...还有${docItems.size - 10}项"))
+                    }
+                }
+                
+                if (downloadDetails.isNotEmpty()) {
+                    // 合并统计和详细条目列表
+                    val allDetails = downloadDetails + newItemNames
+                    OperationLogger.logWebDavDownload(addedItems = allDetails)
+                }
+                
+                Result.success(result)
             } finally {
                 // 清理下载的文件
                 downloadedFile.delete()

@@ -38,6 +38,7 @@ class SettingsManager(private val context: Context) {
         private val SHOW_NOTES_TAB_KEY = booleanPreferencesKey("show_notes_tab")
         private val SHOW_LEDGER_TAB_KEY = booleanPreferencesKey("show_ledger_tab")
         private val SHOW_GENERATOR_TAB_KEY = booleanPreferencesKey("show_generator_tab")  // 添加生成器标签键
+        private val SHOW_TIMELINE_TAB_KEY = booleanPreferencesKey("show_timeline_tab")  // 添加时间线标签键
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
@@ -50,6 +51,8 @@ class SettingsManager(private val context: Context) {
         private val STACK_CARD_MODE_KEY = stringPreferencesKey("stack_card_mode")
         private val PASSWORD_GROUP_MODE_KEY = stringPreferencesKey("password_group_mode")
         private val TOTP_TIME_OFFSET_KEY = intPreferencesKey("totp_time_offset") // TOTP时间偏移（秒）
+        private val TRASH_ENABLED_KEY = booleanPreferencesKey("trash_enabled") // 回收站功能开关
+        private val TRASH_AUTO_DELETE_DAYS_KEY = intPreferencesKey("trash_auto_delete_days") // 回收站自动清空天数
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -86,7 +89,8 @@ class SettingsManager(private val context: Context) {
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
                 cardWallet = preferences[SHOW_CARD_WALLET_TAB_KEY] ?: true,
                 generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false,
-                notes = preferences[SHOW_NOTES_TAB_KEY] ?: false
+                notes = preferences[SHOW_NOTES_TAB_KEY] ?: false,
+                timeline = preferences[SHOW_TIMELINE_TAB_KEY] ?: false
             ),
             bottomNavOrder = sanitizedOrder,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
@@ -104,7 +108,9 @@ class SettingsManager(private val context: Context) {
             isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
             passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart",
-            totpTimeOffset = preferences[TOTP_TIME_OFFSET_KEY] ?: 0
+            totpTimeOffset = preferences[TOTP_TIME_OFFSET_KEY] ?: 0,
+            trashEnabled = preferences[TRASH_ENABLED_KEY] ?: true,
+            trashAutoDeleteDays = preferences[TRASH_AUTO_DELETE_DAYS_KEY] ?: 30
         )
     }
     
@@ -158,6 +164,7 @@ class SettingsManager(private val context: Context) {
                 BottomNavContentTab.CARD_WALLET -> preferences[SHOW_CARD_WALLET_TAB_KEY] = visible
                 BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible  // 添加生成器分支
                 BottomNavContentTab.NOTES -> preferences[SHOW_NOTES_TAB_KEY] = visible
+                BottomNavContentTab.TIMELINE -> preferences[SHOW_TIMELINE_TAB_KEY] = visible
             }
         }
     }
@@ -236,6 +243,18 @@ class SettingsManager(private val context: Context) {
     suspend fun updateTotpTimeOffset(offset: Int) {
         dataStore.edit { preferences ->
             preferences[TOTP_TIME_OFFSET_KEY] = offset
+        }
+    }
+
+    suspend fun updateTrashEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[TRASH_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateTrashAutoDeleteDays(days: Int) {
+        dataStore.edit { preferences ->
+            preferences[TRASH_AUTO_DELETE_DAYS_KEY] = days
         }
     }
 }

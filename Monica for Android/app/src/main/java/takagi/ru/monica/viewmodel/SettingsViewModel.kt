@@ -154,4 +154,17 @@ class SettingsViewModel(
             settingsManager.updatePlusActivated(activated)
         }
     }
+    
+    // 回收站设置
+    fun updateTrashEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateTrashEnabled(enabled)
+        }
+    }
+    
+    fun updateTrashAutoDeleteDays(days: Int) {
+        viewModelScope.launch {
+            settingsManager.updateTrashAutoDeleteDays(days)
+        }
+    }
 }

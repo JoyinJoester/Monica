@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,16 +38,16 @@ fun AddEditBankCardScreen(
 ) {
     val context = LocalContext.current
     
-    var title by remember { mutableStateOf("") }
-    var cardNumber by remember { mutableStateOf("") }
-    var cardholderName by remember { mutableStateOf("") }
-    var expiryMonth by remember { mutableStateOf("") }
-    var expiryYear by remember { mutableStateOf("") }
-    var cvv by remember { mutableStateOf("") }
-    var bankName by remember { mutableStateOf("") }
-    var cardType by remember { mutableStateOf(CardType.DEBIT) }
-    var notes by remember { mutableStateOf("") }
-    var isFavorite by remember { mutableStateOf(false) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var cardNumber by rememberSaveable { mutableStateOf("") }
+    var cardholderName by rememberSaveable { mutableStateOf("") }
+    var expiryMonth by rememberSaveable { mutableStateOf("") }
+    var expiryYear by rememberSaveable { mutableStateOf("") }
+    var cvv by rememberSaveable { mutableStateOf("") }
+    var bankName by rememberSaveable { mutableStateOf("") }
+    var cardType by rememberSaveable { mutableStateOf(CardType.DEBIT) }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var isFavorite by rememberSaveable { mutableStateOf(false) }
     var showCardTypeMenu by remember { mutableStateOf(false) }
     var showCardNumber by remember { mutableStateOf(false) }
     var showCvv by remember { mutableStateOf(false) }
@@ -55,8 +56,8 @@ fun AddEditBankCardScreen(
     var showBillingAddressDialog by remember { mutableStateOf(false) }
     
     // 图片路径管理
-    var frontImageFileName by remember { mutableStateOf<String?>(null) }
-    var backImageFileName by remember { mutableStateOf<String?>(null) }
+    var frontImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var backImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     
     // 如果是编辑模式，加载现有数据
     LaunchedEffect(cardId) {

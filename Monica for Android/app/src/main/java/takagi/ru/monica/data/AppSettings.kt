@@ -42,14 +42,16 @@ enum class BottomNavContentTab {
     AUTHENTICATOR,
     CARD_WALLET,
     GENERATOR,
-    NOTES;
+    NOTES,
+    TIMELINE;
 
     companion object {
         val DEFAULT_ORDER: List<BottomNavContentTab> = listOf(
             PASSWORDS,
             AUTHENTICATOR,
             CARD_WALLET,
-            NOTES
+            NOTES,
+            TIMELINE
         )
 
         fun sanitizeOrder(order: List<BottomNavContentTab>): List<BottomNavContentTab> {
@@ -75,7 +77,8 @@ data class BottomNavVisibility(
     val authenticator: Boolean = true,
     val cardWallet: Boolean = true,
     val generator: Boolean = false,   // 生成器功能默认关闭
-    val notes: Boolean = true        // 笔记功能默认开启
+    val notes: Boolean = true,        // 笔记功能默认开启
+    val timeline: Boolean = false      // 时间线功能默认关闭
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
         BottomNavContentTab.PASSWORDS -> passwords
@@ -83,9 +86,10 @@ data class BottomNavVisibility(
         BottomNavContentTab.CARD_WALLET -> cardWallet
         BottomNavContentTab.GENERATOR -> generator
         BottomNavContentTab.NOTES -> notes
+        BottomNavContentTab.TIMELINE -> timeline
     }
 
-    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes).count { it }
+    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, timeline).count { it }
 }
 
 data class AppSettings(
@@ -110,5 +114,7 @@ data class AppSettings(
     val isPlusActivated: Boolean = false, // Plus是否已激活
     val stackCardMode: String = "AUTO", // 堆叠卡片模式
     val passwordGroupMode: String = "smart", // 密码分组模式
-    val totpTimeOffset: Int = 0 // TOTP时间偏移（秒），用于校正系统时间误差
+    val totpTimeOffset: Int = 0, // TOTP时间偏移（秒），用于校正系统时间误差
+    val trashEnabled: Boolean = true, // 回收站功能是否启用
+    val trashAutoDeleteDays: Int = 30 // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
 )

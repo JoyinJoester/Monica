@@ -9,22 +9,22 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PasswordEntryDao {
     
-    @Query("SELECT * FROM password_entries ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>>
     
-    @Query("SELECT * FROM password_entries WHERE categoryId = :categoryId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND categoryId = :categoryId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesByCategory(categoryId: Long): Flow<List<PasswordEntry>>
 
-    @Query("SELECT * FROM password_entries WHERE categoryId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND categoryId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getUncategorizedPasswordEntries(): Flow<List<PasswordEntry>>
 
-    @Query("SELECT * FROM password_entries WHERE isFavorite = 1 ORDER BY sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isFavorite = 1 ORDER BY sortOrder ASC, updatedAt DESC")
     fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>>
     
     @Query("UPDATE password_entries SET categoryId = NULL WHERE categoryId = :categoryId")
     suspend fun removeCategoryFromPasswords(categoryId: Long)
     
-    @Query("SELECT * FROM password_entries WHERE title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' OR appName LIKE '%' || :query || '%' OR appPackageName LIKE '%' || :query || '%' ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND (title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' OR appName LIKE '%' || :query || '%' OR appPackageName LIKE '%' || :query || '%') ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>>
     
     @Query("SELECT * FROM password_entries WHERE id = :id")
@@ -128,4 +128,60 @@ interface PasswordEntryDao {
      */
     @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) AND password = :encryptedPassword LIMIT 1")
     suspend fun findExactMatch(packageName: String, username: String, encryptedPassword: String): PasswordEntry?
+    
+    // =============== 回收站相关方法 ===============
+    
+    /**
+     * 获取所有已删除的条目（回收站）
+     */
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedEntries(): Flow<List<PasswordEntry>>
+    
+    /**
+     * 获取所有未删除的条目（正常条目）
+     */
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getActiveEntries(): Flow<List<PasswordEntry>>
+    
+    /**
+     * 软删除条目（移动到回收站）
+     */
+    @Query("UPDATE password_entries SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
+    suspend fun softDelete(id: Long, deletedAt: Long = System.currentTimeMillis())
+    
+    /**
+     * 恢复已删除的条目
+     */
+    @Query("UPDATE password_entries SET isDeleted = 0, deletedAt = NULL WHERE id = :id")
+    suspend fun restore(id: Long)
+    
+    /**
+     * 永久删除所有回收站中的条目
+     */
+    @Query("DELETE FROM password_entries WHERE isDeleted = 1")
+    suspend fun permanentlyDeleteAll()
+    
+    /**
+     * 删除过期的回收站条目（超过指定天数）
+     */
+    @Query("DELETE FROM password_entries WHERE isDeleted = 1 AND deletedAt < :cutoffDate")
+    suspend fun deleteExpiredItems(cutoffDate: java.util.Date)
+    
+    /**
+     * 获取回收站条目数量
+     */
+    @Query("SELECT COUNT(*) FROM password_entries WHERE isDeleted = 1")
+    suspend fun getDeletedCount(): Int
+    
+    /**
+     * 更新条目（用于恢复等操作）
+     */
+    @Update
+    suspend fun update(entry: PasswordEntry)
+    
+    /**
+     * 删除条目
+     */
+    @Delete
+    suspend fun delete(entry: PasswordEntry)
 }

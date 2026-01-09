@@ -29,3 +29,5 @@ packages/
 # Temporary
 *.log
 *.tmp
+Monica for Android/build_errors.txt
+Monica for Android/build_log.txt

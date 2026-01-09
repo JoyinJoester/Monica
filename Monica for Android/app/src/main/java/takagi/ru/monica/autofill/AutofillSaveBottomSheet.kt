@@ -185,6 +185,14 @@ class AutofillSaveBottomSheet : BottomSheetDialogFragment() {
                         android.util.Log.d("AutofillSave", "4️⃣ 更新数据库...")
                         passwordRepository.updatePasswordEntry(updated)
                         android.util.Log.i("AutofillSave", "   ✅ 更新密码成功! ID=${updated.id}")
+                        
+                        // 记录更新操作到时间轴
+                        takagi.ru.monica.utils.OperationLogger.logUpdate(
+                            itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                            itemId = updated.id,
+                            itemTitle = updated.title,
+                            changes = listOf(takagi.ru.monica.utils.FieldChange("密码", "***", "***"))
+                        )
                     }
                     is PasswordSaveHelper.DuplicateCheckResult.ExactDuplicate -> {
                         android.util.Log.i("AutofillSave", "   ⏭️  密码完全相同,跳过保存")
@@ -213,6 +221,13 @@ class AutofillSaveBottomSheet : BottomSheetDialogFragment() {
                         android.util.Log.d("AutofillSave", "5️⃣ 插入数据库...")
                         val newId = passwordRepository.insertPasswordEntry(newEntry)
                         android.util.Log.i("AutofillSave", "   ✅ 数据库插入成功! 新ID=$newId")
+                        
+                        // 记录创建操作到时间轴
+                        takagi.ru.monica.utils.OperationLogger.logCreate(
+                            itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                            itemId = newId,
+                            itemTitle = newEntry.title
+                        )
                         
                         // Step 6: 验证保存
                         android.util.Log.d("AutofillSave", "")

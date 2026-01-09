@@ -33,7 +33,7 @@ namespace Monica.Windows.ViewModels
 
         private string GetAppVersion()
         {
-            return "V1.0.18";
+            return "V1.0.19";
         }
 
         [RelayCommand]

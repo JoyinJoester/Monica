@@ -206,6 +206,15 @@ fun SelectiveBackupCard(
                         }
                     )
                     
+                    ContentTypeSwitch(
+                        label = stringResource(R.string.backup_content_timeline),
+                        count = null, // 时间线不显示数量
+                        checked = preferences.includeTimeline,
+                        onCheckedChange = { 
+                            onPreferencesChange(preferences.copy(includeTimeline = it))
+                        }
+                    )
+                    
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     // 全选/全不选按钮
@@ -223,7 +232,8 @@ fun SelectiveBackupCard(
                                         includeBankCards = true,
                                         includeNotes = true,
                                         includeGeneratorHistory = true,
-                                        includeImages = true
+                                        includeImages = true,
+                                        includeTimeline = true
                                     )
                                 )
                             },
@@ -242,7 +252,8 @@ fun SelectiveBackupCard(
                                         includeBankCards = false,
                                         includeNotes = false,
                                         includeGeneratorHistory = false,
-                                        includeImages = false
+                                        includeImages = false,
+                                        includeTimeline = false
                                     )
                                 )
                             },

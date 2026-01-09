@@ -1,6 +1,8 @@
 package takagi.ru.monica.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.Date
 
@@ -8,7 +10,10 @@ import java.util.Date
  * 统一的安全数据项实体
  * 支持多种类型：TOTP验证器、银行卡、证件、笔记
  */
-@Entity(tableName = "secure_items")
+@Entity(
+    tableName = "secure_items",
+    indices = [Index(value = ["isDeleted"])]
+)
 data class SecureItem(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -26,7 +31,13 @@ data class SecureItem(
     val itemData: String,    // 存储不同类型的具体数据(JSON)
     
     // 图片附件路径(加密存储)
-    val imagePaths: String = "" // JSON数组,存储图片文件路径
+    val imagePaths: String = "", // JSON数组,存储图片文件路径
+    
+    // 回收站功能 - 软删除字段
+    @ColumnInfo(defaultValue = "0")
+    val isDeleted: Boolean = false,     // 是否已删除（在回收站中）
+    @ColumnInfo(defaultValue = "NULL")
+    val deletedAt: Date? = null          // 删除时间（用于自动清空）
 )
 
 /**

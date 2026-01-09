@@ -604,7 +604,8 @@ fun WebDavBackupScreen(
                                     passwords = decryptedPasswords, 
                                     secureItems = allSecureItems,
                                     preferences = backupPreferences,
-                                    isPermanent = true // Manual backups are permanent
+                                    isPermanent = true, // Manual backups are permanent
+                                    isManualTrigger = true
                                 )
                                 
                                 if (result.isSuccess) {

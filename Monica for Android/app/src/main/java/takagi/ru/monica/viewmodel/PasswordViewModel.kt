@@ -36,6 +36,12 @@ class PasswordViewModel(
 ) : ViewModel() {
     
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
+    private val settingsManager: takagi.ru.monica.utils.SettingsManager? = context?.let { takagi.ru.monica.utils.SettingsManager(it) }
+    
+    // 回收站设置
+    private val trashSettings = settingsManager?.settingsFlow?.map { 
+        it.trashEnabled to it.trashAutoDeleteDays 
+    }?.stateIn(viewModelScope, SharingStarted.Eagerly, true to 30)
     
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -163,6 +169,27 @@ class PasswordViewModel(
                 createdAt = Date(),
                 updatedAt = Date()
             ))
+            // 记录创建操作（包含详细字段信息）
+            val createDetails = mutableListOf<takagi.ru.monica.utils.FieldChange>()
+            if (entry.username.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("用户名", "", entry.username))
+            }
+            if (entry.website.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("网站", "", entry.website))
+            }
+            if (entry.password.isNotBlank()) {
+                // 记录真实密码，在UI层隐藏显示
+                createDetails.add(takagi.ru.monica.utils.FieldChange("密码", "", entry.password))
+            }
+            if (entry.notes.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("备注", "", entry.notes.take(50)))
+            }
+            takagi.ru.monica.utils.OperationLogger.logCreate(
+                itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                itemId = id,
+                itemTitle = entry.title,
+                details = createDetails
+            )
             onResult(id)
         }
     }
@@ -175,16 +202,82 @@ class PasswordViewModel(
     
     fun updatePasswordEntry(entry: PasswordEntry) {
         viewModelScope.launch {
+            // 获取旧数据用于对比
+            val oldEntry = repository.getPasswordEntryById(entry.id)
+            val oldPassword = oldEntry?.let { securityManager.decryptData(it.password) } ?: ""
+
             repository.updatePasswordEntry(entry.copy(
                 password = securityManager.encryptData(entry.password),
                 updatedAt = Date()
             ))
+            
+            // 记录更新操作
+            val changes = takagi.ru.monica.utils.OperationLogger.compareAndGetChanges(
+                old = oldEntry,
+                new = entry,
+                fields = listOf(
+                    "用户名" to { it.username },
+                    "网站" to { it.website },
+                    "备注" to { it.notes }
+                )
+            )
+
+            // 捕获密码变化（记录真实密码，在UI层隐藏显示）
+            if (oldEntry != null && oldPassword != entry.password) {
+                val updatedChanges = changes.toMutableList()
+                updatedChanges.add(
+                    takagi.ru.monica.utils.FieldChange(
+                        fieldName = "密码",
+                        oldValue = oldPassword,
+                        newValue = entry.password
+                    )
+                )
+                takagi.ru.monica.utils.OperationLogger.logUpdate(
+                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                    itemId = entry.id,
+                    itemTitle = entry.title,
+                    changes = updatedChanges
+                )
+                return@launch
+            }
+            takagi.ru.monica.utils.OperationLogger.logUpdate(
+                itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                itemId = entry.id,
+                itemTitle = entry.title,
+                changes = changes
+            )
         }
     }
     
     fun deletePasswordEntry(entry: PasswordEntry) {
         viewModelScope.launch {
-            repository.deletePasswordEntry(entry)
+            val trashEnabled = trashSettings?.value?.first ?: true
+            
+            if (trashEnabled) {
+                // 软删除：移动到回收站
+                val softDeletedEntry = entry.copy(
+                    isDeleted = true,
+                    deletedAt = Date(),
+                    updatedAt = Date()
+                )
+                repository.updatePasswordEntry(softDeletedEntry)
+                // 记录移入回收站操作
+                takagi.ru.monica.utils.OperationLogger.logDelete(
+                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                    itemId = entry.id,
+                    itemTitle = entry.title,
+                    detail = "移入回收站"
+                )
+            } else {
+                // 直接永久删除
+                repository.deletePasswordEntry(entry)
+                // 记录删除操作
+                takagi.ru.monica.utils.OperationLogger.logDelete(
+                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                    itemId = entry.id,
+                    itemTitle = entry.title
+                )
+            }
         }
     }
     
@@ -396,8 +489,19 @@ class PasswordViewModel(
                         id = 0, // Reset ID for new entry
                         password = password
                     )
-                    val newId = repository.insertPasswordEntry(newEntry)
+                    val newId = repository.insertPasswordEntry(newEntry.copy(
+                        password = securityManager.encryptData(newEntry.password),
+                        createdAt = java.util.Date(),
+                        updatedAt = java.util.Date()
+                    ))
                     if (index == 0) firstId = newId
+                    
+                    // 记录创建操作
+                    takagi.ru.monica.utils.OperationLogger.logCreate(
+                        itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                        itemId = newId,
+                        itemTitle = newEntry.title
+                    )
                 }
             }
 

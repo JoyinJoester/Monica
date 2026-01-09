@@ -13,9 +13,10 @@ import androidx.room.TypeConverters
     entities = [
         PasswordEntry::class,
         SecureItem::class,
-        Category::class
+        Category::class,
+        OperationLog::class
     ],
-    version = 18,
+    version = 21,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -24,6 +25,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun passwordEntryDao(): PasswordEntryDao
     abstract fun secureItemDao(): SecureItemDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun operationLogDao(): OperationLogDao
     
     companion object {
         @Volatile
@@ -283,6 +285,51 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 18 → 19 - 添加操作日志表
+        private val MIGRATION_18_19 = object : androidx.room.migration.Migration(18, 19) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS operation_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        itemType TEXT NOT NULL,
+                        itemId INTEGER NOT NULL,
+                        itemTitle TEXT NOT NULL,
+                        operationType TEXT NOT NULL,
+                        changesJson TEXT NOT NULL DEFAULT '',
+                        deviceId TEXT NOT NULL DEFAULT '',
+                        deviceName TEXT NOT NULL DEFAULT '',
+                        timestamp INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_operation_logs_timestamp ON operation_logs(timestamp)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_operation_logs_itemType ON operation_logs(itemType)")
+            }
+        }
+
+        // Migration 19 → 20 - 添加 isReverted 字段
+        private val MIGRATION_19_20 = object : androidx.room.migration.Migration(19, 20) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE operation_logs ADD COLUMN isReverted INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // Migration 20 → 21 - 添加回收站功能（软删除字段）
+        private val MIGRATION_20_21 = object : androidx.room.migration.Migration(20, 21) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 为 password_entries 表添加软删除字段
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN deletedAt INTEGER DEFAULT NULL")
+                
+                // 为 secure_items 表添加软删除字段
+                database.execSQL("ALTER TABLE secure_items ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE secure_items ADD COLUMN deletedAt INTEGER DEFAULT NULL")
+                
+                // 创建索引以优化查询
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_password_entries_isDeleted ON password_entries(isDeleted)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_secure_items_isDeleted ON secure_items(isDeleted)")
+            }
+        }
+
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -308,7 +355,10 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_14_15,  // 扩展OTP支持
                         MIGRATION_15_16,  // 版本占位
                         MIGRATION_16_17,  // 添加分类功能
-                        MIGRATION_17_18   // 添加authenticatorKey字段
+                        MIGRATION_17_18,  // 添加authenticatorKey字段
+                        MIGRATION_18_19,  // 添加操作日志表
+                        MIGRATION_19_20,  // 添加 isReverted 字段
+                        MIGRATION_20_21   // 添加回收站功能（软删除字段）
                     )
                     .build()
                 INSTANCE = instance

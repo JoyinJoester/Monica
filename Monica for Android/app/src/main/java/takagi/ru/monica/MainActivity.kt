@@ -137,6 +137,9 @@ class MainActivity : FragmentActivity() {
         val securityManager = SecurityManager(this)
         val settingsManager = SettingsManager(this)
         
+        // Initialize OperationLogger for timeline tracking
+        takagi.ru.monica.utils.OperationLogger.init(this)
+        
         // Initialize auto backup if enabled
         initializeAutoBackup()
 
@@ -428,6 +431,9 @@ fun MonicaContent(
                 onNavigateToAddTotp = { totpId ->
                     navController.navigate(Screen.AddEditTotp.createRoute(totpId))
                 },
+                onNavigateToQuickTotpScan = {
+                    navController.navigate(Screen.QuickTotpScan.route)
+                },
                 onNavigateToAddBankCard = { cardId ->
                     navController.navigate(Screen.AddEditBankCard.createRoute(cardId))
                 },
@@ -718,6 +724,60 @@ fun MonicaContent(
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("qr_result", qrData)
+                    navController.popBackStack()
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // 快速扫码添加验证器 - 扫描后直接保存到数据库
+        composable(Screen.QuickTotpScan.route) {
+            val context = LocalContext.current
+            takagi.ru.monica.ui.screens.QrScannerScreen(
+                onQrCodeScanned = { qrData ->
+                    // 解析扫描到的 otpauth:// URI
+                    val parseResult = takagi.ru.monica.util.TotpUriParser.parseUri(qrData)
+                    if (parseResult != null) {
+                        // 使用label作为标题，如果为空则用issuer或accountName
+                        val title = parseResult.label.takeIf { it.isNotBlank() }
+                            ?: parseResult.totpData.issuer.takeIf { it.isNotBlank() }
+                            ?: parseResult.totpData.accountName.takeIf { it.isNotBlank() }
+                            ?: "未命名验证器"
+                        
+                        // 检查是否已存在相同密钥的验证器
+                        val existingItem = totpViewModel.findTotpBySecret(parseResult.totpData.secret)
+                        if (existingItem != null) {
+                            // 已存在相同密钥，显示提示
+                            android.widget.Toast.makeText(
+                                context,
+                                "该验证器已存在: ${existingItem.title}",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            // 直接保存到数据库
+                            totpViewModel.saveTotpItem(
+                                id = null,
+                                title = title,
+                                notes = "",
+                                totpData = parseResult.totpData,
+                                isFavorite = false
+                            )
+                            android.widget.Toast.makeText(
+                                context,
+                                "已添加验证器: $title",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } else {
+                        // 解析失败，显示错误提示
+                        android.widget.Toast.makeText(
+                            context,
+                            "无效的二维码，请扫描有效的验证器二维码",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
                     navController.popBackStack()
                 },
                 onNavigateBack = {

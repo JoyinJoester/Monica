@@ -79,7 +79,8 @@ class AutoBackupWorker(
                 passwords = decryptedPasswords,
                 secureItems = secureItems,
                 preferences = backupPreferences,
-                isPermanent = false  // Auto backups are temporary
+                isPermanent = false,  // Auto backups are temporary
+                isManualTrigger = isManualTrigger
             )
             
             return if (backupResult.isSuccess) {

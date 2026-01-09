@@ -106,4 +106,46 @@ class SecureItemRepository(
     suspend fun deleteAllBankCards() {
         secureItemDao.deleteAllItemsByType(ItemType.BANK_CARD)
     }
+    
+    // =============== 回收站相关方法 ===============
+    
+    /**
+     * 软删除项目（移动到回收站）
+     */
+    suspend fun softDeleteItem(item: SecureItem): SecureItem {
+        val deletedItem = item.copy(
+            isDeleted = true,
+            deletedAt = java.util.Date(),
+            updatedAt = java.util.Date()
+        )
+        secureItemDao.updateItem(deletedItem)
+        return deletedItem
+    }
+    
+    /**
+     * 恢复已删除的项目
+     */
+    suspend fun restoreItem(item: SecureItem): SecureItem {
+        val restoredItem = item.copy(
+            isDeleted = false,
+            deletedAt = null,
+            updatedAt = java.util.Date()
+        )
+        secureItemDao.updateItem(restoredItem)
+        return restoredItem
+    }
+    
+    /**
+     * 获取已删除的项目
+     */
+    fun getDeletedItems(): kotlinx.coroutines.flow.Flow<List<SecureItem>> {
+        return secureItemDao.getDeletedItems()
+    }
+    
+    /**
+     * 获取未删除的项目（按类型）
+     */
+    fun getActiveItemsByType(type: ItemType): kotlinx.coroutines.flow.Flow<List<SecureItem>> {
+        return secureItemDao.getActiveItemsByType(type)
+    }
 }

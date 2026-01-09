@@ -7,6 +7,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,7 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -337,13 +341,21 @@ private fun PhotoCard(
 }
 
 /**
- * 全屏图片查看对话框
+ * 全屏图片查看对话框（支持双指缩放）
  */
 @Composable
 fun ImageDialog(
     bitmap: android.graphics.Bitmap,
     onDismiss: () -> Unit
 ) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    
+    val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
+        scale = (scale * zoomChange).coerceIn(0.5f, 5f)
+        offset += panChange
+    }
+    
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
@@ -354,7 +366,12 @@ fun ImageDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.95f))
-                .clickable { onDismiss() },
+                .clickable { 
+                    // 只有在未缩放时点击才关闭
+                    if (scale <= 1.05f) {
+                        onDismiss() 
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             Image(
@@ -362,10 +379,18 @@ fun ImageDialog(
                 contentDescription = "查看图片",
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    )
+                    .transformable(state = transformableState),
                 contentScale = ContentScale.Fit
             )
             
+            // 关闭按钮
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -382,6 +407,21 @@ fun ImageDialog(
                     contentDescription = "关闭",
                     tint = MaterialTheme.colorScheme.onSurface
                 )
+            }
+            
+            // 重置缩放按钮（当缩放时显示）
+            if (scale > 1.05f) {
+                FilledTonalButton(
+                    onClick = {
+                        scale = 1f
+                        offset = Offset.Zero
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(stringResource(R.string.reset_zoom))
+                }
             }
         }
     }

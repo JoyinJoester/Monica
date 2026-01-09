@@ -6,8 +6,11 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.utils.OperationLogger
+import takagi.ru.monica.utils.FieldChange
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
@@ -64,7 +67,14 @@ class NoteViewModel(
                 createdAt = Date(),
                 updatedAt = Date()
             )
-            repository.insertItem(item)
+            val newId = repository.insertItem(item)
+            
+            // 记录创建操作
+            OperationLogger.logCreate(
+                itemType = OperationLogItemType.NOTE,
+                itemId = newId,
+                itemTitle = title
+            )
         }
     }
     
@@ -77,6 +87,9 @@ class NoteViewModel(
         createdAt: Date
     ) {
         viewModelScope.launch {
+            // 获取旧笔记以检测变化
+            val existingItem = repository.getItemById(id)
+            
             val noteData = NoteData(
                 content = content,
                 tags = tags,
@@ -101,20 +114,78 @@ class NoteViewModel(
                 updatedAt = Date()
             )
             repository.updateItem(item)
+            
+            // 记录更新操作 - 始终记录，即使没有检测到字段变更
+            val changes = mutableListOf<FieldChange>()
+            existingItem?.let { oldItem ->
+                if (oldItem.notes != content) {
+                    changes.add(FieldChange("内容", oldItem.notes, content))
+                }
+                // 检测标题变化
+                if (oldItem.title != title) {
+                    changes.add(FieldChange("标题", oldItem.title, title))
+                }
+            }
+            // 即使没有变更也记录更新操作，以便追踪编辑行为
+            OperationLogger.logUpdate(
+                itemType = OperationLogItemType.NOTE,
+                itemId = id,
+                itemTitle = title,
+                changes = if (changes.isEmpty()) listOf(FieldChange("更新", "编辑于", java.text.SimpleDateFormat("HH:mm").format(Date()))) else changes
+            )
         }
     }
     
     // 删除笔记
-    fun deleteNote(item: SecureItem) {
+    // @param softDelete 是否软删除（移入回收站），默认为 true
+    fun deleteNote(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
-            repository.deleteItem(item)
+            if (softDelete) {
+                // 软删除：移动到回收站
+                repository.softDeleteItem(item)
+                // 记录移入回收站操作
+                OperationLogger.logDelete(
+                    itemType = OperationLogItemType.NOTE,
+                    itemId = item.id,
+                    itemTitle = item.title,
+                    detail = "移入回收站"
+                )
+            } else {
+                // 永久删除
+                OperationLogger.logDelete(
+                    itemType = OperationLogItemType.NOTE,
+                    itemId = item.id,
+                    itemTitle = item.title
+                )
+                repository.deleteItem(item)
+            }
         }
     }
 
     // 批量删除笔记
-    fun deleteNotes(items: List<SecureItem>) {
+    // @param softDelete 是否软删除（移入回收站），默认为 true
+    fun deleteNotes(items: List<SecureItem>, softDelete: Boolean = true) {
         viewModelScope.launch {
-            items.forEach { repository.deleteItem(it) }
+            items.forEach { item ->
+                if (softDelete) {
+                    // 软删除：移动到回收站
+                    repository.softDeleteItem(item)
+                    OperationLogger.logDelete(
+                        itemType = OperationLogItemType.NOTE,
+                        itemId = item.id,
+                        itemTitle = item.title,
+                        detail = "移入回收站"
+                    )
+                } else {
+                    // 永久删除
+                    OperationLogger.logDelete(
+                        itemType = OperationLogItemType.NOTE,
+                        itemId = item.id,
+                        itemTitle = item.title
+                    )
+                    repository.deleteItem(item)
+                }
+            }
         }
     }
 }
