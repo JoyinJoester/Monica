@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.*
 // Ensure Bookmark icons are available (using wildcards in original line 9 covers it if they are in filled, else explicit import)
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkRemove
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +41,7 @@ import android.text.format.DateUtils
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import takagi.ru.monica.util.ImageCompressor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,8 +83,19 @@ fun WebDavBackupScreen(
     var noteCount by remember { mutableStateOf(0) }
     var trashCount by remember { mutableStateOf(0) }
     
+    // 备份进行中状态（防止重复点击）
+    var isBackupInProgress by remember { mutableStateOf(false) }
+    
+    // 图片压缩状态
+    var isCompressing by remember { mutableStateOf(false) }
+    var imageStats by remember { mutableStateOf<ImageCompressor.ImageStats?>(null) }
+    var showCompressDialog by remember { mutableStateOf(false) }
+    var compressionProgress by remember { mutableStateOf(0f) }
+    var compressionMessage by remember { mutableStateOf("") }
+    
     val webDavHelper = remember { WebDavHelper(context) }
     val autoBackupManager = remember { AutoBackupManager(context) }
+    val imageCompressor = remember { ImageCompressor(context) }
     
     // 启动时检查是否已有配置
     LaunchedEffect(Unit) {
@@ -122,6 +135,9 @@ fun WebDavBackupScreen(
         val deletedPasswordCount = database.passwordEntryDao().getDeletedCount()
         val deletedSecureItems = secureItemRepository.getDeletedItems().first()
         trashCount = deletedPasswordCount + deletedSecureItems.size
+        
+        // 加载图片统计信息
+        imageStats = imageCompressor.getImageStats()
     }
     
     Scaffold(
@@ -572,9 +588,164 @@ fun WebDavBackupScreen(
             
             // 备份列表(仅在配置成功后显示)
             if (isConfigured) {
+                // 图片压缩卡片
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "图片优化",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        
+                        imageStats?.let { stats ->
+                            if (stats.totalImages > 0) {
+                                Text(
+                                    text = "共 ${stats.totalImages} 张图片，总大小 ${stats.formatTotalSize()}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                if (stats.largeImageCount > 0) {
+                                    Text(
+                                        text = "有 ${stats.largeImageCount} 张大图片可优化（已优化 ${stats.compressedCount} 张）",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Text(
+                                        text = "所有图片已优化 ✓",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "暂无图片",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        
+                        if (isCompressing) {
+                            Column {
+                                LinearProgressIndicator(
+                                    progress = { compressionProgress },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    text = compressionMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        
+                        OutlinedButton(
+                            onClick = {
+                                if (imageStats?.largeImageCount ?: 0 > 0) {
+                                    showCompressDialog = true
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "所有图片已优化，无需压缩",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isCompressing && !isBackupInProgress && (imageStats?.largeImageCount ?: 0) > 0
+                        ) {
+                            Icon(Icons.Default.Compress, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("一键压缩图片")
+                        }
+                    }
+                }
+                
+                // 压缩确认对话框
+                if (showCompressDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showCompressDialog = false },
+                        title = { Text("压缩图片") },
+                        text = { 
+                            Text("将压缩 ${imageStats?.largeImageCount ?: 0} 张大图片以减少备份文件大小。\n\n" +
+                                "• 压缩后的图片质量会略有下降\n" +
+                                "• 已压缩的图片不会重复压缩\n" +
+                                "• 此操作不可撤销\n\n" +
+                                "是否继续？")
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showCompressDialog = false
+                                    isCompressing = true
+                                    compressionProgress = 0f
+                                    compressionMessage = "正在准备..."
+                                    
+                                    coroutineScope.launch {
+                                        try {
+                                            val result = imageCompressor.compressAllImages(
+                                                object : ImageCompressor.CompressionProgressCallback {
+                                                    override fun onProgress(current: Int, total: Int, currentFileName: String) {
+                                                        compressionProgress = current.toFloat() / total
+                                                        compressionMessage = "正在压缩 $current/$total..."
+                                                    }
+                                                    
+                                                    override fun onComplete(result: ImageCompressor.CompressionResult) {
+                                                        compressionProgress = 1f
+                                                        compressionMessage = "完成"
+                                                    }
+                                                }
+                                            )
+                                            
+                                            isCompressing = false
+                                            imageStats = imageCompressor.getImageStats()
+                                            
+                                            Toast.makeText(
+                                                context,
+                                                result.getSummary(),
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } catch (e: Exception) {
+                                            isCompressing = false
+                                            Toast.makeText(
+                                                context,
+                                                "压缩失败: ${e.message}",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("确认压缩")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showCompressDialog = false }) {
+                                Text("取消")
+                            }
+                        }
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
                 // 创建备份按钮
                 Button(
                     onClick = {
+                        // 防止重复点击
+                        if (isBackupInProgress) {
+                            Toast.makeText(
+                                context,
+                                "备份正在进行中，请稍候...",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@Button
+                        }
+                        
                         // 验证：检查是否至少选择了一种内容类型
                         if (!backupPreferences.hasAnyEnabled()) {
                             Toast.makeText(
@@ -585,10 +756,22 @@ fun WebDavBackupScreen(
                             return@Button
                         }
                         
+                        isBackupInProgress = true
                         isLoading = true
                         errorMessage = ""
                         coroutineScope.launch {
                             try {
+                                // 备份前自动压缩大图片（如果启用了图片备份）
+                                if (backupPreferences.includeImages && (imageStats?.largeImageCount ?: 0) > 0) {
+                                    Toast.makeText(
+                                        context,
+                                        "正在优化图片...",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    imageCompressor.compressAllImages()
+                                    imageStats = imageCompressor.getImageStats()
+                                }
+                                
                                 // 获取所有密码数据
                                 val allPasswords = passwordRepository.getAllPasswordEntries().first()
                                 
@@ -639,10 +822,12 @@ fun WebDavBackupScreen(
                                     loadBackups(webDavHelper) { list, error ->
                                         backupList = list
                                         isLoading = false
+                                        isBackupInProgress = false
                                         error?.let { errorMessage = it }
                                     }
                                 } else {
                                     isLoading = false
+                                    isBackupInProgress = false
                                     val error = result.exceptionOrNull()?.message ?: "Backup failed"
                                     errorMessage = error
                                     Toast.makeText(
@@ -653,6 +838,7 @@ fun WebDavBackupScreen(
                                 }
                             } catch (e: Exception) {
                                 isLoading = false
+                                isBackupInProgress = false
                                 errorMessage = e.message ?: "Backup failed"
                                 Toast.makeText(
                                     context,
@@ -663,11 +849,21 @@ fun WebDavBackupScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading
+                    enabled = !isLoading && !isBackupInProgress && !isCompressing
                 ) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("创建永久备份")  // Changed from "创建新备份"
+                    if (isBackupInProgress) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("备份中...")
+                    } else {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("创建永久备份")
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))

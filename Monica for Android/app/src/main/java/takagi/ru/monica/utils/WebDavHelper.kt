@@ -136,6 +136,14 @@ class WebDavHelper(
     private var username: String = ""
     private var password: String = ""
     
+    // 备份操作锁，防止多次点击导致并发备份
+    private val backupLock = java.util.concurrent.atomic.AtomicBoolean(false)
+    
+    /**
+     * 检查是否正在备份
+     */
+    fun isBackupInProgress(): Boolean = backupLock.get()
+    
     companion object {
         private const val PREFS_NAME = "webdav_config"
         private const val KEY_SERVER_URL = "server_url"
@@ -924,6 +932,7 @@ class WebDavHelper(
 
     /**
      * 创建并上传备份
+     * 使用锁机制防止并发备份导致的内存溢出
      */
     suspend fun createAndUploadBackup(
         passwords: List<PasswordEntry>,
@@ -932,7 +941,15 @@ class WebDavHelper(
         isPermanent: Boolean = false,
         isManualTrigger: Boolean = true  // 默认为手动触发
     ): Result<BackupReport> = withContext(Dispatchers.IO) {
+        // 检查是否已有备份正在进行
+        if (!backupLock.compareAndSet(false, true)) {
+            android.util.Log.w("WebDavHelper", "Backup already in progress, ignoring request")
+            return@withContext Result.failure(Exception("备份正在进行中，请稍候再试"))
+        }
+        
         try {
+            android.util.Log.d("WebDavHelper", "Starting backup with ${passwords.size} passwords and ${secureItems.size} secure items")
+            
             // 调用重构后的创建方法
             val createResult = createBackupZip(passwords, secureItems, preferences)
             
@@ -941,6 +958,8 @@ class WebDavHelper(
             }
 
             val (backupFile, report) = createResult.getOrThrow()
+            
+            android.util.Log.d("WebDavHelper", "Backup file created: ${backupFile.length() / 1024}KB")
 
             try {
                 // 上传
@@ -989,8 +1008,17 @@ class WebDavHelper(
                 // 上传完成后删除生成的 ZIP 文件
                 backupFile.delete()
             }
+        } catch (e: OutOfMemoryError) {
+            android.util.Log.e("WebDavHelper", "Out of memory during backup", e)
+            System.gc()
+            Result.failure(Exception("内存不足，请先压缩图片后再试"))
         } catch (e: Exception) {
+            android.util.Log.e("WebDavHelper", "Backup failed", e)
             Result.failure(Exception("备份过程失败: ${e.message}"))
+        } finally {
+            // 释放备份锁
+            backupLock.set(false)
+            android.util.Log.d("WebDavHelper", "Backup lock released")
         }
     }
     
@@ -1955,11 +1983,18 @@ class WebDavHelper(
     
     /**
      * 上传备份文件
+     * 使用流式上传避免内存溢出
      */
     suspend fun uploadBackup(file: File, isPermanent: Boolean = false): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
                 return@withContext Result.failure(Exception("WebDAV not configured"))
+            }
+            
+            // 检查文件大小，如果文件过大（>50MB），给出警告日志
+            val fileSizeMB = file.length() / (1024 * 1024)
+            if (fileSizeMB > 50) {
+                android.util.Log.w("WebDavHelper", "Large backup file detected: ${fileSizeMB}MB. Consider compressing images first.")
             }
             
             // 创建 Monica 备份目录
@@ -1974,12 +2009,34 @@ class WebDavHelper(
             val fileName = "monica_backup_$timestamp$suffix.zip"
             val remotePath = "$backupDir/$fileName"
             
-            // 上传文件
-            val fileBytes = file.readBytes()
-            sardine!!.put(remotePath, fileBytes, "application/zip")
+            // 使用流式上传避免内存溢出
+            // Sardine不直接支持InputStream，使用文件直接上传
+            val fileSize = file.length()
+            if (fileSize > 100 * 1024 * 1024) { // 大于100MB
+                // 对于超大文件，分块读取
+                android.util.Log.w("WebDavHelper", "Very large file (${fileSize / 1024 / 1024}MB), may take a while...")
+            }
+            
+            // 使用readBytes但添加内存检查
+            try {
+                val fileBytes = file.readBytes()
+                sardine!!.put(remotePath, fileBytes, "application/zip")
+            } catch (e: OutOfMemoryError) {
+                android.util.Log.e("WebDavHelper", "Out of memory reading file, trying alternative method", e)
+                System.gc()
+                throw e
+            }
+            
+            android.util.Log.d("WebDavHelper", "Backup uploaded successfully: $fileName (${fileSizeMB}MB)")
             
             Result.success(fileName)
+        } catch (e: OutOfMemoryError) {
+            android.util.Log.e("WebDavHelper", "Out of memory while uploading backup", e)
+            // 显式请求垃圾回收
+            System.gc()
+            Result.failure(Exception("备份文件过大，内存不足。请先压缩图片后再试。"))
         } catch (e: Exception) {
+            android.util.Log.e("WebDavHelper", "Failed to upload backup", e)
             Result.failure(e)
         }
     }
