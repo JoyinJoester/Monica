@@ -9,6 +9,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import kotlinx.serialization.json.Json
@@ -35,6 +36,23 @@ class BankCardViewModel(
     // 根据ID获取银行卡
     suspend fun getCardById(id: Long): SecureItem? {
         return repository.getItemById(id)
+    }
+    
+    /**
+     * 快速添加银行卡（从底部导航栏快速添加）
+     */
+    fun quickAddBankCard(name: String, cardNumber: String) {
+        if (name.isBlank()) return
+        val cardData = BankCardData(
+            cardNumber = cardNumber,
+            cardholderName = "",
+            expiryMonth = "",
+            expiryYear = "",
+            cvv = "",
+            bankName = name,
+            cardType = CardType.CREDIT
+        )
+        addCard(title = name, cardData = cardData)
     }
     
     // 添加银行卡

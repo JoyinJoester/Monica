@@ -41,6 +41,7 @@ class SettingsManager(private val context: Context) {
         private val SHOW_TIMELINE_TAB_KEY = booleanPreferencesKey("show_timeline_tab")  // 添加时间线标签键
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
+        private val USE_DRAGGABLE_BOTTOM_NAV_KEY = booleanPreferencesKey("use_draggable_bottom_nav")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
         private val VALIDATOR_PROGRESS_BAR_STYLE_KEY = stringPreferencesKey("validator_progress_bar_style")
         private val VALIDATOR_VIBRATION_ENABLED_KEY = booleanPreferencesKey("validator_vibration_enabled")
@@ -93,6 +94,7 @@ class SettingsManager(private val context: Context) {
                 timeline = preferences[SHOW_TIMELINE_TAB_KEY] ?: false
             ),
             bottomNavOrder = sanitizedOrder,
+            useDraggableBottomNav = preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] ?: false,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
             validatorProgressBarStyle = runCatching {
                 val styleString = preferences[VALIDATOR_PROGRESS_BAR_STYLE_KEY] ?: takagi.ru.monica.data.ProgressBarStyle.LINEAR.name
@@ -173,6 +175,12 @@ class SettingsManager(private val context: Context) {
         val sanitizedOrder = BottomNavContentTab.sanitizeOrder(order)
         dataStore.edit { preferences ->
             preferences[BOTTOM_NAV_ORDER_KEY] = sanitizedOrder.joinToString(",") { it.name }
+        }
+    }
+
+    suspend fun updateUseDraggableBottomNav(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] = enabled
         }
     }
 

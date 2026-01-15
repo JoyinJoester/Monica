@@ -155,6 +155,12 @@ class SettingsViewModel(
         }
     }
     
+    fun updateUseDraggableBottomNav(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateUseDraggableBottomNav(enabled)
+        }
+    }
+    
     // 回收站设置
     fun updateTrashEnabled(enabled: Boolean) {
         viewModelScope.launch {

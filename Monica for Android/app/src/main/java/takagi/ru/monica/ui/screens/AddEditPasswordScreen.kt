@@ -78,6 +78,16 @@ fun AddEditPasswordScreen(
     // 获取设置以读取进度条样式
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    
+    // 常用账号信息
+    val commonAccountPreferences = remember { takagi.ru.monica.data.CommonAccountPreferences(context) }
+    val commonAccountInfo by commonAccountPreferences.commonAccountInfo.collectAsState(
+        initial = takagi.ru.monica.data.CommonAccountInfo()
+    )
+    
+    // 是否显示常用账号选择器
+    var showCommonAccountSelector by remember { mutableStateOf(false) }
+    var commonAccountSelectorField by remember { mutableStateOf("") } // "email", "phone", "username"
 
     var title by rememberSaveable { mutableStateOf("") }
     var website by rememberSaveable { mutableStateOf("") }
@@ -132,6 +142,25 @@ fun AddEditPasswordScreen(
     var paymentInfoExpanded by remember { mutableStateOf(false) }
 
     val isEditing = passwordId != null && passwordId > 0
+    
+    // 新建条目时的自动填充标记（只执行一次）
+    var hasAutoFilled by rememberSaveable { mutableStateOf(false) }
+    
+    // 新建条目时自动填充常用账号信息
+    LaunchedEffect(commonAccountInfo, isEditing, hasAutoFilled) {
+        if (!isEditing && !hasAutoFilled && commonAccountInfo.autoFillEnabled && commonAccountInfo.hasAnyInfo()) {
+            hasAutoFilled = true
+            if (username.isEmpty() && commonAccountInfo.username.isNotEmpty()) {
+                username = commonAccountInfo.username
+            }
+            if (emails.size == 1 && emails[0].isEmpty() && commonAccountInfo.email.isNotEmpty()) {
+                emails[0] = commonAccountInfo.email
+            }
+            if (phones.size == 1 && phones[0].isEmpty() && commonAccountInfo.phone.isNotEmpty()) {
+                phones[0] = commonAccountInfo.phone
+            }
+        }
+    }
 
     // Load existing password data (including siblings)
     LaunchedEffect(passwordId) {
@@ -362,29 +391,50 @@ fun AddEditPasswordScreen(
                             shape = RoundedCornerShape(12.dp)
                         )
 
-                        // Username
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = { username = it },
-                            label = { Text(stringResource(R.string.username_email)) },
-                            leadingIcon = { Icon(Icons.Default.Person, null) },
-                            trailingIcon = if (username.isNotEmpty()) {
-                                {
-                                    IconButton(onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        val clip = ClipData.newPlainText("username", username)
-                                        clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, context.getString(R.string.username_copied), Toast.LENGTH_SHORT).show()
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                            } else null,
+                        // Username - 支持常用账号填充
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = username,
+                                onValueChange = { username = it },
+                                label = { Text(stringResource(R.string.username_email)) },
+                                leadingIcon = { Icon(Icons.Default.Person, null) },
+                                trailingIcon = {
+                                    Row {
+                                        // 常用账号填充按钮（仅在新建且有配置常用信息时显示）
+                                        if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.username.isNotEmpty()) {
+                                            IconButton(
+                                                onClick = { username = commonAccountInfo.username }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.PersonAdd,
+                                                    contentDescription = stringResource(R.string.fill_common_account),
+                                                    modifier = Modifier.size(20.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        // 复制按钮
+                                        if (username.isNotEmpty()) {
+                                            IconButton(onClick = {
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                val clip = ClipData.newPlainText("username", username)
+                                                clipboard.setPrimaryClip(clip)
+                                                Toast.makeText(context, context.getString(R.string.username_copied), Toast.LENGTH_SHORT).show()
+                                            }) {
+                                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(20.dp))
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
                         
                         // 登录方式选择
                         LoginTypeSelector(
@@ -652,12 +702,37 @@ fun AddEditPasswordScreen(
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Multiple Email Fields
-                        Text(
-                            text = stringResource(R.string.field_email),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.field_email),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            // 常用邮箱填充按钮
+                            if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.email.isNotEmpty()) {
+                                TextButton(
+                                    onClick = {
+                                        if (emails.size == 1 && emails[0].isEmpty()) {
+                                            emails[0] = commonAccountInfo.email
+                                        } else {
+                                            emails.add(commonAccountInfo.email)
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.PersonAdd,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(stringResource(R.string.fill_common_account))
+                                }
+                            }
+                        }
                         emails.forEachIndexed { index, emailValue ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -699,12 +774,37 @@ fun AddEditPasswordScreen(
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         
                         // Multiple Phone Fields
-                        Text(
-                            text = stringResource(R.string.field_phone),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.field_phone),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            // 常用电话填充按钮
+                            if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.phone.isNotEmpty()) {
+                                TextButton(
+                                    onClick = {
+                                        if (phones.size == 1 && phones[0].isEmpty()) {
+                                            phones[0] = commonAccountInfo.phone
+                                        } else {
+                                            phones.add(commonAccountInfo.phone)
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.PersonAdd,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(stringResource(R.string.fill_common_account))
+                                }
+                            }
+                        }
                         phones.forEachIndexed { index, phoneValue ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

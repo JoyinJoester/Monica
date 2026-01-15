@@ -37,6 +37,21 @@ class NoteViewModel(
         return repository.getItemById(id)
     }
     
+    /**
+     * 快速添加笔记（从底部导航栏快速添加）
+     */
+    fun quickAddNote(title: String, content: String) {
+        if (title.isBlank() && content.isBlank()) return
+        val fullContent = if (title.isNotBlank() && content.isNotBlank()) {
+            "$title\n\n$content"
+        } else if (title.isNotBlank()) {
+            title
+        } else {
+            content
+        }
+        addNote(content = fullContent)
+    }
+    
     // 添加笔记
     fun addNote(
         content: String,

@@ -73,6 +73,10 @@ import kotlin.math.absoluteValue
 
 import takagi.ru.monica.ui.components.QrCodeDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.DraggableBottomNavScaffold
+import takagi.ru.monica.ui.components.DraggableNavItem
+import takagi.ru.monica.ui.components.QuickActionItem
+import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.security.SecurityManager
 
 @Composable
@@ -433,6 +437,337 @@ fun SimpleMainScreen(
             }
         }
     ) {
+    // 可拖拽导航栏模式开关 (将来可从设置中读取)
+    val useDraggableNav = appSettings.useDraggableBottomNav
+    
+    // 构建导航项列表 (用于可拖拽导航栏)
+    val draggableNavItems = remember(tabs, currentTab) {
+        tabs.map { item ->
+            DraggableNavItem(
+                key = item.key,
+                icon = item.icon,
+                labelRes = item.shortLabelRes(),
+                selected = item.key == currentTab.key,
+                onClick = { selectedTabKey = item.key }
+            )
+        }
+    }
+    
+    // 获取颜色（在 Composable 上下文中）
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    
+    // 构建快捷操作列表
+    val quickActions = remember(
+        onNavigateToAddPassword,
+        onNavigateToAddTotp,
+        onNavigateToQuickTotpScan,
+        onNavigateToAddBankCard,
+        onNavigateToAddDocument,
+        onNavigateToAddNote,
+        onSecurityAnalysis,
+        onNavigateToImportData,
+        onNavigateToWebDav,
+        tertiaryColor,
+        secondaryColor
+    ) {
+        listOf(
+            QuickActionItem(
+                icon = Icons.Default.Lock,
+                labelRes = R.string.quick_action_add_password,
+                onClick = { onNavigateToAddPassword(null) }
+            ),
+            QuickActionItem(
+                icon = Icons.Default.Security,
+                labelRes = R.string.quick_action_add_totp,
+                onClick = { onNavigateToAddTotp(null) }
+            ),
+            QuickActionItem(
+                icon = Icons.Default.QrCodeScanner,
+                labelRes = R.string.quick_action_scan_qr,
+                onClick = onNavigateToQuickTotpScan
+            ),
+            QuickActionItem(
+                icon = Icons.Default.CreditCard,
+                labelRes = R.string.quick_action_add_card,
+                onClick = { onNavigateToAddBankCard(null) }
+            ),
+            QuickActionItem(
+                icon = Icons.Default.Badge,
+                labelRes = R.string.quick_action_add_document,
+                onClick = { onNavigateToAddDocument(null) }
+            ),
+            QuickActionItem(
+                icon = Icons.Default.Note,
+                labelRes = R.string.quick_action_add_note,
+                onClick = { onNavigateToAddNote(null) }
+            ),
+            QuickActionItem(
+                icon = Icons.Default.AutoAwesome,
+                labelRes = R.string.quick_action_generator,
+                onClick = { selectedTabKey = BottomNavItem.Generator.key }
+            ),
+            QuickActionItem(
+                icon = Icons.Default.Shield,
+                labelRes = R.string.quick_action_security,
+                onClick = onSecurityAnalysis,
+                tint = tertiaryColor
+            ),
+            QuickActionItem(
+                icon = Icons.Default.CloudUpload,
+                labelRes = R.string.quick_action_backup,
+                onClick = onNavigateToWebDav,
+                tint = secondaryColor
+            ),
+            QuickActionItem(
+                icon = Icons.Default.Download,
+                labelRes = R.string.quick_action_import,
+                onClick = onNavigateToImportData
+            ),
+            QuickActionItem(
+                icon = Icons.Default.Settings,
+                labelRes = R.string.quick_action_settings,
+                onClick = { selectedTabKey = BottomNavItem.Settings.key }
+            )
+        )
+    }
+    
+    // 根据设置选择导航模式
+    if (useDraggableNav) {
+        // 使用可拖拽底部导航栏
+        DraggableBottomNavScaffold(
+            navItems = draggableNavItems,
+
+            quickAddCallback = QuickAddCallback(
+                onAddPassword = { title, username, password ->
+                    passwordViewModel.quickAddPassword(title, username, password)
+                },
+                onAddTotp = { name, secret ->
+                    totpViewModel.quickAddTotp(name, secret)
+                },
+                onAddBankCard = { name, number ->
+                    bankCardViewModel.quickAddBankCard(name, number)
+                },
+                onAddNote = { title, content ->
+                    noteViewModel.quickAddNote(title, content)
+                }
+            ),
+            floatingActionButton = {
+                when (currentTab) {
+                    BottomNavItem.Passwords -> {
+                        FloatingActionButton(
+                            onClick = { onNavigateToAddPassword(null) }
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
+                        }
+                    }
+                    BottomNavItem.Authenticator -> {
+                        FloatingActionButton(
+                            onClick = { onNavigateToAddTotp(null) }
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
+                        }
+                    }
+                    BottomNavItem.CardWallet -> {
+                        FloatingActionButton(
+                            onClick = {
+                                if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+                                    onNavigateToAddBankCard(null)
+                                } else {
+                                    onNavigateToAddDocument(null)
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
+                        }
+                    }
+                    else -> { /* 其他页面不需要 FAB */ }
+                }
+            },
+            content = { paddingValues ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    when (currentTab) {
+                        BottomNavItem.Passwords -> {
+                            PasswordListContent(
+                                viewModel = passwordViewModel,
+                                settingsViewModel = settingsViewModel,
+                                securityManager = securityManager,
+                                groupMode = passwordGroupMode,
+                                stackCardMode = stackCardMode,
+                                onCreateCategory = {
+                                    categoryNameInput = ""
+                                    showAddCategoryDialog = true
+                                },
+                                onRenameCategory = { category ->
+                                    categoryNameInput = category.name
+                                    showEditCategoryDialog = category
+                                },
+                                onDeleteCategory = { category ->
+                                    passwordViewModel.deleteCategory(category)
+                                },
+                                onPasswordClick = { password ->
+                                    onNavigateToAddPassword(password.id)
+                                },
+                                onNavigateToAddPassword = onNavigateToAddPassword,
+                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                                onMenuClick = { scope.launch { drawerState.open() } },
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
+                                    isPasswordSelectionMode = isSelectionMode
+                                    selectedPasswordCount = count
+                                    onExitPasswordSelection = onExit
+                                    onSelectAllPasswords = onSelectAll
+                                    onFavoriteSelectedPasswords = onFavorite
+                                    onMoveToCategoryPasswords = onMoveToCategory
+                                    onDeleteSelectedPasswords = onDelete
+                                }
+                            )
+                        }
+                        BottomNavItem.Authenticator -> {
+                            TotpListContent(
+                                viewModel = totpViewModel,
+                                onTotpClick = { totpId ->
+                                    onNavigateToAddTotp(totpId)
+                                },
+                                onDeleteTotp = { totp ->
+                                    totpViewModel.deleteTotpItem(totp)
+                                },
+                                onQuickScanTotp = onNavigateToQuickTotpScan,
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                    isTotpSelectionMode = isSelectionMode
+                                    selectedTotpCount = count
+                                    onExitTotpSelection = onExit
+                                    onSelectAllTotp = onSelectAll
+                                    onDeleteSelectedTotp = onDelete
+                                }
+                            )
+                        }
+                        BottomNavItem.CardWallet -> {
+                            CardWalletScreen(
+                                bankCardViewModel = bankCardViewModel,
+                                documentViewModel = documentViewModel,
+                                currentTab = cardWalletSubTab,
+                                onTabSelected = { cardWalletSubTab = it },
+                                onCardClick = { cardId ->
+                                    onNavigateToBankCardDetail(cardId)
+                                },
+                                onDocumentClick = { documentId ->
+                                    onNavigateToDocumentDetail(documentId)
+                                },
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                    isDocumentSelectionMode = isSelectionMode
+                                    selectedDocumentCount = count
+                                    onExitDocumentSelection = onExit
+                                    onSelectAllDocuments = onSelectAll
+                                    onDeleteSelectedDocuments = onDelete
+                                },
+                                onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
+                                    isBankCardSelectionMode = isSelectionMode
+                                    selectedBankCardCount = count
+                                    onExitBankCardSelection = onExit
+                                    onSelectAllBankCards = onSelectAll
+                                    onDeleteSelectedBankCards = onDelete
+                                    onFavoriteBankCards = onFavorite
+                                }
+                            )
+                        }
+                        BottomNavItem.Generator -> {
+                            GeneratorScreen(
+                                onNavigateBack = {},
+                                viewModel = generatorViewModel,
+                                passwordViewModel = passwordViewModel
+                            )
+                        }
+                        BottomNavItem.Notes -> {
+                            NoteListScreen(
+                                viewModel = noteViewModel,
+                                onNavigateToAddNote = onNavigateToAddNote,
+                                securityManager = securityManager
+                            )
+                        }
+                        BottomNavItem.Timeline -> {
+                            TimelineScreen()
+                        }
+                        BottomNavItem.Settings -> {
+                            SettingsScreen(
+                                viewModel = settingsViewModel,
+                                onNavigateBack = {},
+                                onResetPassword = onNavigateToChangePassword,
+                                onSecurityQuestions = onNavigateToSecurityQuestion,
+                                onExportData = onNavigateToExportData,
+                                onImportData = onNavigateToImportData,
+                                onNavigateToWebDav = onNavigateToWebDav,
+                                onNavigateToAutofill = onNavigateToAutofill,
+                                onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
+                                onNavigateToColorScheme = onNavigateToColorScheme,
+                                onSecurityAnalysis = onSecurityAnalysis,
+                                onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
+                                onNavigateToPermissionManagement = onNavigateToPermissionManagement,
+                                onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                                onClearAllData = onClearAllData,
+                                showTopBar = false
+                            )
+                        }
+                    }
+
+                    // Selection Action Bars
+                    when {
+                        currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
+                            SelectionActionBar(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                selectedCount = selectedPasswordCount,
+                                onExit = onExitPasswordSelection,
+                                onSelectAll = onSelectAllPasswords,
+                                onFavorite = onFavoriteSelectedPasswords,
+                                onMoveToCategory = onMoveToCategoryPasswords,
+                                onDelete = onDeleteSelectedPasswords
+                            )
+                        }
+                        currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
+                            SelectionActionBar(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                selectedCount = selectedTotpCount,
+                                onExit = onExitTotpSelection,
+                                onSelectAll = onSelectAllTotp,
+                                onDelete = onDeleteSelectedTotp
+                            )
+                        }
+                        currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.BANK_CARDS && isBankCardSelectionMode -> {
+                            SelectionActionBar(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                selectedCount = selectedBankCardCount,
+                                onExit = onExitBankCardSelection,
+                                onSelectAll = onSelectAllBankCards,
+                                onFavorite = onFavoriteBankCards,
+                                onDelete = onDeleteSelectedBankCards
+                            )
+                        }
+                        currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
+                            SelectionActionBar(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                selectedCount = selectedDocumentCount,
+                                onExit = onExitDocumentSelection,
+                                onSelectAll = onSelectAllDocuments,
+                                onDelete = onDeleteSelectedDocuments
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    } else {
+        // 使用传统底部导航栏
     Scaffold(
         topBar = {
             // 顶部栏由各自页面内部控制（如 ExpressiveTopBar），这里保持为空以避免叠加
@@ -694,6 +1029,7 @@ fun SimpleMainScreen(
             }
         }
     }
+    } // End of if (!useDraggableNav) traditional Scaffold
     } // End of ModalNavigationDrawer
 
     if (showAddCategoryDialog) {

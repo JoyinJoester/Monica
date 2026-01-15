@@ -256,6 +256,8 @@
     <string name="bottom_nav_move_up">上移标签</string>
     <string name="bottom_nav_move_down">下移标签</string>
     <string name="bottom_nav_settings_entry_subtitle">选择要显示的页签并调整顺序</string>
+    <string name="draggable_bottom_nav">可拖拽底部导航栏</string>
+    <string name="draggable_bottom_nav_description">上滑导航栏可显示快捷操作面板</string>
     
     <!-- Document -->
     <string name="add_document_title">添加证件</string>
@@ -692,6 +694,10 @@
     <string name="search_passwords_hint">搜索密码</string>
     <string name="return_text">返回</string>
     <string name="confirm">确定</string>
+    <string name="title">标题</string>
+    <string name="name">名称</string>
+    <string name="totp_secret">密钥</string>
+    <string name="content">内容</string>
     
     <!-- Screenshot Protection -->
     <string name="screenshot_protection">防截屏保护</string>
@@ -1044,6 +1050,8 @@
     <string name="autofill_blacklist_app_weibo">微博</string>
 
     <!-- 开发者设置 -->
+    <string name="preview_features_title">预览功能</string>
+    <string name="preview_features_description">体验实验性功能</string>
     <string name="developer_settings">开发者设置</string>
     <string name="developer_settings_subtitle">日志查看、开发者调试工具</string>
     <string name="developer_settings_back">返回</string>
@@ -1300,6 +1308,7 @@
     <string name="common_account_auto_fill">自动填充默认值</string>
     <string name="common_account_auto_fill_desc">新建条目时自动填充默认信息</string>
     <string name="common_account_saved">已保存</string>
+    <string name="fill_common_account">填充</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">登录方式</string>
@@ -1324,4 +1333,22 @@
     <string name="label_username">用户名</string>
     <string name="label_notes">备注</string>
     <string name="copied_text">已复制 %s</string>
+    
+    <!-- Quick Actions Panel -->
+    <string name="quick_actions_title">快捷操作</string>
+    <string name="quick_action_add_password">添加密码</string>
+    <string name="quick_action_add_totp">添加验证器</string>
+    <string name="quick_action_add_card">添加银行卡</string>
+    <string name="quick_action_add_document">添加证件</string>
+    <string name="quick_action_add_note">添加笔记</string>
+    <string name="quick_action_generator">密码生成</string>
+    <string name="quick_action_scan_qr">扫描二维码</string>
+    <string name="quick_action_search">搜索</string>
+    <string name="quick_action_settings">设置</string>
+    <string name="quick_action_backup">备份</string>
+    <string name="quick_action_security">安全分析</string>
+    <string name="quick_action_import">导入数据</string>
+    
+    <!-- Quick Add -->
+    <string name="quick_add_not_supported">暂时没想过这里有啥用</string>
 </resources>

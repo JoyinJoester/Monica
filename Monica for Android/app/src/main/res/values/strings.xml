@@ -259,6 +259,8 @@
     <string name="bottom_nav_move_up">Move tab up</string>
     <string name="bottom_nav_move_down">Move tab down</string>
     <string name="bottom_nav_settings_entry_subtitle">Choose which tabs appear and reorder them</string>
+    <string name="draggable_bottom_nav">Draggable Bottom Nav</string>
+    <string name="draggable_bottom_nav_description">Swipe up on the nav bar to reveal quick actions</string>
     
     <!-- Document -->
     <string name="add_document_title">Add Document</string>
@@ -725,6 +727,10 @@
     <string name="search_passwords_hint">Search passwords</string>
     <string name="return_text">Return</string>
     <string name="confirm">Confirm</string>
+    <string name="title">Title</string>
+    <string name="name">Name</string>
+    <string name="totp_secret">Secret Key</string>
+    <string name="content">Content</string>
     
     <!-- Screenshot Protection -->
     <string name="screenshot_protection">Screenshot Protection</string>
@@ -1189,6 +1195,8 @@
     <string name="autofill_blacklist_app_weibo">Weibo</string>
     
 <!-- Developer Settings -->
+    <string name="preview_features_title">Preview Features</string>
+    <string name="preview_features_description">Try out experimental features</string>
     <string name="developer_settings">Developer Settings</string>
     <string name="developer_settings_subtitle">Log viewing and developer debugging tools</string>
     <string name="developer_settings_back">Back</string>
@@ -1477,6 +1485,7 @@
     <string name="common_account_auto_fill">Auto Fill Default</string>
     <string name="common_account_auto_fill_desc">Auto-fill default info when adding new entry</string>
     <string name="common_account_saved">Saved</string>
+    <string name="fill_common_account">Fill</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">Login Type</string>
@@ -1492,4 +1501,22 @@
     <string name="sso_login_using">Using</string>
     <string name="sso_login_suffix">to login</string>
     <string name="sso_linked_account">Linked Account</string>
+    
+    <!-- Quick Actions Panel -->
+    <string name="quick_actions_title">Quick Actions</string>
+    <string name="quick_action_add_password">Add Password</string>
+    <string name="quick_action_add_totp">Add Authenticator</string>
+    <string name="quick_action_add_card">Add Card</string>
+    <string name="quick_action_add_document">Add Document</string>
+    <string name="quick_action_add_note">Add Note</string>
+    <string name="quick_action_generator">Generator</string>
+    <string name="quick_action_scan_qr">Scan QR</string>
+    <string name="quick_action_search">Search</string>
+    <string name="quick_action_settings">Settings</string>
+    <string name="quick_action_backup">Backup</string>
+    <string name="quick_action_security">Security</string>
+    <string name="quick_action_import">Import</string>
+    
+    <!-- Quick Add -->
+    <string name="quick_add_not_supported">Quick add is not available for this page</string>
 </resources>
