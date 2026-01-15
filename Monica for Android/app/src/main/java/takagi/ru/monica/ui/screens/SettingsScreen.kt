@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -20,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.app.Activity
@@ -360,6 +362,9 @@ fun SettingsScreen(
                     subtitle = context.getString(R.string.autofill_subtitle),
                     onClick = onNavigateToAutofill
                 )
+                
+                // 常用账号信息
+                CommonAccountCard()
                 
                 // 回收站设置
                 SettingsItemWithTrashConfig(
@@ -1740,4 +1745,170 @@ private fun SettingsItemWithTrashConfig(
     }
 }
 
-
+/**
+ * 常用账号信息卡片（折叠式）
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommonAccountCard() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val commonAccountPreferences = remember { takagi.ru.monica.data.CommonAccountPreferences(context) }
+    
+    val commonInfo by commonAccountPreferences.commonAccountInfo.collectAsState(
+        initial = takagi.ru.monica.data.CommonAccountInfo()
+    )
+    
+    var expanded by remember { mutableStateOf(false) }
+    var email by remember(commonInfo.email) { mutableStateOf(commonInfo.email) }
+    var phone by remember(commonInfo.phone) { mutableStateOf(commonInfo.phone) }
+    var username by remember(commonInfo.username) { mutableStateOf(commonInfo.username) }
+    var autoFillEnabled by remember(commonInfo.autoFillEnabled) { mutableStateOf(commonInfo.autoFillEnabled) }
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.animateContentSize()
+        ) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = context.getString(R.string.common_account_title),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = if (commonInfo.hasAnyInfo()) 
+                            context.getString(R.string.common_account_configured) 
+                        else 
+                            context.getString(R.string.common_account_not_configured),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            // Expanded Content
+            if (expanded) {
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = context.getString(R.string.common_account_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    // 常用邮箱
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        label = { Text(context.getString(R.string.common_account_email)) },
+                        placeholder = { Text("name@example.com") },
+                        leadingIcon = { Icon(Icons.Default.Email, null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // 常用手机号
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { if (it.all { c -> c.isDigit() } && it.length <= 15) phone = it },
+                        label = { Text(context.getString(R.string.common_account_phone)) },
+                        placeholder = { Text("13800000000") },
+                        leadingIcon = { Icon(Icons.Default.Phone, null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                    )
+                    
+                    // 常用用户名
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text(context.getString(R.string.common_account_username)) },
+                        placeholder = { Text(context.getString(R.string.common_account_username_hint)) },
+                        leadingIcon = { Icon(Icons.Default.AccountCircle, null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // 自动填入开关
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { autoFillEnabled = !autoFillEnabled }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = autoFillEnabled,
+                            onCheckedChange = { autoFillEnabled = it }
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = context.getString(R.string.common_account_auto_fill),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = context.getString(R.string.common_account_auto_fill_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    // 保存按钮
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                commonAccountPreferences.setDefaultEmail(email)
+                                commonAccountPreferences.setDefaultPhone(phone)
+                                commonAccountPreferences.setDefaultUsername(username)
+                                commonAccountPreferences.setAutoFillEnabled(autoFillEnabled)
+                                Toast.makeText(context, context.getString(R.string.common_account_saved), Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.End),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(context.getString(R.string.save))
+                    }
+                }
+            }
+        }
+    }
+}

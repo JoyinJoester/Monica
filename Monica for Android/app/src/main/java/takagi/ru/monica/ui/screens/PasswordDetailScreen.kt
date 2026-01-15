@@ -49,6 +49,8 @@ import kotlinx.coroutines.isActive
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
+import takagi.ru.monica.data.LoginType
+import takagi.ru.monica.data.SsoProvider
 
 /**
  * 密码详情页 (Password Detail Screen)
@@ -278,6 +280,21 @@ fun PasswordDetailScreen(
                         context = context
                     )
                 }
+                
+                // ==========================================
+                // 🔗 SSO 第三方登录信息卡片
+                // ==========================================
+                if (entry.isSsoLogin()) {
+                    val refEntry = if (entry.ssoRefEntryId != null) {
+                        allPasswords.find { it.id == entry.ssoRefEntryId }
+                    } else null
+                    
+                    SsoLoginCard(
+                        entry = entry,
+                        refEntry = refEntry,
+                        context = context
+                    )
+                }
 
                 // ==========================================
                 // 🔑 密码列表
@@ -487,6 +504,177 @@ private fun BasicInfoCard(
                 )
             }
         }
+    }
+}
+
+// ============================================
+// 🔗 SSO 第三方登录卡片
+// ============================================
+@Composable
+private fun SsoLoginCard(
+    entry: PasswordEntry,
+    refEntry: PasswordEntry?,
+    context: Context
+) {
+    val ssoProvider = entry.getSsoProviderEnum() ?: SsoProvider.OTHER
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 标题行
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = getSsoProviderIcon(ssoProvider),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    text = "第三方账号登录",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            
+            // SSO 提供商
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "使用",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                
+                // Provider chip
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = getSsoProviderIcon(ssoProvider),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = ssoProvider.displayName,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                
+                Text(
+                    text = "登录",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            
+            // 关联账号信息
+            if (refEntry != null) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f),
+                    thickness = 1.dp
+                )
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "关联账号",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                    )
+                    
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 图标
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = getSsoProviderIcon(ssoProvider),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                            
+                            // 账号信息
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = refEntry.title,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (refEntry.username.isNotEmpty()) {
+                                    Text(
+                                        text = refEntry.username,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 获取 SSO 提供商图标
+ */
+@Composable
+private fun getSsoProviderIcon(provider: SsoProvider): androidx.compose.ui.graphics.vector.ImageVector {
+    return when (provider) {
+        SsoProvider.GOOGLE -> Icons.Default.Email
+        SsoProvider.APPLE -> Icons.Default.Phone
+        SsoProvider.FACEBOOK -> Icons.Default.Person
+        SsoProvider.MICROSOFT -> Icons.Default.Settings
+        SsoProvider.GITHUB -> Icons.Default.Build
+        SsoProvider.TWITTER -> Icons.Default.Send
+        SsoProvider.WECHAT -> Icons.Default.Chat
+        SsoProvider.QQ -> Icons.Default.Group
+        SsoProvider.WEIBO -> Icons.Default.Public
+        SsoProvider.OTHER -> Icons.Default.Lock
     }
 }
 

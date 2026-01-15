@@ -16,7 +16,7 @@ import androidx.room.TypeConverters
         Category::class,
         OperationLog::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -330,6 +330,17 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 21 → 22 - 添加第三方登录(SSO)字段
+        private val MIGRATION_21_22 = object : androidx.room.migration.Migration(21, 22) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 添加登录类型字段
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN loginType TEXT NOT NULL DEFAULT 'PASSWORD'")
+                // 添加SSO提供商字段
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN ssoProvider TEXT NOT NULL DEFAULT ''")
+                // 添加关联账号条目ID字段
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN ssoRefEntryId INTEGER DEFAULT NULL")
+            }
+        }
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -358,7 +369,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_17_18,  // 添加authenticatorKey字段
                         MIGRATION_18_19,  // 添加操作日志表
                         MIGRATION_19_20,  // 添加 isReverted 字段
-                        MIGRATION_20_21   // 添加回收站功能（软删除字段）
+                        MIGRATION_20_21,  // 添加回收站功能（软删除字段）
+                        MIGRATION_21_22   // 添加第三方登录(SSO)字段
                     )
                     .build()
                 INSTANCE = instance

@@ -1288,6 +1288,34 @@
     <string name="delete_password">删除密码</string>
     <string name="delete_password_confirmation">确定要删除此密码吗？此操作无法撤销。</string>
     
+    <!-- Common Account / Quick Fill -->
+    <string name="common_account_title">常用账号信息</string>
+    <string name="common_account_configured">已配置</string>
+    <string name="common_account_not_configured">未配置</string>
+    <string name="common_account_description">设置常用的默认值，新建条目时可快速填入</string>
+    <string name="common_account_email">默认邮箱</string>
+    <string name="common_account_phone">默认手机号</string>
+    <string name="common_account_username">默认用户名</string>
+    <string name="common_account_username_hint">你的用户名</string>
+    <string name="common_account_auto_fill">自动填充默认值</string>
+    <string name="common_account_auto_fill_desc">新建条目时自动填充默认信息</string>
+    <string name="common_account_saved">已保存</string>
+    
+    <!-- SSO / Third-party Login -->
+    <string name="login_type_label">登录方式</string>
+    <string name="login_type_password">密码登录</string>
+    <string name="login_type_sso">第三方登录</string>
+    <string name="sso_provider_label">登录平台</string>
+    <string name="sso_provider_select">选择平台</string>
+    <string name="sso_ref_entry_label">关联账号</string>
+    <string name="sso_ref_entry_none">未选择</string>
+    <string name="sso_ref_entry_picker_title">选择关联账号</string>
+    <string name="sso_description">使用 %1$s 登录</string>
+    <string name="sso_login_card_title">第三方账号登录</string>
+    <string name="sso_login_using">使用</string>
+    <string name="sso_login_suffix">登录</string>
+    <string name="sso_linked_account">关联账号</string>
+    
     <!-- Multi Password Dialog -->
     <string name="common_info">共同信息</string>
     <string name="password_list">密码列表 (%d)</string>

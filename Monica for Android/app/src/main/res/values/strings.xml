@@ -1464,4 +1464,32 @@
     <string name="password_details">Password Details</string>
     <string name="delete_password">Delete Password</string>
     <string name="delete_password_confirmation">Are you sure you want to delete this password? This action cannot be undone.</string>
+    
+    <!-- Common Account / Quick Fill -->
+    <string name="common_account_title">Common Account Info</string>
+    <string name="common_account_configured">Configured</string>
+    <string name="common_account_not_configured">Not Configured</string>
+    <string name="common_account_description">Set default values to quickly fill when adding new entries</string>
+    <string name="common_account_email">Default Email</string>
+    <string name="common_account_phone">Default Phone</string>
+    <string name="common_account_username">Default Username</string>
+    <string name="common_account_username_hint">your_username</string>
+    <string name="common_account_auto_fill">Auto Fill Default</string>
+    <string name="common_account_auto_fill_desc">Auto-fill default info when adding new entry</string>
+    <string name="common_account_saved">Saved</string>
+    
+    <!-- SSO / Third-party Login -->
+    <string name="login_type_label">Login Type</string>
+    <string name="login_type_password">Password</string>
+    <string name="login_type_sso">Third-party</string>
+    <string name="sso_provider_label">SSO Provider</string>
+    <string name="sso_provider_select">Select Provider</string>
+    <string name="sso_ref_entry_label">Linked Account</string>
+    <string name="sso_ref_entry_none">None Selected</string>
+    <string name="sso_ref_entry_picker_title">Select Linked Account</string>
+    <string name="sso_description">Use %1$s to login</string>
+    <string name="sso_login_card_title">Third-party Login</string>
+    <string name="sso_login_using">Using</string>
+    <string name="sso_login_suffix">to login</string>
+    <string name="sso_linked_account">Linked Account</string>
 </resources>

@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -116,6 +117,14 @@ fun AddEditPasswordScreen(
 
     var categoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     val categories by viewModel.categories.collectAsState()
+    
+    // SSO 登录方式字段
+    var loginType by rememberSaveable { mutableStateOf("PASSWORD") }
+    var ssoProvider by rememberSaveable { mutableStateOf("") }
+    var ssoRefEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    
+    // 获取所有密码条目用于SSO关联选择
+    val allPasswordsForRef by viewModel.allPasswords.collectAsState(initial = emptyList())
 
     // 折叠面板状态
     var personalInfoExpanded by remember { mutableStateOf(false) }
@@ -161,6 +170,11 @@ fun AddEditPasswordScreen(
                     creditCardCVV = entry.creditCardCVV
                     categoryId = entry.categoryId
                     authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
+                    
+                    // 加载SSO登录方式字段
+                    loginType = entry.loginType
+                    ssoProvider = entry.ssoProvider
+                    ssoRefEntryId = entry.ssoRefEntryId
 
                     if (isEditing) {
                         isFavorite = entry.isFavorite
@@ -252,7 +266,10 @@ fun AddEditPasswordScreen(
                                     creditCardExpiry = creditCardExpiry,
                                     creditCardCVV = creditCardCVV,
                                     categoryId = categoryId,
-                                    authenticatorKey = currentAuthKey  // ✅ 保存验证器密钥
+                                    authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
+                                    loginType = loginType,
+                                    ssoProvider = ssoProvider,
+                                    ssoRefEntryId = ssoRefEntryId
                                 )
                                 
                                 viewModel.saveGroupedPasswords(
@@ -368,72 +385,87 @@ fun AddEditPasswordScreen(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                             shape = RoundedCornerShape(12.dp)
                         )
+                        
+                        // 登录方式选择
+                        LoginTypeSelector(
+                            loginType = loginType,
+                            ssoProvider = ssoProvider,
+                            ssoRefEntryId = ssoRefEntryId,
+                            allPasswords = allPasswordsForRef,
+                            onLoginTypeChange = { loginType = it },
+                            onSsoProviderChange = { ssoProvider = it },
+                            onSsoRefEntryIdChange = { ssoRefEntryId = it }
+                        )
 
-                        // Passwords
-                        passwords.forEachIndexed { index, pwd ->
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = pwd,
-                                        onValueChange = { passwords[index] = it },
-                                        label = { Text(if (passwords.size > 1) stringResource(R.string.password) + " ${index + 1}" else stringResource(R.string.password_required)) },
-                                        leadingIcon = { Icon(Icons.Default.Lock, null) },
-                                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                        trailingIcon = {
-                                            Row {
-                                                IconButton(onClick = { 
-                                                    showPasswordGenerator = true 
-                                                    currentPasswordIndexForGenerator = index
-                                                }) {
-                                                    Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
-                                                }
-                                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                                    Icon(
-                                                        imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                        contentDescription = null
-                                                    )
-                                                }
-                                                // Allow removing only if more than 1
-                                                if (passwords.size > 1) {
-                                                    IconButton(onClick = { passwords.removeAt(index) }) {
-                                                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        // Passwords (仅在账号密码模式下显示)
+                        AnimatedVisibility(visible = loginType == "PASSWORD") {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                passwords.forEachIndexed { index, pwd ->
+                                    Column {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = pwd,
+                                                onValueChange = { passwords[index] = it },
+                                                label = { Text(if (passwords.size > 1) stringResource(R.string.password) + " ${index + 1}" else stringResource(R.string.password_required)) },
+                                                leadingIcon = { Icon(Icons.Default.Lock, null) },
+                                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                                trailingIcon = {
+                                                    Row {
+                                                        IconButton(onClick = { 
+                                                            showPasswordGenerator = true 
+                                                            currentPasswordIndexForGenerator = index
+                                                        }) {
+                                                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
+                                                        }
+                                                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                                            Icon(
+                                                                imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                                contentDescription = null
+                                                            )
+                                                        }
+                                                        // Allow removing only if more than 1
+                                                        if (passwords.size > 1) {
+                                                            IconButton(onClick = { passwords.removeAt(index) }) {
+                                                                Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                                            }
+                                                        }
                                                     }
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true,
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                        }
+                                        
+                                        // Strength Indicator for EACH password or just hide it to avoid clutter?
+                                        // User didn't specify. But showing it is good.
+                                        if (pwd.isNotEmpty()) {
+                                            val strength = PasswordStrengthAnalyzer.calculateStrength(pwd)
+                                            PasswordStrengthIndicator(
+                                                strength = strength,
+                                                style = settings.validatorProgressBarStyle,
+                                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)
+                                            )
+                                        }
+                                    }
                                 }
-                                
-                                // Strength Indicator for EACH password or just hide it to avoid clutter?
-                                // User didn't specify. But showing it is good.
-                                if (pwd.isNotEmpty()) {
-                                    val strength = PasswordStrengthAnalyzer.calculateStrength(pwd)
-                                    PasswordStrengthIndicator(
-                                        strength = strength,
-                                        style = settings.validatorProgressBarStyle,
-                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)
-                                    )
+
+                                // Add Password Button
+                                OutlinedButton(
+                                    onClick = { passwords.add("") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.add_password))
                                 }
                             }
-                        }
-
-                        // Add Password Button
-                        OutlinedButton(
-                            onClick = { passwords.add("") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Add, null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.add_password))
                         }
                     }
                 }
@@ -1081,5 +1113,321 @@ fun PasswordGeneratorDialog(
         },
         confirmButton = { TextButton(onClick = { onPasswordGenerated(generatedPassword) }) { Text(stringResource(R.string.use_password)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+    )
+}
+
+/**
+ * 登录方式选择器组件
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LoginTypeSelector(
+    loginType: String,
+    ssoProvider: String,
+    ssoRefEntryId: Long?,
+    allPasswords: List<PasswordEntry>,
+    onLoginTypeChange: (String) -> Unit,
+    onSsoProviderChange: (String) -> Unit,
+    onSsoRefEntryIdChange: (Long?) -> Unit
+) {
+    val context = LocalContext.current
+    var showProviderMenu by remember { mutableStateOf(false) }
+    var showRefEntryPicker by remember { mutableStateOf(false) }
+    
+    // 获取引用的条目信息
+    val refEntry = remember(ssoRefEntryId, allPasswords) {
+        allPasswords.find { it.id == ssoRefEntryId }
+    }
+    
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 登录方式标签
+        Text(
+            text = context.getString(R.string.login_type_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        // 登录方式切换
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SegmentedButton(
+                selected = loginType == "PASSWORD",
+                onClick = { onLoginTypeChange("PASSWORD") },
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                icon = { 
+                    if (loginType == "PASSWORD") {
+                        Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp))
+                    }
+                }
+            ) {
+                Text(context.getString(R.string.login_type_password))
+            }
+            SegmentedButton(
+                selected = loginType == "SSO",
+                onClick = { onLoginTypeChange("SSO") },
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                icon = { 
+                    if (loginType == "SSO") {
+                        Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp))
+                    }
+                }
+            ) {
+                Text(context.getString(R.string.login_type_sso))
+            }
+        }
+        
+        // SSO 详细设置
+        AnimatedVisibility(visible = loginType == "SSO") {
+            Column(
+                modifier = Modifier.padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 提供商选择
+                ExposedDropdownMenuBox(
+                    expanded = showProviderMenu,
+                    onExpandedChange = { showProviderMenu = it }
+                ) {
+                    val providerDisplayName = if (ssoProvider.isNotEmpty()) {
+                        takagi.ru.monica.data.SsoProvider.fromName(ssoProvider).displayName
+                    } else {
+                        context.getString(R.string.sso_provider_select)
+                    }
+                    
+                    OutlinedTextField(
+                        value = providerDisplayName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(context.getString(R.string.sso_provider_label)) },
+                        leadingIcon = { 
+                            Icon(
+                                imageVector = getSsoProviderIcon(ssoProvider),
+                                contentDescription = null
+                            )
+                        },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showProviderMenu) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    ExposedDropdownMenu(
+                        expanded = showProviderMenu,
+                        onDismissRequest = { showProviderMenu = false }
+                    ) {
+                        takagi.ru.monica.data.SsoProvider.entries.forEach { provider ->
+                            DropdownMenuItem(
+                                text = { Text(provider.displayName) },
+                                leadingIcon = { Icon(imageVector = getSsoProviderIcon(provider.name), contentDescription = null) },
+                                trailingIcon = if (ssoProvider == provider.name) {
+                                    { Icon(Icons.Default.Check, null) }
+                                } else null,
+                                onClick = {
+                                    onSsoProviderChange(provider.name)
+                                    showProviderMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                // 关联账号选择
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showRefEntryPicker = true }
+                ) {
+                    OutlinedTextField(
+                        value = refEntry?.let { "${it.title} (${it.username})" } 
+                            ?: context.getString(R.string.sso_ref_entry_none),
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false,
+                        label = { Text(context.getString(R.string.sso_ref_entry_label)) },
+                        leadingIcon = { Icon(Icons.Default.Link, null) },
+                        trailingIcon = {
+                            Row {
+                                if (ssoRefEntryId != null) {
+                                    IconButton(onClick = { onSsoRefEntryIdChange(null) }) {
+                                        Icon(Icons.Default.Clear, contentDescription = "清除")
+                                    }
+                                }
+                                Icon(
+                                    Icons.Default.Search, 
+                                    contentDescription = "选择",
+                                    modifier = Modifier.padding(end = 12.dp)
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+                
+                // 提示文字
+                Text(
+                    text = context.getString(R.string.sso_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+    
+    // 关联账号选择对话框
+    if (showRefEntryPicker) {
+        SsoRefEntryPickerDialog(
+            allPasswords = allPasswords.filter { it.loginType == "PASSWORD" && it.id != ssoRefEntryId },
+            currentRefEntryId = ssoRefEntryId,
+            onSelect = { entry ->
+                onSsoRefEntryIdChange(entry.id)
+                showRefEntryPicker = false
+            },
+            onDismiss = { showRefEntryPicker = false }
+        )
+    }
+}
+
+/**
+ * 获取SSO提供商图标
+ */
+@Composable
+private fun getSsoProviderIcon(providerName: String): ImageVector {
+    return when (providerName) {
+        "GOOGLE" -> Icons.Default.Public
+        "APPLE" -> Icons.Default.PhoneIphone
+        "FACEBOOK" -> Icons.Default.Facebook
+        "MICROSOFT" -> Icons.Default.Computer
+        "GITHUB" -> Icons.Default.Code
+        "TWITTER" -> Icons.Default.Public
+        "WECHAT" -> Icons.Default.Chat
+        "QQ" -> Icons.Default.Chat
+        "WEIBO" -> Icons.Default.Public
+        else -> Icons.Default.Login
+    }
+}
+
+/**
+ * SSO关联账号选择对话框
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SsoRefEntryPickerDialog(
+    allPasswords: List<PasswordEntry>,
+    currentRefEntryId: Long?,
+    onSelect: (PasswordEntry) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var searchQuery by remember { mutableStateOf("") }
+    
+    val filteredPasswords = remember(searchQuery, allPasswords) {
+        if (searchQuery.isBlank()) {
+            allPasswords
+        } else {
+            allPasswords.filter {
+                it.title.contains(searchQuery, ignoreCase = true) ||
+                it.username.contains(searchQuery, ignoreCase = true) ||
+                it.website.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(context.getString(R.string.sso_ref_entry_picker_title)) },
+        text = {
+            Column {
+                // 搜索框
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(context.getString(R.string.search)) },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // 密码列表
+                if (filteredPasswords.isEmpty()) {
+                    Text(
+                        text = context.getString(R.string.no_results),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 300.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(filteredPasswords) { entry ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelect(entry) },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (entry.id == currentRefEntryId)
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = entry.title,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = entry.username,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (entry.website.isNotEmpty()) {
+                                            Text(
+                                                text = entry.website,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                    }
+                                    if (entry.id == currentRefEntryId) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(context.getString(R.string.cancel))
+            }
+        }
     )
 }

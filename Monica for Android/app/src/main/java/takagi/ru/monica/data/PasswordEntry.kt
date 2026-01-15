@@ -54,9 +54,32 @@ data class PasswordEntry(
     // 关联的验证器密钥 (TOTP Secret)
     val authenticatorKey: String = "",  // 用于存储绑定的TOTP验证器密钥
     
+    // 第三方登录(SSO)字段
+    @ColumnInfo(defaultValue = "PASSWORD")
+    val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
+    @ColumnInfo(defaultValue = "")
+    val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
+    @ColumnInfo(defaultValue = "NULL")
+    val ssoRefEntryId: Long? = null,     // 引用的账号条目ID
+    
     // 回收站功能 - 软删除字段
     @ColumnInfo(defaultValue = "0")
     val isDeleted: Boolean = false,      // 是否已删除（在回收站中）
     @ColumnInfo(defaultValue = "NULL")
     val deletedAt: java.util.Date? = null // 删除时间（用于自动清空）
-) : Parcelable
+) : Parcelable {
+    
+    /**
+     * 是否使用第三方登录
+     */
+    fun isSsoLogin(): Boolean = loginType == "SSO"
+    
+    /**
+     * 获取SSO提供商枚举
+     */
+    fun getSsoProviderEnum(): SsoProvider? {
+        return if (isSsoLogin() && ssoProvider.isNotEmpty()) {
+            SsoProvider.fromName(ssoProvider)
+        } else null
+    }
+}
