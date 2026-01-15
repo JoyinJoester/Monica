@@ -168,114 +168,53 @@ fun SettingsScreen(
                 }
             )
 
-            // 1. Appearance & UI Settings (原Theme Settings)
-            SettingsSection(
-                title = context.getString(R.string.theme)
+            // 安全分析入口卡片 - 置顶显示
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .clickable { onSecurityAnalysis() },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
             ) {
-                SettingsItem(
-                    icon = Icons.Default.Palette,
-                    title = context.getString(R.string.theme),
-                    subtitle = getThemeDisplayName(settings.themeMode, context),
-                    onClick = { showThemeDialog = true }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Colorize,
-                    title = context.getString(R.string.color_scheme),
-                    subtitle = getColorSchemeDisplayName(settings.colorScheme, context),
-                    onClick = { onNavigateToColorScheme() }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Language,
-                    title = context.getString(R.string.language),
-                    subtitle = getLanguageDisplayName(settings.language, context),
-                    onClick = { showLanguageDialog = true }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.ViewWeek,
-                    title = context.getString(R.string.bottom_nav_settings),
-                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
-                    onClick = onNavigateToBottomNavSettings
-                )
-
-                // 预览功能
-                SettingsItem(
-                    icon = Icons.Default.Science,
-                    title = stringResource(R.string.preview_features_title),
-                    subtitle = stringResource(R.string.preview_features_description),
-                    onClick = { previewFeaturesExpanded = true }
-                )
-
-                SettingsItemWithSwitch(
-                    icon = Icons.Default.Colorize,
-                    title = context.getString(R.string.disable_wallpaper_color_extraction),
-                    subtitle = context.getString(R.string.disable_wallpaper_color_extraction_description),
-                    checked = !settings.dynamicColorEnabled,
-                    onCheckedChange = { enabled ->
-                        viewModel.updateDynamicColorEnabled(!enabled)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = context.getString(R.string.security_analysis),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = context.getString(R.string.security_analysis_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
                     }
-                )
-                
-                if (settings.isPlusActivated) {
-                    SettingsItemWithSwitch(
-                        icon = Icons.Default.Vibration,
-                        title = context.getString(R.string.validator_vibration),
-                        subtitle = context.getString(R.string.validator_vibration_description),
-                        checked = settings.validatorVibrationEnabled,
-                        onCheckedChange = { enabled ->
-                            viewModel.updateValidatorVibrationEnabled(enabled)
-                        }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
-
-            // 2. Core Features (核心功能)
-            SettingsSection(
-                title = context.getString(R.string.autofill) // 或者使用专门的 "功能" 标题
-            ) {
-                SettingsItem(
-                    icon = Icons.Default.VpnKey,
-                    title = context.getString(R.string.autofill),
-                    subtitle = context.getString(R.string.autofill_subtitle),
-                    onClick = onNavigateToAutofill
-                )
-                
-                CommonAccountCard()
-
-                if (settings.isPlusActivated) {
-                    NotificationValidatorCard(
-                        enabled = settings.notificationValidatorEnabled,
-                        autoMatchEnabled = settings.notificationValidatorAutoMatch,
-                        selectedId = settings.notificationValidatorId,
-                        totpItems = totpItems,
-                        onEnabledChange = { enabled ->
-                            viewModel.updateNotificationValidatorEnabled(enabled)
-                        },
-                        onAutoMatchChange = { enabled ->
-                            viewModel.updateNotificationValidatorAutoMatch(enabled)
-                        },
-                        onValidatorSelected = { id ->
-                            viewModel.updateNotificationValidatorId(id)
-                        }
-                    )
-                }
-            }
-
-            // 3. Security Settings
+            
+            // Security Settings
             SettingsSection(
                 title = context.getString(R.string.security)
             ) {
-                // 安全分析入口项 (取代大卡片)
-                SettingsItem(
-                    icon = Icons.Default.Shield,
-                    title = context.getString(R.string.security_analysis),
-                    subtitle = context.getString(R.string.security_analysis_description),
-                    onClick = onSecurityAnalysis,
-                    iconTint = MaterialTheme.colorScheme.primary
-                )
-
                 // 生物识别开关
                 SettingsItemWithSwitch(
                     icon = Icons.Default.Fingerprint,
@@ -291,8 +230,12 @@ fun SettingsScreen(
                     checked = biometricSwitchState,
                     enabled = isBiometricAvailable,
                     onCheckedChange = { newState ->
+                        android.util.Log.d("SettingsScreen", "Switch clicked: newState=$newState, activity=$activity")
                         if (newState) {
+                            // 用户想启用指纹解锁
                             if (activity != null) {
+                                android.util.Log.d("SettingsScreen", "Starting biometric authentication...")
+                                // 需要先验证指纹
                                 biometricHelper.authenticate(
                                     activity = activity,
                                     title = context.getString(R.string.biometric_login_title),
@@ -300,37 +243,61 @@ fun SettingsScreen(
                                     description = context.getString(R.string.biometric_login_description),
                                     negativeButtonText = context.getString(R.string.cancel),
                                     onSuccess = {
+                                        // 验证成功,启用指纹解锁
+                                        android.util.Log.d("SettingsScreen", "Biometric authentication SUCCESS")
                                         biometricSwitchState = true
                                         viewModel.updateBiometricEnabled(true)
-                                        Toast.makeText(context, "指纹解锁已启用", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(
+                                            context,
+                                            "指纹解锁已启用",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     },
                                     onError = { errorCode, errorMsg ->
+                                        // 验证失败,保持关闭状态
+                                        android.util.Log.e("SettingsScreen", "Biometric authentication ERROR: code=$errorCode, msg=$errorMsg")
                                         biometricSwitchState = false
-                                        Toast.makeText(context, "指纹验证失败: $errorMsg", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(
+                                            context,
+                                            "指纹验证失败: $errorMsg",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     },
                                     onCancel = {
+                                        // 用户取消,保持关闭状态
+                                        android.util.Log.d("SettingsScreen", "Biometric authentication CANCELLED")
                                         biometricSwitchState = false
+                                        Toast.makeText(
+                                            context,
+                                            "已取消",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     }
                                 )
                             } else {
+                                // activity 为空,无法验证,恢复开关状态
+                                android.util.Log.e("SettingsScreen", "Activity is NULL! Cannot authenticate")
                                 biometricSwitchState = false
-                                Toast.makeText(context, context.getString(R.string.biometric_cannot_enable), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.biometric_cannot_enable),
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
                         } else {
+                            // 用户想禁用指纹解锁,直接禁用不需要验证
+                            android.util.Log.d("SettingsScreen", "Disabling biometric unlock")
                             biometricSwitchState = false
                             viewModel.updateBiometricEnabled(false)
-                            Toast.makeText(context, context.getString(R.string.biometric_unlock_disabled), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.biometric_unlock_disabled),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 )
                 
-                SettingsItem(
-                    icon = Icons.Default.Timer,
-                    title = context.getString(R.string.auto_lock),
-                    subtitle = getAutoLockDisplayName(settings.autoLockMinutes, context),
-                    onClick = { showAutoLockDialog = true }
-                )
-
                 SettingsItem(
                     icon = Icons.Default.Security,
                     title = context.getString(R.string.screenshot_protection),
@@ -344,12 +311,12 @@ fun SettingsScreen(
                 )
                 
                 SettingsItem(
-                    icon = Icons.Default.VpnKey,
-                    title = context.getString(R.string.reset_master_password),
-                    subtitle = context.getString(R.string.reset_password_description),
-                    onClick = onResetPassword
+                    icon = Icons.Default.Timer,
+                    title = context.getString(R.string.auto_lock),
+                    subtitle = getAutoLockDisplayName(settings.autoLockMinutes, context),
+                    onClick = { showAutoLockDialog = true }
                 )
-
+                
                 SettingsItem(
                     icon = Icons.Default.Security,
                     title = context.getString(R.string.security_questions),
@@ -363,21 +330,19 @@ fun SettingsScreen(
                     subtitle = context.getString(R.string.permission_management_subtitle),
                     onClick = onNavigateToPermissionManagement
                 )
+                
+                SettingsItem(
+                    icon = Icons.Default.VpnKey,
+                    title = context.getString(R.string.reset_master_password),
+                    subtitle = context.getString(R.string.reset_password_description),
+                    onClick = onResetPassword
+                )
             }
             
-            // 4. Data Management Settings
+            // Data Management Settings
             SettingsSection(
                 title = context.getString(R.string.data_management)
             ) {
-                if (settings.isPlusActivated) {
-                    SettingsItem(
-                        icon = Icons.Default.Cloud,
-                        title = context.getString(R.string.webdav_backup),
-                        subtitle = context.getString(R.string.webdav_backup_description),
-                        onClick = onNavigateToWebDav
-                    )
-                }
-
                 SettingsItem(
                     icon = Icons.Default.Download,
                     title = context.getString(R.string.export_data),
@@ -392,6 +357,26 @@ fun SettingsScreen(
                     onClick = onImportData
                 )
                 
+                if (settings.isPlusActivated) {
+                    SettingsItem(
+                        icon = Icons.Default.Cloud,
+                        title = context.getString(R.string.webdav_backup),
+                        subtitle = context.getString(R.string.webdav_backup_description),
+                        onClick = onNavigateToWebDav
+                    )
+                }
+                
+                SettingsItem(
+                    icon = Icons.Default.VpnKey,
+                    title = context.getString(R.string.autofill),
+                    subtitle = context.getString(R.string.autofill_subtitle),
+                    onClick = onNavigateToAutofill
+                )
+                
+                // 常用账号信息
+                CommonAccountCard()
+                
+                // 回收站设置
                 SettingsItemWithTrashConfig(
                     trashEnabled = settings.trashEnabled,
                     trashAutoDeleteDays = settings.trashAutoDeleteDays,
@@ -412,7 +397,91 @@ fun SettingsScreen(
                 )
             }
             
-            // 5. About Settings
+            // Appearance Settings (原Theme Settings)
+            SettingsSection(
+                title = context.getString(R.string.theme)  // 现在显示为"外观"
+            ) {
+                SettingsItem(
+                    icon = Icons.Default.Palette,
+                    title = context.getString(R.string.theme),
+                    subtitle = getThemeDisplayName(settings.themeMode, context),
+                    onClick = { showThemeDialog = true }
+                )
+                
+                SettingsItem(
+                    icon = Icons.Default.Colorize,
+                    title = context.getString(R.string.color_scheme),
+                    subtitle = getColorSchemeDisplayName(settings.colorScheme, context),
+                    onClick = { onNavigateToColorScheme() }
+                )
+                
+                // 移入的设置项：
+                // 1. 语言设置
+                SettingsItem(
+                    icon = Icons.Default.Language,
+                    title = context.getString(R.string.language),
+                    subtitle = getLanguageDisplayName(settings.language, context),
+                    onClick = { showLanguageDialog = true }
+                )
+                
+                // 2. 底部导航栏设置
+                SettingsItem(
+                    icon = Icons.Default.ViewWeek,
+                    title = context.getString(R.string.bottom_nav_settings),
+                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
+                    onClick = onNavigateToBottomNavSettings
+                )
+                
+
+                // 3. 关闭壁纸取色设置
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.Colorize,
+                    title = context.getString(R.string.disable_wallpaper_color_extraction),
+                    subtitle = context.getString(R.string.disable_wallpaper_color_extraction_description),
+                    checked = !settings.dynamicColorEnabled,
+                    onCheckedChange = { enabled ->
+                        viewModel.updateDynamicColorEnabled(!enabled)
+                    }
+                )
+                
+                // 4. 验证器震动提醒
+                if (settings.isPlusActivated) {
+                    SettingsItemWithSwitch(
+                        icon = Icons.Default.Vibration,
+                        title = context.getString(R.string.validator_vibration),
+                        subtitle = context.getString(R.string.validator_vibration_description),
+                        checked = settings.validatorVibrationEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateValidatorVibrationEnabled(enabled)
+                        }
+                    )
+                }
+            }
+            
+            // Notification Settings
+            if (settings.isPlusActivated) {
+                SettingsSection(
+                    title = stringResource(R.string.notification_settings_title)
+                ) {
+                    NotificationValidatorCard(
+                        enabled = settings.notificationValidatorEnabled,
+                        autoMatchEnabled = settings.notificationValidatorAutoMatch,
+                        selectedId = settings.notificationValidatorId,
+                        totpItems = totpItems,
+                        onEnabledChange = { enabled ->
+                            viewModel.updateNotificationValidatorEnabled(enabled)
+                        },
+                        onAutoMatchChange = { enabled ->
+                            viewModel.updateNotificationValidatorAutoMatch(enabled)
+                        },
+                        onValidatorSelected = { id ->
+                            viewModel.updateNotificationValidatorId(id)
+                        }
+                    )
+                }
+            }
+
+            // About Settings
             SettingsSection(
                 title = context.getString(R.string.about)
             ) {
@@ -421,55 +490,113 @@ fun SettingsScreen(
                     title = context.getString(R.string.version),
                     subtitle = context.getString(R.string.settings_version_number),
                     onClick = {
+                        // 打开 GitHub 仓库链接
                         try {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/JoyinJoester/Monica"))
                             context.startActivity(intent)
                         } catch (e: Exception) {
-                            Toast.makeText(context, context.getString(R.string.cannot_open_browser), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.cannot_open_browser),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 )
             }
             
-            // 6. Developer Settings
+            // 开发者设置入口
             SettingsSection(
                 title = stringResource(R.string.developer_settings)
             ) {
+                // 预览功能 - 点击弹出对话框
+                SettingsItem(
+                    icon = Icons.Default.Science,
+                    title = stringResource(R.string.preview_features_title),
+                    subtitle = stringResource(R.string.preview_features_description),
+                    onClick = { previewFeaturesExpanded = true }
+                )
+
                 SettingsItem(
                     icon = Icons.Default.Code,
                     title = stringResource(R.string.developer_settings),
                     subtitle = stringResource(R.string.developer_settings_subtitle),
                     onClick = {
+                        val hasActivity = activity != null
+                        val biometricAvailableNow = hasActivity && biometricHelper.isBiometricAvailable()
+                        android.util.Log.d(
+                            "SettingsScreen",
+                            "Developer settings tapped. hasActivity=$hasActivity, biometricAvailable=$biometricAvailableNow"
+                        )
+
                         developerPasswordInput = ""
                         showDeveloperVerifyDialog = false
 
                         when {
-                            activity == null -> {
-                                Toast.makeText(context, context.getString(R.string.use_master_password), Toast.LENGTH_SHORT).show()
+                            !hasActivity -> {
+                                android.util.Log.w(
+                                    "SettingsScreen",
+                                    "Cannot start biometric auth: FragmentActivity context missing"
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.use_master_password),
+                                    Toast.LENGTH_SHORT
+                                ).show()
                                 showDeveloperVerifyDialog = true
                             }
-                            biometricHelper.isBiometricAvailable() -> {
+                            biometricAvailableNow -> {
                                 biometricHelper.authenticate(
-                                    activity = activity,
+                                    activity = activity!!,
                                     title = context.getString(R.string.biometric_login_title),
                                     subtitle = context.getString(R.string.biometric_login_subtitle),
                                     description = context.getString(R.string.biometric_login_description),
                                     negativeButtonText = context.getString(R.string.use_master_password),
                                     onSuccess = {
+                                        android.util.Log.d(
+                                            "SettingsScreen",
+                                            "Developer biometric authentication succeeded"
+                                        )
                                         showDeveloperVerifyDialog = false
                                         developerPasswordInput = ""
                                         onNavigateToDeveloperSettings()
                                     },
-                                    onError = { _, errorMessage ->
-                                        Toast.makeText(context, context.getString(R.string.biometric_auth_error, errorMessage), Toast.LENGTH_SHORT).show()
+                                    onError = { errorCode, errorMessage ->
+                                        android.util.Log.w(
+                                            "SettingsScreen",
+                                            "Developer biometric error: code=$errorCode, message=$errorMessage"
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.biometric_auth_error, errorMessage),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                         showDeveloperVerifyDialog = true
                                     },
                                     onCancel = {
+                                        android.util.Log.d(
+                                            "SettingsScreen",
+                                            "Developer biometric canceled by user"
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.use_master_password),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                         showDeveloperVerifyDialog = true
                                     }
                                 )
                             }
                             else -> {
+                                android.util.Log.d(
+                                    "SettingsScreen",
+                                    "Biometric unavailable, showing password dialog for developer settings"
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.biometric_not_available),
+                                    Toast.LENGTH_SHORT
+                                ).show()
                                 showDeveloperVerifyDialog = true
                             }
                         }
