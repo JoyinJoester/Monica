@@ -761,6 +761,43 @@ class DataExportImportViewModel(
                             }
                         }
                         
+                        // 1.5 ✅ 更新SSO引用的密码ID (ssoRefEntryId)
+                        // 需要在所有密码插入后更新，因为被引用的密码可能在引用者之后插入
+                        content.passwords.forEach { entry ->
+                            if (entry.ssoRefEntryId != null && entry.ssoRefEntryId > 0) {
+                                try {
+                                    val originalRefId = entry.ssoRefEntryId
+                                    val originalId = entry.id
+                                    val currentId = passwordIdMap[originalId]
+                                    
+                                    if (currentId != null) {
+                                        val newRefId = passwordIdMap[originalRefId]
+                                        val existingEntry = passwordRepository.getPasswordEntryById(currentId)
+                                        
+                                        if (existingEntry != null) {
+                                            if (newRefId != null) {
+                                                // 找到了新的引用ID，更新它
+                                                if (newRefId != existingEntry.ssoRefEntryId) {
+                                                    val updatedEntry = existingEntry.copy(ssoRefEntryId = newRefId)
+                                                    passwordRepository.updatePasswordEntry(updatedEntry)
+                                                    android.util.Log.d("DataImport", "Updated ssoRefEntryId from $originalRefId to $newRefId for password: ${entry.title}")
+                                                }
+                                            } else {
+                                                // 找不到引用的密码（可能已删除或未包含在备份中），清空引用以避免无效引用
+                                                if (existingEntry.ssoRefEntryId != null) {
+                                                    val updatedEntry = existingEntry.copy(ssoRefEntryId = null)
+                                                    passwordRepository.updatePasswordEntry(updatedEntry)
+                                                    android.util.Log.w("DataImport", "Cleared invalid ssoRefEntryId $originalRefId for password: ${entry.title} (referenced password not found)")
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.w("DataImport", "Failed to update ssoRefEntryId for ${entry.title}: ${e.message}")
+                                }
+                            }
+                        }
+                        
                         // 2. 插入其他安全项目并修复TOTP关联
                         content.secureItems.forEach { item ->
                             try {

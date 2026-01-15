@@ -1042,6 +1042,43 @@ private fun BackupItem(
                 }
             }
             
+            // ✅ 更新SSO引用的密码ID (ssoRefEntryId)
+            // 需要在所有密码插入后更新，因为被引用的密码可能在引用者之后插入
+            passwords.forEach { password ->
+                if (password.ssoRefEntryId != null && password.ssoRefEntryId > 0) {
+                    try {
+                        val originalRefId = password.ssoRefEntryId
+                        val originalId = password.id
+                        val currentId = passwordIdMap[originalId]
+                        
+                        if (currentId != null) {
+                            val newRefId = passwordIdMap[originalRefId]
+                            val existingEntry = passwordRepository.getPasswordEntryById(currentId)
+                            
+                            if (existingEntry != null) {
+                                if (newRefId != null) {
+                                    // 找到了新的引用ID，更新它
+                                    if (newRefId != existingEntry.ssoRefEntryId) {
+                                        val updatedEntry = existingEntry.copy(ssoRefEntryId = newRefId)
+                                        passwordRepository.updatePasswordEntry(updatedEntry)
+                                        android.util.Log.d("WebDavBackup", "Updated ssoRefEntryId from $originalRefId to $newRefId for password: ${password.title}")
+                                    }
+                                } else {
+                                    // 找不到引用的密码（可能已删除或未包含在备份中），清空引用以避免无效引用
+                                    if (existingEntry.ssoRefEntryId != null) {
+                                        val updatedEntry = existingEntry.copy(ssoRefEntryId = null)
+                                        passwordRepository.updatePasswordEntry(updatedEntry)
+                                        android.util.Log.w("WebDavBackup", "Cleared invalid ssoRefEntryId $originalRefId for password: ${password.title} (referenced password not found)")
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavBackup", "Failed to update ssoRefEntryId for ${password.title}: ${e.message}")
+                    }
+                }
+            }
+            
             // 导入其他数据到数据库(带去重)
             var secureItemCount = 0
             var secureItemSkipped = 0

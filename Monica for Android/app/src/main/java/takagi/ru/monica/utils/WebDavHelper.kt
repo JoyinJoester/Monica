@@ -55,7 +55,11 @@ private data class PasswordBackupEntry(
     val phone: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val authenticatorKey: String = ""  // ✅ 直接存储验证器密钥
+    val authenticatorKey: String = "",  // ✅ 直接存储验证器密钥
+    // ✅ 第三方登录(SSO)字段
+    val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
+    val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
+    val ssoRefEntryId: Long? = null      // 引用的账号条目ID
 )
 
 @Serializable
@@ -107,7 +111,11 @@ private data class TrashPasswordBackupEntry(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val authenticatorKey: String = "",
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    // ✅ 第三方登录(SSO)字段
+    val loginType: String = "PASSWORD",
+    val ssoProvider: String = "",
+    val ssoRefEntryId: Long? = null
 )
 
 @Serializable
@@ -122,6 +130,18 @@ private data class TrashSecureItemBackupEntry(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val deletedAt: Long? = null
+)
+
+/**
+ * ✅ 常用账号信息备份数据类
+ * 用于备份设置中的常用账号信息
+ */
+@Serializable
+private data class CommonAccountBackupEntry(
+    val email: String = "",
+    val phone: String = "",
+    val username: String = "",
+    val autoFillEnabled: Boolean = false
 )
 
 /**
@@ -627,7 +647,11 @@ class WebDavHelper(
                                 phone = password.phone,
                                 createdAt = password.createdAt.time,
                                 updatedAt = password.updatedAt.time,
-                                authenticatorKey = password.authenticatorKey  // ✅ 直接备份验证器密钥
+                                authenticatorKey = password.authenticatorKey,  // ✅ 直接备份验证器密钥
+                                // ✅ 第三方登录(SSO)字段
+                                loginType = password.loginType,
+                                ssoProvider = password.ssoProvider,
+                                ssoRefEntryId = password.ssoRefEntryId
                             )
                             val fileName = "password_${password.id}_${password.createdAt.time}.json"
                             val target = File(passwordsDir, fileName)
@@ -830,7 +854,11 @@ class WebDavHelper(
                                         createdAt = password.createdAt.time,
                                         updatedAt = password.updatedAt.time,
                                         authenticatorKey = password.authenticatorKey,
-                                        deletedAt = password.deletedAt?.time
+                                        deletedAt = password.deletedAt?.time,
+                                        // ✅ 第三方登录(SSO)字段
+                                        loginType = password.loginType,
+                                        ssoProvider = password.ssoProvider,
+                                        ssoRefEntryId = password.ssoRefEntryId
                                     )
                                 }
                                 val trashPasswordsFile = File(trashDir, "trash_passwords.json")
@@ -878,6 +906,33 @@ class WebDavHelper(
                             android.util.Log.w("WebDavHelper", "Failed to backup trash: ${e.message}")
                             warnings.add("回收站备份失败: ${e.message}")
                         }
+                    }
+                    
+                    // 7.7 ✅ 备份常用账号信息
+                    try {
+                        val commonAccountPreferences = takagi.ru.monica.data.CommonAccountPreferences(context)
+                        val commonInfo = commonAccountPreferences.commonAccountInfo.first()
+                        
+                        if (commonInfo.hasAnyInfo() || commonInfo.autoFillEnabled) {
+                            val commonAccountBackup = CommonAccountBackupEntry(
+                                email = commonInfo.email,
+                                phone = commonInfo.phone,
+                                username = commonInfo.username,
+                                autoFillEnabled = commonInfo.autoFillEnabled
+                            )
+                            val json = Json { prettyPrint = false }
+                            val commonAccountFile = File(cacheBackupDir, "common_account.json")
+                            commonAccountFile.writeText(
+                                json.encodeToString(CommonAccountBackupEntry.serializer(), commonAccountBackup),
+                                Charsets.UTF_8
+                            )
+                            addFileToZip(zipOut, commonAccountFile, commonAccountFile.name)
+                            commonAccountFile.delete()
+                            android.util.Log.d("WebDavHelper", "Backup common account info")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to backup common account info: ${e.message}")
+                        warnings.add("常用账号信息备份失败: ${e.message}")
                     }
                 }
 
@@ -1362,7 +1417,11 @@ class WebDavHelper(
                                                             updatedAt = java.util.Date(backup.updatedAt),
                                                             authenticatorKey = backup.authenticatorKey,
                                                             isDeleted = true,
-                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) }
+                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) },
+                                                            // ✅ 第三方登录(SSO)字段
+                                                            loginType = backup.loginType,
+                                                            ssoProvider = backup.ssoProvider,
+                                                            ssoRefEntryId = backup.ssoRefEntryId
                                                         )
                                                         passwordEntryDao.insertPasswordEntry(entry)
                                                         importedCount++
@@ -1446,6 +1505,37 @@ class WebDavHelper(
                                         android.util.Log.w("WebDavHelper", "Failed to restore image file $entryName: ${e.message}")
                                         // P0修复：记录失败
                                         warnings.add("图片恢复失败: $entryName - ${e.message}")
+                                    }
+                                }
+                                // ✅ 恢复常用账号信息（仅当本地为空时恢复，避免覆盖用户更新的数据）
+                                entryName.equals("common_account.json", ignoreCase = true) -> {
+                                    try {
+                                        val commonAccountJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val commonAccountBackup = json.decodeFromString<CommonAccountBackupEntry>(commonAccountJson)
+                                        
+                                        val commonAccountPreferences = takagi.ru.monica.data.CommonAccountPreferences(context)
+                                        val currentInfo = commonAccountPreferences.commonAccountInfo.first()
+                                        
+                                        // 只有当本地对应字段为空时才恢复，保护用户本地更新的数据
+                                        if (currentInfo.email.isEmpty() && commonAccountBackup.email.isNotEmpty()) {
+                                            commonAccountPreferences.setDefaultEmail(commonAccountBackup.email)
+                                        }
+                                        if (currentInfo.phone.isEmpty() && commonAccountBackup.phone.isNotEmpty()) {
+                                            commonAccountPreferences.setDefaultPhone(commonAccountBackup.phone)
+                                        }
+                                        if (currentInfo.username.isEmpty() && commonAccountBackup.username.isNotEmpty()) {
+                                            commonAccountPreferences.setDefaultUsername(commonAccountBackup.username)
+                                        }
+                                        // autoFillEnabled 只有在当前未启用且备份启用时才恢复
+                                        if (!currentInfo.autoFillEnabled && commonAccountBackup.autoFillEnabled) {
+                                            commonAccountPreferences.setAutoFillEnabled(true)
+                                        }
+                                        
+                                        android.util.Log.d("WebDavHelper", "Restored common account info (merge mode)")
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore common account info: ${e.message}")
+                                        warnings.add("常用账号信息恢复失败: ${e.message}")
                                     }
                                 }
                             }
@@ -1757,7 +1847,11 @@ class WebDavHelper(
                 phone = backup.phone,
                 createdAt = Date(backup.createdAt),
                 updatedAt = Date(backup.updatedAt),
-                authenticatorKey = backup.authenticatorKey  // ✅ 直接恢复验证器密钥
+                authenticatorKey = backup.authenticatorKey,  // ✅ 直接恢复验证器密钥
+                // ✅ 第三方登录(SSO)字段
+                loginType = backup.loginType,
+                ssoProvider = backup.ssoProvider,
+                ssoRefEntryId = backup.ssoRefEntryId
             )
             Pair(entry, backup.categoryName)
         } catch (e: Exception) {
