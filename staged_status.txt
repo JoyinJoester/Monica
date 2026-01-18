@@ -1,0 +1,7 @@
+M  "Monica for Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditBankCardScreen.kt"
+M  "Monica for Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditDocumentScreen.kt"
+M  "Monica for Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt"
+M  "Monica for Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditTotpScreen.kt"
+M  "Monica for Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
+?? full_status.txt
+?? staged_status.txt

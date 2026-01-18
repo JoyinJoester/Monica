@@ -1,10 +1,16 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -17,14 +23,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -33,7 +50,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -43,7 +63,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
 import takagi.ru.monica.data.model.TimelineBranch
@@ -56,6 +78,7 @@ import takagi.ru.monica.ui.components.TrashSettingsSheet
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TrashViewModel
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -68,8 +91,30 @@ enum class HistoryTab {
 }
 
 /**
- * 时间线主屏幕 - 使用 M3E 主题取色
- * 支持切换 操作历史 和 回收站 视图
+ * 聚合后的时间线组 - 用于按日期和类型聚合
+ */
+data class TimelineGroup(
+    val dateLabel: String,        // 日期标签：今天、昨天、本周等
+    val items: List<TimelineDisplayItem>  // 组内的条目
+)
+
+/**
+ * 时间线显示条目 - 可以是单个事件或聚合事件
+ */
+sealed class TimelineDisplayItem {
+    data class Single(val event: TimelineEvent.StandardLog) : TimelineDisplayItem()
+    data class Aggregated(
+        val operationType: String,
+        val itemType: String,
+        val events: List<TimelineEvent.StandardLog>,
+        val firstTimestamp: Long,
+        val lastTimestamp: Long
+    ) : TimelineDisplayItem()
+    data class Conflict(val event: TimelineEvent.ConflictBranch) : TimelineDisplayItem()
+}
+
+/**
+ * 时间线主屏幕 - 高级现代设计
  */
 @Composable
 fun TimelineScreen(
@@ -107,60 +152,64 @@ fun TimelineScreen(
 }
 
 /**
- * 历史页面顶栏 - 类似卡包的胶囊切换器
+ * 历史页面顶栏 - 精致的玻璃态设计
  */
 @Composable
 private fun HistoryTopBar(
     currentTab: HistoryTab,
     onTabSelected: (HistoryTab) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    val colorScheme = MaterialTheme.colorScheme
+    
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent
     ) {
-        // 左侧大标题
-        Text(
-            text = if (currentTab == HistoryTab.TIMELINE) "历史" else "回收站",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        // 右侧胶囊形切换器
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 2.dp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // 历史 Tab
-                HistoryPillTabItem(
-                    selected = currentTab == HistoryTab.TIMELINE,
-                    onClick = { onTabSelected(HistoryTab.TIMELINE) },
-                    icon = Icons.Default.History,
-                    contentDescription = "操作历史"
-                )
+            // 左侧大标题 - 带渐变效果
+            Text(
+                text = if (currentTab == HistoryTab.TIMELINE) "时间线" else "回收站",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onBackground
+            )
 
-                // 回收站 Tab
-                HistoryPillTabItem(
-                    selected = currentTab == HistoryTab.TRASH,
-                    onClick = { onTabSelected(HistoryTab.TRASH) },
-                    icon = Icons.Default.Delete,
-                    contentDescription = "回收站"
-                )
+            // 右侧胶囊形切换器 - 更精致的设计
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                tonalElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    HistoryPillTabItem(
+                        selected = currentTab == HistoryTab.TIMELINE,
+                        onClick = { onTabSelected(HistoryTab.TIMELINE) },
+                        icon = Icons.Default.History,
+                        contentDescription = "操作历史"
+                    )
+                    HistoryPillTabItem(
+                        selected = currentTab == HistoryTab.TRASH,
+                        onClick = { onTabSelected(HistoryTab.TRASH) },
+                        icon = Icons.Default.Delete,
+                        contentDescription = "回收站"
+                    )
+                }
             }
         }
     }
 }
 
 /**
- * 胶囊形 Tab 项
+ * 胶囊形 Tab 项 - 更精致的设计
  */
 @Composable
 private fun HistoryPillTabItem(
@@ -169,26 +218,19 @@ private fun HistoryPillTabItem(
     icon: ImageVector,
     contentDescription: String
 ) {
-    val backgroundColor = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        Color.Transparent
-    }
-    val contentColor = if (selected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val colorScheme = MaterialTheme.colorScheme
+    val backgroundColor = if (selected) colorScheme.primary else Color.Transparent
+    val contentColor = if (selected) colorScheme.onPrimary else colorScheme.onSurfaceVariant
 
     Surface(
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(12.dp),
         color = backgroundColor,
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -202,7 +244,104 @@ private fun HistoryPillTabItem(
 }
 
 /**
- * 操作历史内容
+ * 将时间线事件按日期分组并聚合相同类型的连续操作
+ */
+@Composable
+private fun groupAndAggregateEvents(events: List<TimelineEvent>): List<TimelineGroup> {
+    if (events.isEmpty()) return emptyList()
+    
+    val calendar = Calendar.getInstance()
+    val today = calendar.apply { 
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    
+    val yesterday = today - 24 * 60 * 60 * 1000
+    val thisWeekStart = today - calendar.get(Calendar.DAY_OF_WEEK) * 24 * 60 * 60 * 1000L
+    
+    // 按日期分组
+    val groupedByDate = events.groupBy { event ->
+        val timestamp = when (event) {
+            is TimelineEvent.StandardLog -> event.timestamp
+            is TimelineEvent.ConflictBranch -> event.ancestor.timestamp
+        }
+        when {
+            timestamp >= today -> "今天"
+            timestamp >= yesterday -> "昨天"
+            timestamp >= thisWeekStart -> "本周"
+            else -> {
+                val sdf = SimpleDateFormat("MM月dd日", Locale.CHINESE)
+                sdf.format(Date(timestamp))
+            }
+        }
+    }
+    
+    return groupedByDate.map { (dateLabel, dateEvents) ->
+        val displayItems = mutableListOf<TimelineDisplayItem>()
+        var i = 0
+        
+        while (i < dateEvents.size) {
+            val event = dateEvents[i]
+            
+            when (event) {
+                is TimelineEvent.ConflictBranch -> {
+                    displayItems.add(TimelineDisplayItem.Conflict(event))
+                    i++
+                }
+                is TimelineEvent.StandardLog -> {
+                    // 查找连续的相同类型操作（用于聚合）
+                    val sameTypeEvents = mutableListOf(event)
+                    var j = i + 1
+                    
+                    // 聚合 WebDAV 同步操作、新建操作或连续的相同操作类型
+                    val shouldAggregate = event.itemType in listOf("WEBDAV_UPLOAD", "WEBDAV_DOWNLOAD") ||
+                            event.operationType == "SYNC" ||
+                            event.operationType == "CREATE"
+                    
+                    if (shouldAggregate) {
+                        while (j < dateEvents.size) {
+                            val nextEvent = dateEvents[j]
+                            if (nextEvent is TimelineEvent.StandardLog &&
+                                nextEvent.operationType == event.operationType &&
+                                nextEvent.itemType == event.itemType
+                            ) {
+                                sameTypeEvents.add(nextEvent)
+                                j++
+                            } else {
+                                break
+                            }
+                        }
+                    }
+                    
+                    if (sameTypeEvents.size >= 3) {
+                        // 聚合显示
+                        displayItems.add(
+                            TimelineDisplayItem.Aggregated(
+                                operationType = event.operationType,
+                                itemType = event.itemType,
+                                events = sameTypeEvents,
+                                firstTimestamp = sameTypeEvents.last().timestamp,
+                                lastTimestamp = sameTypeEvents.first().timestamp
+                            )
+                        )
+                        i = j
+                    } else {
+                        // 单独显示
+                        displayItems.add(TimelineDisplayItem.Single(event))
+                        i++
+                    }
+                }
+            }
+        }
+        
+        TimelineGroup(dateLabel = dateLabel, items = displayItems)
+    }
+}
+
+/**
+ * 操作历史内容 - 全新的高级设计
  */
 @Composable
 private fun TimelineContent(
@@ -211,12 +350,11 @@ private fun TimelineContent(
     val timelineEvents by viewModel.timelineEvents.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     
-    // 底部弹窗状态
     var selectedBranch by remember { mutableStateOf<TimelineBranch?>(null) }
     var selectedLog by remember { mutableStateOf<TimelineEvent.StandardLog?>(null) }
     
-    // 从 M3E 主题获取颜色
     val colorScheme = MaterialTheme.colorScheme
+    val groups = groupAndAggregateEvents(timelineEvents)
     
     Box(
         modifier = Modifier
@@ -229,23 +367,53 @@ private fun TimelineContent(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    top = 16.dp,
-                    bottom = 32.dp,
+                    top = 8.dp,
+                    bottom = 100.dp,
                     start = 16.dp,
                     end = 16.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                items(timelineEvents) { event ->
-                    TimelineEventItem(
-                        event = event,
-                        isFirst = event == timelineEvents.first(),
-                        isLast = event == timelineEvents.last(),
-                        onLogClick = { selectedLog = it },
-                        onBranchClick = { branch ->
-                            selectedBranch = branch
+                groups.forEach { group ->
+                    // 日期分组标题
+                    item(key = "header_${group.dateLabel}") {
+                        DateSectionHeader(dateLabel = group.dateLabel)
+                    }
+                    
+                    // 组内条目
+                    items(
+                        items = group.items,
+                        key = { item ->
+                            when (item) {
+                                is TimelineDisplayItem.Single -> "single_${item.event.id}"
+                                is TimelineDisplayItem.Aggregated -> "agg_${item.itemType}_${item.firstTimestamp}"
+                                is TimelineDisplayItem.Conflict -> "conflict_${item.event.ancestor.id}"
+                            }
                         }
-                    )
+                    ) { item ->
+                        when (item) {
+                            is TimelineDisplayItem.Single -> {
+                                ModernLogItem(
+                                    log = item.event,
+                                    onClick = { selectedLog = item.event }
+                                )
+                            }
+                            is TimelineDisplayItem.Aggregated -> {
+                                AggregatedLogItem(
+                                    aggregated = item,
+                                    onItemClick = { selectedLog = it }
+                                )
+                            }
+                            is TimelineDisplayItem.Conflict -> {
+                                ConflictBranchItem(
+                                    conflict = item.event,
+                                    isFirst = false,
+                                    isLast = false,
+                                    onBranchClick = { selectedBranch = it }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -290,7 +458,36 @@ private fun TimelineContent(
 }
 
 /**
- * 空状态显示
+ * 日期分组标题 - 简洁现代风格
+ */
+@Composable
+private fun DateSectionHeader(dateLabel: String) {
+    val colorScheme = MaterialTheme.colorScheme
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = dateLabel,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = colorScheme.primary,
+            letterSpacing = 0.5.sp
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = colorScheme.outlineVariant.copy(alpha = 0.5f),
+            thickness = 1.dp
+        )
+    }
+}
+
+/**
+ * 空状态显示 - 更现代的设计
  */
 @Composable
 private fun EmptyTimelineState() {
@@ -301,52 +498,76 @@ private fun EmptyTimelineState() {
         contentAlignment = Alignment.Center
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(32.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.AccountTree,
-                contentDescription = null,
-                tint = colorScheme.primary.copy(alpha = 0.5f),
-                modifier = Modifier.size(64.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            // 渐变背景的图标容器
+            Surface(
+                shape = CircleShape,
+                color = colorScheme.primaryContainer.copy(alpha = 0.3f),
+                modifier = Modifier.size(100.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = null,
+                        tint = colorScheme.primary.copy(alpha = 0.6f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
             Text(
                 text = stringResource(R.string.no_history_records),
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
                 color = colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = "您的操作记录将会显示在这里",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
         }
     }
 }
 
 /**
- * 时间线事件项
+ * 获取操作类型的图标
  */
 @Composable
-private fun TimelineEventItem(
-    event: TimelineEvent,
-    isFirst: Boolean,
-    isLast: Boolean,
-    onLogClick: (TimelineEvent.StandardLog) -> Unit,
-    onBranchClick: (TimelineBranch) -> Unit
-) {
-    when (event) {
-        is TimelineEvent.StandardLog -> {
-            StandardLogItem(
-                log = event,
-                isFirst = isFirst,
-                isLast = isLast,
-                onClick = { onLogClick(event) }
-            )
-        }
-        is TimelineEvent.ConflictBranch -> {
-            ConflictBranchItem(
-                conflict = event,
-                isFirst = isFirst,
-                isLast = isLast,
-                onBranchClick = onBranchClick
-            )
-        }
+private fun getOperationIcon(operationType: String, itemType: String): ImageVector {
+    // WebDAV 类型
+    if (itemType == "WEBDAV_UPLOAD" || itemType == "WEBDAV_DOWNLOAD") {
+        return Icons.Default.Cloud
+    }
+    return when (operationType) {
+        "CREATE" -> Icons.Default.Add
+        "UPDATE" -> Icons.Default.Edit
+        "DELETE" -> Icons.Default.Delete
+        "SYNC" -> Icons.Default.Sync
+        else -> Icons.Default.History
+    }
+}
+
+/**
+ * 获取项目类型的图标
+ */
+@Composable
+private fun getItemTypeIcon(itemType: String): ImageVector {
+    return when (itemType) {
+        "PASSWORD" -> Icons.Default.Key
+        "TOTP" -> Icons.Default.History
+        "BANK_CARD" -> Icons.Default.CreditCard
+        "NOTE" -> Icons.Default.Note
+        "DOCUMENT" -> Icons.Default.Description
+        "WEBDAV_UPLOAD", "WEBDAV_DOWNLOAD" -> Icons.Default.CloudUpload
+        else -> Icons.Default.Description
     }
 }
 
@@ -355,7 +576,7 @@ private fun TimelineEventItem(
  */
 private fun getOperationLabel(operationType: String): String {
     return when (operationType) {
-        "CREATE" -> "创建"
+        "CREATE" -> "新建"
         "UPDATE" -> "编辑"
         "DELETE" -> "删除"
         "SYNC" -> "同步"
@@ -373,158 +594,328 @@ private fun getItemTypeLabel(itemType: String): String {
         "BANK_CARD" -> "卡片"
         "NOTE" -> "笔记"
         "DOCUMENT" -> "证件"
-        "WEBDAV_UPLOAD" -> "上传"
-        "WEBDAV_DOWNLOAD" -> "下载"
+        "WEBDAV_UPLOAD" -> "云备份"
+        "WEBDAV_DOWNLOAD" -> "云恢复"
         else -> "项目"
     }
 }
 
 /**
- * 获取类别标签的背景色
+ * 获取操作的渐变颜色
  */
 @Composable
-private fun getCategoryColor(operationType: String, itemType: String): Color {
+private fun getOperationGradient(operationType: String, itemType: String): Brush {
     val colorScheme = MaterialTheme.colorScheme
-    // WebDAV 类型使用特殊颜色
+    
     if (itemType == "WEBDAV_UPLOAD" || itemType == "WEBDAV_DOWNLOAD") {
-        return colorScheme.tertiaryContainer
+        return Brush.linearGradient(
+            colors = listOf(
+                colorScheme.tertiary.copy(alpha = 0.8f),
+                colorScheme.tertiary.copy(alpha = 0.5f)
+            )
+        )
     }
+    
     return when (operationType) {
-        "CREATE" -> colorScheme.primaryContainer
-        "UPDATE" -> colorScheme.secondaryContainer
-        "DELETE" -> colorScheme.errorContainer
-        "SYNC" -> colorScheme.tertiaryContainer
-        else -> colorScheme.tertiaryContainer
+        "CREATE" -> Brush.linearGradient(
+            colors = listOf(
+                colorScheme.primary.copy(alpha = 0.8f),
+                colorScheme.primary.copy(alpha = 0.5f)
+            )
+        )
+        "UPDATE" -> Brush.linearGradient(
+            colors = listOf(
+                colorScheme.secondary.copy(alpha = 0.8f),
+                colorScheme.secondary.copy(alpha = 0.5f)
+            )
+        )
+        "DELETE" -> Brush.linearGradient(
+            colors = listOf(
+                colorScheme.error.copy(alpha = 0.8f),
+                colorScheme.error.copy(alpha = 0.5f)
+            )
+        )
+        else -> Brush.linearGradient(
+            colors = listOf(
+                colorScheme.tertiary.copy(alpha = 0.8f),
+                colorScheme.tertiary.copy(alpha = 0.5f)
+            )
+        )
     }
 }
 
 /**
- * 获取类别标签的文字色
+ * 现代风格的日志条目 - 卡片式设计
  */
 @Composable
-private fun getCategoryTextColor(operationType: String, itemType: String): Color {
-    val colorScheme = MaterialTheme.colorScheme
-    // WebDAV 类型使用特殊颜色
-    if (itemType == "WEBDAV_UPLOAD" || itemType == "WEBDAV_DOWNLOAD") {
-        return colorScheme.onTertiaryContainer
-    }
-    return when (operationType) {
-        "CREATE" -> colorScheme.onPrimaryContainer
-        "UPDATE" -> colorScheme.onSecondaryContainer
-        "DELETE" -> colorScheme.onErrorContainer
-        "SYNC" -> colorScheme.onTertiaryContainer
-        else -> colorScheme.onTertiaryContainer
-    }
-}
-
-/**
- * 生成类别标签文本
- */
-private fun getCategoryLabel(operationType: String, itemType: String): String {
-    // WebDAV 类型使用特殊标签格式
-    if (itemType == "WEBDAV_UPLOAD" || itemType == "WEBDAV_DOWNLOAD") {
-        return "WebDAV"
-    }
-    return "${getOperationLabel(operationType)}-${getItemTypeLabel(itemType)}"
-}
-
-/**
- * 标准日志项 UI
- */
-@Composable
-private fun StandardLogItem(
+private fun ModernLogItem(
     log: TimelineEvent.StandardLog,
-    isFirst: Boolean,
-    isLast: Boolean,
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val categoryLabel = getCategoryLabel(log.operationType, log.itemType)
-    val categoryBgColor = getCategoryColor(log.operationType, log.itemType)
-    val categoryTextColor = getCategoryTextColor(log.operationType, log.itemType)
+    val icon = getOperationIcon(log.operationType, log.itemType)
+    val gradient = getOperationGradient(log.operationType, log.itemType)
     
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = colorScheme.surfaceContainerLow
+        ),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        TimelineAxis(
-            showTopLine = !isFirst,
-            showBottomLine = !isLast
-        )
-        
-        Spacer(modifier = Modifier.width(12.dp))
-        
-        Card(
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .padding(vertical = 6.dp)
-                .clickable { onClick() },
-            colors = CardDefaults.cardColors(
-                containerColor = colorScheme.surfaceVariant
-            ),
-            shape = RoundedCornerShape(10.dp)
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // 左侧渐变图标
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(gradient),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            
+            // 中间内容
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                // 标题行
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = log.summary,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    
+                    // 已恢复标签
+                    if (log.isReverted) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = colorScheme.tertiaryContainer
+                        ) {
+                            Text(
+                                text = "已恢复",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+                
+                // 操作类型和时间
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "${getOperationLabel(log.operationType)} · ${getItemTypeLabel(log.itemType)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            
+            // 右侧时间
+            Text(
+                text = formatShortTime(log.timestamp),
+                style = MaterialTheme.typography.labelMedium,
+                color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+/**
+ * 聚合日志条目 - 可展开的卡片
+ */
+@Composable
+private fun AggregatedLogItem(
+    aggregated: TimelineDisplayItem.Aggregated,
+    onItemClick: (TimelineEvent.StandardLog) -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    var isExpanded by remember { mutableStateOf(false) }
+    val rotationAngle by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = tween(200),
+        label = "rotation"
+    )
+    
+    val gradient = getOperationGradient(aggregated.operationType, aggregated.itemType)
+    val icon = getOperationIcon(aggregated.operationType, aggregated.itemType)
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colorScheme.surfaceContainerLow
+        ),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column {
+            // 主行 - 可点击展开
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 类别标签（色块）
-                Surface(
-                    color = categoryBgColor,
-                    shape = RoundedCornerShape(4.dp)
+                // 左侧渐变图标 - 带数量角标
+                Box(
+                    modifier = Modifier.size(44.dp)
                 ) {
-                    Text(
-                        text = categoryLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = categoryTextColor,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-                
-                // 已恢复标签
-                if (log.isReverted) {
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(gradient),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    // 数量角标
                     Surface(
-                        color = colorScheme.tertiaryContainer,
-                        shape = RoundedCornerShape(4.dp)
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 4.dp, y = (-4).dp),
+                        shape = CircleShape,
+                        color = colorScheme.primary
                     ) {
                         Text(
-                            text = "已恢复",
+                            text = "${aggregated.events.size}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = colorScheme.onTertiaryContainer,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            color = colorScheme.onPrimary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
                 
-                Spacer(modifier = Modifier.width(8.dp))
+                // 中间内容
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "${getOperationLabel(aggregated.operationType)} ${aggregated.events.size} 个${getItemTypeLabel(aggregated.itemType)}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = colorScheme.onSurface
+                    )
+                    Text(
+                        text = "点击展开查看详情",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                }
                 
-                // 标题
-                Text(
-                    text = log.summary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                // 展开按钮
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "收起" else "展开",
+                    tint = colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .rotate(rotationAngle)
                 )
-                
-                Spacer(modifier = Modifier.width(6.dp))
-                
-                // 时间
-                Text(
-                    text = formatShortTime(log.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colorScheme.onSurfaceVariant
-                )
+            }
+            
+            // 展开后的内容
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+            ) {
+                Column(
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    HorizontalDivider(
+                        color = colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    aggregated.events.forEach { event ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onItemClick(event) }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .background(colorScheme.primary, CircleShape)
+                                )
+                                Text(
+                                    text = event.summary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text(
+                                text = formatShortTime(event.timestamp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
+/**
+ * 日志详情底部弹窗 - 更精致的设计
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StandardLogDetailSheet(
@@ -536,148 +927,270 @@ private fun StandardLogDetailSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val colorScheme = MaterialTheme.colorScheme
     
-    // 密码可见性状态
     var passwordVisible by remember { mutableStateOf(false) }
     
-    // 是否是编辑操作（只有编辑操作才显示恢复按钮）
     val isUpdateOperation = log.operationType == "UPDATE"
-    // 是否有可恢复的旧值
     val hasOldValues = log.changes.any { it.oldValue.isNotBlank() }
+    val gradient = getOperationGradient(log.operationType, log.itemType)
+    val icon = getOperationIcon(log.operationType, log.itemType)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = colorScheme.surface,
-        contentColor = colorScheme.onSurface
+        contentColor = colorScheme.onSurface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 标题行 - 显示恢复状态标签
+            // 顶部图标和标题
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = log.summary,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                if (log.isReverted) {
-                    Surface(
-                        color = colorScheme.tertiaryContainer,
-                        shape = RoundedCornerShape(4.dp)
+                // 渐变图标
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(gradient),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "已恢复",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colorScheme.onTertiaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            text = log.summary,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (log.isReverted) {
+                            Surface(
+                                color = colorScheme.tertiaryContainer,
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "已恢复",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Text(
+                        text = "${getOperationLabel(log.operationType)} · ${getItemTypeLabel(log.itemType)} · ${formatTimestamp(log.timestamp)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            // 分隔线
+            HorizontalDivider(color = colorScheme.outlineVariant.copy(alpha = 0.5f))
+            
+            // 变更详情
+            if (log.changes.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = colorScheme.surfaceContainerLow
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.no_changes),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colorScheme.onSurfaceVariant
                         )
                     }
                 }
-            }
-
-            Text(
-                text = formatTimestamp(log.timestamp),
-                style = MaterialTheme.typography.bodySmall,
-                color = colorScheme.onSurfaceVariant
-            )
-
-            if (log.changes.isEmpty()) {
-                Text(
-                    text = stringResource(takagi.ru.monica.R.string.no_changes),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colorScheme.onSurfaceVariant
-                )
             } else {
-                // 普通日志展示
-                log.changes.forEach { change ->
-                    // 只有真正的密码字段才需要隐藏（不是数量统计）
-                    val isRealPasswordField = change.fieldName == "密码" && !change.newValue.endsWith("项")
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (isRealPasswordField) {
-                            // 密码字段：支持隐藏/显示切换
-                            val hasOldValue = change.oldValue.isNotBlank()
-                            val displayText = if (passwordVisible) {
-                                if (hasOldValue) {
-                                    "${change.fieldName}: ${change.oldValue} → ${change.newValue}"
-                                } else {
-                                    "${change.fieldName}: ${change.newValue}"
-                                }
-                            } else {
-                                if (hasOldValue) {
-                                    "${change.fieldName}: ●●●● → ●●●●"
-                                } else {
-                                    "${change.fieldName}: ●●●●"
-                                }
-                            }
-                            Text(
-                                text = displayText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colorScheme.onSurface,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(
-                                onClick = { passwordVisible = !passwordVisible },
-                                modifier = Modifier.size(32.dp)
+                // 变更列表
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "变更详情",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = colorScheme.onSurface
+                    )
+                    
+                    log.changes.forEach { change ->
+                        val isRealPasswordField = change.fieldName == "密码" && !change.newValue.endsWith("项")
+                        
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = colorScheme.surfaceContainerLow
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
-                                    tint = colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = change.fieldName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = colorScheme.primary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    
+                                    if (isRealPasswordField) {
+                                        val displayValue = if (passwordVisible) {
+                                            if (change.oldValue.isNotBlank()) {
+                                                "${change.oldValue} → ${change.newValue}"
+                                            } else {
+                                                change.newValue
+                                            }
+                                        } else {
+                                            if (change.oldValue.isNotBlank()) {
+                                                "●●●●●● → ●●●●●●"
+                                            } else {
+                                                "●●●●●●"
+                                            }
+                                        }
+                                        Text(
+                                            text = displayValue,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = colorScheme.onSurface
+                                        )
+                                    } else {
+                                        if (change.oldValue.isNotBlank()) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = change.oldValue,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.weight(1f, fill = false),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "→",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = change.newValue,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = colorScheme.onSurface,
+                                                    modifier = Modifier.weight(1f, fill = false),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        } else {
+                                            Text(
+                                                text = change.newValue,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                if (isRealPasswordField) {
+                                    IconButton(
+                                        onClick = { passwordVisible = !passwordVisible },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = if (passwordVisible) "隐藏" else "显示",
+                                            tint = colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
                             }
-                        } else {
-                            val displayValue = if (change.oldValue.isBlank()) {
-                                change.newValue
-                            } else {
-                                "${change.oldValue} → ${change.newValue}"
-                            }
-                            Text(
-                                text = "${change.fieldName}: $displayValue",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colorScheme.onSurface
-                            )
                         }
                     }
                 }
             }
             
-            // 编辑操作的恢复按钮
+            // 操作按钮
             if (isUpdateOperation && hasOldValues) {
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // 恢复/重做按钮
-                OutlinedButton(
-                    onClick = onRevert,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = if (log.isReverted) "恢复到编辑后" else "恢复到编辑前"
-                    )
-                }
-                
-                // 保存旧数据为新条目按钮（仅在未恢复状态下显示）
-                if (!log.isReverted) {
-                    OutlinedButton(
-                        onClick = onSaveOldAsNew,
-                        modifier = Modifier.fillMaxWidth()
+                    Button(
+                        onClick = onRevert,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colorScheme.primaryContainer,
+                            contentColor = colorScheme.onPrimaryContainer
+                        )
                     ) {
-                        Text(text = "旧数据另存为新条目")
+                        Icon(
+                            imageVector = Icons.Default.Restore,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (log.isReverted) "恢复到编辑后" else "恢复到编辑前",
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    
+                    if (!log.isReverted) {
+                        OutlinedButton(
+                            onClick = onSaveOldAsNew,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("旧数据另存为新条目")
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -969,7 +1482,7 @@ private fun TimelineAxis(
 // ================== 回收站相关组件 ==================
 
 /**
- * 回收站内容
+ * 回收站内容 - 简化版设计，直接显示所有条目
  */
 @Composable
 private fun TrashContent(
@@ -981,19 +1494,17 @@ private fun TrashContent(
     
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
-    var expandedCategory by remember { mutableStateOf<takagi.ru.monica.data.ItemType?>(null) }
     var selectedItem by remember { mutableStateOf<takagi.ru.monica.viewmodel.TrashItem?>(null) }
     
     // 多选模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
-    var selectedItems by remember { mutableStateOf(setOf<String>()) } // 使用 itemType_itemId 作为唯一标识
+    var selectedItems by remember { mutableStateOf(setOf<String>()) }
     
     val colorScheme = MaterialTheme.colorScheme
-    val context = LocalContext.current
     
-    // 获取所有条目用于全选
+    // 扁平化所有条目，按删除时间排序
     val allItems = remember(trashCategories) {
-        trashCategories.flatMap { it.items }
+        trashCategories.flatMap { it.items }.sortedByDescending { it.deletedAt.time }
     }
     
     // 选择/取消选择条目
@@ -1004,29 +1515,30 @@ private fun TrashContent(
         } else {
             selectedItems + key
         }
+        // 如果取消选择后没有选中项，退出选择模式
+        if (selectedItems.isEmpty()) {
+            isSelectionMode = false
+        }
     }
     
-    // 检查条目是否被选中
     fun isItemSelected(item: takagi.ru.monica.viewmodel.TrashItem): Boolean {
         return selectedItems.contains("${item.itemType.name}_${item.id}")
     }
     
-    // 全选/取消全选
     fun toggleSelectAll() {
         if (selectedItems.size == allItems.size) {
             selectedItems = emptySet()
+            isSelectionMode = false
         } else {
             selectedItems = allItems.map { "${it.itemType.name}_${it.id}" }.toSet()
         }
     }
     
-    // 退出选择模式
     fun exitSelectionMode() {
         isSelectionMode = false
         selectedItems = emptySet()
     }
     
-    // 批量恢复选中项
     fun restoreSelectedItems() {
         val itemsToRestore = allItems.filter { isItemSelected(it) }
         itemsToRestore.forEach { item ->
@@ -1035,7 +1547,6 @@ private fun TrashContent(
         exitSelectionMode()
     }
     
-    // 批量删除选中项
     fun deleteSelectedItems() {
         val itemsToDelete = allItems.filter { isItemSelected(it) }
         itemsToDelete.forEach { item ->
@@ -1050,26 +1561,24 @@ private fun TrashContent(
             .background(colorScheme.background)
     ) {
         if (!trashSettings.enabled) {
-            // 回收站未启用
-            TrashDisabledView(
-                onEnableClick = { showSettingsDialog = true }
-            )
-        } else if (trashCategories.isEmpty()) {
-            // 回收站为空
+            TrashDisabledView(onEnableClick = { showSettingsDialog = true })
+        } else if (allItems.isEmpty()) {
             TrashEmptyView()
         } else {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // 顶部操作栏（非选择模式下显示）
-                TrashActionBar(
+            Column(modifier = Modifier.fillMaxSize()) {
+                // 顶部信息栏
+                TrashHeaderBar(
                     totalCount = totalCount,
                     autoDeleteDays = trashSettings.autoDeleteDays,
+                    isSelectionMode = isSelectionMode,
+                    selectedCount = selectedItems.size,
                     onSettingsClick = { showSettingsDialog = true },
-                    onEmptyTrashClick = { showEmptyTrashDialog = true }
+                    onEmptyTrashClick = { showEmptyTrashDialog = true },
+                    onSelectAll = { toggleSelectAll() },
+                    onExitSelection = { exitSelectionMode() }
                 )
                 
-                // 分类文件夹列表
+                // 条目列表 - 直接平铺显示
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1077,42 +1586,34 @@ private fun TrashContent(
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
-                        top = 16.dp,
-                        bottom = if (isSelectionMode) 80.dp else 16.dp // 为底部操作条留空间
+                        top = 8.dp,
+                        bottom = if (isSelectionMode) 100.dp else 16.dp
                     ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(trashCategories) { category ->
-                        TrashCategoryCard(
-                            category = category,
-                            isExpanded = expandedCategory == category.type,
+                    items(
+                        items = allItems,
+                        key = { "${it.itemType.name}_${it.id}" }
+                    ) { item ->
+                        TrashItemCard(
+                            item = item,
                             isSelectionMode = isSelectionMode,
-                            selectedItems = selectedItems,
-                            onExpandClick = {
-                                if (!isSelectionMode) {
-                                    expandedCategory = if (expandedCategory == category.type) null else category.type
-                                }
-                            },
-                            onItemClick = { item ->
+                            isSelected = isItemSelected(item),
+                            onClick = {
                                 if (isSelectionMode) {
                                     toggleItemSelection(item)
                                 } else {
                                     selectedItem = item
                                 }
                             },
-                            onItemLongClick = { item ->
+                            onLongClick = {
                                 if (!isSelectionMode) {
                                     isSelectionMode = true
-                                    expandedCategory = category.type
                                     toggleItemSelection(item)
                                 }
                             },
-                            onRestoreCategory = {
-                                if (!isSelectionMode) {
-                                    viewModel.restoreCategory(category) { success ->
-                                        // 可以添加 Toast 提示
-                                    }
-                                }
+                            onRestore = {
+                                viewModel.restoreItem(item) { _ -> }
                             }
                         )
                     }
@@ -1120,14 +1621,12 @@ private fun TrashContent(
             }
         }
         
-        // 底部浮动选择操作条（选择模式下显示）
+        // 底部浮动操作栏（选择模式）
         if (isSelectionMode && selectedItems.isNotEmpty()) {
-            TrashSelectionFloatingBar(
+            TrashSelectionBar(
                 selectedCount = selectedItems.size,
-                onSelectAll = { toggleSelectAll() },
                 onRestore = { restoreSelectedItems() },
                 onDelete = { deleteSelectedItems() },
-                onExitSelection = { exitSelectionMode() },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 24.dp)
@@ -1161,9 +1660,7 @@ private fun TrashContent(
                             showEmptyTrashDialog = false
                         }
                     },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
+                    colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
                 ) {
                     Text("清空")
                 }
@@ -1176,106 +1673,307 @@ private fun TrashContent(
         )
     }
     
-    // 条目详情对话框
+    // 条目操作弹窗
     selectedItem?.let { item ->
-        TrashItemActionDialog(
+        TrashItemActionSheet(
             item = item,
             onDismiss = { selectedItem = null },
             onRestore = {
-                viewModel.restoreItem(item) { success ->
-                    selectedItem = null
-                }
+                viewModel.restoreItem(item) { _ -> selectedItem = null }
             },
             onPermanentDelete = {
-                viewModel.permanentlyDeleteItem(item) { success ->
-                    selectedItem = null
-                }
+                viewModel.permanentlyDeleteItem(item) { _ -> selectedItem = null }
             }
         )
     }
 }
 
 /**
- * 底部浮动选择操作条（类似密码页面多选样式）
+ * 回收站顶部信息栏
  */
 @Composable
-private fun TrashSelectionFloatingBar(
+private fun TrashHeaderBar(
+    totalCount: Int,
+    autoDeleteDays: Int,
+    isSelectionMode: Boolean,
     selectedCount: Int,
+    onSettingsClick: () -> Unit,
+    onEmptyTrashClick: () -> Unit,
     onSelectAll: () -> Unit,
+    onExitSelection: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colorScheme.surfaceContainerLow
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isSelectionMode) {
+                // 选择模式
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(onClick = onExitSelection) {
+                        Icon(Icons.Default.Close, contentDescription = "退出选择")
+                    }
+                    Text(
+                        text = "已选择 $selectedCount 项",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                
+                TextButton(onClick = onSelectAll) {
+                    Text("全选")
+                }
+            } else {
+                // 普通模式
+                Column {
+                    Text(
+                        text = "$totalCount 个已删除条目",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (autoDeleteDays > 0) "${autoDeleteDays} 天后自动清空" else "不会自动清空",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "设置",
+                            tint = colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (totalCount > 0) {
+                        IconButton(onClick = onEmptyTrashClick) {
+                            Icon(
+                                Icons.Default.DeleteSweep,
+                                contentDescription = "清空",
+                                tint = colorScheme.error
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 回收站条目卡片 - 简洁直观的设计
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TrashItemCard(
+    item: takagi.ru.monica.viewmodel.TrashItem,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onRestore: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
+    
+    // 根据类型获取图标和颜色
+    val (icon, iconColor) = when (item.itemType) {
+        takagi.ru.monica.data.ItemType.PASSWORD -> Icons.Default.Key to colorScheme.primary
+        takagi.ru.monica.data.ItemType.TOTP -> Icons.Default.History to colorScheme.secondary
+        takagi.ru.monica.data.ItemType.BANK_CARD -> Icons.Default.CreditCard to colorScheme.tertiary
+        takagi.ru.monica.data.ItemType.DOCUMENT -> Icons.Default.Description to colorScheme.error
+        takagi.ru.monica.data.ItemType.NOTE -> Icons.Default.Note to colorScheme.outline
+    }
+    
+    val typeLabel = when (item.itemType) {
+        takagi.ru.monica.data.ItemType.PASSWORD -> "密码"
+        takagi.ru.monica.data.ItemType.TOTP -> "验证器"
+        takagi.ru.monica.data.ItemType.BANK_CARD -> "银行卡"
+        takagi.ru.monica.data.ItemType.DOCUMENT -> "证件"
+        takagi.ru.monica.data.ItemType.NOTE -> "笔记"
+    }
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) 
+                colorScheme.primaryContainer.copy(alpha = 0.5f) 
+            else 
+                colorScheme.surfaceContainerLow
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 选择模式下显示复选框，否则显示类型图标
+            if (isSelectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onClick() },
+                    modifier = Modifier.size(24.dp)
+                )
+            } else {
+                // 类型图标
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(iconColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            
+            // 内容
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 类型标签
+                    Text(
+                        text = typeLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = iconColor
+                    )
+                    Text(
+                        text = "·",
+                        color = colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    // 删除时间
+                    Text(
+                        text = dateFormat.format(item.deletedAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                    // 剩余天数警告
+                    if (item.daysRemaining in 0..3) {
+                        Text(
+                            text = "·",
+                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = if (item.daysRemaining == 0) "今天清空" else "${item.daysRemaining}天后",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colorScheme.error,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+            
+            // 非选择模式下显示恢复按钮
+            if (!isSelectionMode) {
+                FilledTonalIconButton(
+                    onClick = onRestore,
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = colorScheme.primaryContainer,
+                        contentColor = colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Icon(
+                        Icons.Default.Restore,
+                        contentDescription = "恢复",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 底部选择操作栏 - 简洁版
+ */
+@Composable
+private fun TrashSelectionBar(
+    selectedCount: Int,
     onRestore: () -> Unit,
     onDelete: () -> Unit,
-    onExitSelection: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
     var showDeleteConfirm by remember { mutableStateOf(false) }
     
     Surface(
-        modifier = modifier.height(56.dp),
-        shape = CircleShape,
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
         color = colorScheme.primaryContainer,
-        contentColor = colorScheme.onPrimaryContainer,
-        shadowElevation = 6.dp,
-        tonalElevation = 2.dp
+        shadowElevation = 8.dp,
+        tonalElevation = 4.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // 选中数量指示器
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(colorScheme.primary, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = selectedCount.toString(),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = colorScheme.onPrimary
-                )
-            }
-            
-            Spacer(modifier = Modifier.width(4.dp))
-            
-            // 全选按钮
-            IconButton(onClick = onSelectAll) {
-                Icon(
-                    imageVector = Icons.Outlined.CheckCircle,
-                    contentDescription = "全选"
-                )
-            }
-            
             // 恢复按钮
-            IconButton(onClick = onRestore) {
-                Icon(
-                    imageVector = Icons.Default.Restore,
-                    contentDescription = "恢复选中项"
+            FilledTonalButton(
+                onClick = onRestore,
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = colorScheme.primary,
+                    contentColor = colorScheme.onPrimary
                 )
+            ) {
+                Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("恢复 $selectedCount 项")
             }
             
             // 删除按钮
-            IconButton(onClick = { showDeleteConfirm = true }) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除选中项",
-                    tint = colorScheme.error
-                )
-            }
-            
-            // 退出选择模式
-            IconButton(onClick = onExitSelection) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "退出选择"
-                )
+            TextButton(
+                onClick = { showDeleteConfirm = true },
+                colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("删除")
             }
         }
     }
     
-    // 批量删除确认对话框
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -1288,9 +1986,183 @@ private fun TrashSelectionFloatingBar(
                         showDeleteConfirm = false
                         onDelete()
                     },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
+                    colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+/**
+ * 条目操作底部弹窗
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrashItemActionSheet(
+    item: takagi.ru.monica.viewmodel.TrashItem,
+    onDismiss: () -> Unit,
+    onRestore: () -> Unit,
+    onPermanentDelete: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val sheetState = rememberModalBottomSheetState()
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+    
+    val (icon, iconColor) = when (item.itemType) {
+        takagi.ru.monica.data.ItemType.PASSWORD -> Icons.Default.Key to colorScheme.primary
+        takagi.ru.monica.data.ItemType.TOTP -> Icons.Default.History to colorScheme.secondary
+        takagi.ru.monica.data.ItemType.BANK_CARD -> Icons.Default.CreditCard to colorScheme.tertiary
+        takagi.ru.monica.data.ItemType.DOCUMENT -> Icons.Default.Description to colorScheme.error
+        takagi.ru.monica.data.ItemType.NOTE -> Icons.Default.Note to colorScheme.outline
+    }
+    
+    val typeLabel = when (item.itemType) {
+        takagi.ru.monica.data.ItemType.PASSWORD -> "密码"
+        takagi.ru.monica.data.ItemType.TOTP -> "验证器"
+        takagi.ru.monica.data.ItemType.BANK_CARD -> "银行卡"
+        takagi.ru.monica.data.ItemType.DOCUMENT -> "证件"
+        takagi.ru.monica.data.ItemType.NOTE -> "笔记"
+    }
+    
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 顶部信息
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(iconColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconColor,
+                        modifier = Modifier.size(28.dp)
                     )
+                }
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "$typeLabel · 删除于 ${dateFormat.format(item.deletedAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            // 剩余天数提示
+            if (item.daysRemaining >= 0) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (item.daysRemaining <= 3) 
+                        colorScheme.errorContainer.copy(alpha = 0.5f) 
+                    else 
+                        colorScheme.surfaceContainerHigh
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = null,
+                            tint = if (item.daysRemaining <= 3) colorScheme.error else colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = when {
+                                item.daysRemaining == 0 -> "将于今天自动永久删除"
+                                item.daysRemaining <= 3 -> "${item.daysRemaining} 天后自动永久删除"
+                                else -> "${item.daysRemaining} 天后自动清空"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (item.daysRemaining <= 3) colorScheme.error else colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            HorizontalDivider(color = colorScheme.outlineVariant.copy(alpha = 0.5f))
+            
+            // 操作按钮
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 恢复按钮
+                Button(
+                    onClick = onRestore,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("恢复此条目", fontWeight = FontWeight.Medium)
+                }
+                
+                // 永久删除按钮
+                OutlinedButton(
+                    onClick = { showDeleteConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colorScheme.error),
+                    border = BorderStroke(1.dp, colorScheme.error)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("永久删除")
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+    
+    // 删除确认对话框
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = colorScheme.error) },
+            title = { Text("永久删除") },
+            text = { Text("确定要永久删除「${item.title}」吗？此操作无法撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onPermanentDelete()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
                 ) {
                     Text("删除")
                 }
@@ -1386,352 +2258,5 @@ private fun TrashEmptyView() {
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )
     }
-}
-
-/**
- * 回收站操作栏
- */
-@Composable
-private fun TrashActionBar(
-    totalCount: Int,
-    autoDeleteDays: Int,
-    onSettingsClick: () -> Unit,
-    onEmptyTrashClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(
-                text = "$totalCount 个条目",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (autoDeleteDays > 0) {
-                Text(
-                    text = "${autoDeleteDays}天后自动清空",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            } else {
-                Text(
-                    text = "不会自动清空",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
-        }
-        
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(onClick = onSettingsClick) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "回收站设置",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            if (totalCount > 0) {
-                IconButton(onClick = onEmptyTrashClick) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteSweep,
-                        contentDescription = "清空回收站",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 回收站分类卡片（文件夹样式）
- */
-@Composable
-private fun TrashCategoryCard(
-    category: takagi.ru.monica.viewmodel.TrashCategory,
-    isExpanded: Boolean,
-    isSelectionMode: Boolean,
-    selectedItems: Set<String>,
-    onExpandClick: () -> Unit,
-    onItemClick: (takagi.ru.monica.viewmodel.TrashItem) -> Unit,
-    onItemLongClick: (takagi.ru.monica.viewmodel.TrashItem) -> Unit,
-    onRestoreCategory: () -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    
-    // 根据类型获取颜色和图标
-    val (icon, containerColor) = when (category.type) {
-        takagi.ru.monica.data.ItemType.PASSWORD -> Icons.Default.Visibility to colorScheme.primaryContainer
-        takagi.ru.monica.data.ItemType.TOTP -> Icons.Default.History to colorScheme.secondaryContainer
-        takagi.ru.monica.data.ItemType.BANK_CARD -> Icons.Default.AccountTree to colorScheme.tertiaryContainer
-        takagi.ru.monica.data.ItemType.DOCUMENT -> Icons.Default.Computer to colorScheme.errorContainer
-        takagi.ru.monica.data.ItemType.NOTE -> Icons.Default.Smartphone to colorScheme.surfaceContainerHigh
-    }
-    
-    // 计算该分类中被选中的数量
-    val selectedCountInCategory = category.items.count { item ->
-        selectedItems.contains("${item.itemType.name}_${item.id}")
-    }
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = containerColor.copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column {
-            // 文件夹头部
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onExpandClick)
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 文件夹图标
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = containerColor
-                    ) {
-                        Box(
-                            modifier = Modifier.padding(12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = null,
-                                tint = colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-                    
-                    Column {
-                        Text(
-                            text = category.displayName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (isSelectionMode && selectedCountInCategory > 0) {
-                                "已选择 $selectedCountInCategory/${category.count}"
-                            } else {
-                                "${category.count} 个条目"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isSelectionMode && selectedCountInCategory > 0) {
-                                colorScheme.primary
-                            } else {
-                                colorScheme.onSurfaceVariant
-                            }
-                        )
-                    }
-                }
-                
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 恢复全部按钮（非选择模式下显示）
-                    if (!isSelectionMode) {
-                        IconButton(onClick = onRestoreCategory) {
-                            Icon(
-                                imageVector = Icons.Default.Restore,
-                                contentDescription = "恢复全部",
-                                tint = colorScheme.primary
-                            )
-                        }
-                    }
-                    
-                    // 展开/收起指示器
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (isExpanded) "收起" else "展开",
-                        tint = colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            
-            // 展开的条目列表（选择模式下自动展开）
-            if (isExpanded || isSelectionMode) {
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    category.items.forEach { item ->
-                        val isSelected = selectedItems.contains("${item.itemType.name}_${item.id}")
-                        TrashItemRow(
-                            item = item,
-                            isSelectionMode = isSelectionMode,
-                            isSelected = isSelected,
-                            onClick = { onItemClick(item) },
-                            onLongClick = { onItemLongClick(item) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * 回收站条目行
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun TrashItemRow(
-    item: takagi.ru.monica.viewmodel.TrashItem,
-    isSelectionMode: Boolean = false,
-    isSelected: Boolean = false,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit = {}
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    val dateFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-    
-    val backgroundColor = if (isSelected) {
-        colorScheme.primaryContainer.copy(alpha = 0.3f)
-    } else {
-        Color.Transparent
-    }
-    
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(backgroundColor)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 多选模式下显示复选框
-        if (isSelectionMode) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onClick() },
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = colorScheme.onSurface
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "删除于 ${dateFormat.format(item.deletedAt)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-                if (item.daysRemaining >= 0) {
-                    Text(
-                        text = if (item.daysRemaining == 0) "今天清空" else "${item.daysRemaining}天后清空",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (item.daysRemaining <= 3) colorScheme.error else colorScheme.outline
-                    )
-                }
-            }
-        }
-        
-        // 非选择模式下显示恢复图标
-        if (!isSelectionMode) {
-            Icon(
-                imageVector = Icons.Default.Restore,
-                contentDescription = "恢复",
-                tint = colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-/**
- * 回收站设置对话框
- */
-
-
-/**
- * 回收站条目操作对话框
- */
-@Composable
-private fun TrashItemActionDialog(
-    item: takagi.ru.monica.viewmodel.TrashItem,
-    onDismiss: () -> Unit,
-    onRestore: () -> Unit,
-    onPermanentDelete: () -> Unit
-) {
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(item.title) },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "类型：${
-                        when (item.itemType) {
-                            takagi.ru.monica.data.ItemType.PASSWORD -> "密码"
-                            takagi.ru.monica.data.ItemType.TOTP -> "验证器"
-                            takagi.ru.monica.data.ItemType.BANK_CARD -> "银行卡"
-                            takagi.ru.monica.data.ItemType.DOCUMENT -> "证件"
-                            takagi.ru.monica.data.ItemType.NOTE -> "笔记"
-                        }
-                    }",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "删除时间：${dateFormat.format(item.deletedAt)}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                if (item.daysRemaining >= 0) {
-                    Text(
-                        text = if (item.daysRemaining == 0) "将于今天自动清空" else "${item.daysRemaining}天后自动清空",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (item.daysRemaining <= 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onRestore) {
-                Icon(Icons.Default.Restore, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("恢复")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onPermanentDelete,
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("永久删除")
-            }
-        }
-    )
 }
 

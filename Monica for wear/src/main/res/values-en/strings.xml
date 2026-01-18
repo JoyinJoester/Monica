@@ -68,7 +68,7 @@
     <string name="settings_clear_data_subtitle">Delete all local authenticators</string>
     
     <string name="settings_about_app">Monica Wear</string>
-    <string name="settings_version">Version 1.0.19</string>
+    <string name="settings_version">Version 1.0.2</string>
     <string name="settings_about_description">Lightweight version based on Monica\nTOTP authenticator optimized for small screens</string>
     
     <!-- Sync -->
