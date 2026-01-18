@@ -82,6 +82,9 @@ fun AddEditTotpScreen(
     var expandedOtpType by remember { mutableStateOf(false) }
     var showPasswordSelectionDialog by remember { mutableStateOf(false) }
     
+    // 防止重复点击保存按钮
+    var isSaving by remember { mutableStateOf(false) }
+    
     // 根据OTP类型自动调整digits
     LaunchedEffect(selectedOtpType) {
         when (selectedOtpType) {
@@ -107,7 +110,8 @@ fun AddEditTotpScreen(
                 actions = {
                     TextButton(
                         onClick = {
-                            if (canSave) {
+                            if (canSave && !isSaving) {
+                                isSaving = true // 防止重复点击
                                 val totpData = TotpData(
                                     secret = secret.trim(),
                                     issuer = issuer.trim(),
@@ -125,7 +129,7 @@ fun AddEditTotpScreen(
                                 onSave(title, notes, totpData)
                             }
                         },
-                        enabled = canSave
+                        enabled = canSave && !isSaving
                     ) {
                         Text(stringResource(R.string.save))
                     }

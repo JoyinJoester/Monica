@@ -929,6 +929,8 @@ class WebDavHelper(
                             addFileToZip(zipOut, commonAccountFile, commonAccountFile.name)
                             commonAccountFile.delete()
                             android.util.Log.d("WebDavHelper", "Backup common account info")
+                        } else {
+                            // no-op
                         }
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavHelper", "Failed to backup common account info: ${e.message}")

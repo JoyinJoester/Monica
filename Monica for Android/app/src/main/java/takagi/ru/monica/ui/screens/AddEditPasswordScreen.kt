@@ -104,6 +104,9 @@ fun AddEditPasswordScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var showPasswordGenerator by remember { mutableStateOf(false) }
     var currentPasswordIndexForGenerator by remember { mutableStateOf(-1) }
+    
+    // 防止重复点击保存按钮
+    var isSaving by remember { mutableStateOf(false) }
 
     var appPackageName by rememberSaveable { mutableStateOf("") }
     var appName by rememberSaveable { mutableStateOf("") }
@@ -261,7 +264,8 @@ fun AddEditPasswordScreen(
                     }
                     TextButton(
                         onClick = {
-                            if (title.isNotEmpty()) {
+                            if (title.isNotEmpty() && !isSaving) {
+                                isSaving = true // 防止重复点击
                                 // Capture values before async call
                                 val currentAuthKey = authenticatorKey
                                 val currentTitle = title
@@ -346,7 +350,7 @@ fun AddEditPasswordScreen(
                                 )
                             }
                         },
-                        enabled = title.isNotEmpty()
+                        enabled = title.isNotEmpty() && !isSaving
                     ) {
                         Text(stringResource(R.string.save), fontWeight = FontWeight.Bold)
                     }

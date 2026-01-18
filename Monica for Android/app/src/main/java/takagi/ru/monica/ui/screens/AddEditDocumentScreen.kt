@@ -46,6 +46,9 @@ fun AddEditDocumentScreen(
     var notes by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
     var showDocumentTypeMenu by remember { mutableStateOf(false) }
+    
+    // 防止重复点击保存按钮
+    var isSaving by remember { mutableStateOf(false) }
     var showDocumentNumber by remember { mutableStateOf(false) }
     
     // 图片路径管理
@@ -110,6 +113,9 @@ fun AddEditDocumentScreen(
                     // 保存按钮
                     IconButton(
                         onClick = {
+                            if (isSaving) return@IconButton
+                            isSaving = true // 防止重复点击
+                            
                             val documentData = DocumentData(
                                 documentNumber = documentNumber,
                                 fullName = fullName,
@@ -162,7 +168,7 @@ fun AddEditDocumentScreen(
                             }
                             onNavigateBack()
                         },
-                        enabled = documentNumber.isNotBlank()
+                        enabled = documentNumber.isNotBlank() && !isSaving
                     ) {
                         Icon(Icons.Default.Check, contentDescription = "保存")
                     }

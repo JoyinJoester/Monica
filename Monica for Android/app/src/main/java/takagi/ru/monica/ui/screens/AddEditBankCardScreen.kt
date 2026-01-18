@@ -55,6 +55,9 @@ fun AddEditBankCardScreen(
     var billingAddress by remember { mutableStateOf(BillingAddress()) }
     var showBillingAddressDialog by remember { mutableStateOf(false) }
     
+    // 防止重复点击保存按钮
+    var isSaving by remember { mutableStateOf(false) }
+    
     // 图片路径管理
     var frontImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var backImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
@@ -128,6 +131,9 @@ fun AddEditBankCardScreen(
                     // 保存按钮
                     IconButton(
                         onClick = {
+                            if (isSaving) return@IconButton
+                            isSaving = true // 防止重复点击
+                            
                             val billingAddressJson = if (hasBillingAddress && !billingAddress.isEmpty()) {
                                 Json.encodeToString(billingAddress)
                             } else {
@@ -170,7 +176,7 @@ fun AddEditBankCardScreen(
                             }
                             onNavigateBack()
                         },
-                        enabled = cardNumber.isNotBlank()
+                        enabled = cardNumber.isNotBlank() && !isSaving
                     ) {
                         Icon(Icons.Default.Check, contentDescription = "保存")
                     }
