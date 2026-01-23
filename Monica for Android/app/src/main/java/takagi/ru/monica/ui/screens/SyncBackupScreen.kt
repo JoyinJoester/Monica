@@ -28,6 +28,7 @@ fun SyncBackupScreen(
     onNavigateToExportData: () -> Unit = {},
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
+    onNavigateToKeePass: () -> Unit = {},  // KeePass 兼容性配置入口
     isPlusActivated: Boolean = false
 ) {
     val context = LocalContext.current
@@ -121,6 +122,20 @@ fun SyncBackupScreen(
                     title = stringResource(R.string.webdav_backup),
                     description = stringResource(R.string.webdav_backup_description),
                     onClick = onNavigateToWebDav,
+                    enabled = isPlusActivated,
+                    badge = if (!isPlusActivated) "Plus" else null
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 72.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                
+                SyncBackupItem(
+                    icon = Icons.Default.Key,
+                    title = "KeePass WebDAV 同步",
+                    description = "通过 WebDAV 与 KeePass (.kdbx) 同步数据",
+                    onClick = onNavigateToKeePass,
                     enabled = isPlusActivated,
                     badge = if (!isPlusActivated) "Plus" else null
                 )

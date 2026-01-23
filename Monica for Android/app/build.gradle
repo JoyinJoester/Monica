@@ -15,7 +15,7 @@ android {
         minSdk 29
         targetSdk 34
         versionCode 9
-        versionName "1.0.2"
+        versionName "1.0.21"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -134,6 +134,9 @@ dependencies {
     
     // WebDAV for cloud backup
     implementation 'com.github.thegrizzlylabs:sardine-android:0.8'
+    
+    // KeePass KDBX library for KeePass compatibility
+    implementation 'io.github.anvell:kotpass:0.9.0'
     
     // WorkManager for auto backup
     implementation libs.androidx.work.runtime.ktx

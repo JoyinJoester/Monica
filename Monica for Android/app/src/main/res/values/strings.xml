@@ -362,6 +362,13 @@
     <string name="export_select_option">Select Export Option</string>
     <string name="export_option_zip">Full Backup (ZIP)</string>
     <string name="export_option_zip_desc">Includes all data (passwords, notes, images, etc.). Compatible with Windows and Android versions. Recommended.</string>
+    <string name="export_option_kdbx">KeePass Format (KDBX)</string>
+    <string name="export_option_kdbx_desc">Export passwords and authenticators in KeePass-compatible format for KeePass, KeePassXC, etc.</string>
+    <string name="kdbx_password_title">Set KDBX Password</string>
+    <string name="kdbx_password_hint">This password will encrypt the KDBX file. You\'ll need it when importing.</string>
+    <string name="kdbx_import_password_title">Enter KDBX Password</string>
+    <string name="kdbx_import_password_hint">Enter the password to decrypt this KDBX file</string>
+    <string name="import_data_btn">Import</string>
     <string name="export_option_all">Export All Data</string>
     <string name="export_option_all_desc">Export all passwords, TOTP, bank cards, and documents in CSV format</string>
     <string name="export_option_passwords">Export Passwords Only</string>
@@ -657,7 +664,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.2</string>
+    <string name="settings_version_number">V1.0.21</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

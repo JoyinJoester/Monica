@@ -87,6 +87,7 @@ import takagi.ru.monica.ui.screens.MonicaPlusScreen
 import takagi.ru.monica.ui.screens.PaymentScreen
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
+import takagi.ru.monica.ui.screens.KeePassWebDavViewModel
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -277,6 +278,9 @@ fun MonicaApp(
     val noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel = viewModel {
         takagi.ru.monica.viewmodel.NoteViewModel(secureItemRepository)
     }
+    
+    // KeePass KDBX 导出/导入
+    val keePassViewModel = remember { KeePassWebDavViewModel() }
 
     val settings by settingsViewModel.settings.collectAsState()
     val isSystemInDarkTheme = isSystemInDarkTheme()
@@ -312,6 +316,7 @@ fun MonicaApp(
                 settingsViewModel = settingsViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
+                keePassViewModel = keePassViewModel,
                 securityManager = securityManager,
                 repository = repository,
                 secureItemRepository = secureItemRepository,
@@ -337,6 +342,7 @@ fun MonicaContent(
     settingsViewModel: SettingsViewModel,
     generatorViewModel: GeneratorViewModel,
     noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
+    keePassViewModel: KeePassWebDavViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
@@ -844,6 +850,23 @@ fun MonicaContent(
                 },
                 onExportZip = { uri, preferences ->
                     dataExportImportViewModel.exportZipBackup(uri, preferences)
+                },
+                onExportKdbx = { uri, password ->
+                    val ctx = navController.context
+                    val outputStream = ctx.contentResolver.openOutputStream(uri)
+                    if (outputStream != null) {
+                        val result = keePassViewModel.exportToLocalKdbx(ctx, outputStream, password)
+                        result.fold(
+                            onSuccess = { count: Int ->
+                                Result.success("成功导出 $count 条记录到 KDBX 文件")
+                            },
+                            onFailure = { error: Throwable ->
+                                Result.failure(error)
+                            }
+                        )
+                    } else {
+                        Result.failure(Exception("无法打开文件"))
+                    }
                 }
             )
         }
@@ -868,6 +891,19 @@ fun MonicaContent(
                 },
                 onImportZip = { uri, password ->
                     dataExportImportViewModel.importZipBackup(uri, password)
+                },
+                onImportKdbx = { uri, password ->
+                    val ctx = navController.context
+                    val inputStream = ctx.contentResolver.openInputStream(uri)
+                    if (inputStream != null) {
+                        val result = keePassViewModel.importFromLocalKdbx(ctx, inputStream, password)
+                        result.fold(
+                            onSuccess = { count: Int -> Result.success(count) },
+                            onFailure = { error: Throwable -> Result.failure(error) }
+                        )
+                    } else {
+                        Result.failure(Exception("无法打开文件"))
+                    }
                 }
             )
         }
@@ -1096,6 +1132,14 @@ fun MonicaContent(
             )
         }
 
+        composable(Screen.KeePassWebDav.route) {
+            takagi.ru.monica.ui.screens.KeePassWebDavScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
         composable(Screen.AutofillSettings.route) {
             takagi.ru.monica.ui.screens.AutofillSettingsScreen(
                 onNavigateBack = {
@@ -1164,6 +1208,9 @@ fun MonicaContent(
                 },
                 onNavigateToWebDav = {
                     navController.navigate(Screen.WebDavBackup.route)
+                },
+                onNavigateToKeePass = {
+                    navController.navigate(Screen.KeePassWebDav.route)
                 },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )

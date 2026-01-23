@@ -123,7 +123,8 @@ fun ImportDataScreen(
     onImportAegis: suspend (Uri) -> Result<Int>,  // Aegis JSON导入
     onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>,  // 加密的Aegis JSON导入
     onImportSteamMaFile: suspend (Uri) -> Result<Int>,  // Steam maFile导入
-    onImportZip: suspend (Uri, String?) -> Result<Int>  // Monica ZIP导入
+    onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
+    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("未实现")) }  // KDBX导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -139,6 +140,11 @@ fun ImportDataScreen(
     var aegisPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
     
+    // KDBX 导入密码
+    var showKdbxPasswordDialog by remember { mutableStateOf(false) }
+    var kdbxPassword by remember { mutableStateOf("") }
+    var kdbxPasswordVisible by remember { mutableStateOf(false) }
+    
     // 导入类型信息列表
     val importTypes = remember {
         listOf(
@@ -148,6 +154,13 @@ fun ImportDataScreen(
                 title = "Monica 备份",
                 description = "恢复完整备份 ZIP 文件，包含所有数据",
                 fileHint = "选择 .zip 文件"
+            ),
+            ImportTypeInfo(
+                key = "kdbx",
+                icon = Icons.Default.Key,
+                title = "KeePass 格式",
+                description = "导入 KeePass 兼容的 .kdbx 数据库文件",
+                fileHint = "选择 .kdbx 文件"
             ),
             ImportTypeInfo(
                 key = "normal",
@@ -285,6 +298,12 @@ fun ImportDataScreen(
                                                 // Steam maFile导入
                                                 val result = onImportSteamMaFile(uri)
                                                 handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                            }
+                                            "kdbx" -> {
+                                                // KDBX 导入需要密码
+                                                isImporting = false
+                                                showKdbxPasswordDialog = true
+                                                kdbxPassword = ""
                                             }
                                             else -> {
                                                 // 普通CSV导入
@@ -579,6 +598,94 @@ fun ImportDataScreen(
                     enabled = !isImporting
                 ) {
                     Text("取消")
+                }
+            }
+        )
+    }
+    
+    // KDBX 密码输入对话框
+    if (showKdbxPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showKdbxPasswordDialog = false
+                kdbxPassword = ""
+            },
+            title = { Text(stringResource(R.string.kdbx_import_password_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.kdbx_import_password_hint),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = kdbxPassword,
+                        onValueChange = { kdbxPassword = it },
+                        label = { Text(stringResource(R.string.password)) },
+                        visualTransformation = if (kdbxPasswordVisible) 
+                            androidx.compose.ui.text.input.VisualTransformation.None 
+                        else 
+                            androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { kdbxPasswordVisible = !kdbxPasswordVisible }) {
+                                Icon(
+                                    if (kdbxPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showKdbxPasswordDialog = false
+                        selectedFileUri?.let { uri ->
+                            scope.launch {
+                                isImporting = true
+                                try {
+                                    val result = onImportKdbx(uri, kdbxPassword)
+                                    result.onSuccess { count ->
+                                        snackbarHostState.showSnackbar("成功导入 $count 条记录")
+                                        onNavigateBack()
+                                    }.onFailure { error ->
+                                        snackbarHostState.showSnackbar(
+                                            error.message ?: context.getString(R.string.import_data_error)
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar(
+                                        context.getString(R.string.import_data_error_exception, e.message ?: "未知错误")
+                                    )
+                                } finally {
+                                    isImporting = false
+                                    kdbxPassword = ""
+                                }
+                            }
+                        }
+                    },
+                    enabled = kdbxPassword.isNotEmpty() && !isImporting
+                ) {
+                    if (isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(stringResource(R.string.import_data_btn))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showKdbxPasswordDialog = false
+                        kdbxPassword = ""
+                    },
+                    enabled = !isImporting
+                ) {
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )

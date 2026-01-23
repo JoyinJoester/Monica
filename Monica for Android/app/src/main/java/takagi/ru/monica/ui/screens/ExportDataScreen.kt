@@ -33,6 +33,7 @@ import takagi.ru.monica.utils.WebDavHelper
  */
 enum class ExportOption {
     ZIP_BACKUP,      // 完整备份 (WebDAV兼容ZIP) - 首选
+    KDBX,            // KeePass 格式 (.kdbx)
     PASSWORDS,       // 密码（CSV格式）
     TOTP,            // TOTP（CSV或Aegis格式）
     BANK_CARDS_DOCS, // 银行卡和证件合并（CSV格式）
@@ -60,7 +61,8 @@ fun ExportDataScreen(
     onExportTotp: suspend (Uri, TotpExportFormat, String?) -> Result<String>,
     onExportBankCardsAndDocs: suspend (Uri) -> Result<String>,
     onExportNotes: suspend (Uri) -> Result<String>,
-    onExportZip: suspend (Uri, BackupPreferences) -> Result<String>
+    onExportZip: suspend (Uri, BackupPreferences) -> Result<String>,
+    onExportKdbx: suspend (Uri, String) -> Result<String> = { _, _ -> Result.failure(Exception("未实现")) }
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -75,6 +77,11 @@ fun ExportDataScreen(
     var encryptionPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    
+    // KDBX 导出密码
+    var kdbxPassword by remember { mutableStateOf("") }
+    var kdbxPasswordVisible by remember { mutableStateOf(false) }
+    var showKdbxPasswordDialog by remember { mutableStateOf(false) }
     
     // ZIP 备份选项
     var backupPreferences by remember { mutableStateOf(BackupPreferences()) }
@@ -103,6 +110,7 @@ fun ExportDataScreen(
                         ExportOption.BANK_CARDS_DOCS -> onExportBankCardsAndDocs(safeUri)
                         ExportOption.NOTES -> onExportNotes(safeUri)
                         ExportOption.ZIP_BACKUP -> onExportZip(safeUri, backupPreferences)
+                        ExportOption.KDBX -> onExportKdbx(safeUri, kdbxPassword)
                     }
                     
                     isExporting = false
@@ -136,6 +144,14 @@ fun ExportDataScreen(
             }
         }
         
+        // KDBX 导出需要密码
+        if (selectedOption == ExportOption.KDBX) {
+            if (kdbxPassword.isEmpty()) {
+                showKdbxPasswordDialog = true
+                return
+            }
+        }
+        
         // ZIP 备份验证：至少选择一种内容
         if (selectedOption == ExportOption.ZIP_BACKUP && !backupPreferences.hasAnyEnabled()) {
             scope.launch {
@@ -157,6 +173,7 @@ fun ExportDataScreen(
             ExportOption.BANK_CARDS_DOCS -> "monica_cards_docs_${System.currentTimeMillis()}.csv"
             ExportOption.NOTES -> "monica_notes_${System.currentTimeMillis()}.csv"
             ExportOption.ZIP_BACKUP -> "monica_backup_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}.zip"
+            ExportOption.KDBX -> "monica_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}.kdbx"
         }
         
         filePickerLauncher.launch(fileName)
@@ -206,6 +223,56 @@ fun ExportDataScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showPasswordDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+    
+    // KDBX 密码输入对话框
+    if (showKdbxPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showKdbxPasswordDialog = false },
+            title = { Text(stringResource(R.string.kdbx_password_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.kdbx_password_hint),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = kdbxPassword,
+                        onValueChange = { kdbxPassword = it },
+                        label = { Text(stringResource(R.string.password)) },
+                        visualTransformation = if (kdbxPasswordVisible) 
+                            VisualTransformation.None 
+                        else 
+                            PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { kdbxPasswordVisible = !kdbxPasswordVisible }) {
+                                Icon(
+                                    if (kdbxPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showKdbxPasswordDialog = false
+                        startExport()
+                    },
+                    enabled = kdbxPassword.isNotEmpty()
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showKdbxPasswordDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -418,6 +485,15 @@ fun ExportDataScreen(
                         }
                     }
                 }
+            )
+            
+            // KDBX 导出选项（KeePass 格式）
+            ExportOptionCard(
+                icon = Icons.Default.Key,
+                title = stringResource(R.string.export_option_kdbx),
+                description = stringResource(R.string.export_option_kdbx_desc),
+                selected = selectedOption == ExportOption.KDBX,
+                onClick = { selectedOption = ExportOption.KDBX }
             )
             
             ExportOptionCard(

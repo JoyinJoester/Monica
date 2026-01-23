@@ -144,6 +144,18 @@ interface PasswordEntryDao {
     suspend fun getDeletedEntriesSync(): List<PasswordEntry>
     
     /**
+     * 获取所有未删除的密码条目（同步版本，用于KeePass导出）
+     */
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    suspend fun getAllPasswordEntriesSync(): List<PasswordEntry>
+    
+    /**
+     * 检查是否存在相同的条目（用于KeePass导入去重）
+     */
+    @Query("SELECT COUNT(*) FROM password_entries WHERE title = :title AND username = :username AND website = :website")
+    suspend fun countByTitleUsernameWebsite(title: String, username: String, website: String): Int
+    
+    /**
      * 获取所有未删除的条目（正常条目）
      */
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")

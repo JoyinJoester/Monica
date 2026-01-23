@@ -359,6 +359,13 @@
     <string name="export_select_option">选择导出选项</string>
     <string name="export_option_zip">完整备份 (ZIP)</string>
     <string name="export_option_zip_desc">包含所有数据（密码、笔记、图片等），兼容 Windows 和 Android 版本。推荐使用。</string>
+    <string name="export_option_kdbx">KeePass 格式 (KDBX)</string>
+    <string name="export_option_kdbx_desc">以 KeePass 兼容格式导出密码和验证器，可用于 KeePass、KeePassXC 等应用</string>
+    <string name="kdbx_password_title">设置 KDBX 密码</string>
+    <string name="kdbx_password_hint">此密码用于加密 KDBX 文件，请牢记密码。导入时需要输入此密码。</string>
+    <string name="kdbx_import_password_title">输入 KDBX 密码</string>
+    <string name="kdbx_import_password_hint">请输入用于解密此 KDBX 文件的密码</string>
+    <string name="import_data_btn">导入</string>
     <string name="export_option_all">导出全部数据</string>
     <string name="export_option_all_desc">以CSV格式导出所有密码、TOTP、银行卡和证件</string>
     <string name="export_option_passwords">仅导出密码</string>
@@ -620,7 +627,7 @@
     <string name="settings_import_data">导入数据</string>
     <string name="settings_import_data_description">从备份文件恢复</string>
     <string name="settings_version_info">版本信息</string>
-    <string name="settings_version_number">V1.0.2</string>
+    <string name="settings_version_number">V1.0.21</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
