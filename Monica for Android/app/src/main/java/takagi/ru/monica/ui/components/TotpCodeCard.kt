@@ -119,6 +119,18 @@ fun TotpCodeCard(
             )
         }
     }
+    
+    // 下一个验证码（用于倒计时结束前5秒内复制）
+    val nextCode = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+        when (totpData.otpType) {
+            OtpType.HOTP -> currentCode // HOTP 不支持下一个
+            else -> TotpGenerator.generateOtp(
+                totpData = totpData,
+                timeOffset = settings.totpTimeOffset,
+                currentSeconds = currentSeconds + totpData.period
+            )
+        }
+    }
 
     val remainingSeconds = remember(currentSeconds, totpData, settings.totpTimeOffset) {
         if (totpData.otpType == OtpType.HOTP) {
@@ -165,12 +177,23 @@ fun TotpCodeCard(
         }
     }
     
+    // 判断是否复制下一个验证码
+    val codeToCopy = remember(currentCode, nextCode, remainingSeconds, settings.copyNextCodeWhenExpiring, totpData.otpType) {
+        if (settings.copyNextCodeWhenExpiring && 
+            totpData.otpType != OtpType.HOTP && 
+            remainingSeconds in 1..5) {
+            nextCode
+        } else {
+            currentCode
+        }
+    }
+    
     Card(
         onClick = {
             if (isSelectionMode) {
                 onToggleSelect?.invoke()
             } else {
-                onCopyCode(currentCode)
+                onCopyCode(codeToCopy)
             }
         },
         modifier = modifier.fillMaxWidth(),
@@ -405,7 +428,7 @@ fun TotpCodeCard(
                     }
                 } else {
                     IconButton(
-                        onClick = { onCopyCode(currentCode) }
+                        onClick = { onCopyCode(codeToCopy) }
                     ) {
                         Icon(
                             Icons.Default.ContentCopy,

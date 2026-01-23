@@ -234,6 +234,13 @@ fun MonicaApp(
 ) {
     val context = LocalContext.current
     val navController = rememberNavController()
+    
+    // 同步预读取 disablePasswordVerification 设置（避免异步加载时登录页面闪烁）
+    val initialDisablePasswordVerification = remember {
+        runBlocking {
+            settingsManager.settingsFlow.first().disablePasswordVerification
+        }
+    }
 
     // 创建权限共享 launcher
     var pendingSupportPermissionCallback by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
@@ -309,6 +316,7 @@ fun MonicaApp(
                 repository = repository,
                 secureItemRepository = secureItemRepository,
                 passwordHistoryManager = passwordHistoryManager,
+                initialDisablePasswordVerification = initialDisablePasswordVerification,
                 onPermissionRequested = { permission, callback ->
                     pendingSupportPermissionCallback = callback
                     sharedSupportPermissionLauncher.launch(permission)
@@ -333,12 +341,28 @@ fun MonicaContent(
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
     passwordHistoryManager: PasswordHistoryManager,
+    initialDisablePasswordVerification: Boolean = false,
     onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
     val settings by settingsViewModel.settings.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     var lastBackgroundTimestamp by remember { mutableStateOf<Long?>(null) }
+    
+    // 追踪设置是否已加载完成
+    var settingsLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        // 使用 first() 获取第一个实际值后标记为已加载
+        settingsViewModel.settings.first()
+        settingsLoaded = true
+    }
+    
+    // 检查是否是首次使用（还没设置过主密码）
+    val isFirstTime = remember { !viewModel.isMasterPasswordSet() }
+    // 当 disablePasswordVerification 开启且非首次使用时，自动跳过登录
+    // 使用预读取的值（initialDisablePasswordVerification）来避免闪烁
+    val disablePasswordVerification = if (settingsLoaded) settings.disablePasswordVerification else initialDisablePasswordVerification
+    val shouldSkipLogin = disablePasswordVerification && !isFirstTime
 
     // Auto-lock logic: only use lifecycleOwner as key to prevent observer recreation
     // The settings and auth state are captured by closure and always reflect latest values
@@ -352,6 +376,12 @@ fun MonicaContent(
                     }
                 }
                 Lifecycle.Event.ON_START -> {
+                    // 如果已禁用密码验证，跳过自动锁定
+                    if (settings.disablePasswordVerification && !isFirstTime) {
+                        lastBackgroundTimestamp = null
+                        return@LifecycleEventObserver
+                    }
+                    
                     val minutes = settings.autoLockMinutes
                     val timeoutMs = when {
                         minutes == -1 -> null // Never auto-lock
@@ -385,10 +415,18 @@ fun MonicaContent(
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
+    
+    // 当 shouldSkipLogin 为 true 时，自动设置认证状态
+    LaunchedEffect(shouldSkipLogin) {
+        if (shouldSkipLogin && !isAuthenticated) {
+            // 自动认证，跳过登录页面
+            viewModel.authenticate("")
+        }
+    }
 
     NavHost(
         navController = navController,
-        startDestination = if (isAuthenticated) Screen.Main.createRoute() else Screen.Login.route
+        startDestination = if (isAuthenticated || shouldSkipLogin) Screen.Main.createRoute() else Screen.Login.route
     ) {
         composable(Screen.Login.route) {
             LoginScreen(
@@ -458,14 +496,8 @@ fun MonicaContent(
                 onNavigateToSecurityQuestion = {
                     navController.navigate(Screen.SecurityQuestion.route)
                 },
-                onNavigateToExportData = {
-                    navController.navigate(Screen.ExportData.route)
-                },
-                onNavigateToImportData = {
-                    navController.navigate(Screen.ImportData.route)
-                },
-                onNavigateToWebDav = {
-                    navController.navigate(Screen.WebDavBackup.route)
+                onNavigateToSyncBackup = {
+                    navController.navigate(Screen.SyncBackup.route)
                 },
                 onNavigateToAutofill = {
                     navController.navigate(Screen.AutofillSettings.route)
@@ -487,6 +519,9 @@ fun MonicaContent(
                 },
                 onNavigateToMonicaPlus = {
                     android.util.Log.d("MainActivity", "Navigating to Monica Plus"); navController.navigate(Screen.MonicaPlus.route)
+                },
+                onNavigateToExtensions = {
+                    navController.navigate(Screen.Extensions.route)
                 },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearNotes: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
@@ -807,8 +842,8 @@ fun MonicaContent(
                 onExportNotes = { uri ->
                     dataExportImportViewModel.exportNotes(uri)
                 },
-                onExportZip = { uri ->
-                    dataExportImportViewModel.exportZipBackup(uri)
+                onExportZip = { uri, preferences ->
+                    dataExportImportViewModel.exportZipBackup(uri, preferences)
                 }
             )
         }
@@ -875,8 +910,8 @@ fun MonicaContent(
                 onSecurityQuestions = {
                     navController.navigate(Screen.SecurityQuestionsSetup.route)
                 },
-                onNavigateToWebDav = {
-                    navController.navigate(Screen.WebDavBackup.route)
+                onNavigateToSyncBackup = {
+                    navController.navigate(Screen.SyncBackup.route)
                 },
                 onNavigateToAutofill = {
                     navController.navigate(Screen.AutofillSettings.route)
@@ -898,6 +933,9 @@ fun MonicaContent(
                 },
                 onNavigateToMonicaPlus = {
                     android.util.Log.d("MainActivity", "Navigating to Monica Plus"); navController.navigate(Screen.MonicaPlus.route)
+                },
+                onNavigateToExtensions = {
+                    navController.navigate(Screen.Extensions.route)
                 },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearNotes: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
@@ -1092,6 +1130,42 @@ fun MonicaContent(
                 onNavigateBack = {
                     navController.popBackStack()
                 }
+            )
+        }
+        
+        composable(Screen.Extensions.route) {
+            val settings by settingsViewModel.settings.collectAsState()
+            takagi.ru.monica.ui.screens.ExtensionsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                isPlusActivated = settings.isPlusActivated,
+                validatorVibrationEnabled = settings.validatorVibrationEnabled,
+                onValidatorVibrationChange = { enabled ->
+                    settingsViewModel.updateValidatorVibrationEnabled(enabled)
+                },
+                copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
+                onCopyNextCodeWhenExpiringChange = { enabled ->
+                    settingsViewModel.updateCopyNextCodeWhenExpiring(enabled)
+                }
+            )
+        }
+        
+        composable(Screen.SyncBackup.route) {
+            takagi.ru.monica.ui.screens.SyncBackupScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToExportData = {
+                    navController.navigate(Screen.ExportData.route)
+                },
+                onNavigateToImportData = {
+                    navController.navigate(Screen.ImportData.route)
+                },
+                onNavigateToWebDav = {
+                    navController.navigate(Screen.WebDavBackup.route)
+                },
+                isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
         }
         

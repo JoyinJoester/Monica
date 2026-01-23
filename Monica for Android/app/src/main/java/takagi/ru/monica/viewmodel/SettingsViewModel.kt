@@ -131,6 +131,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateCopyNextCodeWhenExpiring(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateCopyNextCodeWhenExpiring(enabled)
+        }
+    }
+
     fun updateNotificationValidatorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateNotificationValidatorEnabled(enabled)

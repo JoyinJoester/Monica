@@ -2,26 +2,118 @@ package takagi.ru.monica.ui.screens
 
 import android.app.Activity
 import android.net.Uri
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.util.FileOperationHelper
 
+/**
+ * 导入类型数据类
+ */
+private data class ImportTypeInfo(
+    val key: String,
+    val icon: ImageVector,
+    val title: String,
+    val description: String,
+    val fileHint: String
+)
 
 /**
- * 数据导入界面
+ * 导入类型选项卡片
+ */
+@Composable
+private fun ImportTypeCard(
+    info: ImportTypeInfo,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val containerColor by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerLow,
+        label = "containerColor"
+    )
+    val borderColor by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.outlineVariant,
+        label = "borderColor"
+    )
+    val elevation by animateDpAsState(
+        if (selected) 4.dp else 0.dp,
+        label = "elevation"
+    )
+    
+    Card(
+        modifier = modifier.clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = elevation)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    info.icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = if (selected) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    info.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurface
+                )
+                if (selected) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            Text(
+                info.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * 数据导入界面 - M3 Expressive 设计
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,14 +129,53 @@ fun ImportDataScreen(
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollState = rememberScrollState()
     
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isImporting by remember { mutableStateOf(false) }
-    var importType by remember { mutableStateOf("normal") } // "normal"、"aegis" 或 "steam"
+    var importType by remember { mutableStateOf("monica_zip") } // 默认选择 ZIP 备份
     var showPasswordDialog by remember { mutableStateOf(false) }
     var aegisPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
+    
+    // 导入类型信息列表
+    val importTypes = remember {
+        listOf(
+            ImportTypeInfo(
+                key = "monica_zip",
+                icon = Icons.Default.Archive,
+                title = "Monica 备份",
+                description = "恢复完整备份 ZIP 文件，包含所有数据",
+                fileHint = "选择 .zip 文件"
+            ),
+            ImportTypeInfo(
+                key = "normal",
+                icon = Icons.Default.TableChart,
+                title = "CSV 数据",
+                description = "导入应用导出的 CSV 文件或支付宝账单",
+                fileHint = "选择 .csv 文件"
+            ),
+            ImportTypeInfo(
+                key = "aegis",
+                icon = Icons.Default.Security,
+                title = "Aegis 验证器",
+                description = "导入 Aegis Authenticator 的 JSON 备份",
+                fileHint = "选择 .json 文件"
+            ),
+            ImportTypeInfo(
+                key = "steam",
+                icon = Icons.Default.SportsEsports,
+                title = "Steam Guard",
+                description = "导入 Steam 令牌的 maFile 文件",
+                fileHint = "选择 .maFile 文件"
+            )
+        )
+    }
+    
+    val currentTypeInfo = remember(importType) {
+        importTypes.find { it.key == importType } ?: importTypes[0]
+    }
     
     // 设置文件操作回调
     LaunchedEffect(Unit) {
@@ -93,119 +224,174 @@ fun ImportDataScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.go_back))
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                tonalElevation = 3.dp,
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 导入按钮
+                    Button(
+                        onClick = {
+                            selectedFileUri?.let { uri ->
+                                scope.launch {
+                                    isImporting = true
+                                    try {
+                                        when (importType) {
+                                            "monica_zip" -> {
+                                                val result = onImportZip(uri, null)
+                                                result.onSuccess { count ->
+                                                    handleImportResult(Result.success(count), context, snackbarHostState, importType, onNavigateBack)
+                                                }.onFailure { error ->
+                                                    if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
+                                                        isImporting = false
+                                                        showPasswordDialog = true
+                                                        passwordError = null
+                                                        aegisPassword = ""
+                                                    } else {
+                                                        handleImportResult(Result.failure(error), context, snackbarHostState, importType, onNavigateBack)
+                                                    }
+                                                }
+                                            }
+                                            "aegis" -> {
+                                                // Aegis导入类型，先检查是否为加密文件
+                                                val isEncryptedResult = DataExportImportManager(context).isEncryptedAegisFile(uri)
+                                                val isEncrypted = isEncryptedResult.getOrDefault(false)
+                                                if (isEncrypted) {
+                                                    // 是加密文件，显示密码输入对话框
+                                                    isImporting = false
+                                                    showPasswordDialog = true
+                                                    passwordError = null
+                                                    aegisPassword = ""
+                                                    return@launch
+                                                } else {
+                                                    // 不是加密文件，直接导入
+                                                    val result = onImportAegis(uri)
+                                                    handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                                }
+                                            }
+                                            "steam" -> {
+                                                // Steam maFile导入
+                                                val result = onImportSteamMaFile(uri)
+                                                handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                            }
+                                            else -> {
+                                                // 普通CSV导入
+                                                val result = onImport(uri)
+                                                handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("ImportDataScreen", "导入异常", e)
+                                        snackbarHostState.showSnackbar(
+                                            context.getString(R.string.import_data_error_exception, e.message ?: "未知错误")
+                                        )
+                                    } finally {
+                                        isImporting = false
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        enabled = selectedFileUri != null && !isImporting,
+                        shape = MaterialTheme.shapes.large
+                    ) {
+                        if (isImporting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(stringResource(R.string.importing), style = MaterialTheme.typography.titleMedium)
+                        } else {
+                            Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.start_import), style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                    
+                    // 说明文字
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            stringResource(R.string.import_data_notice),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 警告卡片
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 2.dp
-                ),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+            // 选择导入类型标题
+            Text(
+                stringResource(R.string.import_data_select_type),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            
+            // 导入类型卡片列表 - 垂直排列，适配各种屏幕尺寸
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                importTypes.forEach { typeInfo ->
+                    ImportTypeCard(
+                        info = typeInfo,
+                        selected = importType == typeInfo.key,
+                        onClick = { 
+                            importType = typeInfo.key
+                            // 切换类型时清除已选文件
+                            selectedFileUri = null
+                            selectedFileName = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            stringResource(R.string.import_data_description),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            stringResource(R.string.import_data_supported_formats),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
                 }
             }
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // 选择导入类型
+            // 文件选择区域
             Text(
-                stringResource(R.string.import_data_select_type),
+                "选择文件",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 8.dp)
+                fontWeight = FontWeight.Bold
             )
             
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = importType == "monica_zip",
-                    onClick = { importType = "monica_zip" },
-                    label = { Text("Backup (ZIP)") },
-                    leadingIcon = if (importType == "monica_zip") {
-                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-                    } else null,
-                    modifier = Modifier
-                        .weight(1f)
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                )
-                FilterChip(
-                    selected = importType == "normal",
-                    onClick = { importType = "normal" },
-                    label = { Text(stringResource(R.string.import_data_type_normal)) },
-                    leadingIcon = if (importType == "normal") {
-                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-                    } else null,
-                    modifier = Modifier
-                        .weight(1f)
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                )
-                FilterChip(
-                    selected = importType == "aegis",
-                    onClick = { importType = "aegis" },
-                    label = { Text("Aegis") },
-                    leadingIcon = if (importType == "aegis") {
-                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-                    } else null,
-                    modifier = Modifier
-                        .weight(1f)
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                )
-                FilterChip(
-                    selected = importType == "steam",
-                    onClick = { importType = "steam" },
-                    label = { Text("Steam Guard") },
-                    leadingIcon = if (importType == "steam") {
-                        { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-                    } else null,
-                    modifier = Modifier
-                        .weight(1f)
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 选择文件按钮
-            OutlinedCard(
+            // 选择文件卡片
+            ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { 
                     activity?.let { act ->
@@ -213,173 +399,87 @@ fun ImportDataScreen(
                         when (importType) {
                             "monica_zip" -> FileOperationHelper.importFromZip(act)
                             "aegis" -> FileOperationHelper.importFromJson(act)
-                            "steam" -> FileOperationHelper.importFromMaFile(act) // Steam maFile使用专用方法
-                            else -> FileOperationHelper.importFromCsv(act) // normal 类型使用 CSV
+                            "steam" -> FileOperationHelper.importFromMaFile(act)
+                            else -> FileOperationHelper.importFromCsv(act)
                         }
                     } ?: run {
                         scope.launch {
-                            snackbarHostState.showSnackbar(context.getString(R.string.error_launch_export, "无法启动导出操作"))
+                            snackbarHostState.showSnackbar(context.getString(R.string.error_launch_export, "无法启动操作"))
                         }
                     }
-                }
+                },
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = if (selectedFileUri != null) 
+                        MaterialTheme.colorScheme.secondaryContainer
+                    else 
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                )
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.FileOpen,
-                        contentDescription = null,
-                        tint = if (selectedFileUri != null) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    // 文件图标
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = if (selectedFileUri != null)
+                            MaterialTheme.colorScheme.secondary
+                        else
+                            MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                if (selectedFileUri != null) Icons.Default.InsertDriveFile else Icons.Default.FileOpen,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = if (selectedFileUri != null)
+                                    MaterialTheme.colorScheme.onSecondary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            if (selectedFileUri != null) stringResource(R.string.import_data_file_selected) else stringResource(R.string.import_data_select_file),
-                            style = MaterialTheme.typography.bodyLarge,
+                            if (selectedFileUri != null) "已选择文件" else "点击选择文件",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
                             color = if (selectedFileUri != null) 
-                                MaterialTheme.colorScheme.primary 
+                                MaterialTheme.colorScheme.onSecondaryContainer
                             else 
                                 MaterialTheme.colorScheme.onSurface
                         )
-                        if (selectedFileName != null) {
-                            Text(
-                                selectedFileName!!,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            // 显示当前导入类型支持的文件格式
-                            Text(
-                                when (importType) {
-                                    "monica_zip" -> "选择 Monica 备份 ZIP 文件"
-                                    "aegis" -> stringResource(R.string.import_data_file_hint_json)
-                                    "steam" -> "选择Steam .maFile文件"
-                                    else -> stringResource(R.string.import_data_file_hint_csv)
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            selectedFileName ?: currentTypeInfo.fileHint,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (selectedFileUri != null)
+                                MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
+                    
                     Icon(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (selectedFileUri != null)
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
             
-            Spacer(modifier = Modifier.weight(1f))
-            
-            // 导入按钮
-            Button(
-                onClick = {
-                    selectedFileUri?.let { uri ->
-                        scope.launch {
-                            isImporting = true
-                            try {
-                                when (importType) {
-                                    "monica_zip" -> {
-                                        val result = onImportZip(uri, null)
-                                        result.onSuccess { count ->
-                                            handleImportResult(Result.success(count), context, snackbarHostState, importType, onNavigateBack)
-                                        }.onFailure { error ->
-                                            if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
-                                                isImporting = false
-                                                showPasswordDialog = true
-                                                passwordError = null
-                                                aegisPassword = ""
-                                            } else {
-                                                handleImportResult(Result.failure(error), context, snackbarHostState, importType, onNavigateBack)
-                                            }
-                                        }
-                                    }
-                                    "aegis" -> {
-                                        // Aegis导入类型，先检查是否为加密文件
-                                        val isEncryptedResult = DataExportImportManager(context).isEncryptedAegisFile(uri)
-                                        val isEncrypted = isEncryptedResult.getOrDefault(false)
-                                        if (isEncrypted) {
-                                            // 是加密文件，显示密码输入对话框
-                                            isImporting = false
-                                            showPasswordDialog = true
-                                            passwordError = null
-                                            aegisPassword = ""
-                                            return@launch
-                                        } else {
-                                            // 不是加密文件，直接导入
-                                            val result = onImportAegis(uri)
-                                            handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
-                                        }
-                                    }
-                                    "steam" -> {
-                                        // Steam maFile导入
-                                        val result = onImportSteamMaFile(uri)
-                                        handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
-                                    }
-                                    else -> {
-                                        // 普通CSV导入
-                                        val result = onImport(uri)
-                                        handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.e("ImportDataScreen", "导入异常", e)
-                                snackbarHostState.showSnackbar(
-                                    context.getString(R.string.import_data_error_exception, e.message ?: "未知错误")
-                                )
-                            } finally {
-                                isImporting = false
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = selectedFileUri != null && !isImporting
-            ) {
-                if (isImporting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.importing))
-                } else {
-                    Icon(Icons.Default.Upload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.start_import))
-                }
-            }
-            
-            // 说明卡片
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        stringResource(R.string.import_data_notice),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+            // 底部留白，避免被底部栏遮挡
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
     

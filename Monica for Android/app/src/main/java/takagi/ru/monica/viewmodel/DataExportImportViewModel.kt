@@ -155,11 +155,13 @@ class DataExportImportViewModel(
                             val itemType = ItemType.valueOf(exportItem.itemType)
                             
                             // 其他类型存入SecureItem表
-                            // 检查是否重复
-                            val isDuplicate = secureItemRepository.isDuplicateItem(
+                            // 使用智能重复检测：根据类型比较不同的唯一标识字段
+                            val existingItem = secureItemRepository.findDuplicateSecureItem(
                                 itemType,
+                                exportItem.itemData,
                                 exportItem.title
                             )
+                            val isDuplicate = existingItem != null
                             
                             if (!isDuplicate) {
                                 var itemData = exportItem.itemData
@@ -621,8 +623,10 @@ class DataExportImportViewModel(
 
     /**
      * 导出完整备份 (ZIP格式，WebDAV兼容)
+     * @param outputUri 导出文件的URI
+     * @param preferences 备份偏好设置（选择要导出的内容类型）
      */
-    suspend fun exportZipBackup(outputUri: Uri, includeImages: Boolean = true): Result<String> {
+    suspend fun exportZipBackup(outputUri: Uri, preferences: takagi.ru.monica.data.BackupPreferences = takagi.ru.monica.data.BackupPreferences()): Result<String> {
         return try {
             val webDavHelper = takagi.ru.monica.utils.WebDavHelper(context)
             
@@ -630,11 +634,11 @@ class DataExportImportViewModel(
             val passwordEntries = passwordRepository.getAllPasswordEntries().first()
             val secureItems = secureItemRepository.getAllItems().first()
             
-            // 创建ZIP备份
-            // 注意: createBackupZip 返回 Result<Pair<File, BackupReport>>
+            // 创建ZIP备份，使用传入的偏好设置
             val result = webDavHelper.createBackupZip(
                 passwords = passwordEntries,
-                secureItems = secureItems
+                secureItems = secureItems,
+                preferences = preferences
             )
             
             result.fold(
@@ -802,10 +806,13 @@ class DataExportImportViewModel(
                         content.secureItems.forEach { item ->
                             try {
                                 val itemType = ItemType.valueOf(item.itemType)
-                                val isDuplicate = secureItemRepository.isDuplicateItem(
+                                // 使用智能重复检测：根据类型比较不同的唯一标识字段
+                                val existingItem = secureItemRepository.findDuplicateSecureItem(
                                     itemType,
+                                    item.itemData,
                                     item.title
                                 )
+                                val isDuplicate = existingItem != null
                                 if (!isDuplicate) {
                                     var itemData = item.itemData
                                     

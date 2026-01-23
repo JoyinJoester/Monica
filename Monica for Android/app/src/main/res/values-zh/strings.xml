@@ -357,6 +357,8 @@
     
     <!-- 新的导出界面 -->
     <string name="export_select_option">选择导出选项</string>
+    <string name="export_option_zip">完整备份 (ZIP)</string>
+    <string name="export_option_zip_desc">包含所有数据（密码、笔记、图片等），兼容 Windows 和 Android 版本。推荐使用。</string>
     <string name="export_option_all">导出全部数据</string>
     <string name="export_option_all_desc">以CSV格式导出所有密码、TOTP、银行卡和证件</string>
     <string name="export_option_passwords">仅导出密码</string>
@@ -1259,6 +1261,24 @@
     <string name="backup_content_images">图片</string>
     <string name="backup_content_timeline">操作历史</string>
     <string name="backup_content_trash">回收站</string>
+    <string name="backup_content_webdav_config">配置</string>
+    <string name="backup_content_webdav_config_hint">包含 WebDAV 服务器地址、账号密码等配置信息，便于新设备快速同步。仅当本地未配置时才会恢复。</string>
+    
+    <!-- 功能拓展页面 -->
+    <string name="extensions_title">功能拓展</string>
+    <string name="extensions_description">管理各类扩展功能与系统集成</string>
+    <string name="extensions_account_settings">账号信息设置</string>
+    <string name="extensions_totp_settings">验证器设置</string>
+    <string name="extensions_more_coming_soon">更多功能即将推出…</string>
+    <string name="copy_next_code_when_expiring">即将过期时复制新验证码</string>
+    <string name="copy_next_code_when_expiring_description">倒计时剩余 5 秒内点击复制时，自动复制下一个验证码</string>
+    
+    <!-- 同步与备份页面 -->
+    <string name="sync_backup_title">同步与备份</string>
+    <string name="sync_backup_description">管理数据导入导出和云同步</string>
+    <string name="sync_backup_local">本地备份</string>
+    <string name="sync_backup_cloud">云同步</string>
+    <string name="sync_backup_plus_hint">升级 Monica Plus 解锁 WebDAV 云同步功能</string>
     <string name="deselect_all">全不选</string>
     <string name="backup_validation_error">请至少选择一种备份内容</string>
 

@@ -145,6 +145,21 @@ private data class CommonAccountBackupEntry(
 )
 
 /**
+ * ✅ WebDAV 配置备份数据类
+ * 用于备份 WebDAV 连接信息，便于新设备快速配置
+ * 注意：密码会被加密存储
+ */
+@Serializable
+private data class WebDavConfigBackupEntry(
+    val serverUrl: String = "",
+    val username: String = "",
+    val encryptedPassword: String = "",  // 使用备份密码加密的 WebDAV 密码
+    val enableEncryption: Boolean = false,
+    val encryptedEncryptionPassword: String = "",  // 使用备份密码加密的加密密码
+    val autoBackupEnabled: Boolean = false
+)
+
+/**
  * WebDAV 帮助类
  * 用于备份和恢复数据到 WebDAV 服务器
  */
@@ -185,6 +200,7 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
         private const val KEY_BACKUP_INCLUDE_TIMELINE = "backup_include_timeline"
         private const val KEY_BACKUP_INCLUDE_TRASH = "backup_include_trash"
+        private const val KEY_BACKUP_INCLUDE_WEBDAV_CONFIG = "backup_include_webdav_config"
     }
     
     // 加密相关
@@ -420,6 +436,7 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
             putBoolean(KEY_BACKUP_INCLUDE_TIMELINE, preferences.includeTimeline)
             putBoolean(KEY_BACKUP_INCLUDE_TRASH, preferences.includeTrash)
+            putBoolean(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG, preferences.includeWebDavConfig)
             apply()
         }
         android.util.Log.d("WebDavHelper", "Saved backup preferences: $preferences")
@@ -427,7 +444,7 @@ class WebDavHelper(
     
     /**
      * 获取备份偏好设置
-     * 默认所有类型都启用
+     * 默认所有类型都启用（WebDAV配置默认关闭）
      */
     fun getBackupPreferences(): BackupPreferences {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -440,7 +457,8 @@ class WebDavHelper(
             includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true),
             includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true),
             includeTimeline = prefs.getBoolean(KEY_BACKUP_INCLUDE_TIMELINE, true),
-            includeTrash = prefs.getBoolean(KEY_BACKUP_INCLUDE_TRASH, true)
+            includeTrash = prefs.getBoolean(KEY_BACKUP_INCLUDE_TRASH, true),
+            includeWebDavConfig = prefs.getBoolean(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG, false)
         )
     }
     
@@ -935,6 +953,48 @@ class WebDavHelper(
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavHelper", "Failed to backup common account info: ${e.message}")
                         warnings.add("常用账号信息备份失败: ${e.message}")
+                    }
+                    
+                    // 7.8 ✅ 备份 WebDAV 配置信息
+                    if (preferences.includeWebDavConfig && isConfigured()) {
+                        try {
+                            // 使用备份加密密码来加密 WebDAV 凭证
+                            val backupEncryptPassword = if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                                encryptionPassword
+                            } else {
+                                // 如果没有启用备份加密，使用固定密钥（不太安全，但提供基本保护）
+                                "Monica_WebDAV_Config_Key"
+                            }
+                            
+                            val encryptedWebDavPassword = EncryptionHelper.encryptString(password, backupEncryptPassword)
+                            val encryptedEncPassword = if (this@WebDavHelper.enableEncryption && this@WebDavHelper.encryptionPassword.isNotEmpty()) {
+                                EncryptionHelper.encryptString(this@WebDavHelper.encryptionPassword, backupEncryptPassword)
+                            } else {
+                                ""
+                            }
+                            
+                            val webDavConfigBackup = WebDavConfigBackupEntry(
+                                serverUrl = serverUrl,
+                                username = username,
+                                encryptedPassword = encryptedWebDavPassword,
+                                enableEncryption = this@WebDavHelper.enableEncryption,
+                                encryptedEncryptionPassword = encryptedEncPassword,
+                                autoBackupEnabled = isAutoBackupEnabled()
+                            )
+                            
+                            val json = Json { prettyPrint = false }
+                            val webDavConfigFile = File(cacheBackupDir, "webdav_config.json")
+                            webDavConfigFile.writeText(
+                                json.encodeToString(WebDavConfigBackupEntry.serializer(), webDavConfigBackup),
+                                Charsets.UTF_8
+                            )
+                            addFileToZip(zipOut, webDavConfigFile, webDavConfigFile.name)
+                            webDavConfigFile.delete()
+                            android.util.Log.d("WebDavHelper", "Backup WebDAV config (server: $serverUrl)")
+                        } catch (e: Exception) {
+                            android.util.Log.w("WebDavHelper", "Failed to backup WebDAV config: ${e.message}")
+                            warnings.add("WebDAV配置备份失败: ${e.message}")
+                        }
                     }
                 }
 
@@ -1538,6 +1598,66 @@ class WebDavHelper(
                                     } catch (e: Exception) {
                                         android.util.Log.w("WebDavHelper", "Failed to restore common account info: ${e.message}")
                                         warnings.add("常用账号信息恢复失败: ${e.message}")
+                                    }
+                                }
+                                // ✅ 恢复 WebDAV 配置信息（仅当本地未配置时恢复）
+                                entryName.equals("webdav_config.json", ignoreCase = true) -> {
+                                    try {
+                                        val webDavConfigJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val webDavConfigBackup = json.decodeFromString<WebDavConfigBackupEntry>(webDavConfigJson)
+                                        
+                                        // 只有当本地未配置 WebDAV 时才恢复
+                                        if (!isConfigured()) {
+                                            // 尝试解密 WebDAV 密码
+                                            val backupEncryptPassword = if (decryptPassword != null && decryptPassword.isNotEmpty()) {
+                                                decryptPassword
+                                            } else {
+                                                "Monica_WebDAV_Config_Key"
+                                            }
+                                            
+                                            try {
+                                                val decryptedWebDavPassword = if (webDavConfigBackup.encryptedPassword.isNotEmpty()) {
+                                                    EncryptionHelper.decryptString(webDavConfigBackup.encryptedPassword, backupEncryptPassword)
+                                                } else {
+                                                    ""
+                                                }
+                                                
+                                                val decryptedEncPassword = if (webDavConfigBackup.encryptedEncryptionPassword.isNotEmpty()) {
+                                                    EncryptionHelper.decryptString(webDavConfigBackup.encryptedEncryptionPassword, backupEncryptPassword)
+                                                } else {
+                                                    ""
+                                                }
+                                                
+                                                if (webDavConfigBackup.serverUrl.isNotEmpty() && 
+                                                    webDavConfigBackup.username.isNotEmpty() && 
+                                                    decryptedWebDavPassword.isNotEmpty()) {
+                                                    
+                                                    // 配置 WebDAV 连接
+                                                    configure(webDavConfigBackup.serverUrl, webDavConfigBackup.username, decryptedWebDavPassword)
+                                                    
+                                                    // 配置加密设置
+                                                    if (webDavConfigBackup.enableEncryption && decryptedEncPassword.isNotEmpty()) {
+                                                        configureEncryption(true, decryptedEncPassword)
+                                                    }
+                                                    
+                                                    // 配置自动备份
+                                                    configureAutoBackup(webDavConfigBackup.autoBackupEnabled)
+                                                    
+                                                    android.util.Log.d("WebDavHelper", "Restored WebDAV config: ${webDavConfigBackup.serverUrl}")
+                                                    warnings.add("✓ WebDAV配置已恢复: ${webDavConfigBackup.serverUrl}")
+                                                }
+                                            } catch (e: Exception) {
+                                                android.util.Log.w("WebDavHelper", "Failed to decrypt WebDAV credentials: ${e.message}")
+                                                warnings.add("WebDAV配置解密失败（可能密码不匹配）: ${e.message}")
+                                            }
+                                        } else {
+                                            android.util.Log.d("WebDavHelper", "WebDAV already configured, skipping restore")
+                                            warnings.add("WebDAV已配置，跳过恢复")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore WebDAV config: ${e.message}")
+                                        warnings.add("WebDAV配置恢复失败: ${e.message}")
                                     }
                                 }
                             }

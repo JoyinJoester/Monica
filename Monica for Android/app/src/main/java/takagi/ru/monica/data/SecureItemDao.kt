@@ -76,6 +76,12 @@ interface SecureItemDao {
     suspend fun findDuplicateItem(itemType: ItemType, title: String): SecureItem?
     
     /**
+     * 获取指定类型的所有未删除项目（同步版本，用于智能重复检测）
+     */
+    @Query("SELECT * FROM secure_items WHERE itemType = :itemType AND isDeleted = 0")
+    suspend fun getActiveItemsByTypeSync(itemType: ItemType): List<SecureItem>
+    
+    /**
      * 删除指定类型的所有项目
      */
     @Query("DELETE FROM secure_items WHERE itemType = :type")

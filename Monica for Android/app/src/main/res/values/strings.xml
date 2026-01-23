@@ -360,6 +360,8 @@
     
     <!-- New Export Screen -->
     <string name="export_select_option">Select Export Option</string>
+    <string name="export_option_zip">Full Backup (ZIP)</string>
+    <string name="export_option_zip_desc">Includes all data (passwords, notes, images, etc.). Compatible with Windows and Android versions. Recommended.</string>
     <string name="export_option_all">Export All Data</string>
     <string name="export_option_all_desc">Export all passwords, TOTP, bank cards, and documents in CSV format</string>
     <string name="export_option_passwords">Export Passwords Only</string>
@@ -1406,8 +1408,26 @@
     <string name="backup_content_images">Images</string>
     <string name="backup_content_timeline">Operation History</string>
     <string name="backup_content_trash">Recycle Bin</string>
+    <string name="backup_content_webdav_config">WebDAV Configuration</string>
+    <string name="backup_content_webdav_config_hint">Include WebDAV server address, credentials and settings for easy setup on new devices. Only restored when local WebDAV is not configured.</string>
     <string name="deselect_all">Deselect All</string>
     <string name="backup_validation_error">Please select at least one content type</string>
+
+    <!-- Extensions Page -->
+    <string name="extensions_title">Extensions</string>
+    <string name="extensions_description">Manage extensions and system integrations</string>
+    <string name="extensions_account_settings">Account Settings</string>
+    <string name="extensions_totp_settings">Authenticator Settings</string>
+    <string name="extensions_more_coming_soon">More features coming soon…</string>
+    <string name="copy_next_code_when_expiring">Copy next code when expiring</string>
+    <string name="copy_next_code_when_expiring_description">When countdown is within 5 seconds, copy the next verification code</string>
+
+    <!-- Sync &amp; Backup Page -->
+    <string name="sync_backup_title">Sync &amp; Backup</string>
+    <string name="sync_backup_description">Manage data import, export and cloud sync</string>
+    <string name="sync_backup_local">Local Backup</string>
+    <string name="sync_backup_cloud">Cloud Sync</string>
+    <string name="sync_backup_plus_hint">Upgrade to Monica Plus to unlock WebDAV cloud sync</string>
 
     <!-- Support Author Page -->
     <string name="support_author_page_title">Support the Author</string>

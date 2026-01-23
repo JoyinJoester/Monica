@@ -197,9 +197,7 @@ fun SimpleMainScreen(
     onNavigateToDocumentDetail: (Long) -> Unit, // Keep this
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
-    onNavigateToExportData: () -> Unit = {},
-    onNavigateToImportData: () -> Unit = {},
-    onNavigateToWebDav: () -> Unit = {},
+    onNavigateToSyncBackup: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
     onNavigateToColorScheme: () -> Unit = {},
@@ -207,6 +205,7 @@ fun SimpleMainScreen(
     onNavigateToDeveloperSettings: () -> Unit = {},
     onNavigateToPermissionManagement: () -> Unit = {},
     onNavigateToMonicaPlus: () -> Unit = {},
+    onNavigateToExtensions: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
@@ -466,8 +465,7 @@ fun SimpleMainScreen(
         onNavigateToAddDocument,
         onNavigateToAddNote,
         onSecurityAnalysis,
-        onNavigateToImportData,
-        onNavigateToWebDav,
+        onNavigateToSyncBackup,
         tertiaryColor,
         secondaryColor
     ) {
@@ -516,13 +514,13 @@ fun SimpleMainScreen(
             QuickActionItem(
                 icon = Icons.Default.CloudUpload,
                 labelRes = R.string.quick_action_backup,
-                onClick = onNavigateToWebDav,
+                onClick = onNavigateToSyncBackup,
                 tint = secondaryColor
             ),
             QuickActionItem(
                 icon = Icons.Default.Download,
                 labelRes = R.string.quick_action_import,
-                onClick = onNavigateToImportData
+                onClick = onNavigateToSyncBackup
             ),
             QuickActionItem(
                 icon = Icons.Default.Settings,
@@ -697,9 +695,7 @@ fun SimpleMainScreen(
                                 onNavigateBack = {},
                                 onResetPassword = onNavigateToChangePassword,
                                 onSecurityQuestions = onNavigateToSecurityQuestion,
-                                onExportData = onNavigateToExportData,
-                                onImportData = onNavigateToImportData,
-                                onNavigateToWebDav = onNavigateToWebDav,
+                                onNavigateToSyncBackup = onNavigateToSyncBackup,
                                 onNavigateToAutofill = onNavigateToAutofill,
                                 onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
                                 onNavigateToColorScheme = onNavigateToColorScheme,
@@ -707,6 +703,7 @@ fun SimpleMainScreen(
                                 onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
                                 onNavigateToPermissionManagement = onNavigateToPermissionManagement,
                                 onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                                onNavigateToExtensions = onNavigateToExtensions,
                                 onClearAllData = onClearAllData,
                                 showTopBar = false
                             )
@@ -959,9 +956,7 @@ fun SimpleMainScreen(
                         onNavigateBack = {}, // 在主屏幕中不需要返回
                         onResetPassword = onNavigateToChangePassword,
                         onSecurityQuestions = onNavigateToSecurityQuestion,
-                        onExportData = onNavigateToExportData,
-                        onImportData = onNavigateToImportData,
-                        onNavigateToWebDav = onNavigateToWebDav,
+                        onNavigateToSyncBackup = onNavigateToSyncBackup,
                         onNavigateToAutofill = onNavigateToAutofill,
                         onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
                         onNavigateToColorScheme = onNavigateToColorScheme,
@@ -969,6 +964,7 @@ fun SimpleMainScreen(
                         onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
                         onNavigateToPermissionManagement = onNavigateToPermissionManagement,
                         onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                        onNavigateToExtensions = onNavigateToExtensions,
                         onClearAllData = onClearAllData,
                         showTopBar = false  // 在标签页中不显示顶栏
                     )

@@ -61,9 +61,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onResetPassword: () -> Unit,
     onSecurityQuestions: () -> Unit,
-    onExportData: () -> Unit = {},
-    onImportData: () -> Unit = {},
-    onNavigateToWebDav: () -> Unit = {},
+    onNavigateToSyncBackup: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
     onNavigateToColorScheme: () -> Unit = {},
@@ -71,6 +69,7 @@ fun SettingsScreen(
     onNavigateToDeveloperSettings: () -> Unit = {},
     onNavigateToPermissionManagement: () -> Unit = {},
     onNavigateToMonicaPlus: () -> Unit = {},
+    onNavigateToExtensions: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _, _ -> },
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
@@ -343,34 +342,27 @@ fun SettingsScreen(
             SettingsSection(
                 title = context.getString(R.string.data_management)
             ) {
+                // 同步与备份入口
                 SettingsItem(
-                    icon = Icons.Default.Download,
-                    title = context.getString(R.string.export_data),
-                    subtitle = context.getString(R.string.export_data_description),
-                    onClick = onExportData
+                    icon = Icons.Default.Sync,
+                    title = context.getString(R.string.sync_backup_title),
+                    subtitle = context.getString(R.string.sync_backup_description),
+                    onClick = onNavigateToSyncBackup
                 )
-                
-                SettingsItem(
-                    icon = Icons.Default.Upload,
-                    title = context.getString(R.string.import_data),
-                    subtitle = context.getString(R.string.import_data_description),
-                    onClick = onImportData
-                )
-                
-                if (settings.isPlusActivated) {
-                    SettingsItem(
-                        icon = Icons.Default.Cloud,
-                        title = context.getString(R.string.webdav_backup),
-                        subtitle = context.getString(R.string.webdav_backup_description),
-                        onClick = onNavigateToWebDav
-                    )
-                }
                 
                 SettingsItem(
                     icon = Icons.Default.VpnKey,
                     title = context.getString(R.string.autofill),
                     subtitle = context.getString(R.string.autofill_subtitle),
                     onClick = onNavigateToAutofill
+                )
+                
+                // 功能拓展入口
+                SettingsItem(
+                    icon = Icons.Default.Extension,
+                    title = context.getString(R.string.extensions_title),
+                    subtitle = context.getString(R.string.extensions_description),
+                    onClick = onNavigateToExtensions
                 )
                 
                 // 常用账号信息

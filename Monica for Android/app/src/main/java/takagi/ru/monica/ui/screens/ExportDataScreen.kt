@@ -25,17 +25,18 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.data.BackupPreferences
+import takagi.ru.monica.utils.WebDavHelper
 
 /**
  * 导出选项枚举
  */
 enum class ExportOption {
-    ALL,           // 全部（CSV格式）
-    PASSWORDS,     // 密码（CSV格式）
-    TOTP,          // TOTP（CSV或Aegis格式）
+    ZIP_BACKUP,      // 完整备份 (WebDAV兼容ZIP) - 首选
+    PASSWORDS,       // 密码（CSV格式）
+    TOTP,            // TOTP（CSV或Aegis格式）
     BANK_CARDS_DOCS, // 银行卡和证件合并（CSV格式）
-    NOTES,          // 笔记（CSV格式）
-    ZIP_BACKUP      // 完整备份 (WebDAV兼容ZIP)
+    NOTES            // 笔记（CSV格式）
 }
 
 /**
@@ -59,7 +60,7 @@ fun ExportDataScreen(
     onExportTotp: suspend (Uri, TotpExportFormat, String?) -> Result<String>,
     onExportBankCardsAndDocs: suspend (Uri) -> Result<String>,
     onExportNotes: suspend (Uri) -> Result<String>,
-    onExportZip: suspend (Uri) -> Result<String>
+    onExportZip: suspend (Uri, BackupPreferences) -> Result<String>
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -68,12 +69,20 @@ fun ExportDataScreen(
     val scrollState = rememberScrollState()
     
     var isExporting by remember { mutableStateOf(false) }
-    var selectedOption by remember { mutableStateOf(ExportOption.ALL) }
+    var selectedOption by remember { mutableStateOf(ExportOption.ZIP_BACKUP) }
     var totpFormat by remember { mutableStateOf(TotpExportFormat.CSV) }
     var enableEncryption by remember { mutableStateOf(false) }
     var encryptionPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    
+    // ZIP 备份选项
+    var backupPreferences by remember { mutableStateOf(BackupPreferences()) }
+    var zipBackupExpanded by remember { mutableStateOf(false) }
+    
+    // 检测 WebDAV 是否已配置
+    val webDavHelper = remember { WebDavHelper(context) }
+    val isWebDavConfigured = remember { webDavHelper.isConfigured() }
     
     // 文件选择器
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -84,7 +93,6 @@ fun ExportDataScreen(
                 isExporting = true
                 try {
                     val result = when (selectedOption) {
-                        ExportOption.ALL -> onExportAll(safeUri)
                         ExportOption.PASSWORDS -> onExportPasswords(safeUri)
                         ExportOption.TOTP -> {
                             val password = if (enableEncryption && totpFormat == TotpExportFormat.AEGIS) {
@@ -94,7 +102,7 @@ fun ExportDataScreen(
                         }
                         ExportOption.BANK_CARDS_DOCS -> onExportBankCardsAndDocs(safeUri)
                         ExportOption.NOTES -> onExportNotes(safeUri)
-                        ExportOption.ZIP_BACKUP -> onExportZip(safeUri)
+                        ExportOption.ZIP_BACKUP -> onExportZip(safeUri, backupPreferences)
                     }
                     
                     isExporting = false
@@ -128,9 +136,16 @@ fun ExportDataScreen(
             }
         }
         
+        // ZIP 备份验证：至少选择一种内容
+        if (selectedOption == ExportOption.ZIP_BACKUP && !backupPreferences.hasAnyEnabled()) {
+            scope.launch {
+                snackbarHostState.showSnackbar(context.getString(R.string.backup_validation_error))
+            }
+            return
+        }
+        
         // 根据选项设置文件名
         val fileName = when (selectedOption) {
-            ExportOption.ALL -> "monica_all_${System.currentTimeMillis()}.csv"
             ExportOption.PASSWORDS -> "monica_passwords_${System.currentTimeMillis()}.csv"
             ExportOption.TOTP -> {
                 if (totpFormat == TotpExportFormat.AEGIS) {
@@ -264,21 +279,145 @@ fun ExportDataScreen(
             
             // 选项卡片组
             
-            // 1. 完整备份 (ZIP) - Replaced with Archive icon as Backup might not be standard
+            // 1. 完整备份 (ZIP) - 可展开选择备份内容
             ExportOptionCard(
                 icon = Icons.Default.Archive,
-                title = "完整备份 (ZIP)", // TODO: Add to strings.xml
-                description = "包含所有数据（密码、笔记、图片等），兼容 Windows 和 Android 版本。推荐使用。",
+                title = stringResource(R.string.export_option_zip),
+                description = stringResource(R.string.export_option_zip_desc),
                 selected = selectedOption == ExportOption.ZIP_BACKUP,
-                onClick = { selectedOption = ExportOption.ZIP_BACKUP }
-            )
-
-            ExportOptionCard(
-                icon = Icons.Default.SelectAll,
-                title = stringResource(R.string.export_option_all),
-                description = stringResource(R.string.export_option_all_desc),
-                selected = selectedOption == ExportOption.ALL,
-                onClick = { selectedOption = ExportOption.ALL }
+                onClick = { 
+                    if (selectedOption == ExportOption.ZIP_BACKUP) {
+                        // 已选中时，点击切换展开状态
+                        zipBackupExpanded = !zipBackupExpanded
+                    } else {
+                        // 未选中时，选中但不展开
+                        selectedOption = ExportOption.ZIP_BACKUP
+                    }
+                },
+                expandable = true,
+                expanded = selectedOption == ExportOption.ZIP_BACKUP && zipBackupExpanded,
+                expandedContent = {
+                    Column(
+                        modifier = Modifier.padding(top = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.selective_backup_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                        
+                        // 备份内容选择
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_passwords),
+                            checked = backupPreferences.includePasswords,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includePasswords = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_authenticators),
+                            checked = backupPreferences.includeAuthenticators,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeAuthenticators = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_documents),
+                            checked = backupPreferences.includeDocuments,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeDocuments = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_bank_cards),
+                            checked = backupPreferences.includeBankCards,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeBankCards = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_notes),
+                            checked = backupPreferences.includeNotes,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeNotes = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_images),
+                            checked = backupPreferences.includeImages,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeImages = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_generator_history),
+                            checked = backupPreferences.includeGeneratorHistory,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeGeneratorHistory = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_timeline),
+                            checked = backupPreferences.includeTimeline,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeTimeline = it) }
+                        )
+                        ExportContentCheckbox(
+                            label = stringResource(R.string.backup_content_trash),
+                            checked = backupPreferences.includeTrash,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeTrash = it) }
+                        )
+                        
+                        // WebDAV 配置选项（仅在已配置时显示）
+                        if (isWebDavConfigured) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
+                            )
+                            ExportContentCheckbox(
+                                label = stringResource(R.string.backup_content_webdav_config),
+                                checked = backupPreferences.includeWebDavConfig,
+                                onCheckedChange = { backupPreferences = backupPreferences.copy(includeWebDavConfig = it) }
+                            )
+                            Text(
+                                text = stringResource(R.string.backup_content_webdav_config_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(start = 32.dp)
+                            )
+                        }
+                        
+                        // 快捷操作按钮
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilledTonalButton(
+                                onClick = {
+                                    backupPreferences = BackupPreferences(
+                                        includePasswords = true,
+                                        includeAuthenticators = true,
+                                        includeDocuments = true,
+                                        includeBankCards = true,
+                                        includeNotes = true,
+                                        includeGeneratorHistory = true,
+                                        includeImages = true,
+                                        includeTimeline = true,
+                                        includeTrash = true
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.select_all), style = MaterialTheme.typography.labelMedium)
+                            }
+                            
+                            FilledTonalButton(
+                                onClick = {
+                                    backupPreferences = BackupPreferences(
+                                        includePasswords = false,
+                                        includeAuthenticators = false,
+                                        includeDocuments = false,
+                                        includeBankCards = false,
+                                        includeNotes = false,
+                                        includeGeneratorHistory = false,
+                                        includeImages = false,
+                                        includeTimeline = false,
+                                        includeTrash = false
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.deselect_all), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
             )
             
             ExportOptionCard(
@@ -573,4 +712,35 @@ private fun rememberLauncherForActivityResult(
         contract = contract,
         onResult = onResult
     )
+}
+
+/**
+ * 导出内容复选框组件
+ */
+@Composable
+private fun ExportContentCheckbox(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary,
+                uncheckedColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+            )
+        )
+    }
 }

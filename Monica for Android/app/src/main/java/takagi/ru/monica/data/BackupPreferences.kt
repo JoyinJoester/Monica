@@ -13,10 +13,12 @@ data class BackupPreferences(
     val includeImages: Boolean = true,
     val includeNotes: Boolean = true,
     val includeTimeline: Boolean = true,  // 操作历史记录
-    val includeTrash: Boolean = true      // 回收站
+    val includeTrash: Boolean = true,     // 回收站
+    val includeWebDavConfig: Boolean = false  // WebDAV 配置（默认关闭，需手动开启）
 ) {
     /**
      * 检查是否至少启用了一种内容类型
+     * 注意：WebDAV 配置不计入必选项，因为它是附加配置
      */
     fun hasAnyEnabled(): Boolean {
         return includePasswords || includeAuthenticators || 
@@ -27,11 +29,19 @@ data class BackupPreferences(
     
     /**
      * 检查是否所有内容类型都已启用
+     * 注意：WebDAV 配置使用单独的检查
      */
     fun allEnabled(): Boolean {
         return includePasswords && includeAuthenticators && 
                includeDocuments && includeBankCards && 
                includeGeneratorHistory && includeImages && includeNotes &&
                includeTimeline && includeTrash
+    }
+    
+    /**
+     * 检查是否所有内容类型都已启用（包括 WebDAV 配置）
+     */
+    fun allEnabledIncludingWebDav(): Boolean {
+        return allEnabled() && includeWebDavConfig
     }
 }

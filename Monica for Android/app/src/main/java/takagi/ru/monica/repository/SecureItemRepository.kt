@@ -73,10 +73,88 @@ class SecureItemRepository(
     }
     
     /**
-     * 检查是否存在重复的安全项
+     * 检查是否存在重复的安全项（基于 title 匹配，旧方法保留兼容）
      */
     suspend fun isDuplicateItem(itemType: ItemType, title: String): Boolean {
         return secureItemDao.findDuplicateItem(itemType, title) != null
+    }
+    
+    /**
+     * 智能检测重复项（根据类型使用不同的比较策略）
+     * - DOCUMENT: 比较 documentNumber
+     * - BANK_CARD: 比较 cardNumber  
+     * - TOTP: 比较 issuer + accountName
+     * - NOTE/PASSWORD: 比较 title
+     * @return 找到的重复项，或 null
+     */
+    suspend fun findDuplicateSecureItem(itemType: ItemType, itemData: String, title: String): takagi.ru.monica.data.SecureItem? {
+        val existingItems = secureItemDao.getActiveItemsByTypeSync(itemType)
+        
+        return when (itemType) {
+            ItemType.DOCUMENT -> {
+                // 解析新项目的证件号码
+                val newDocNumber = try {
+                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                        .decodeFromString<takagi.ru.monica.data.model.DocumentData>(itemData).documentNumber
+                } catch (e: Exception) { null }
+                
+                if (newDocNumber.isNullOrBlank()) {
+                    // 无法解析证件号，退回到 title 匹配
+                    existingItems.find { it.title == title }
+                } else {
+                    existingItems.find { existing ->
+                        try {
+                            val existingDocNumber = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                .decodeFromString<takagi.ru.monica.data.model.DocumentData>(existing.itemData).documentNumber
+                            existingDocNumber == newDocNumber
+                        } catch (e: Exception) { false }
+                    }
+                }
+            }
+            ItemType.BANK_CARD -> {
+                // 解析新项目的卡号
+                val newCardNumber = try {
+                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                        .decodeFromString<takagi.ru.monica.data.model.BankCardData>(itemData).cardNumber
+                } catch (e: Exception) { null }
+                
+                if (newCardNumber.isNullOrBlank()) {
+                    existingItems.find { it.title == title }
+                } else {
+                    existingItems.find { existing ->
+                        try {
+                            val existingCardNumber = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                .decodeFromString<takagi.ru.monica.data.model.BankCardData>(existing.itemData).cardNumber
+                            existingCardNumber == newCardNumber
+                        } catch (e: Exception) { false }
+                    }
+                }
+            }
+            ItemType.TOTP -> {
+                // 解析新项目的 issuer + accountName
+                val newTotpData = try {
+                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                        .decodeFromString<takagi.ru.monica.data.model.TotpData>(itemData)
+                } catch (e: Exception) { null }
+                
+                if (newTotpData == null) {
+                    existingItems.find { it.title == title }
+                } else {
+                    existingItems.find { existing ->
+                        try {
+                            val existingTotpData = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                .decodeFromString<takagi.ru.monica.data.model.TotpData>(existing.itemData)
+                            existingTotpData.issuer == newTotpData.issuer && 
+                                existingTotpData.accountName == newTotpData.accountName
+                        } catch (e: Exception) { false }
+                    }
+                }
+            }
+            else -> {
+                // NOTE 和其他类型：只比较 title
+                existingItems.find { it.title == title }
+            }
+        }
     }
     
     /**

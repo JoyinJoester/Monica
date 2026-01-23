@@ -109,6 +109,7 @@ data class AppSettings(
     val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
     val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.LINEAR, // 验证器进度条样式
     val validatorVibrationEnabled: Boolean = true, // 验证器震动提醒
+    val copyNextCodeWhenExpiring: Boolean = false, // 倒计时<=5秒时复制下一个验证码
     val notificationValidatorEnabled: Boolean = false, // 通知栏验证器开关
     val notificationValidatorAutoMatch: Boolean = false, // 通知栏验证器自动匹配
     val notificationValidatorId: Long = -1L, // 通知栏显示的验证器ID

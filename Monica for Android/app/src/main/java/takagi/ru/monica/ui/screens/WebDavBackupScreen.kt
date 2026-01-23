@@ -582,7 +582,8 @@ fun WebDavBackupScreen(
                     documentCount = documentCount,
                     bankCardCount = bankCardCount,
                     noteCount = noteCount,
-                    trashCount = trashCount
+                    trashCount = trashCount,
+                    isWebDavConfigured = isConfigured
                 )
             }
             
@@ -1091,10 +1092,13 @@ private fun BackupItem(
             secureItems.forEach { exportItem ->
                 try {
                     val itemType = takagi.ru.monica.data.ItemType.valueOf(exportItem.itemType)
-                    val isDuplicate = secureItemRepository.isDuplicateItem(
+                    // 使用智能重复检测：根据类型比较不同的唯一标识字段
+                    val existingItem = secureItemRepository.findDuplicateSecureItem(
                         itemType,
+                        exportItem.itemData,
                         exportItem.title
                     )
+                    val isDuplicate = existingItem != null
                     
                     if (!isDuplicate) {
                         // Handle TOTP binding update

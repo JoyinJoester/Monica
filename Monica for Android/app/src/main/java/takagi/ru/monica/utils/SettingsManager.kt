@@ -45,6 +45,7 @@ class SettingsManager(private val context: Context) {
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
         private val VALIDATOR_PROGRESS_BAR_STYLE_KEY = stringPreferencesKey("validator_progress_bar_style")
         private val VALIDATOR_VIBRATION_ENABLED_KEY = booleanPreferencesKey("validator_vibration_enabled")
+        private val COPY_NEXT_CODE_WHEN_EXPIRING_KEY = booleanPreferencesKey("copy_next_code_when_expiring")
         private val NOTIFICATION_VALIDATOR_ENABLED_KEY = booleanPreferencesKey("notification_validator_enabled")
         private val NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY = booleanPreferencesKey("notification_validator_auto_match")
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
@@ -104,6 +105,7 @@ class SettingsManager(private val context: Context) {
                 style
             }.getOrDefault(takagi.ru.monica.data.ProgressBarStyle.LINEAR),
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
+            copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
             notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
             notificationValidatorAutoMatch = preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] ?: false,
             notificationValidatorId = preferences[NOTIFICATION_VALIDATOR_ID_KEY] ?: -1L,
@@ -209,6 +211,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateValidatorVibrationEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateCopyNextCodeWhenExpiring(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] = enabled
         }
     }
 

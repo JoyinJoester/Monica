@@ -72,6 +72,7 @@ fun SelectiveBackupCard(
     bankCardCount: Int,
     noteCount: Int,
     trashCount: Int = 0,
+    isWebDavConfigured: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -110,8 +111,11 @@ fun SelectiveBackupCard(
                             preferences.includeTrash
                         ).count { it }
                         
+                        // WebDAV 配置单独显示（如果启用）
+                        val webDavText = if (preferences.includeWebDavConfig && isWebDavConfigured) " (+WebDAV)" else ""
+                        
                         Text(
-                            text = stringResource(R.string.selective_backup_summary, selectedCount, 9),
+                            text = stringResource(R.string.selective_backup_summary, selectedCount, 9) + webDavText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -226,6 +230,27 @@ fun SelectiveBackupCard(
                             onPreferencesChange(preferences.copy(includeTrash = it))
                         }
                     )
+                    
+                    // WebDAV 配置选项（仅在已配置时显示）
+                    if (isWebDavConfigured) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        
+                        ContentTypeSwitch(
+                            label = stringResource(R.string.backup_content_webdav_config),
+                            count = null,
+                            checked = preferences.includeWebDavConfig,
+                            onCheckedChange = { 
+                                onPreferencesChange(preferences.copy(includeWebDavConfig = it))
+                            }
+                        )
+                        
+                        Text(
+                            text = stringResource(R.string.backup_content_webdav_config_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     

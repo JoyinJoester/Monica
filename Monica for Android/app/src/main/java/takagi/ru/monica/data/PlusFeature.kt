@@ -41,6 +41,13 @@ object PlusFeatures {
             title = "验证器震动",
             description = "验证码即将刷新时自动震动提醒，不再错过窗口",
             isAvailable = true
+        ),
+        PlusFeature(
+            id = "copy_next_code",
+            icon = Icons.Default.Update,
+            title = "智能复制验证码",
+            description = "倒计时结束前 5 秒复制时，自动复制下一个验证码",
+            isAvailable = true
         )
     )
 }

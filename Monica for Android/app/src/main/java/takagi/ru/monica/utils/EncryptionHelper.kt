@@ -251,5 +251,80 @@ class EncryptionHelper {
                 Result.failure(e)
             }
         }
+        
+        /**
+         * 加密字符串
+         * 用于加密敏感配置信息（如 WebDAV 密码）
+         * @param plainText 明文字符串
+         * @param password 加密密码
+         * @return Base64 编码的加密结果（格式：salt:iv:ciphertext）
+         */
+        fun encryptString(plainText: String, password: String): String {
+            try {
+                // 1. 生成盐值和 IV
+                val salt = generateSalt()
+                val iv = generateIV()
+                
+                // 2. 派生密钥
+                val key = deriveKey(password, salt)
+                
+                // 3. 初始化加密器
+                val cipher = Cipher.getInstance(ALGORITHM)
+                val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                cipher.init(Cipher.ENCRYPT_MODE, key, gcmSpec)
+                
+                // 4. 加密数据
+                val encryptedBytes = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+                
+                // 5. 组合并编码为 Base64
+                val saltBase64 = Base64.encodeToString(salt, Base64.NO_WRAP)
+                val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
+                val cipherBase64 = Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
+                
+                return "$saltBase64:$ivBase64:$cipherBase64"
+            } catch (e: Exception) {
+                Log.e(TAG, "String encryption failed", e)
+                throw Exception("字符串加密失败: ${e.message}", e)
+            }
+        }
+        
+        /**
+         * 解密字符串
+         * @param encryptedText Base64 编码的加密文本（格式：salt:iv:ciphertext）
+         * @param password 解密密码
+         * @return 明文字符串
+         */
+        fun decryptString(encryptedText: String, password: String): String {
+            try {
+                // 1. 分割并解码 Base64
+                val parts = encryptedText.split(":")
+                if (parts.size != 3) {
+                    throw Exception("无效的加密字符串格式")
+                }
+                
+                val salt = Base64.decode(parts[0], Base64.NO_WRAP)
+                val iv = Base64.decode(parts[1], Base64.NO_WRAP)
+                val encryptedBytes = Base64.decode(parts[2], Base64.NO_WRAP)
+                
+                // 2. 派生密钥
+                val key = deriveKey(password, salt)
+                
+                // 3. 初始化解密器
+                val cipher = Cipher.getInstance(ALGORITHM)
+                val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                cipher.init(Cipher.DECRYPT_MODE, key, gcmSpec)
+                
+                // 4. 解密数据
+                val decryptedBytes = cipher.doFinal(encryptedBytes)
+                
+                return String(decryptedBytes, Charsets.UTF_8)
+            } catch (e: javax.crypto.AEADBadTagException) {
+                Log.e(TAG, "String decryption failed - wrong password", e)
+                throw Exception("解密失败: 密码错误", e)
+            } catch (e: Exception) {
+                Log.e(TAG, "String decryption failed", e)
+                throw Exception("字符串解密失败: ${e.message}", e)
+            }
+        }
     }
 }
