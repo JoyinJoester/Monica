@@ -698,16 +698,26 @@ class KeePassWebDavViewModel {
             
             allEntries.forEach { entry ->
                 try {
-                    val title = entry.fields[BasicField.Title]?.content ?: ""
-                    val username = entry.fields[BasicField.UserName]?.content ?: ""
-                    val password = entry.fields[BasicField.Password]?.content ?: ""
-                    val url = entry.fields[BasicField.Url]?.content ?: ""
-                    val notes = entry.fields[BasicField.Notes]?.content ?: ""
+                    // 安全获取字段值的辅助函数
+                    fun getFieldValue(key: String): String {
+                        return try {
+                            entry.fields[key]?.content ?: ""
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to get field '$key': ${e.message}")
+                            ""
+                        }
+                    }
+                    
+                    val title = getFieldValue("Title")
+                    val username = getFieldValue("UserName")
+                    val password = getFieldValue("Password")
+                    val url = getFieldValue("URL")
+                    val notes = getFieldValue("Notes")
                     
                     // 检查是否是 TOTP 条目（检查 otp 字段或 TOTP Seed 字段）
-                    val otpField = entry.fields["otp"]?.content ?: ""
-                    val totpSeed = entry.fields["TOTP Seed"]?.content ?: ""
-                    val totpSettings = entry.fields["TOTP Settings"]?.content ?: ""
+                    val otpField = getFieldValue("otp")
+                    val totpSeed = getFieldValue("TOTP Seed")
+                    val totpSettings = getFieldValue("TOTP Settings")
                     
                     if (otpField.isNotEmpty() || totpSeed.isNotEmpty()) {
                         // 这是一个 TOTP 条目

@@ -120,6 +120,20 @@ object FileOperationHelper {
     }
     
     /**
+     * 从 KDBX 文件导入数据 (KeePass 格式)
+     * @param activity 调用的Activity
+     */
+    fun importFromKdbx(activity: Activity) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            // 使用通用类型，因为 .kdbx 没有标准 MIME 类型
+            type = "*/*"
+        }
+        
+        activity.startActivityForResult(intent, REQUEST_CODE_IMPORT)
+    }
+    
+    /**
      * 获取默认导出文件名
      */
     private fun getDefaultExportFileName(): String {

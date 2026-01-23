@@ -417,6 +417,7 @@ fun ImportDataScreen(
                         // 根据导入类型选择不同的文件过滤器
                         when (importType) {
                             "monica_zip" -> FileOperationHelper.importFromZip(act)
+                            "kdbx" -> FileOperationHelper.importFromKdbx(act)
                             "aegis" -> FileOperationHelper.importFromJson(act)
                             "steam" -> FileOperationHelper.importFromMaFile(act)
                             else -> FileOperationHelper.importFromCsv(act)

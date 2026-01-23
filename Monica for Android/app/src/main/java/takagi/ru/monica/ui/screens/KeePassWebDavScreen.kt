@@ -430,22 +430,34 @@ fun KeePassWebDavScreen(
                             return@Button
                         }
                         
+                        val fileToImport = selectedFile
+                        if (fileToImport == null) {
+                            Toast.makeText(context, "请先选择文件", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        
                         showImportDialog = false
                         isImporting = true
+                        selectedFile = null
                         
                         coroutineScope.launch {
-                            viewModel.importFromKdbx(context, selectedFile!!, importPassword).fold(
-                                onSuccess = { count ->
-                                    isImporting = false
-                                    Toast.makeText(context, "导入成功: $count 个条目", Toast.LENGTH_LONG).show()
-                                },
-                                onFailure = { e ->
-                                    isImporting = false
-                                    Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_LONG).show()
-                                }
-                            )
+                            try {
+                                viewModel.importFromKdbx(context, fileToImport, importPassword).fold(
+                                    onSuccess = { count ->
+                                        isImporting = false
+                                        Toast.makeText(context, "导入成功: $count 个条目", Toast.LENGTH_LONG).show()
+                                    },
+                                    onFailure = { e ->
+                                        isImporting = false
+                                        Toast.makeText(context, "导入失败: ${e.message ?: "未知错误"}", Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.e("KeePassWebDAV", "Import exception", e)
+                                isImporting = false
+                                Toast.makeText(context, "导入异常: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+                            }
                         }
-                        selectedFile = null
                     },
                     enabled = !isImporting
                 ) {
