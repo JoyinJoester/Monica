@@ -26,6 +26,10 @@ class PasswordRepository(
         return passwordEntryDao.getUncategorizedPasswordEntries()
     }
 
+    fun getPasswordEntriesByKeePassDatabase(databaseId: Long): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getPasswordEntriesByKeePassDatabase(databaseId)
+    }
+
     fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getFavoritePasswordEntries()
     }

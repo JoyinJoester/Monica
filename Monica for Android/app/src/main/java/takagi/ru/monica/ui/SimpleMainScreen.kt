@@ -188,6 +188,7 @@ fun SimpleMainScreen(
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
     generatorViewModel: GeneratorViewModel = viewModel(), // 添加GeneratorViewModel
     noteViewModel: NoteViewModel = viewModel(),
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
@@ -317,6 +318,7 @@ fun SimpleMainScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
+    val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
     
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
@@ -436,6 +438,51 @@ fun SimpleMainScreen(
                     icon = { Icon(Icons.Default.Add, null) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
+                
+                // KeePass 数据库部分
+                if (keepassDatabases.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    Text(
+                        text = stringResource(R.string.local_keepass_database),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                    
+                    keepassDatabases.forEach { database ->
+                        NavigationDrawerItem(
+                            label = { Text(database.name) },
+                            selected = currentFilter is CategoryFilter.KeePassDatabase && 
+                                      (currentFilter as CategoryFilter.KeePassDatabase).databaseId == database.id,
+                            onClick = {
+                                passwordViewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(database.id))
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { 
+                                Icon(
+                                    Icons.Default.Key, 
+                                    contentDescription = null,
+                                    tint = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
+                                        MaterialTheme.colorScheme.tertiary 
+                                    else 
+                                        MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            badge = {
+                                Text(
+                                    text = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
+                                        stringResource(R.string.external_storage) 
+                                    else 
+                                        stringResource(R.string.internal_storage),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                        )
+                    }
+                }
             }
         }
     ) {
@@ -597,6 +644,7 @@ fun SimpleMainScreen(
                                 viewModel = passwordViewModel,
                                 settingsViewModel = settingsViewModel,
                                 securityManager = securityManager,
+                                keepassDatabases = keepassDatabases,
                                 groupMode = passwordGroupMode,
                                 stackCardMode = stackCardMode,
                                 onCreateCategory = {
@@ -852,6 +900,7 @@ fun SimpleMainScreen(
                         viewModel = passwordViewModel,
                         settingsViewModel = settingsViewModel, // Pass SettingsViewModel
                         securityManager = securityManager,
+                        keepassDatabases = keepassDatabases,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
                         onCreateCategory = {
@@ -1103,6 +1152,7 @@ private fun PasswordListContent(
     viewModel: PasswordViewModel,
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
+    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
     onCreateCategory: () -> Unit,
@@ -1472,6 +1522,7 @@ private fun PasswordListContent(
             is CategoryFilter.Starred -> "标星"
             is CategoryFilter.Uncategorized -> "未分类"
             is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+            is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == (currentFilter as CategoryFilter.KeePassDatabase).databaseId }?.name ?: "KeePass"
         }
 
             ExpressiveTopBar(
@@ -1570,6 +1621,47 @@ private fun PasswordListContent(
                                    }
                                )
                            }
+                           
+                           // KeePass 数据库部分
+                           if (keepassDatabases.isNotEmpty()) {
+                               item {
+                                   Spacer(modifier = Modifier.height(8.dp))
+                                   Text(
+                                       text = stringResource(R.string.local_keepass_database),
+                                       style = MaterialTheme.typography.labelLarge,
+                                       color = MaterialTheme.colorScheme.primary,
+                                       modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                   )
+                               }
+                               
+                               items(keepassDatabases, key = { "keepass_${it.id}" }) { database ->
+                                   val selected = currentFilter is CategoryFilter.KeePassDatabase && 
+                                       (currentFilter as CategoryFilter.KeePassDatabase).databaseId == database.id
+                                   CategoryListItem(
+                                       title = database.name,
+                                       icon = Icons.Default.Key,
+                                       selected = selected,
+                                       onClick = {
+                                           viewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(database.id))
+                                       },
+                                       badge = {
+                                           Text(
+                                               text = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
+                                                   stringResource(R.string.external_storage) 
+                                               else 
+                                                   stringResource(R.string.internal_storage),
+                                               style = MaterialTheme.typography.labelSmall,
+                                               color = MaterialTheme.colorScheme.onSurfaceVariant
+                                           )
+                                       }
+                                   )
+                               }
+                               
+                               item {
+                                   Spacer(modifier = Modifier.height(8.dp))
+                               }
+                           }
+                           
                            items(categoryList, key = { it.id }) { category ->
                                val selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id
                                CategoryListItem(
@@ -4621,7 +4713,8 @@ private fun CategoryListItem(
     icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
-    menu: (@Composable () -> Unit)? = null
+    menu: (@Composable () -> Unit)? = null,
+    badge: (@Composable () -> Unit)? = null
 ) {
     val containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
     val contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
@@ -4643,6 +4736,7 @@ private fun CategoryListItem(
         headlineContent = {
             Text(title, style = MaterialTheme.typography.bodyLarge)
         },
+        supportingContent = badge,
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (selected) {

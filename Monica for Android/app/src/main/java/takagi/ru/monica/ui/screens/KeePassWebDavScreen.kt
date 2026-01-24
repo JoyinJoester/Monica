@@ -143,7 +143,7 @@ fun KeePassWebDavScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("KeePass WebDAV 同步") },
+                title = { Text("KeePass WebDAV") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))

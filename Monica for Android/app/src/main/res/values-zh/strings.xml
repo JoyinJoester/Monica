@@ -1294,6 +1294,60 @@
     <string name="sync_backup_local">本地备份</string>
     <string name="sync_backup_cloud">云同步</string>
     <string name="sync_backup_plus_hint">升级 Monica Plus 解锁 WebDAV 云同步功能</string>
+    
+    <!-- 本地 KeePass 数据库 -->
+    <string name="local_keepass_section_title">KeePass 数据库</string>
+    <string name="local_keepass_database">本地 KeePass 数据库</string>
+    <string name="local_keepass_database_description">管理本地 .kdbx KeePass 数据库文件</string>
+    <string name="no_keepass_database">暂无 KeePass 数据库</string>
+    <string name="no_keepass_database_description">创建新数据库或打开已有数据库</string>
+    <string name="create_database">创建数据库</string>
+    <string name="open_existing">打开已有</string>
+    <string name="create_new">新建</string>
+    <string name="internal_storage">内部存储</string>
+    <string name="internal_storage_description">安全存储在 Monica 应用数据中</string>
+    <string name="internal_storage_option_description">安全加密，仅 Monica 可访问</string>
+    <string name="external_storage">外部存储</string>
+    <string name="external_storage_description">存储在用户选择的位置</string>
+    <string name="external_storage_option_description">自选位置，其他应用可访问</string>
+    <string name="location_selected">已选择位置</string>
+    <string name="select_location">选择</string>
+    <string name="default_label">默认</string>
+    <string name="last_updated_format">最后访问: %1$s</string>
+    <string name="open_external_database">打开外部数据库</string>
+    <string name="open_external_database_description">添加外部存储中已有的 .kdbx 文件</string>
+    <string name="create_keepass_database">创建 KeePass 数据库</string>
+    <string name="database_name">数据库名称</string>
+    <string name="database_name_placeholder">我的密码</string>
+    <string name="database_password">数据库密码</string>
+    <string name="confirm_password">确认密码</string>
+    <string name="password_mismatch">两次输入的密码不一致</string>
+    <string name="description_optional">描述（可选）</string>
+    <string name="description_placeholder">输入描述</string>
+    <string name="storage_location">存储位置</string>
+    <string name="created_at">创建时间</string>
+    <string name="last_accessed">最后访问</string>
+    <string name="description">描述</string>
+    <string name="actions">操作</string>
+    <string name="set_as_default">设为默认</string>
+    <string name="export_to_external">导出到外部存储</string>
+    <string name="transfer_to_internal">转移到内部存储</string>
+    <string name="transfer_to_external">转移到外部存储</string>
+    <string name="remove_database">移除数据库</string>
+    <string name="confirm_remove">移除数据库？</string>
+    <string name="confirm_remove_internal_description">这将移除数据库记录，内部存储中的文件也会被删除。</string>
+    <string name="confirm_remove_external_description">这将移除数据库引用，原始文件不会被删除。</string>
+    <string name="remove">移除</string>
+    <string name="create">创建</string>
+    
+    <!-- Vault Selector -->
+    <string name="vault_monica_only">仅 Monica 本地存储</string>
+    <string name="vault_monica_only_desc">安全存储在 Monica 中</string>
+    <string name="vault_sync_to_keepass">同步到 KeePass 数据库</string>
+    <string name="vault_sync_hint">本地保留备份</string>
+    <string name="vault_no_folder">暂无文件夹</string>
+    <string name="vault_select_storage">选择存储位置</string>
+    
     <string name="deselect_all">全不选</string>
     <string name="backup_validation_error">请至少选择一种备份内容</string>
 

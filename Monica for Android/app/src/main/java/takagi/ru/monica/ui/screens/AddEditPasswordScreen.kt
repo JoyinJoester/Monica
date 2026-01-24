@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -62,12 +63,16 @@ import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 
+import takagi.ru.monica.viewmodel.LocalKeePassViewModel
+import takagi.ru.monica.data.LocalKeePassDatabase
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditPasswordScreen(
     viewModel: PasswordViewModel,
     totpViewModel: TotpViewModel? = null,
     bankCardViewModel: BankCardViewModel? = null,
+    localKeePassViewModel: LocalKeePassViewModel? = null,
     passwordId: Long?,
     onNavigateBack: () -> Unit
 ) {
@@ -130,6 +135,10 @@ fun AddEditPasswordScreen(
 
     var categoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     val categories by viewModel.categories.collectAsState()
+    
+    // KeePass 数据库选择
+    var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
     
     // SSO 登录方式字段
     var loginType by rememberSaveable { mutableStateOf("PASSWORD") }
@@ -201,6 +210,7 @@ fun AddEditPasswordScreen(
                     creditCardExpiry = entry.creditCardExpiry
                     creditCardCVV = entry.creditCardCVV
                     categoryId = entry.categoryId
+                    keepassDatabaseId = entry.keepassDatabaseId
                     authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
                     
                     // 加载SSO登录方式字段
@@ -299,6 +309,7 @@ fun AddEditPasswordScreen(
                                     creditCardExpiry = creditCardExpiry,
                                     creditCardCVV = creditCardCVV,
                                     categoryId = categoryId,
+                                    keepassDatabaseId = keepassDatabaseId,
                                     authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
                                     loginType = loginType,
                                     ssoProvider = ssoProvider,
@@ -367,6 +378,15 @@ fun AddEditPasswordScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
+            // Vault/Storage Selector - 保管库选择器（类似Bitwarden）
+            item {
+                VaultSelector(
+                    keepassDatabases = keepassDatabases,
+                    selectedDatabaseId = keepassDatabaseId,
+                    onDatabaseSelected = { keepassDatabaseId = it }
+                )
+            }
+            
             // Credentials Card
             item {
                 InfoCard(title = "凭据") {
@@ -502,7 +522,6 @@ fun AddEditPasswordScreen(
                                             val strength = PasswordStrengthAnalyzer.calculateStrength(pwd)
                                             PasswordStrengthIndicator(
                                                 strength = strength,
-                                                style = settings.validatorProgressBarStyle,
                                                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)
                                             )
                                         }
@@ -1534,4 +1553,266 @@ private fun SsoRefEntryPickerDialog(
             }
         }
     )
+}
+
+/**
+ * 保管库选择器 - M3E 风格设计
+ * 选择存储位置：仅 Monica 本地 或 同步到 KeePass 数据库
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VaultSelector(
+    keepassDatabases: List<LocalKeePassDatabase>,
+    selectedDatabaseId: Long?,
+    onDatabaseSelected: (Long?) -> Unit
+) {
+    // 如果没有 KeePass 数据库，不显示选择器
+    if (keepassDatabases.isEmpty()) return
+    
+    var showBottomSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    
+    val selectedDatabase = keepassDatabases.find { it.id == selectedDatabaseId }
+    val displayName = selectedDatabase?.name ?: stringResource(R.string.vault_monica_only)
+    val isKeePass = selectedDatabase != null
+    
+    // M3E 风格的卡片选择器
+    Surface(
+        onClick = { showBottomSheet = true },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = if (isKeePass) 
+            MaterialTheme.colorScheme.primaryContainer 
+        else 
+            MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // M3E 风格图标容器
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isKeePass) 
+                    MaterialTheme.colorScheme.primary 
+                else 
+                    MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Icon(
+                        imageVector = if (isKeePass) Icons.Default.Key else Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = if (isKeePass)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSecondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            
+            // 文字区域
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isKeePass)
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    else
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    text = if (isKeePass) 
+                        stringResource(R.string.vault_sync_hint)
+                    else 
+                        stringResource(R.string.vault_monica_only_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isKeePass)
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    else
+                        MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                )
+            }
+            
+            // 展开图标
+            Icon(
+                imageVector = Icons.Default.UnfoldMore,
+                contentDescription = null,
+                tint = if (isKeePass)
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                else
+                    MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+    }
+    
+    // M3E 风格的 BottomSheet 选择器
+    if (showBottomSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showBottomSheet = false },
+            sheetState = sheetState,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 标题
+                Text(
+                    text = stringResource(R.string.vault_select_storage),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                // Monica 本地存储选项
+                VaultOptionItem(
+                    title = stringResource(R.string.vault_monica_only),
+                    subtitle = stringResource(R.string.vault_monica_only_desc),
+                    icon = Icons.Default.Shield,
+                    isSelected = selectedDatabaseId == null,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    iconColor = MaterialTheme.colorScheme.secondary,
+                    onClick = {
+                        onDatabaseSelected(null)
+                        showBottomSheet = false
+                    }
+                )
+                
+                // KeePass 数据库选项
+                keepassDatabases.forEach { database ->
+                    val isSelected = selectedDatabaseId == database.id
+                    val storageText = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL)
+                        stringResource(R.string.external_storage)
+                    else
+                        stringResource(R.string.internal_storage)
+                    
+                    VaultOptionItem(
+                        title = database.name,
+                        subtitle = "$storageText · ${stringResource(R.string.vault_sync_hint)}",
+                        icon = Icons.Default.Key,
+                        isSelected = isSelected,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        onClick = {
+                            onDatabaseSelected(database.id)
+                            showBottomSheet = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 保管库选项卡片 - M3E 风格
+ */
+@Composable
+private fun VaultOptionItem(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    containerColor: Color,
+    contentColor: Color,
+    iconColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = if (isSelected) containerColor else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        ),
+        tonalElevation = if (isSelected) 4.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 图标
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (isSelected) iconColor else MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isSelected) 
+                            MaterialTheme.colorScheme.surface 
+                        else 
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            
+            // 文字
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isSelected) contentColor else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isSelected) 
+                        contentColor.copy(alpha = 0.7f) 
+                    else 
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            // 选中指示
+            if (isSelected) {
+                Surface(
+                    shape = CircleShape,
+                    color = iconColor,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

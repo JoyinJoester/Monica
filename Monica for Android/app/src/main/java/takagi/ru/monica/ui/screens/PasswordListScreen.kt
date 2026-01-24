@@ -157,6 +157,7 @@ fun PasswordListScreen(
                                         is CategoryFilter.Starred -> "标星"
                                         is CategoryFilter.Uncategorized -> "未分类"
                                         is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+                                        is CategoryFilter.KeePassDatabase -> "KeePass"
                                     },
                                     style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.onSurface

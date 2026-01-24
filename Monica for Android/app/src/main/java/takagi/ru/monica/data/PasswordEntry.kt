@@ -51,6 +51,10 @@ data class PasswordEntry(
     
     val categoryId: Long? = null, // 分类ID
     
+    // 本地 KeePass 数据库归属
+    @ColumnInfo(defaultValue = "NULL")
+    val keepassDatabaseId: Long? = null, // 归属的 KeePass 数据库ID
+    
     // 关联的验证器密钥 (TOTP Secret)
     val authenticatorKey: String = "",  // 用于存储绑定的TOTP验证器密钥
     

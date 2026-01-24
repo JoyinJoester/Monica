@@ -97,6 +97,7 @@ sealed class Screen(val route: String) {
     object PermissionManagement : Screen("permission_management")  // 权限管理页面路由
     object Extensions : Screen("extensions")  // 功能拓展页面路由
     object SyncBackup : Screen("sync_backup")  // 同步与备份页面路由
+    object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面
     object MonicaPlus : Screen("monica_plus") // Monica Plus 页面
     object Payment : Screen("payment") // 付款页面
 }

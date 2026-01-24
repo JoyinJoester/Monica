@@ -51,7 +51,6 @@ import kotlin.math.PI
 fun PasswordStrengthIndicator(
     strength: Int,
     showScore: Boolean = true,
-    style: takagi.ru.monica.data.ProgressBarStyle = takagi.ru.monica.data.ProgressBarStyle.LINEAR,
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -68,40 +67,19 @@ fun PasswordStrengthIndicator(
         label = "strength_progress"
     )
     
-    // 调试日志
-    LaunchedEffect(style) {
-        android.util.Log.d("PasswordStrengthIndicator", "Rendering with style: $style")
-    }
-    
     Column(
         modifier = modifier.padding(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // 根据样式选择进度条组件
-        when (style) {
-            takagi.ru.monica.data.ProgressBarStyle.LINEAR -> {
-                android.util.Log.d("PasswordStrengthIndicator", "Using LINEAR progress indicator")
-                LinearProgressIndicator(
-                    progress = animatedProgress,
-                    color = color,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                )
-            }
-            takagi.ru.monica.data.ProgressBarStyle.WAVE -> {
-                android.util.Log.d("PasswordStrengthIndicator", "Using WAVE progress indicator")
-                WaveProgressIndicator(
-                    progress = animatedProgress,
-                    color = color,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                )
-            }
-        }
+        // 密码强度指示器始终使用线性样式
+        LinearProgressIndicator(
+            progress = { animatedProgress },
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+        )
         
         // 强度信息
         Row(
@@ -303,13 +281,11 @@ fun PasswordSuggestionsList(
  * 包含强度指示器和建议的完整卡片。
  * 
  * @param password 待分析的密码
- * @param style 进度条样式（可选，默认为 LINEAR）
  * @param modifier 修饰符
  */
 @Composable
 fun PasswordStrengthCard(
     password: String,
-    style: takagi.ru.monica.data.ProgressBarStyle = takagi.ru.monica.data.ProgressBarStyle.LINEAR,
     modifier: Modifier = Modifier
 ) {
     if (password.isEmpty()) return
@@ -333,8 +309,7 @@ fun PasswordStrengthCard(
             // 强度指示器
             PasswordStrengthIndicator(
                 strength = strength,
-                showScore = true,
-                style = style
+                showScore = true
             )
             
             // 建议列表

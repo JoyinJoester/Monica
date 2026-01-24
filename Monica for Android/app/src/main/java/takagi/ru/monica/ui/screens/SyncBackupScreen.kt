@@ -29,6 +29,7 @@ fun SyncBackupScreen(
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToKeePass: () -> Unit = {},  // KeePass 兼容性配置入口
+    onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     isPlusActivated: Boolean = false
 ) {
     val context = LocalContext.current
@@ -115,6 +116,18 @@ fun SyncBackupScreen(
             
             Spacer(modifier = Modifier.height(8.dp))
             
+            // 本地 KeePass 数据库区块
+            SyncBackupSection(title = stringResource(R.string.local_keepass_section_title)) {
+                SyncBackupItem(
+                    icon = Icons.Default.Key,
+                    title = stringResource(R.string.local_keepass_database),
+                    description = stringResource(R.string.local_keepass_database_description),
+                    onClick = onNavigateToLocalKeePass
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
             // 云同步区块
             SyncBackupSection(title = stringResource(R.string.sync_backup_cloud)) {
                 SyncBackupItem(
@@ -133,7 +146,7 @@ fun SyncBackupScreen(
                 
                 SyncBackupItem(
                     icon = Icons.Default.Key,
-                    title = "KeePass WebDAV 同步",
+                    title = "KeePass WebDAV",
                     description = "通过 WebDAV 与 KeePass (.kdbx) 同步数据",
                     onClick = onNavigateToKeePass,
                     enabled = isPlusActivated,

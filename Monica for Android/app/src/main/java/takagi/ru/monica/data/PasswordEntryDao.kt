@@ -18,6 +18,15 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND categoryId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getUncategorizedPasswordEntries(): Flow<List<PasswordEntry>>
 
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getPasswordEntriesByKeePassDatabase(databaseId: Long): Flow<List<PasswordEntry>>
+
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getPasswordEntriesWithoutKeePassDatabase(): Flow<List<PasswordEntry>>
+
+    @Query("SELECT COUNT(*) FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId")
+    fun getPasswordCountByKeePassDatabase(databaseId: Long): Flow<Int>
+
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isFavorite = 1 ORDER BY sortOrder ASC, updatedAt DESC")
     fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>>
     

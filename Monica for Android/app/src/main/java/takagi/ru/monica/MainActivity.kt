@@ -281,6 +281,15 @@ fun MonicaApp(
     
     // KeePass KDBX 导出/导入
     val keePassViewModel = remember { KeePassWebDavViewModel() }
+    
+    // 本地 KeePass 数据库管理
+    val localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel = viewModel {
+        takagi.ru.monica.viewmodel.LocalKeePassViewModel(
+            context.applicationContext as android.app.Application,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
 
     val settings by settingsViewModel.settings.collectAsState()
     val isSystemInDarkTheme = isSystemInDarkTheme()
@@ -317,6 +326,7 @@ fun MonicaApp(
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
                 keePassViewModel = keePassViewModel,
+                localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
                 repository = repository,
                 secureItemRepository = secureItemRepository,
@@ -343,6 +353,7 @@ fun MonicaContent(
     generatorViewModel: GeneratorViewModel,
     noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
     keePassViewModel: KeePassWebDavViewModel,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
@@ -468,6 +479,7 @@ fun MonicaContent(
                 documentViewModel = documentViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
+                localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
                 onNavigateToAddPassword = { passwordId ->
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
@@ -592,6 +604,7 @@ fun MonicaContent(
                 viewModel = viewModel,
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
+                localKeePassViewModel = localKeePassViewModel,
                 passwordId = if (passwordId == -1L) null else passwordId,
                 onNavigateBack = {
                     navController.popBackStack()
@@ -1193,6 +1206,10 @@ fun MonicaContent(
                 onCopyNextCodeWhenExpiringChange = { enabled ->
                     settingsViewModel.updateCopyNextCodeWhenExpiring(enabled)
                 },
+                validatorUnifiedProgressBar = settings.validatorUnifiedProgressBar,
+                onValidatorUnifiedProgressBarChange = { mode ->
+                    settingsViewModel.updateValidatorUnifiedProgressBar(mode)
+                },
                 // 通知栏验证器参数
                 notificationValidatorEnabled = settings.notificationValidatorEnabled,
                 notificationValidatorAutoMatch = settings.notificationValidatorAutoMatch,
@@ -1227,7 +1244,19 @@ fun MonicaContent(
                 onNavigateToKeePass = {
                     navController.navigate(Screen.KeePassWebDav.route)
                 },
+                onNavigateToLocalKeePass = {
+                    navController.navigate(Screen.LocalKeePass.route)
+                },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
+            )
+        }
+        
+        composable(Screen.LocalKeePass.route) {
+            takagi.ru.monica.ui.screens.LocalKeePassScreen(
+                viewModel = localKeePassViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
             )
         }
         

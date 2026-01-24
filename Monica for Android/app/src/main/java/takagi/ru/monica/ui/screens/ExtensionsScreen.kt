@@ -39,6 +39,8 @@ fun ExtensionsScreen(
     onValidatorVibrationChange: (Boolean) -> Unit = {},
     copyNextCodeWhenExpiring: Boolean = false,
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
+    validatorUnifiedProgressBar: takagi.ru.monica.data.UnifiedProgressBarMode = takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED,
+    onValidatorUnifiedProgressBarChange: (takagi.ru.monica.data.UnifiedProgressBarMode) -> Unit = {},
     // 通知栏验证器参数
     notificationValidatorEnabled: Boolean = false,
     notificationValidatorAutoMatch: Boolean = false,
@@ -131,6 +133,19 @@ fun ExtensionsScreen(
                         description = stringResource(R.string.copy_next_code_when_expiring_description),
                         checked = copyNextCodeWhenExpiring,
                         onCheckedChange = onCopyNextCodeWhenExpiringChange
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    ExtensionSwitchItem(
+                        icon = Icons.Default.LinearScale,
+                        title = stringResource(R.string.unified_progress_bar_title),
+                        description = stringResource(R.string.unified_progress_bar_description),
+                        checked = validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED,
+                        onCheckedChange = { enabled ->
+                            onValidatorUnifiedProgressBarChange(
+                                if (enabled) takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED
+                                else takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED
+                            )
+                        }
                     )
                 }
                 

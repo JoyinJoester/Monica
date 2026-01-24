@@ -1443,6 +1443,59 @@
     <string name="sync_backup_local">Local Backup</string>
     <string name="sync_backup_cloud">Cloud Sync</string>
     <string name="sync_backup_plus_hint">Upgrade to Monica Plus to unlock WebDAV cloud sync</string>
+    
+    <!-- Local KeePass Database -->
+    <string name="local_keepass_section_title">KeePass Database</string>
+    <string name="local_keepass_database">Local KeePass Database</string>
+    <string name="local_keepass_database_description">Manage local .kdbx KeePass database files</string>
+    <string name="no_keepass_database">No KeePass Database</string>
+    <string name="no_keepass_database_description">Create a new database or open an existing one</string>
+    <string name="create_database">Create Database</string>
+    <string name="open_existing">Open Existing</string>
+    <string name="create_new">Create New</string>
+    <string name="internal_storage">Internal Storage</string>
+    <string name="internal_storage_description">Stored securely in Monica app data</string>
+    <string name="internal_storage_option_description">Secure, encrypted, only accessible by Monica</string>
+    <string name="external_storage">External Storage</string>
+    <string name="external_storage_description">Stored in user-selected location</string>
+    <string name="external_storage_option_description">Choose your own location, accessible by other apps</string>
+    <string name="location_selected">Location selected</string>
+    <string name="select_location">Select</string>
+    <string name="default_label">Default</string>
+    <string name="last_updated_format">Last accessed: %1$s</string>
+    <string name="open_external_database">Open External Database</string>
+    <string name="open_external_database_description">Add an existing .kdbx file from external storage</string>
+    <string name="create_keepass_database">Create KeePass Database</string>
+    <string name="database_name">Database Name</string>
+    <string name="database_name_placeholder">My Passwords</string>
+    <string name="database_password">Database Password</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="password_mismatch">Passwords do not match</string>
+    <string name="description_optional">Description (Optional)</string>
+    <string name="description_placeholder">Enter description</string>
+    <string name="storage_location">Storage Location</string>
+    <string name="created_at">Created</string>
+    <string name="last_accessed">Last Accessed</string>
+    <string name="description">Description</string>
+    <string name="actions">Actions</string>
+    <string name="set_as_default">Set as Default</string>
+    <string name="export_to_external">Export to External Storage</string>
+    <string name="transfer_to_internal">Transfer to Internal Storage</string>
+    <string name="transfer_to_external">Transfer to External Storage</string>
+    <string name="remove_database">Remove Database</string>
+    <string name="confirm_remove">Remove Database?</string>
+    <string name="confirm_remove_internal_description">This will remove the database record. The file will also be deleted from internal storage.</string>
+    <string name="confirm_remove_external_description">This will remove the database reference. The original file will not be deleted.</string>
+    <string name="remove">Remove</string>
+    <string name="create">Create</string>
+    
+    <!-- Vault Selector -->
+    <string name="vault_monica_only">Monica Local Storage</string>
+    <string name="vault_monica_only_desc">Stored securely in Monica only</string>
+    <string name="vault_sync_to_keepass">Also sync to KeePass database</string>
+    <string name="vault_sync_hint">Local backup retained</string>
+    <string name="vault_no_folder">No Folder</string>
+    <string name="vault_select_storage">Select Storage</string>
 
     <!-- Support Author Page -->
     <string name="support_author_page_title">Support the Author</string>

@@ -23,6 +23,7 @@ sealed class CategoryFilter {
     object Starred : CategoryFilter()
     object Uncategorized : CategoryFilter()
     data class Custom(val categoryId: Long) : CategoryFilter()
+    data class KeePassDatabase(val databaseId: Long) : CategoryFilter()
 }
 
 /**
@@ -72,6 +73,7 @@ class PasswordViewModel(
                     is CategoryFilter.Starred -> repository.getFavoritePasswordEntries()
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
+                    is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
                 }
             }
         }

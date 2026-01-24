@@ -14,9 +14,10 @@ import androidx.room.TypeConverters
         PasswordEntry::class,
         SecureItem::class,
         Category::class,
-        OperationLog::class
+        OperationLog::class,
+        LocalKeePassDatabase::class
     ],
-    version = 22,
+    version = 25,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -26,6 +27,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun secureItemDao(): SecureItemDao
     abstract fun categoryDao(): CategoryDao
     abstract fun operationLogDao(): OperationLogDao
+    abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
     
     companion object {
         @Volatile
@@ -341,6 +343,99 @@ abstract class PasswordDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE password_entries ADD COLUMN ssoRefEntryId INTEGER DEFAULT NULL")
             }
         }
+        
+        // Migration 22 → 23 - 添加本地 KeePass 数据库管理表
+        private val MIGRATION_22_23 = object : androidx.room.migration.Migration(22, 23) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS local_keepass_databases (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        filePath TEXT NOT NULL,
+                        storage_location TEXT NOT NULL,
+                        encrypted_password TEXT,
+                        description TEXT,
+                        created_at INTEGER NOT NULL,
+                        last_accessed_at INTEGER NOT NULL,
+                        last_synced_at INTEGER,
+                        is_default INTEGER NOT NULL,
+                        entry_count INTEGER NOT NULL,
+                        sort_order INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_local_keepass_databases_storage_location ON local_keepass_databases(storage_location)")
+            }
+        }
+        
+        // Migration 23 → 24 - 为密码条目添加 KeePass 数据库归属字段
+        private val MIGRATION_23_24 = object : androidx.room.migration.Migration(23, 24) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE password_entries ADD COLUMN keepassDatabaseId INTEGER DEFAULT NULL")
+            }
+        }
+        
+        // Migration 24 → 25 - 修复 local_keepass_databases 表结构（保留数据）
+        private val MIGRATION_24_25 = object : androidx.room.migration.Migration(24, 25) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 检查表是否存在并需要修复
+                // 使用安全的重建表方式：重命名 → 创建新表 → 复制数据 → 删除旧表
+                try {
+                    // 1. 重命名旧表
+                    database.execSQL("ALTER TABLE local_keepass_databases RENAME TO local_keepass_databases_backup")
+                    
+                    // 2. 创建正确结构的新表（无DEFAULT值）
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS local_keepass_databases (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            name TEXT NOT NULL,
+                            filePath TEXT NOT NULL,
+                            storage_location TEXT NOT NULL,
+                            encrypted_password TEXT,
+                            description TEXT,
+                            created_at INTEGER NOT NULL,
+                            last_accessed_at INTEGER NOT NULL,
+                            last_synced_at INTEGER,
+                            is_default INTEGER NOT NULL,
+                            entry_count INTEGER NOT NULL,
+                            sort_order INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+                    
+                    // 3. 复制数据
+                    database.execSQL("""
+                        INSERT INTO local_keepass_databases 
+                        SELECT id, name, filePath, storage_location, encrypted_password, description,
+                               created_at, last_accessed_at, last_synced_at, is_default, entry_count, sort_order
+                        FROM local_keepass_databases_backup
+                    """.trimIndent())
+                    
+                    // 4. 删除备份表
+                    database.execSQL("DROP TABLE IF EXISTS local_keepass_databases_backup")
+                    
+                    // 5. 重建索引
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_local_keepass_databases_storage_location ON local_keepass_databases(storage_location)")
+                } catch (e: Exception) {
+                    // 如果旧表不存在，直接创建新表
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS local_keepass_databases (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            name TEXT NOT NULL,
+                            filePath TEXT NOT NULL,
+                            storage_location TEXT NOT NULL,
+                            encrypted_password TEXT,
+                            description TEXT,
+                            created_at INTEGER NOT NULL,
+                            last_accessed_at INTEGER NOT NULL,
+                            last_synced_at INTEGER,
+                            is_default INTEGER NOT NULL,
+                            entry_count INTEGER NOT NULL,
+                            sort_order INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_local_keepass_databases_storage_location ON local_keepass_databases(storage_location)")
+                }
+            }
+        }
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -370,7 +465,10 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_18_19,  // 添加操作日志表
                         MIGRATION_19_20,  // 添加 isReverted 字段
                         MIGRATION_20_21,  // 添加回收站功能（软删除字段）
-                        MIGRATION_21_22   // 添加第三方登录(SSO)字段
+                        MIGRATION_21_22,  // 添加第三方登录(SSO)字段
+                        MIGRATION_22_23,  // 添加本地 KeePass 数据库管理表
+                        MIGRATION_23_24,  // 为密码条目添加 KeePass 数据库归属字段
+                        MIGRATION_24_25   // 修复 local_keepass_databases 表结构
                     )
                     .build()
                 INSTANCE = instance
