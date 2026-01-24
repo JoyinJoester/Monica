@@ -9,7 +9,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +41,7 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.util.TotpGenerator
@@ -51,7 +54,7 @@ import takagi.ru.monica.util.VibrationPatterns
  * TOTP验证码卡片
  * 显示实时生成的6位验证码和倒计时
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TotpCodeCard(
     item: SecureItem,
@@ -65,6 +68,7 @@ fun TotpCodeCard(
     onGenerateNext: ((Long) -> Unit)? = null,
     onShowQrCode: ((SecureItem) -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     sharedTickSeconds: Long? = null,
@@ -196,14 +200,20 @@ fun TotpCodeCard(
     }
     
     Card(
-        onClick = {
-            if (isSelectionMode) {
-                onToggleSelect?.invoke()
-            } else {
-                onCopyCode(codeToCopy)
-            }
-        },
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {
+                    if (isSelectionMode) {
+                        onToggleSelect?.invoke()
+                    } else {
+                        onCopyCode(codeToCopy)
+                    }
+                },
+                onLongClick = {
+                    onLongClick?.invoke()
+                }
+            ),
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
@@ -414,11 +424,22 @@ fun TotpCodeCard(
                 }
                 
                 // 验证码（等宽字体）
+                // 统一进度条模式下放大验证码
+                val isStandardPeriod = totpData.period == 30 || totpData.period == 60
+                val useUnifiedProgressBar = settings.validatorUnifiedProgressBar == UnifiedProgressBarMode.ENABLED
+                val isUnifiedMode = useUnifiedProgressBar && isStandardPeriod && totpData.otpType != OtpType.HOTP
+                
+                val codeFontSize = when {
+                    totpData.otpType == OtpType.STEAM -> if (isUnifiedMode) 34.sp else 28.sp
+                    isUnifiedMode -> 40.sp
+                    else -> 32.sp
+                }
+                
                 Text(
                     text = formatOtpCode(currentCode, totpData.otpType),
-                    fontSize = if (totpData.otpType == OtpType.STEAM) 28.sp else 32.sp,
+                    fontSize = codeFontSize,
                     fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     color = when {
                         totpData.otpType == OtpType.STEAM -> Color(0xFF66BB6A)
                         remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
@@ -465,6 +486,11 @@ fun TotpCodeCard(
             Spacer(modifier = Modifier.height(8.dp))
             
             // 进度条/计数器显示
+            // 判断是否需要隐藏进度条（启用统一进度条模式且是标准周期30s/60s）
+            val isStandardPeriod = totpData.period == 30 || totpData.period == 60
+            val useUnifiedProgressBar = settings.validatorUnifiedProgressBar == UnifiedProgressBarMode.ENABLED
+            val shouldHideProgress = useUnifiedProgressBar && isStandardPeriod && totpData.otpType != OtpType.HOTP
+            
             when (totpData.otpType) {
                 OtpType.HOTP -> {
                     // HOTP显示计数器和生成按钮
@@ -496,35 +522,40 @@ fun TotpCodeCard(
                     }
                 }
                 else -> {
-                    // TOTP/Steam/Yandex/mOTP显示倒计时和进度条
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val progressColor = if (remainingSeconds <= 5) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        }
-                        
-                        M3EProgressIndicator(
-                            progress = progress,
-                            color = progressColor,
-                            showWaveAccent = false,
-                            modifier = Modifier.weight(1f)
-                        )
-                        
-                        Spacer(modifier = Modifier.width(8.dp))
-                        
-                        Text(
-                            text = "${remainingSeconds}s",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (remainingSeconds <= 5) {
+                    if (!shouldHideProgress) {
+                        // TOTP/Steam/Yandex/mOTP显示倒计时和进度条（仅在非统一进度条模式或自定义周期时显示）
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val progressColor = if (remainingSeconds <= 5) {
                                 MaterialTheme.colorScheme.error
                             } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                                MaterialTheme.colorScheme.primary
                             }
-                        )
+                            
+                            M3EProgressIndicator(
+                                progress = progress,
+                                color = progressColor,
+                                showWaveAccent = false,
+                                modifier = Modifier.weight(1f)
+                            )
+                            
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            Text(
+                                text = "${remainingSeconds}s",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (remainingSeconds <= 5) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    } else {
+                        // 统一进度条模式下，不显示任何内容（倒计时已在顶部统一显示）
+                        // 不需要显示任何UI
                     }
                 }
             }

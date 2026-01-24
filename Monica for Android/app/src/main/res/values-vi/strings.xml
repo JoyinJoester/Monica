@@ -652,6 +652,14 @@
     <string name="progress_bar_style_linear">Tuyến tính</string>
     <string name="progress_bar_style_wave">Sóng</string>
     
+    <!-- Unified Progress Bar -->
+    <string name="unified_progress_bar_title">Thanh tiến trình thống nhất</string>
+    <string name="unified_progress_bar_description">Hiển thị thanh tiến trình 30 giây duy nhất ở đầu cho tất cả các mục TOTP tiêu chuẩn</string>
+    <string name="smooth_progress_bar_title">Thanh tiến trình mượt</string>
+    <string name="smooth_progress_bar_description">Bật hoạt ảnh mượt mà, hiển thị tiến trình không bị giật</string>
+    <string name="validator_settings_section">Cài đặt xác thực</string>
+    <string name="experimental_features_section">Tính năng thử nghiệm</string>
+    
     <!-- Rung xác thực -->
     <string name="validator_vibration">Rung xác thực</string>
     <string name="validator_vibration_description">Rung khi đếm ngược sắp kết thúc</string>

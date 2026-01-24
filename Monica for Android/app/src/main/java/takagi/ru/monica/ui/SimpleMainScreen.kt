@@ -9,9 +9,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -78,6 +79,8 @@ import takagi.ru.monica.ui.components.DraggableNavItem
 import takagi.ru.monica.ui.components.QuickActionItem
 import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.security.SecurityManager
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 private fun SelectionActionBar(
@@ -1917,6 +1920,14 @@ private fun PasswordListContent(
                         onOpenMultiPasswordDialog = { passwords ->
                             // 导航到详情页面 (现在详情页面支持多密码)
                             onNavigateToPasswordDetail(passwords.first().id)
+                        },
+                        onLongClick = { password ->
+                            // 长按进入多选模式
+                            haptic.performLongPress()
+                            if (!isSelectionMode) {
+                                isSelectionMode = true
+                                selectedPasswords = setOf(password.id)
+                            }
                         }
                     )
                     
@@ -2092,6 +2103,7 @@ private fun PasswordListContent(
 /**
  * TOTP列表内容
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TotpListContent(
     viewModel: takagi.ru.monica.viewmodel.TotpViewModel,
@@ -2201,6 +2213,17 @@ private fun TotpListContent(
                 }
             }
         )
+        
+        // 统一进度条 - 在顶栏下方显示
+        if (appSettings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED && 
+            filteredTotpItems.isNotEmpty()) {
+            takagi.ru.monica.ui.components.UnifiedProgressBar(
+                style = appSettings.validatorProgressBarStyle,
+                currentSeconds = sharedTickSeconds,
+                period = 30,
+                smoothProgress = appSettings.validatorSmoothProgress
+            )
+        }
 
         // TOTP列表
         if (filteredTotpItems.isEmpty()) {
@@ -2233,90 +2256,144 @@ private fun TotpListContent(
                 }
             }
         } else {
+            // 可拖动排序的列表状态
+            val lazyListState = rememberLazyListState()
+            
+            // 用于拖动排序的本地列表状态
+            var localTotpItems by remember(filteredTotpItems) { 
+                mutableStateOf(filteredTotpItems) 
+            }
+            
+            // 当筛选后的列表变化时同步
+            LaunchedEffect(filteredTotpItems) {
+                localTotpItems = filteredTotpItems
+            }
+            
+            val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
+                // 只在多选模式下允许排序
+                if (isSelectionMode) {
+                    localTotpItems = localTotpItems.toMutableList().apply {
+                        add(to.index, removeAt(from.index))
+                    }
+                }
+            }
+            
+            // 当拖动结束时保存新顺序
+            LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
+                if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
+                    // 拖动结束，保存新顺序到数据库
+                    val newOrders = localTotpItems.mapIndexed { index, item ->
+                        item.id to index
+                    }
+                    if (newOrders.isNotEmpty()) {
+                        viewModel.updateSortOrders(newOrders)
+                    }
+                }
+            }
+            
             LazyColumn(
+                state = lazyListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(
-                    items = filteredTotpItems,
+                    items = localTotpItems,
                     key = { it.id }
                 ) { item ->
-                    val index = filteredTotpItems.indexOf(item)
+                    val index = localTotpItems.indexOf(item)
                     
-                    // 用 SwipeActions 包裹 TOTP 卡片
-                    takagi.ru.monica.ui.gestures.SwipeActions(
-                        onSwipeLeft = {
-                            // 左滑删除
-                            haptic.performWarning()
-                            itemToDelete = item
-                            deletedItemIds = deletedItemIds + item.id
-                        },
-                        onSwipeRight = {
-                            // 右滑选择
-                            haptic.performSuccess()
-                            if (!isSelectionMode) {
-                                isSelectionMode = true
-                            }
-                            selectedItems = if (selectedItems.contains(item.id)) {
-                                selectedItems - item.id
-                            } else {
-                                selectedItems + item.id
-                            }
-                        },
-                        enabled = true // 多选模式下也可以滑动
-                    ) {
-                        TotpItemCard(
-                            item = item,
-                            onEdit = { onTotpClick(item.id) },
-                            onToggleSelect = {
+                    ReorderableItem(reorderableLazyListState, key = item.id) { isDragging ->
+                        val elevation by animateDpAsState(
+                            if (isDragging) 8.dp else 0.dp,
+                            label = "drag_elevation"
+                        )
+                        
+                        // 在多选模式下使用拖动手柄
+                        val dragModifier = if (isSelectionMode) {
+                            Modifier.longPressDraggableHandle(
+                                onDragStarted = {
+                                    haptic.performLongPress()
+                                },
+                                onDragStopped = {
+                                    haptic.performSuccess()
+                                }
+                            )
+                        } else {
+                            Modifier
+                        }
+                        
+                        // 用 SwipeActions 包裹 TOTP 卡片（多选模式或拖动时禁用滑动）
+                        takagi.ru.monica.ui.gestures.SwipeActions(
+                            onSwipeLeft = {
+                                // 左滑删除
+                                haptic.performWarning()
+                                itemToDelete = item
+                                deletedItemIds = deletedItemIds + item.id
+                            },
+                            onSwipeRight = {
+                                // 右滑选择
+                                haptic.performSuccess()
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                }
                                 selectedItems = if (selectedItems.contains(item.id)) {
                                     selectedItems - item.id
                                 } else {
                                     selectedItems + item.id
                                 }
                             },
-                            onDelete = {
-                                haptic.performWarning()
-                                itemToDelete = item
-                                deletedItemIds = deletedItemIds + item.id
-                            },
-                            onToggleFavorite = { id, isFavorite ->
-                                viewModel.toggleFavorite(id, isFavorite)
-                            },
-                            onGenerateNext = { id ->
-                                viewModel.incrementHotpCounter(id)
-                            },
-                            onMoveUp = if (index > 0) {
-                                {
-                                    // 交换当前项和上一项的sortOrder
-                                    val currentItem = filteredTotpItems[index]
-                                    val previousItem = filteredTotpItems[index - 1]
-                                    viewModel.updateSortOrders(listOf(
-                                        currentItem.id to (index - 1),
-                                        previousItem.id to index
-                                    ))
-                                }
-                            } else null,
-                            onMoveDown = if (index < filteredTotpItems.size - 1) {
-                                {
-                                    // 交换当前项和下一项的sortOrder
-                                    val currentItem = filteredTotpItems[index]
-                                    val nextItem = filteredTotpItems[index + 1]
-                                    viewModel.updateSortOrders(listOf(
-                                        currentItem.id to (index + 1),
-                                        nextItem.id to index
-                                    ))
-                                }
-                            } else null,
-                            onShowQrCode = {
-                                itemToShowQr = item
-                            },
-                            isSelectionMode = isSelectionMode,
-                            isSelected = selectedItems.contains(item.id),
-                            sharedTickSeconds = sharedTickSeconds,
-                            appSettings = appSettings
-                        )
+                            enabled = !isDragging && !isSelectionMode // 多选模式下禁用滑动，让拖动手势生效
+                        ) {
+                            // 包装卡片以支持拖动
+                            Box(
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        shadowElevation = elevation.toPx()
+                                    }
+                                    .then(dragModifier)
+                            ) {
+                                TotpItemCard(
+                                    item = item,
+                                    onEdit = { onTotpClick(item.id) },
+                                    onToggleSelect = {
+                                        selectedItems = if (selectedItems.contains(item.id)) {
+                                            selectedItems - item.id
+                                        } else {
+                                            selectedItems + item.id
+                                        }
+                                    },
+                                    onDelete = {
+                                        haptic.performWarning()
+                                        itemToDelete = item
+                                        deletedItemIds = deletedItemIds + item.id
+                                    },
+                                    onToggleFavorite = { id, isFavorite ->
+                                        viewModel.toggleFavorite(id, isFavorite)
+                                    },
+                                    onGenerateNext = { id ->
+                                        viewModel.incrementHotpCounter(id)
+                                    },
+                                    onMoveUp = null, // 使用拖动排序替代
+                                    onMoveDown = null, // 使用拖动排序替代
+                                    onShowQrCode = {
+                                        itemToShowQr = item
+                                    },
+                                    onLongClick = {
+                                        // 长按进入多选模式
+                                        haptic.performLongPress()
+                                        if (!isSelectionMode) {
+                                            isSelectionMode = true
+                                            selectedItems = setOf(item.id)
+                                        }
+                                    },
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = selectedItems.contains(item.id),
+                                    sharedTickSeconds = sharedTickSeconds,
+                                    appSettings = appSettings
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -2504,6 +2581,7 @@ private fun TotpItemCard(
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
     onShowQrCode: ((takagi.ru.monica.data.SecureItem) -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     sharedTickSeconds: Long? = null,
@@ -2528,6 +2606,7 @@ private fun TotpItemCard(
         onMoveDown = onMoveDown,
         onShowQrCode = onShowQrCode,
         onEdit = onEdit,
+        onLongClick = onLongClick,
         isSelectionMode = isSelectionMode,
         isSelected = isSelected,
         sharedTickSeconds = sharedTickSeconds,
@@ -3194,7 +3273,8 @@ private fun StackedPasswordGroup(
     isSelectionMode: Boolean,
     selectedPasswords: Set<Long>,
     onToggleSelection: (Long) -> Unit,
-    onOpenMultiPasswordDialog: (List<takagi.ru.monica.data.PasswordEntry>) -> Unit // 新增：打开多密码详情对话框
+    onOpenMultiPasswordDialog: (List<takagi.ru.monica.data.PasswordEntry>) -> Unit,
+    onLongClick: (takagi.ru.monica.data.PasswordEntry) -> Unit // 新增：长按进入多选模式
 ) {
     // 检查是否为多密码合并卡片(除密码外信息完全相同)
     val isMergedPasswordCard = passwords.size > 1 && 
@@ -3217,7 +3297,7 @@ private fun StackedPasswordGroup(
                             onPasswordClick(password)
                         }
                     },
-                    onLongClick = {},
+                    onLongClick = { onLongClick(password) },
                     onToggleFavorite = { onToggleFavorite(password) },
                     onToggleGroupCover = null,
                     isSelectionMode = isSelectionMode,
@@ -3252,7 +3332,7 @@ private fun StackedPasswordGroup(
                     // 点击卡片本身 → 打开多密码详情对话框
                     { onOpenMultiPasswordDialog(passwords) }
                 } else null,
-                onLongClick = {},
+                onLongClick = { onLongClick(passwords.first()) },
                 onToggleFavorite = { password -> onToggleFavorite(password) },
                 onToggleGroupCover = null,
                 isSelectionMode = isSelectionMode,
@@ -3614,7 +3694,7 @@ private fun StackedPasswordGroup(
                                                             onPasswordClick(password)
                                                         }
                                                     },
-                                                    onLongClick = {},
+                                                    onLongClick = { onLongClick(password) },
                                                     onToggleFavorite = { onToggleFavorite(password) },
                                                     onToggleGroupCover = if (passwords.size > 1) {
                                                         { onToggleGroupCover(password) }
@@ -3641,7 +3721,7 @@ private fun StackedPasswordGroup(
                                                         // 点击卡片本身 → 打开多密码详情对话框
                                                         { onOpenMultiPasswordDialog(passwordGroup) }
                                                     } else null,
-                                                    onLongClick = {},
+                                                    onLongClick = { onLongClick(passwordGroup.first()) },
                                                     onToggleFavorite = { password -> onToggleFavorite(password) },
                                                     onToggleGroupCover = if (passwords.size > 1) {
                                                         { password -> onToggleGroupCover(password) }
@@ -3686,7 +3766,7 @@ private fun StackedPasswordGroup(
                                             onPasswordClick(password)
                                         }
                                     },
-                                    onLongClick = {},
+                                    onLongClick = { onLongClick(password) },
                                     onToggleFavorite = { onToggleFavorite(password) },
                                     onToggleGroupCover = null,
                                     isSelectionMode = isSelectionMode,
@@ -3711,7 +3791,7 @@ private fun StackedPasswordGroup(
                                         // 点击卡片本身 → 打开多密码详情对话框
                                         { onOpenMultiPasswordDialog(passwordGroup) }
                                     } else null,
-                                    onLongClick = {},
+                                    onLongClick = { onLongClick(passwordGroup.first()) },
                                     onToggleFavorite = { password -> onToggleFavorite(password) },
                                     onToggleGroupCover = null,
                                     isSelectionMode = isSelectionMode,
@@ -3777,12 +3857,9 @@ private fun MultiPasswordEntryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (!isSelectionMode && onCardClick != null) {
-                    Modifier.clickable { onCardClick() }
-                } else {
-                    Modifier
-                }
+            .combinedClickable(
+                onClick = { onCardClick?.invoke() },
+                onLongClick = onLongClick
             ),
         colors = if (passwords.any { selectedPasswords.contains(it.id) }) {
             androidx.compose.material3.CardDefaults.cardColors(
@@ -4126,7 +4203,10 @@ private fun PasswordEntryCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onClick() } // 将 clickable 移到 Row 上
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
                 .padding(
                     if (isSingleCard) 20.dp else 16.dp // 单卡片：更大的padding
                 ),

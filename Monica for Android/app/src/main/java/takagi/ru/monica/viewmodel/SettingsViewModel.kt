@@ -125,6 +125,18 @@ class SettingsViewModel(
         }
     }
 
+    fun updateValidatorUnifiedProgressBar(mode: takagi.ru.monica.data.UnifiedProgressBarMode) {
+        viewModelScope.launch {
+            settingsManager.updateValidatorUnifiedProgressBar(mode)
+        }
+    }
+
+    fun updateValidatorSmoothProgress(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateValidatorSmoothProgress(enabled)
+        }
+    }
+
     fun updateValidatorVibrationEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateValidatorVibrationEnabled(enabled)

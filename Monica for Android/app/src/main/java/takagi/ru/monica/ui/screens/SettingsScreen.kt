@@ -694,13 +694,164 @@ fun SettingsScreen(
                 Text(stringResource(R.string.preview_features_title))
             },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
                     Text(
                         stringResource(R.string.preview_features_description),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // === 验证器设置分组 ===
+                    Text(
+                        text = stringResource(R.string.validator_settings_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    // 统一进度条开关
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { 
+                                val newMode = if (settings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED) {
+                                    takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED
+                                } else {
+                                    takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED
+                                }
+                                viewModel.updateValidatorUnifiedProgressBar(newMode)
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LinearScale,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.unified_progress_bar_title),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.unified_progress_bar_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED,
+                            onCheckedChange = { enabled ->
+                                viewModel.updateValidatorUnifiedProgressBar(
+                                    if (enabled) takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED 
+                                    else takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED
+                                )
+                            }
+                        )
+                    }
+                    
+                    // 进度条样式选择
+                    var showProgressStyleDialog by remember { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showProgressStyleDialog = true }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (settings.validatorProgressBarStyle == takagi.ru.monica.data.ProgressBarStyle.WAVE) 
+                                Icons.Default.Waves else Icons.Default.Straighten,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.validator_progress_bar_style),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = getProgressBarStyleDisplayName(settings.validatorProgressBarStyle, context),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    
+                    if (showProgressStyleDialog) {
+                        ProgressBarStyleDialog(
+                            currentStyle = settings.validatorProgressBarStyle,
+                            onStyleSelected = { style ->
+                                viewModel.updateValidatorProgressBarStyle(style)
+                                showProgressStyleDialog = false
+                            },
+                            onDismiss = { showProgressStyleDialog = false }
+                        )
+                    }
+                    
+                    // 平滑进度条开关
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { 
+                                viewModel.updateValidatorSmoothProgress(!settings.validatorSmoothProgress)
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.smooth_progress_bar_title),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.smooth_progress_bar_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.validatorSmoothProgress,
+                            onCheckedChange = { enabled ->
+                                viewModel.updateValidatorSmoothProgress(enabled)
+                            }
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // === 实验功能分组 ===
+                    Text(
+                        text = stringResource(R.string.experimental_features_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     
                     // 可拖拽底部导航栏开关
                     Row(

@@ -785,6 +785,14 @@
     <string name="progress_bar_style_linear">Linear</string>
     <string name="progress_bar_style_wave">Wave</string>
     
+    <!-- Unified Progress Bar -->
+    <string name="unified_progress_bar_title">Unified Progress Bar</string>
+    <string name="unified_progress_bar_description">Display a single 30s progress bar at the top for all standard TOTP entries</string>
+    <string name="smooth_progress_bar_title">Smooth Progress Bar</string>
+    <string name="smooth_progress_bar_description">Enable smooth animation for seamless progress display without stuttering</string>
+    <string name="validator_settings_section">Validator Settings</string>
+    <string name="experimental_features_section">Experimental Features</string>
+    
     <!-- Validator Vibration -->
     <string name="validator_vibration">Validator Vibration</string>
     <string name="validator_vibration_description">Vibrate when countdown is about to end</string>

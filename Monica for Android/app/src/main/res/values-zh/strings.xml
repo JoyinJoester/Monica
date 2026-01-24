@@ -748,6 +748,14 @@
     <string name="progress_bar_style_linear">线形</string>
     <string name="progress_bar_style_wave">波浪形</string>
     
+    <!-- Unified Progress Bar -->
+    <string name="unified_progress_bar_title">统一进度条</string>
+    <string name="unified_progress_bar_description">在顶部显示统一的30秒进度条，适用于所有标准TOTP验证器</string>
+    <string name="smooth_progress_bar_title">平滑进度条</string>
+    <string name="smooth_progress_bar_description">启用平滑动画，消除进度条的停顿感</string>
+    <string name="validator_settings_section">验证器设置</string>
+    <string name="experimental_features_section">实验功能</string>
+    
     <!-- 验证器震动 -->
     <string name="validator_vibration">验证器震动</string>
     <string name="validator_vibration_description">倒计时快结束时震动提醒</string>

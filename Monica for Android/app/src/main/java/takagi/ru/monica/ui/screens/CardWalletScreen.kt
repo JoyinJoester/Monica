@@ -1,14 +1,17 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
@@ -19,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -27,12 +31,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.ui.components.BankCardCard
 import takagi.ru.monica.ui.components.DocumentCard
 import takagi.ru.monica.ui.components.EmptyState
 import takagi.ru.monica.ui.components.LoadingIndicator
+import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 
@@ -136,6 +143,7 @@ fun CardWalletScreen(
 }
 
 // Reuse logic from BankCardListScreen but adapted for being a content part
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BankCardListContent(
     viewModel: BankCardViewModel,
@@ -144,6 +152,7 @@ fun BankCardListContent(
 ) {
     val cards by viewModel.allCards.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
+    val haptic = rememberHapticFeedback()
     
     // Selection state
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
@@ -189,39 +198,93 @@ fun BankCardListContent(
                 )
             }
             else -> {
+                // 用于拖动排序的本地列表状态
+                var localCards by remember(cards) { mutableStateOf(cards) }
+                
+                LaunchedEffect(cards) {
+                    localCards = cards
+                }
+                
+                val lazyListState = rememberLazyListState()
+                val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
+                    if (isSelectionMode) {
+                        localCards = localCards.toMutableList().apply {
+                            add(to.index, removeAt(from.index))
+                        }
+                    }
+                }
+                
+                // 保存排序
+                LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
+                    if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
+                        val newOrders = localCards.mapIndexed { index, item ->
+                            item.id to index
+                        }
+                        if (newOrders.isNotEmpty()) {
+                            viewModel.updateSortOrders(newOrders)
+                        }
+                    }
+                }
+                
                 LazyColumn(
+                    state = lazyListState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(items = cards, key = { it.id }) { card ->
+                    items(items = localCards, key = { it.id }) { card ->
                         val isSelected = selectedIds.contains(card.id)
-                        BankCardCard(
-                            item = card,
-                            isSelectionMode = isSelectionMode,
-                            isSelected = isSelected,
-                            onLongClick = {
-                                if (!isSelectionMode) {
-                                    isSelectionMode = true
-                                    selectedIds = setOf(card.id)
-                                }
-                            },
-                            onClick = { 
-                                if (isSelectionMode) {
-                                    selectedIds = if (isSelected) {
-                                        selectedIds - card.id
-                                    } else {
-                                        selectedIds + card.id
-                                    }
-                                    if (selectedIds.isEmpty()) {
-                                        isSelectionMode = false
-                                    }
-                                } else {
-                                    onCardClick(card.id)
-                                }
-                            },
-                            onDelete = { itemToDelete = card }
-                        )
+                        
+                        ReorderableItem(reorderableLazyListState, key = card.id) { isDragging ->
+                            val elevation by animateDpAsState(
+                                if (isDragging) 8.dp else 0.dp,
+                                label = "drag_elevation"
+                            )
+                            
+                            // 在多选模式下使用拖动手柄
+                            val dragModifier = if (isSelectionMode) {
+                                Modifier.longPressDraggableHandle(
+                                    onDragStarted = { haptic.performLongPress() },
+                                    onDragStopped = { haptic.performSuccess() }
+                                )
+                            } else {
+                                Modifier
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .graphicsLayer { shadowElevation = elevation.toPx() }
+                                    .then(dragModifier)
+                            ) {
+                                BankCardCard(
+                                    item = card,
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            haptic.performLongPress()
+                                            isSelectionMode = true
+                                            selectedIds = setOf(card.id)
+                                        }
+                                    },
+                                    onClick = { 
+                                        if (isSelectionMode) {
+                                            selectedIds = if (isSelected) {
+                                                selectedIds - card.id
+                                            } else {
+                                                selectedIds + card.id
+                                            }
+                                            if (selectedIds.isEmpty()) {
+                                                isSelectionMode = false
+                                            }
+                                        } else {
+                                            onCardClick(card.id)
+                                        }
+                                    },
+                                    onDelete = { itemToDelete = card }
+                                )
+                            }
+                        }
                     }
                     item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
@@ -274,6 +337,7 @@ fun BankCardListContent(
 }
 
 // Reuse logic from DocumentListScreen
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DocumentListContent(
     viewModel: DocumentViewModel,
@@ -282,6 +346,7 @@ fun DocumentListContent(
 ) {
     val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
+    val haptic = rememberHapticFeedback()
     
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -322,39 +387,93 @@ fun DocumentListContent(
                 )
             }
             else -> {
+                // 用于拖动排序的本地列表状态
+                var localDocuments by remember(documents) { mutableStateOf(documents) }
+                
+                LaunchedEffect(documents) {
+                    localDocuments = documents
+                }
+                
+                val lazyListState = rememberLazyListState()
+                val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
+                    if (isSelectionMode) {
+                        localDocuments = localDocuments.toMutableList().apply {
+                            add(to.index, removeAt(from.index))
+                        }
+                    }
+                }
+                
+                // 保存排序
+                LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
+                    if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
+                        val newOrders = localDocuments.mapIndexed { index, item ->
+                            item.id to index
+                        }
+                        if (newOrders.isNotEmpty()) {
+                            viewModel.updateSortOrders(newOrders)
+                        }
+                    }
+                }
+                
                 LazyColumn(
+                    state = lazyListState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(items = documents, key = { it.id }) { document ->
-                         val isSelected = selectedIds.contains(document.id)
-                        DocumentCard(
-                            item = document,
-                            isSelectionMode = isSelectionMode,
-                            isSelected = isSelected,
-                            onLongClick = {
-                                if (!isSelectionMode) {
-                                    isSelectionMode = true
-                                    selectedIds = setOf(document.id)
-                                }
-                            },
-                             onClick = { 
-                                if (isSelectionMode) {
-                                    selectedIds = if (isSelected) {
-                                        selectedIds - document.id
-                                    } else {
-                                        selectedIds + document.id
-                                    }
-                                    if (selectedIds.isEmpty()) {
-                                        isSelectionMode = false
-                                    }
-                                } else {
-                                    onDocumentClick(document.id)
-                                }
-                            },
-                            onDelete = { itemToDelete = document }
-                        )
+                    items(items = localDocuments, key = { it.id }) { document ->
+                        val isSelected = selectedIds.contains(document.id)
+                        
+                        ReorderableItem(reorderableLazyListState, key = document.id) { isDragging ->
+                            val elevation by animateDpAsState(
+                                if (isDragging) 8.dp else 0.dp,
+                                label = "drag_elevation"
+                            )
+                            
+                            // 在多选模式下使用拖动手柄
+                            val dragModifier = if (isSelectionMode) {
+                                Modifier.longPressDraggableHandle(
+                                    onDragStarted = { haptic.performLongPress() },
+                                    onDragStopped = { haptic.performSuccess() }
+                                )
+                            } else {
+                                Modifier
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .graphicsLayer { shadowElevation = elevation.toPx() }
+                                    .then(dragModifier)
+                            ) {
+                                DocumentCard(
+                                    item = document,
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            haptic.performLongPress()
+                                            isSelectionMode = true
+                                            selectedIds = setOf(document.id)
+                                        }
+                                    },
+                                    onClick = { 
+                                        if (isSelectionMode) {
+                                            selectedIds = if (isSelected) {
+                                                selectedIds - document.id
+                                            } else {
+                                                selectedIds + document.id
+                                            }
+                                            if (selectedIds.isEmpty()) {
+                                                isSelectionMode = false
+                                            }
+                                        } else {
+                                            onDocumentClick(document.id)
+                                        }
+                                    },
+                                    onDelete = { itemToDelete = document }
+                                )
+                            }
+                        }
                     }
                     item { Spacer(modifier = Modifier.height(80.dp)) }
                 }

@@ -678,6 +678,14 @@
     <string name="progress_bar_style_linear">リニア</string>
     <string name="progress_bar_style_wave">ウェーブ</string>
     
+    <!-- Unified Progress Bar -->
+    <string name="unified_progress_bar_title">統一プログレスバー</string>
+    <string name="unified_progress_bar_description">すべての標準TOTPエントリに対して、上部に30秒の統一プログレスバーを表示</string>
+    <string name="smooth_progress_bar_title">スムーズプログレスバー</string>
+    <string name="smooth_progress_bar_description">スムーズなアニメーションを有効にし、カクつきのない進行表示</string>
+    <string name="validator_settings_section">検証設定</string>
+    <string name="experimental_features_section">実験的機能</string>
+    
     <!-- Validator Vibration -->
     <string name="validator_vibration">検証バイブレーション</string>
     <string name="validator_vibration_description">カウントダウン終了時に振動</string>

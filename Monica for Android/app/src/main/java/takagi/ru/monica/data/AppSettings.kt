@@ -37,6 +37,14 @@ enum class ProgressBarStyle {
     WAVE     // 波浪形进度条
 }
 
+/**
+ * 统一进度条模式
+ */
+enum class UnifiedProgressBarMode {
+    DISABLED,  // 关闭统一进度条，每个卡片单独显示
+    ENABLED    // 启用统一进度条（30s周期），标准周期卡片隐藏单独进度条
+}
+
 enum class BottomNavContentTab {
     PASSWORDS,
     AUTHENTICATOR,
@@ -108,6 +116,8 @@ data class AppSettings(
     val useDraggableBottomNav: Boolean = false, // 使用可拖拽底部导航栏
     val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
     val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.LINEAR, // 验证器进度条样式
+    val validatorUnifiedProgressBar: UnifiedProgressBarMode = UnifiedProgressBarMode.ENABLED, // 统一进度条模式
+    val validatorSmoothProgress: Boolean = true, // 平滑进度条（无停顿感）
     val validatorVibrationEnabled: Boolean = true, // 验证器震动提醒
     val copyNextCodeWhenExpiring: Boolean = false, // 倒计时<=5秒时复制下一个验证码
     val notificationValidatorEnabled: Boolean = false, // 通知栏验证器开关

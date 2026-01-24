@@ -44,6 +44,8 @@ class SettingsManager(private val context: Context) {
         private val USE_DRAGGABLE_BOTTOM_NAV_KEY = booleanPreferencesKey("use_draggable_bottom_nav")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
         private val VALIDATOR_PROGRESS_BAR_STYLE_KEY = stringPreferencesKey("validator_progress_bar_style")
+        private val VALIDATOR_UNIFIED_PROGRESS_BAR_KEY = stringPreferencesKey("validator_unified_progress_bar")
+        private val VALIDATOR_SMOOTH_PROGRESS_KEY = booleanPreferencesKey("validator_smooth_progress")
         private val VALIDATOR_VIBRATION_ENABLED_KEY = booleanPreferencesKey("validator_vibration_enabled")
         private val COPY_NEXT_CODE_WHEN_EXPIRING_KEY = booleanPreferencesKey("copy_next_code_when_expiring")
         private val NOTIFICATION_VALIDATOR_ENABLED_KEY = booleanPreferencesKey("notification_validator_enabled")
@@ -104,6 +106,11 @@ class SettingsManager(private val context: Context) {
                 android.util.Log.d("SettingsManager", "Parsed progress bar style: $style")
                 style
             }.getOrDefault(takagi.ru.monica.data.ProgressBarStyle.LINEAR),
+            validatorUnifiedProgressBar = runCatching {
+                val modeString = preferences[VALIDATOR_UNIFIED_PROGRESS_BAR_KEY] ?: takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED.name
+                takagi.ru.monica.data.UnifiedProgressBarMode.valueOf(modeString)
+            }.getOrDefault(takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED),
+            validatorSmoothProgress = preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] ?: true,
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
             copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
             notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
@@ -271,6 +278,18 @@ class SettingsManager(private val context: Context) {
     suspend fun updateTrashAutoDeleteDays(days: Int) {
         dataStore.edit { preferences ->
             preferences[TRASH_AUTO_DELETE_DAYS_KEY] = days
+        }
+    }
+
+    suspend fun updateValidatorUnifiedProgressBar(mode: takagi.ru.monica.data.UnifiedProgressBarMode) {
+        dataStore.edit { preferences ->
+            preferences[VALIDATOR_UNIFIED_PROGRESS_BAR_KEY] = mode.name
+        }
+    }
+
+    suspend fun updateValidatorSmoothProgress(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] = enabled
         }
     }
 }
