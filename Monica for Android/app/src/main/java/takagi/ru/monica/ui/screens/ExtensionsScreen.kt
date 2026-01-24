@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.CommonAccountInfo
 import takagi.ru.monica.data.CommonAccountPreferences
+import takagi.ru.monica.data.SecureItem
 
 /**
  * 功能拓展页面 - 聚合各种扩展功能的设置
@@ -37,7 +38,15 @@ fun ExtensionsScreen(
     validatorVibrationEnabled: Boolean = false,
     onValidatorVibrationChange: (Boolean) -> Unit = {},
     copyNextCodeWhenExpiring: Boolean = false,
-    onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {}
+    onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
+    // 通知栏验证器参数
+    notificationValidatorEnabled: Boolean = false,
+    notificationValidatorAutoMatch: Boolean = false,
+    notificationValidatorId: Long = 0L,
+    totpItems: List<SecureItem> = emptyList(),
+    onNotificationValidatorEnabledChange: (Boolean) -> Unit = {},
+    onNotificationValidatorAutoMatchChange: (Boolean) -> Unit = {},
+    onNotificationValidatorSelected: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -122,6 +131,20 @@ fun ExtensionsScreen(
                         description = stringResource(R.string.copy_next_code_when_expiring_description),
                         checked = copyNextCodeWhenExpiring,
                         onCheckedChange = onCopyNextCodeWhenExpiringChange
+                    )
+                }
+                
+                // 通知栏验证器设置（需要 Plus）
+                Spacer(modifier = Modifier.height(8.dp))
+                ExtensionSection(title = stringResource(R.string.notification_settings_title)) {
+                    NotificationValidatorExtensionCard(
+                        enabled = notificationValidatorEnabled,
+                        autoMatchEnabled = notificationValidatorAutoMatch,
+                        selectedId = notificationValidatorId,
+                        totpItems = totpItems,
+                        onEnabledChange = onNotificationValidatorEnabledChange,
+                        onAutoMatchChange = onNotificationValidatorAutoMatchChange,
+                        onValidatorSelected = onNotificationValidatorSelected
                     )
                 }
             }
@@ -419,6 +442,125 @@ private fun CommonAccountCard() {
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(stringResource(R.string.save))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 通知栏验证器卡片（扩展页面版本）
+ */
+@Composable
+private fun NotificationValidatorExtensionCard(
+    enabled: Boolean,
+    autoMatchEnabled: Boolean,
+    selectedId: Long,
+    totpItems: List<SecureItem>,
+    onEnabledChange: (Boolean) -> Unit,
+    onAutoMatchChange: (Boolean) -> Unit,
+    onValidatorSelected: (Long) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    // If disabled, collapse
+    LaunchedEffect(enabled) {
+        if (!enabled) expanded = false
+    }
+
+    Column(
+        modifier = Modifier.animateContentSize()
+    ) {
+        // Header with Switch
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { if (enabled) expanded = !expanded }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 图标
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = if (enabled) MaterialTheme.colorScheme.primaryContainer 
+                        else MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = if (enabled) MaterialTheme.colorScheme.primary 
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.notification_validator_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface 
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+                Text(
+                    text = if (enabled) stringResource(R.string.notification_validator_enabled) 
+                           else stringResource(R.string.notification_validator_disabled),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChange
+            )
+        }
+        
+        // Expanded Content
+        if (expanded && enabled) {
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.select_validator_to_display),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                if (totpItems.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_validators_available),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    totpItems.forEach { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onValidatorSelected(item.id) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = item.id == selectedId,
+                                onClick = { onValidatorSelected(item.id) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
                 }
             }
         }

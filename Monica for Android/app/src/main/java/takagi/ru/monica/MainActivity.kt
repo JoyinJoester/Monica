@@ -1179,6 +1179,7 @@ fun MonicaContent(
         
         composable(Screen.Extensions.route) {
             val settings by settingsViewModel.settings.collectAsState()
+            val totpItems by totpViewModel.totpItems.collectAsState()
             takagi.ru.monica.ui.screens.ExtensionsScreen(
                 onNavigateBack = {
                     navController.popBackStack()
@@ -1191,6 +1192,20 @@ fun MonicaContent(
                 copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
                 onCopyNextCodeWhenExpiringChange = { enabled ->
                     settingsViewModel.updateCopyNextCodeWhenExpiring(enabled)
+                },
+                // 通知栏验证器参数
+                notificationValidatorEnabled = settings.notificationValidatorEnabled,
+                notificationValidatorAutoMatch = settings.notificationValidatorAutoMatch,
+                notificationValidatorId = settings.notificationValidatorId,
+                totpItems = totpItems,
+                onNotificationValidatorEnabledChange = { enabled ->
+                    settingsViewModel.updateNotificationValidatorEnabled(enabled)
+                },
+                onNotificationValidatorAutoMatchChange = { enabled ->
+                    settingsViewModel.updateNotificationValidatorAutoMatch(enabled)
+                },
+                onNotificationValidatorSelected = { id ->
+                    settingsViewModel.updateNotificationValidatorId(id)
                 }
             )
         }

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -44,6 +45,7 @@ import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.SettingsManager
 import kotlin.math.PI
 import kotlin.math.sin
+import takagi.ru.monica.util.VibrationPatterns
 
 /**
  * TOTP验证码卡片
@@ -156,23 +158,28 @@ fun TotpCodeCard(
         }
     }
 
-    // 倒计时<=5秒时提示震动
+    // 倒计时<=5秒时每秒触发震动（使用改进的双击模式）
     LaunchedEffect(remainingSeconds, totpData.otpType, settings.validatorVibrationEnabled) {
-        if (settings.validatorVibrationEnabled && totpData.otpType != OtpType.HOTP && remainingSeconds in 1..5) {
-            android.util.Log.d("TotpCodeCard", "Vibrating at ${remainingSeconds}s, enabled=${settings.validatorVibrationEnabled}")
-            vibrator?.let {
+        if (settings.validatorVibrationEnabled && 
+            totpData.otpType != OtpType.HOTP && 
+            remainingSeconds in 1..5) {
+            
+            android.util.Log.d("TotpCodeCard", "Triggering vibration at ${remainingSeconds}s")
+            
+            vibrator?.let { vib ->
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    it.vibrate(
-                        android.os.VibrationEffect.createOneShot(
-                            100,
-                            android.os.VibrationEffect.DEFAULT_AMPLITUDE
-                        )
+                    // 使用双击模式震动（比单次100ms更有节奏感）
+                    val effect = android.os.VibrationEffect.createWaveform(
+                        VibrationPatterns.TICK,
+                        -1  // 不重复
                     )
+                    vib.vibrate(effect)
                 } else {
+                    // 旧版本使用简单震动
                     @Suppress("DEPRECATION")
-                    it.vibrate(100)
+                    vib.vibrate(VibrationPatterns.TICK, -1)
                 }
-                android.util.Log.d("TotpCodeCard", "Vibration executed")
+                android.util.Log.d("TotpCodeCard", "Tick vibration executed at ${remainingSeconds}s")
             } ?: android.util.Log.w("TotpCodeCard", "Vibrator is null")
         }
     }
@@ -390,6 +397,22 @@ fun TotpCodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 闪烁动画（倒计时<=5秒时启用，参考Aegis实现）
+                val blinkAlpha by if (remainingSeconds <= 5 && totpData.otpType != OtpType.HOTP) {
+                    val blinkTransition = rememberInfiniteTransition(label = "blink")
+                    blinkTransition.animateFloat(
+                        initialValue = 1f,
+                        targetValue = 0.5f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 500, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "blink_alpha"
+                    )
+                } else {
+                    remember { mutableFloatStateOf(1f) }
+                }
+                
                 // 验证码（等宽字体）
                 Text(
                     text = formatOtpCode(currentCode, totpData.otpType),
@@ -400,7 +423,8 @@ fun TotpCodeCard(
                         totpData.otpType == OtpType.STEAM -> Color(0xFF66BB6A)
                         remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.primary
-                    }
+                    },
+                    modifier = Modifier.graphicsLayer { alpha = blinkAlpha }
                 )
                 
                 // 下一次验证码预览

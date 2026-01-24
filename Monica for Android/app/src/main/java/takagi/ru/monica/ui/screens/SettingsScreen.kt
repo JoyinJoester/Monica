@@ -365,9 +365,6 @@ fun SettingsScreen(
                     onClick = onNavigateToExtensions
                 )
                 
-                // 常用账号信息
-                CommonAccountCard()
-                
                 // 回收站设置
                 SettingsItemWithTrashConfig(
                     trashEnabled = settings.trashEnabled,
@@ -435,42 +432,6 @@ fun SettingsScreen(
                         viewModel.updateDynamicColorEnabled(!enabled)
                     }
                 )
-                
-                // 4. 验证器震动提醒
-                if (settings.isPlusActivated) {
-                    SettingsItemWithSwitch(
-                        icon = Icons.Default.Vibration,
-                        title = context.getString(R.string.validator_vibration),
-                        subtitle = context.getString(R.string.validator_vibration_description),
-                        checked = settings.validatorVibrationEnabled,
-                        onCheckedChange = { enabled ->
-                            viewModel.updateValidatorVibrationEnabled(enabled)
-                        }
-                    )
-                }
-            }
-            
-            // Notification Settings
-            if (settings.isPlusActivated) {
-                SettingsSection(
-                    title = stringResource(R.string.notification_settings_title)
-                ) {
-                    NotificationValidatorCard(
-                        enabled = settings.notificationValidatorEnabled,
-                        autoMatchEnabled = settings.notificationValidatorAutoMatch,
-                        selectedId = settings.notificationValidatorId,
-                        totpItems = totpItems,
-                        onEnabledChange = { enabled ->
-                            viewModel.updateNotificationValidatorEnabled(enabled)
-                        },
-                        onAutoMatchChange = { enabled ->
-                            viewModel.updateNotificationValidatorAutoMatch(enabled)
-                        },
-                        onValidatorSelected = { id ->
-                            viewModel.updateNotificationValidatorId(id)
-                        }
-                    )
-                }
             }
 
             // About Settings
