@@ -82,6 +82,8 @@ fun WebDavBackupScreen(
     var bankCardCount by remember { mutableStateOf(0) }
     var noteCount by remember { mutableStateOf(0) }
     var trashCount by remember { mutableStateOf(0) }
+    var localKeePassCount by remember { mutableStateOf(0) }
+    var isKeePassWebDavConfigured by remember { mutableStateOf(false) }
     
     // 备份进行中状态（防止重复点击）
     var isBackupInProgress by remember { mutableStateOf(false) }
@@ -135,6 +137,20 @@ fun WebDavBackupScreen(
         val deletedPasswordCount = database.passwordEntryDao().getDeletedCount()
         val deletedSecureItems = secureItemRepository.getDeletedItems().first()
         trashCount = deletedPasswordCount + deletedSecureItems.size
+        
+        // 获取本地 KeePass 数据库数量
+        try {
+            val keepassDao = database.localKeePassDatabaseDao()
+            localKeePassCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                keepassDao.getAllDatabasesSync().size
+            }
+        } catch (e: Exception) {
+            localKeePassCount = 0
+        }
+        
+        // 检查 KeePass WebDAV 是否已配置
+        // TODO: 当实现 KeePass WebDAV 时启用
+        isKeePassWebDavConfigured = false
         
         // 加载图片统计信息
         imageStats = imageCompressor.getImageStats()
@@ -583,7 +599,9 @@ fun WebDavBackupScreen(
                     bankCardCount = bankCardCount,
                     noteCount = noteCount,
                     trashCount = trashCount,
-                    isWebDavConfigured = isConfigured
+                    localKeePassCount = localKeePassCount,
+                    isWebDavConfigured = isConfigured,
+                    isKeePassWebDavConfigured = isKeePassWebDavConfigured
                 )
             }
             

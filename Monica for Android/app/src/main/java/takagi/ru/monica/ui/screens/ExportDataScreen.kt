@@ -91,6 +91,20 @@ fun ExportDataScreen(
     val webDavHelper = remember { WebDavHelper(context) }
     val isWebDavConfigured = remember { webDavHelper.isConfigured() }
     
+    // 获取本地 KeePass 数据库数量
+    var localKeePassCount by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        try {
+            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+            val keepassDao = database.localKeePassDatabaseDao()
+            localKeePassCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                keepassDao.getAllDatabasesSync().size
+            }
+        } catch (e: Exception) {
+            localKeePassCount = 0
+        }
+    }
+    
     // 文件选择器
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("*/*")
@@ -385,15 +399,16 @@ fun ExportDataScreen(
                             checked = backupPreferences.includeAuthenticators,
                             onCheckedChange = { backupPreferences = backupPreferences.copy(includeAuthenticators = it) }
                         )
+                        // 卡包（证件 + 银行卡）
                         ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_documents),
-                            checked = backupPreferences.includeDocuments,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeDocuments = it) }
-                        )
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_bank_cards),
-                            checked = backupPreferences.includeBankCards,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeBankCards = it) }
+                            label = stringResource(R.string.backup_content_wallet),
+                            checked = backupPreferences.includeDocuments && backupPreferences.includeBankCards,
+                            onCheckedChange = { 
+                                backupPreferences = backupPreferences.copy(
+                                    includeDocuments = it,
+                                    includeBankCards = it
+                                ) 
+                            }
                         )
                         ExportContentCheckbox(
                             label = stringResource(R.string.backup_content_notes),
@@ -421,7 +436,37 @@ fun ExportDataScreen(
                             onCheckedChange = { backupPreferences = backupPreferences.copy(includeTrash = it) }
                         )
                         
-                        // WebDAV 配置选项（仅在已配置时显示）
+                        // KeePass 数据库选项（始终显示）
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
+                        )
+                        ExportContentCheckbox(
+                            label = if (localKeePassCount > 0) 
+                                stringResource(R.string.backup_content_local_keepass) + " ($localKeePassCount)" 
+                            else 
+                                stringResource(R.string.backup_content_local_keepass),
+                            checked = backupPreferences.includeLocalKeePass,
+                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeLocalKeePass = it) },
+                            enabled = localKeePassCount > 0
+                        )
+                        if (localKeePassCount == 0) {
+                            Text(
+                                text = stringResource(R.string.backup_content_local_keepass_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(start = 32.dp)
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.backup_content_local_keepass_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(start = 32.dp)
+                            )
+                        }
+                        
+                        // WebDAV 配置选项（始终显示）
                         if (isWebDavConfigured) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(vertical = 4.dp),
@@ -798,7 +843,8 @@ private fun ExportContentCheckbox(
     label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -808,14 +854,20 @@ private fun ExportContentCheckbox(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer
+            color = if (enabled) 
+                MaterialTheme.colorScheme.onPrimaryContainer 
+            else 
+                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
         )
         Checkbox(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = if (enabled) onCheckedChange else { _ -> },
+            enabled = enabled,
             colors = CheckboxDefaults.colors(
                 checkedColor = MaterialTheme.colorScheme.primary,
-                uncheckedColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                uncheckedColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                disabledCheckedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                disabledUncheckedColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f)
             )
         )
     }

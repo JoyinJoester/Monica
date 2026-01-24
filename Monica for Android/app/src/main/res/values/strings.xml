@@ -1418,11 +1418,17 @@
     <string name="backup_content_authenticators">Authenticators (TOTP)</string>
     <string name="backup_content_documents">Documents</string>
     <string name="backup_content_bank_cards">Bank Cards</string>
+    <string name="backup_content_wallet">Wallet (Cards &amp; Documents)</string>
     <string name="backup_content_notes">Notes</string>
     <string name="backup_content_generator_history">Password Generator History</string>
     <string name="backup_content_images">Images</string>
     <string name="backup_content_timeline">Operation History</string>
     <string name="backup_content_trash">Recycle Bin</string>
+    <string name="backup_content_local_keepass">Local KeePass Databases</string>
+    <string name="backup_content_local_keepass_hint">Include all local KeePass databases (both internal and external). Restored as internal storage databases.</string>
+    <string name="backup_content_local_keepass_empty">No local KeePass databases</string>
+    <string name="backup_content_keepass_webdav_config">KeePass WebDAV Configuration</string>
+    <string name="backup_content_keepass_webdav_config_hint">Include KeePass WebDAV sync settings for easy setup on new devices.</string>
     <string name="backup_content_webdav_config">WebDAV Configuration</string>
     <string name="backup_content_webdav_config_hint">Include WebDAV server address, credentials and settings for easy setup on new devices. Only restored when local WebDAV is not configured.</string>
     <string name="deselect_all">Deselect All</string>
@@ -1488,6 +1494,9 @@
     <string name="confirm_remove_external_description">This will remove the database reference. The original file will not be deleted.</string>
     <string name="remove">Remove</string>
     <string name="create">Create</string>
+    <string name="import_existing_database">Import Existing Database</string>
+    <string name="enter_database_password_hint">Enter the password to unlock this KeePass database</string>
+    <string name="import_button">Import</string>
     
     <!-- Vault Selector -->
     <string name="vault_monica_only">Monica Local Storage</string>

@@ -28,7 +28,8 @@ private fun ContentTypeSwitch(
     count: Int?,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = modifier
@@ -40,20 +41,28 @@ private fun ContentTypeSwitch(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) 
+                    MaterialTheme.colorScheme.onSurface 
+                else 
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
             if (count != null) {
                 Text(
                     text = "$count 项",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (enabled) 
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
         }
         
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
         )
     }
 }
@@ -72,7 +81,9 @@ fun SelectiveBackupCard(
     bankCardCount: Int,
     noteCount: Int,
     trashCount: Int = 0,
+    localKeePassCount: Int = 0,
     isWebDavConfigured: Boolean = false,
+    isKeePassWebDavConfigured: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -99,23 +110,29 @@ fun SelectiveBackupCard(
                     
                     // 折叠状态下显示摘要
                     if (!expanded) {
+                        // 卡包算作一个选项（证件+银行卡同时选中才算）
+                        val walletSelected = preferences.includeDocuments && preferences.includeBankCards
                         val selectedCount = listOf(
                             preferences.includePasswords,
                             preferences.includeAuthenticators,
-                            preferences.includeDocuments,
-                            preferences.includeBankCards,
+                            walletSelected,  // 卡包
                             preferences.includeNotes,
                             preferences.includeGeneratorHistory,
                             preferences.includeImages,
                             preferences.includeTimeline,
-                            preferences.includeTrash
+                            preferences.includeTrash,
+                            preferences.includeLocalKeePass
                         ).count { it }
                         
-                        // WebDAV 配置单独显示（如果启用）
-                        val webDavText = if (preferences.includeWebDavConfig && isWebDavConfigured) " (+WebDAV)" else ""
+                        // 附加配置单独显示
+                        val extras = mutableListOf<String>()
+                        if (preferences.includeWebDavConfig && isWebDavConfigured) extras.add("WebDAV")
+                        if (preferences.includeLocalKeePass && localKeePassCount > 0) extras.add("KeePass")
+                        if (preferences.includeKeePassWebDavConfig && isKeePassWebDavConfigured) extras.add("KeePass WebDAV")
+                        val extrasText = if (extras.isNotEmpty()) " (+${extras.joinToString(", ")})" else ""
                         
                         Text(
-                            text = stringResource(R.string.selective_backup_summary, selectedCount, 9) + webDavText,
+                            text = stringResource(R.string.selective_backup_summary, selectedCount, 9) + extrasText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -168,21 +185,16 @@ fun SelectiveBackupCard(
                         }
                     )
                     
+                    // 卡包（证件 + 银行卡）
                     ContentTypeSwitch(
-                        label = stringResource(R.string.backup_content_documents),
-                        count = documentCount,
-                        checked = preferences.includeDocuments,
+                        label = stringResource(R.string.backup_content_wallet),
+                        count = documentCount + bankCardCount,
+                        checked = preferences.includeDocuments && preferences.includeBankCards,
                         onCheckedChange = { 
-                            onPreferencesChange(preferences.copy(includeDocuments = it))
-                        }
-                    )
-                    
-                    ContentTypeSwitch(
-                        label = stringResource(R.string.backup_content_bank_cards),
-                        count = bankCardCount,
-                        checked = preferences.includeBankCards,
-                        onCheckedChange = { 
-                            onPreferencesChange(preferences.copy(includeBankCards = it))
+                            onPreferencesChange(preferences.copy(
+                                includeDocuments = it,
+                                includeBankCards = it
+                            ))
                         }
                     )
                     
@@ -231,6 +243,51 @@ fun SelectiveBackupCard(
                         }
                     )
                     
+                    // 本地 KeePass 数据库选项（始终显示）
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    ContentTypeSwitch(
+                        label = stringResource(R.string.backup_content_local_keepass),
+                        count = if (localKeePassCount > 0) localKeePassCount else null,
+                        checked = preferences.includeLocalKeePass,
+                        onCheckedChange = { 
+                            onPreferencesChange(preferences.copy(includeLocalKeePass = it))
+                        },
+                        enabled = localKeePassCount > 0
+                    )
+                    
+                    Text(
+                        text = if (localKeePassCount > 0) 
+                            stringResource(R.string.backup_content_local_keepass_hint)
+                        else 
+                            stringResource(R.string.backup_content_local_keepass_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = if (localKeePassCount > 0) 1f else 0.6f
+                        ),
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                    
+                    // KeePass WebDAV 配置选项
+                    if (isKeePassWebDavConfigured) {
+                        
+                        ContentTypeSwitch(
+                            label = stringResource(R.string.backup_content_keepass_webdav_config),
+                            count = null,
+                            checked = preferences.includeKeePassWebDavConfig,
+                            onCheckedChange = { 
+                                onPreferencesChange(preferences.copy(includeKeePassWebDavConfig = it))
+                            }
+                        )
+                        
+                        Text(
+                            text = stringResource(R.string.backup_content_keepass_webdav_config_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                    
                     // WebDAV 配置选项（仅在已配置时显示）
                     if (isWebDavConfigured) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -271,7 +328,8 @@ fun SelectiveBackupCard(
                                         includeGeneratorHistory = true,
                                         includeImages = true,
                                         includeTimeline = true,
-                                        includeTrash = true
+                                        includeTrash = true,
+                                        includeLocalKeePass = localKeePassCount > 0
                                     )
                                 )
                             },
@@ -292,7 +350,8 @@ fun SelectiveBackupCard(
                                         includeGeneratorHistory = false,
                                         includeImages = false,
                                         includeTimeline = false,
-                                        includeTrash = false
+                                        includeTrash = false,
+                                        includeLocalKeePass = false
                                     )
                                 )
                             },

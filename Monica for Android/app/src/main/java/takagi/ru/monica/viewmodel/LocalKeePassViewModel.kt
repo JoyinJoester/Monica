@@ -6,6 +6,17 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.keemobile.kotpass.constants.BasicField
+import app.keemobile.kotpass.cryptography.EncryptedValue
+import app.keemobile.kotpass.database.Credentials
+import app.keemobile.kotpass.database.KeePassDatabase
+import app.keemobile.kotpass.database.decode
+import app.keemobile.kotpass.database.encode
+import app.keemobile.kotpass.database.modifiers.modifyParentGroup
+import app.keemobile.kotpass.models.Entry
+import app.keemobile.kotpass.models.EntryFields
+import app.keemobile.kotpass.models.EntryValue
+import app.keemobile.kotpass.models.Meta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -13,9 +24,12 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.PasswordEntry
+import java.util.UUID
 import takagi.ru.monica.security.SecurityManager
 import java.io.File
 import java.io.FileOutputStream
+import java.time.Instant
 
 /**
  * 本地 KeePass 数据库管理 ViewModel
@@ -133,7 +147,8 @@ class LocalKeePassViewModel(
     fun importExternalDatabase(
         name: String,
         uri: Uri,
-        password: String
+        password: String,
+        description: String? = null
     ) {
         viewModelScope.launch {
             _operationState.value = OperationState.Loading("正在添加数据库...")
@@ -159,6 +174,7 @@ class LocalKeePassViewModel(
                         filePath = uri.toString(),
                         storageLocation = KeePassStorageLocation.EXTERNAL,
                         encryptedPassword = encryptedPassword,
+                        description = description,
                         isDefault = allDatabases.value.isEmpty()
                     )
                     
@@ -422,6 +438,128 @@ class LocalKeePassViewModel(
     }
     
     /**
+     * 将密码条目添加到 KeePass 数据库的 .kdbx 文件中
+     * @param databaseId 目标 KeePass 数据库 ID
+     * @param entries 要添加的密码条目列表（已解密的密码）
+     * @return Result 表示操作结果
+     */
+    suspend fun addPasswordEntriesToKdbx(
+        databaseId: Long,
+        entries: List<PasswordEntry>,
+        decryptPassword: (String) -> String
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val database = dao.getDatabaseById(databaseId)
+                ?: return@withContext Result.failure(Exception("数据库不存在"))
+            
+            // 检查数据库密码是否存在
+            val encryptedDbPassword = database.encryptedPassword
+                ?: return@withContext Result.failure(Exception("数据库密码未设置"))
+            
+            // 解密数据库密码
+            val kdbxPassword = securityManager.decryptData(encryptedDbPassword)
+                ?: return@withContext Result.failure(Exception("无法解密数据库密码"))
+            val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
+            
+            // 读取现有的 kdbx 文件
+            val keePassDatabase = if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+                val file = File(context.filesDir, database.filePath)
+                if (!file.exists()) {
+                    return@withContext Result.failure(Exception("数据库文件不存在"))
+                }
+                file.inputStream().use { input ->
+                    KeePassDatabase.decode(input, credentials)
+                }
+            } else {
+                val uri = Uri.parse(database.filePath)
+                
+                // 检查并尝试获取持久化权限
+                try {
+                    // 尝试重新获取持久化权限（如果之前已获取则不会报错）
+                    val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                   android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    try {
+                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                    } catch (e: SecurityException) {
+                        // 权限已存在或无法获取，继续尝试打开
+                    }
+                    
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        KeePassDatabase.decode(input, credentials)
+                    } ?: return@withContext Result.failure(Exception("无法打开数据库文件"))
+                } catch (e: SecurityException) {
+                    return@withContext Result.failure(Exception("没有文件访问权限，请重新打开数据库"))
+                }
+            }
+            
+            // 将密码条目转换为 KeePass Entry
+            val newEntries = entries.map { entry ->
+                val decryptedPassword = try {
+                    decryptPassword(entry.password)
+                } catch (e: Exception) {
+                    entry.password // 如果解密失败，使用原始值
+                }
+                
+                Entry(
+                    uuid = UUID.randomUUID(),
+                    fields = EntryFields.of(
+                        BasicField.Title() to EntryValue.Plain(entry.title),
+                        BasicField.UserName() to EntryValue.Plain(entry.username),
+                        BasicField.Password() to EntryValue.Encrypted(
+                            EncryptedValue.fromString(decryptedPassword)
+                        ),
+                        BasicField.Url() to EntryValue.Plain(entry.website),
+                        BasicField.Notes() to EntryValue.Plain(buildString {
+                            if (entry.notes.isNotEmpty()) {
+                                append(entry.notes)
+                            }
+                            if (entry.email.isNotEmpty()) {
+                                if (isNotEmpty()) append("\n")
+                                append("Email: ${entry.email}")
+                            }
+                            if (entry.phone.isNotEmpty()) {
+                                if (isNotEmpty()) append("\n")
+                                append("Phone: ${entry.phone}")
+                            }
+                        })
+                    )
+                )
+            }
+            
+            // 将新条目添加到根组
+            val existingEntries = keePassDatabase.content.group.entries
+            val updatedDatabase = keePassDatabase.modifyParentGroup {
+                copy(entries = existingEntries + newEntries)
+            }
+            
+            // 保存更新后的数据库
+            if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+                val file = File(context.filesDir, database.filePath)
+                FileOutputStream(file).use { output ->
+                    updatedDatabase.encode(output)
+                }
+            } else {
+                val uri = Uri.parse(database.filePath)
+                try {
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                        updatedDatabase.encode(output)
+                    } ?: return@withContext Result.failure(Exception("无法写入数据库文件"))
+                } catch (e: SecurityException) {
+                    return@withContext Result.failure(Exception("没有文件写入权限，请重新打开数据库"))
+                }
+            }
+            
+            // 更新条目计数
+            val newCount = (database.entryCount ?: 0) + entries.size
+            dao.updateEntryCount(databaseId, newCount)
+            
+            Result.success(entries.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
      * 清除操作状态
      */
     fun clearOperationState() {
@@ -430,18 +568,57 @@ class LocalKeePassViewModel(
     
     // === 私有辅助方法 ===
     
+    /**
+     * 使用 kotpass 库创建真正的 KDBX 格式数据库文件
+     */
     private fun createEmptyKdbxFile(file: File, password: String) {
-        // 创建空的 kdbx 文件
-        // 注意：这里简化处理，实际应使用 KeePass 库创建真正的 kdbx 文件
-        file.createNewFile()
-        // TODO: 使用 keepassxc-proxy 或类似库创建真正的 kdbx 文件
+        // 创建凭据
+        val credentials = Credentials.from(EncryptedValue.fromString(password))
+        
+        // 创建元数据
+        val meta = Meta(
+            generator = "Monica Password Manager",
+            name = file.nameWithoutExtension
+        )
+        
+        // 创建空的 KeePass 数据库
+        val database = KeePassDatabase.Ver4x.create(
+            rootName = "Root",
+            meta = meta,
+            credentials = credentials
+        )
+        
+        // 写入文件
+        FileOutputStream(file).use { output ->
+            database.encode(output)
+        }
     }
     
+    /**
+     * 使用 kotpass 库创建真正的 KDBX 格式数据库内容
+     */
     private fun createEmptyKdbxContent(password: String): ByteArray {
-        // 返回空的 kdbx 文件内容
-        // 注意：这里简化处理，实际应使用 KeePass 库创建
-        return ByteArray(0)
-        // TODO: 使用 keepassxc-proxy 或类似库创建真正的 kdbx 内容
+        // 创建凭据
+        val credentials = Credentials.from(EncryptedValue.fromString(password))
+        
+        // 创建元数据
+        val meta = Meta(
+            generator = "Monica Password Manager",
+            name = "Monica Database"
+        )
+        
+        // 创建空的 KeePass 数据库
+        val database = KeePassDatabase.Ver4x.create(
+            rootName = "Root",
+            meta = meta,
+            credentials = credentials
+        )
+        
+        // 返回字节数组
+        return java.io.ByteArrayOutputStream().use { output ->
+            database.encode(output)
+            output.toByteArray()
+        }
     }
     
     /**

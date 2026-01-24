@@ -62,6 +62,10 @@ class PasswordRepository(
         passwordEntryDao.updateCategoryForPasswords(ids, categoryId)
     }
     
+    suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?) {
+        passwordEntryDao.updateKeePassDatabaseForPasswords(ids, databaseId)
+    }
+    
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>> {
         return passwordEntryDao.searchPasswordEntries(query)
     }

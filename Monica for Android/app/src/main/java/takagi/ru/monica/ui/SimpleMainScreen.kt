@@ -645,6 +645,7 @@ fun SimpleMainScreen(
                                 settingsViewModel = settingsViewModel,
                                 securityManager = securityManager,
                                 keepassDatabases = keepassDatabases,
+                                localKeePassViewModel = localKeePassViewModel,
                                 groupMode = passwordGroupMode,
                                 stackCardMode = stackCardMode,
                                 onCreateCategory = {
@@ -901,6 +902,7 @@ fun SimpleMainScreen(
                         settingsViewModel = settingsViewModel, // Pass SettingsViewModel
                         securityManager = securityManager,
                         keepassDatabases = keepassDatabases,
+                        localKeePassViewModel = localKeePassViewModel,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
                         onCreateCategory = {
@@ -1153,6 +1155,7 @@ private fun PasswordListContent(
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
     onCreateCategory: () -> Unit,
@@ -1172,6 +1175,7 @@ private fun PasswordListContent(
         onDelete: () -> Unit
     ) -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
     val passwordEntries by viewModel.passwordEntries.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -1190,7 +1194,6 @@ private fun PasswordListContent(
     
     
     val context = androidx.compose.ui.platform.LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     
     // 添加触觉反馈
     val haptic = rememberHapticFeedback()
@@ -1490,6 +1493,103 @@ private fun PasswordListContent(
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer
                                         )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // KeePass 数据库部分
+                    if (keepassDatabases.isNotEmpty()) {
+                        item {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+                            Text(
+                                text = "KeePass 数据库",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                        
+                        items(keepassDatabases) { database ->
+                            val count = passwordEntries.count { it.keepassDatabaseId == database.id }
+                            Surface(
+                                onClick = {
+                                    // 获取选中的密码条目
+                                    val selectedEntries = passwordEntries.filter { it.id in selectedPasswords }
+                                    
+                                    // 真正写入 kdbx 文件并更新数据库关联
+                                    coroutineScope.launch {
+                                        try {
+                                            val result = localKeePassViewModel.addPasswordEntriesToKdbx(
+                                                databaseId = database.id,
+                                                entries = selectedEntries,
+                                                decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
+                                            )
+                                            
+                                            if (result.isSuccess) {
+                                                // 更新数据库关联
+                                                viewModel.movePasswordsToKeePassDatabase(selectedPasswords.toList(), database.id)
+                                                Toast.makeText(context, "已移动 ${result.getOrNull()} 条到 ${database.name}", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "移动失败: ${result.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "移动失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    
+                                    showMoveToCategoryDialog = false
+                                    isSelectionMode = false
+                                    selectedPasswords = setOf()
+                                    Toast.makeText(context, "已移动到 ${database.name}", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLow
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.Key,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.tertiary
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column {
+                                            Text(
+                                                database.name,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            if (database.isDefault) {
+                                                Text(
+                                                    "默认",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.tertiary
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (count > 0) {
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Text(
+                                                text = count.toString(),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                                            )
+                                        }
                                     }
                                 }
                             }

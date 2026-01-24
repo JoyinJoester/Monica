@@ -145,6 +145,12 @@ class PasswordViewModel(
         }
     }
     
+    fun movePasswordsToKeePassDatabase(ids: List<Long>, databaseId: Long?) {
+        viewModelScope.launch {
+            repository.updateKeePassDatabaseForPasswords(ids, databaseId)
+        }
+    }
+    
     fun authenticate(password: String): Boolean {
         val isValid = securityManager.verifyMasterPassword(password)
         _isAuthenticated.value = isValid

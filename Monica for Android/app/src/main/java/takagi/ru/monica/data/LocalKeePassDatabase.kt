@@ -73,6 +73,9 @@ interface LocalKeePassDatabaseDao {
     @Query("SELECT * FROM local_keepass_databases ORDER BY sort_order ASC, created_at DESC")
     fun getAllDatabases(): Flow<List<LocalKeePassDatabase>>
     
+    @Query("SELECT * FROM local_keepass_databases ORDER BY sort_order ASC, created_at DESC")
+    fun getAllDatabasesSync(): List<LocalKeePassDatabase>
+    
     @Query("SELECT * FROM local_keepass_databases WHERE id = :id")
     suspend fun getDatabaseById(id: Long): LocalKeePassDatabase?
     

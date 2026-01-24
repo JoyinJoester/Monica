@@ -1271,12 +1271,18 @@
     <string name="backup_content_authenticators">验证器 (TOTP)</string>
     <string name="backup_content_documents">证件</string>
     <string name="backup_content_bank_cards">银行卡</string>
+    <string name="backup_content_wallet">卡包（证件与银行卡）</string>
     <string name="backup_content_notes">笔记</string>
     <string name="backup_content_generator_history">密码生成历史</string>
     <string name="backup_content_images">图片</string>
     <string name="backup_content_timeline">操作历史</string>
     <string name="backup_content_trash">回收站</string>
-    <string name="backup_content_webdav_config">配置</string>
+    <string name="backup_content_local_keepass">本地 KeePass 数据库</string>
+    <string name="backup_content_local_keepass_hint">包含所有本地 KeePass 数据库（内部和外部存储）。恢复时统一存储到内部存储。</string>
+    <string name="backup_content_local_keepass_empty">暂无本地 KeePass 数据库</string>
+    <string name="backup_content_keepass_webdav_config">KeePass WebDAV 配置</string>
+    <string name="backup_content_keepass_webdav_config_hint">包含 KeePass WebDAV 同步配置，便于新设备快速同步。</string>
+    <string name="backup_content_webdav_config">WebDAV 配置</string>
     <string name="backup_content_webdav_config_hint">包含 WebDAV 服务器地址、账号密码等配置信息，便于新设备快速同步。仅当本地未配置时才会恢复。</string>
     
     <!-- 功能拓展页面 -->
@@ -1339,6 +1345,9 @@
     <string name="confirm_remove_external_description">这将移除数据库引用，原始文件不会被删除。</string>
     <string name="remove">移除</string>
     <string name="create">创建</string>
+    <string name="import_existing_database">导入已有数据库</string>
+    <string name="enter_database_password_hint">输入此 KeePass 数据库的密码以解锁</string>
+    <string name="import_button">导入</string>
     
     <!-- Vault Selector -->
     <string name="vault_monica_only">仅 Monica 本地存储</string>

@@ -160,6 +160,23 @@ private data class WebDavConfigBackupEntry(
 )
 
 /**
+ * ✅ KeePass 数据库备份数据类
+ * 用于备份本地 KeePass 数据库的元信息
+ */
+@Serializable
+private data class KeePassDatabaseBackupEntry(
+    val id: Long = 0,
+    val name: String = "",
+    val description: String = "",
+    val originalStorageLocation: String = "INTERNAL",  // INTERNAL 或 EXTERNAL
+    val originalFilePath: String = "",  // 原始文件路径（用于参考）
+    val isDefault: Boolean = false,
+    val lastSyncTime: Long? = null,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0
+)
+
+/**
  * WebDAV 帮助类
  * 用于备份和恢复数据到 WebDAV 服务器
  */
@@ -996,6 +1013,82 @@ class WebDavHelper(
                             warnings.add("WebDAV配置备份失败: ${e.message}")
                         }
                     }
+                    
+                    // 7.9 ✅ 备份本地 KeePass 数据库
+                    if (preferences.includeLocalKeePass) {
+                        try {
+                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                            val keepassDao = database.localKeePassDatabaseDao()
+                            val allKeePassDatabases = keepassDao.getAllDatabasesSync()
+                            
+                            if (allKeePassDatabases.isNotEmpty()) {
+                                val keepassDir = File(cacheBackupDir, "keepass")
+                                if (!keepassDir.exists()) keepassDir.mkdirs()
+                                
+                                val json = Json { prettyPrint = false }
+                                var backupCount = 0
+                                
+                                allKeePassDatabases.forEach { kpDb: takagi.ru.monica.data.LocalKeePassDatabase ->
+                                    try {
+                                        // 备份数据库元信息
+                                        val metaBackup = KeePassDatabaseBackupEntry(
+                                            id = kpDb.id,
+                                            name = kpDb.name,
+                                            description = kpDb.description ?: "",
+                                            originalStorageLocation = kpDb.storageLocation.name,
+                                            originalFilePath = kpDb.filePath,
+                                            isDefault = kpDb.isDefault,
+                                            lastSyncTime = kpDb.lastSyncedAt,
+                                            createdAt = kpDb.createdAt,
+                                            updatedAt = kpDb.lastAccessedAt
+                                        )
+                                        
+                                        // 备份数据库文件内容
+                                        val fileContent: ByteArray? = when (kpDb.storageLocation) {
+                                            takagi.ru.monica.data.KeePassStorageLocation.INTERNAL -> {
+                                                val dbFile = File(context.filesDir, kpDb.filePath)
+                                                dbFile.takeIf { it.exists() }?.readBytes()
+                                            }
+                                            takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL -> {
+                                                try {
+                                                    val uri = android.net.Uri.parse(kpDb.filePath)
+                                                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                                } catch (e: Exception) {
+                                                    android.util.Log.w("WebDavHelper", "Failed to read external KeePass file: ${e.message}")
+                                                    null
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (fileContent != null) {
+                                            // 写入元信息
+                                            val metaFile = File(keepassDir, "keepass_${kpDb.id}_meta.json")
+                                            metaFile.writeText(json.encodeToString(KeePassDatabaseBackupEntry.serializer(), metaBackup), Charsets.UTF_8)
+                                            addFileToZip(zipOut, metaFile, "keepass/${metaFile.name}")
+                                            
+                                            // 写入数据库文件
+                                            val dataFile = File(keepassDir, "keepass_${kpDb.id}.kdbx")
+                                            dataFile.writeBytes(fileContent)
+                                            addFileToZip(zipOut, dataFile, "keepass/${dataFile.name}")
+                                            
+                                            backupCount++
+                                        } else {
+                                            warnings.add("KeePass数据库文件不存在: ${kpDb.name}")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to backup KeePass database ${kpDb.id}: ${e.message}")
+                                        warnings.add("KeePass数据库备份失败: ${kpDb.name}")
+                                    }
+                                }
+                                
+                                keepassDir.deleteRecursively()
+                                android.util.Log.d("WebDavHelper", "Backup $backupCount KeePass databases")
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("WebDavHelper", "Failed to backup KeePass databases: ${e.message}")
+                            warnings.add("KeePass数据库备份失败: ${e.message}")
+                        }
+                    }
                 }
 
                 // 8. 加密
@@ -1658,6 +1751,69 @@ class WebDavHelper(
                                     } catch (e: Exception) {
                                         android.util.Log.w("WebDavHelper", "Failed to restore WebDAV config: ${e.message}")
                                         warnings.add("WebDAV配置恢复失败: ${e.message}")
+                                    }
+                                }
+                                // ✅ 恢复 KeePass 数据库（恢复为内部存储）
+                                normalizedEntryName.contains("/keepass/") || normalizedEntryName.startsWith("keepass/") -> {
+                                    try {
+                                        if (entryName.endsWith("_meta.json")) {
+                                            // 元信息文件，先暂存
+                                            val destFile = File(context.cacheDir, "restore_keepass_${entryName}")
+                                            tempFile.copyTo(destFile, overwrite = true)
+                                        } else if (entryName.endsWith(".kdbx")) {
+                                            // 数据库文件
+                                            val dbId = entryName.removePrefix("keepass_").removeSuffix(".kdbx").toLongOrNull()
+                                            if (dbId != null) {
+                                                // 查找对应的元信息文件
+                                                val metaFileName = "keepass_${dbId}_meta.json"
+                                                val metaFile = File(context.cacheDir, "restore_keepass_$metaFileName")
+                                                
+                                                if (metaFile.exists()) {
+                                                    try {
+                                                        val json = Json { ignoreUnknownKeys = true }
+                                                        val metaBackup = json.decodeFromString<KeePassDatabaseBackupEntry>(metaFile.readText())
+                                                        
+                                                        // 创建内部存储文件
+                                                        val internalFileName = "keepass_${System.currentTimeMillis()}_${metaBackup.name.replace(Regex("[^a-zA-Z0-9_-]"), "_")}.kdbx"
+                                                        val internalFile = File(context.filesDir, "keepass/$internalFileName")
+                                                        internalFile.parentFile?.mkdirs()
+                                                        tempFile.copyTo(internalFile, overwrite = true)
+                                                        
+                                                        // 添加到数据库
+                                                        val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                                                        val keepassDao = database.localKeePassDatabaseDao()
+                                                        
+                                                        // 检查是否已存在同名数据库
+                                                        val existingDbs = keepassDao.getAllDatabasesSync()
+                                                        val existsWithSameName = existingDbs.any { it.name == metaBackup.name }
+                                                        
+                                                        val newKeePassDb = takagi.ru.monica.data.LocalKeePassDatabase(
+                                                            name = if (existsWithSameName) "${metaBackup.name} (恢复)" else metaBackup.name,
+                                                            description = metaBackup.description,
+                                                            filePath = "keepass/$internalFileName",
+                                                            storageLocation = takagi.ru.monica.data.KeePassStorageLocation.INTERNAL,
+                                                            isDefault = false,  // 恢复时不设置为默认
+                                                            createdAt = System.currentTimeMillis(),
+                                                            lastAccessedAt = System.currentTimeMillis()
+                                                        )
+                                                        kotlinx.coroutines.runBlocking {
+                                                            keepassDao.insertDatabase(newKeePassDb)
+                                                        }
+                                                        
+                                                        android.util.Log.d("WebDavHelper", "Restored KeePass database: ${metaBackup.name}")
+                                                        warnings.add("✓ KeePass数据库已恢复: ${metaBackup.name}")
+                                                        
+                                                        metaFile.delete()
+                                                    } catch (e: Exception) {
+                                                        android.util.Log.w("WebDavHelper", "Failed to restore KeePass database: ${e.message}")
+                                                        warnings.add("KeePass数据库恢复失败: ${e.message}")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to process KeePass file: ${e.message}")
+                                        warnings.add("KeePass文件处理失败: ${e.message}")
                                     }
                                 }
                             }

@@ -65,6 +65,9 @@ interface PasswordEntryDao {
     
     @Query("UPDATE password_entries SET categoryId = :categoryId WHERE id IN (:ids)")
     suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?)
+    
+    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId WHERE id IN (:ids)")
+    suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?)
 
     @Transaction
     suspend fun setGroupCover(id: Long, website: String) {

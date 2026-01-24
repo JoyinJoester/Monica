@@ -62,14 +62,15 @@ fun LocalKeePassScreen(
     var selectedDatabase by remember { mutableStateOf<LocalKeePassDatabase?>(null) }
     var showDatabaseDetailSheet by remember { mutableStateOf(false) }
     var databaseToTransferExternal by remember { mutableStateOf<LocalKeePassDatabase?>(null) }
+    var selectedExternalUri by remember { mutableStateOf<Uri?>(null) }
     
     // 文件选择器
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
+            selectedExternalUri = it
             showImportDialog = true
-            // 传递 URI 给导入对话框
         }
     }
     
@@ -245,8 +246,19 @@ fun LocalKeePassScreen(
     }
     
     // 导入数据库对话框
-    if (showImportDialog) {
-        // 这里需要处理文件导入
+    if (showImportDialog && selectedExternalUri != null) {
+        ImportExternalDatabaseDialog(
+            uri = selectedExternalUri!!,
+            onDismiss = { 
+                showImportDialog = false
+                selectedExternalUri = null
+            },
+            onImport = { name, password, description ->
+                viewModel.importExternalDatabase(name, selectedExternalUri!!, password, description)
+                showImportDialog = false
+                selectedExternalUri = null
+            }
+        )
     }
     
     // 数据库详情底部弹窗
@@ -333,12 +345,15 @@ private fun EmptyKeePassState(
         
         Spacer(modifier = Modifier.height(32.dp))
         
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        // 使用 Column 布局避免文字被挤压
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth(0.8f)
         ) {
             OutlinedButton(
                 onClick = onImportClick,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.FileOpen, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -347,7 +362,7 @@ private fun EmptyKeePassState(
             
             Button(
                 onClick = onCreateClick,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -416,17 +431,17 @@ private fun KeePassDatabaseCard(
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
     
-    ElevatedCard(
+    Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
+        colors = CardDefaults.cardColors(
             containerColor = if (database.isDefault)
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                MaterialTheme.colorScheme.primaryContainer
             else
                 MaterialTheme.colorScheme.surfaceContainerHigh
         ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = if (database.isDefault) 4.dp else 1.dp
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp
         )
     ) {
         Row(
@@ -799,6 +814,133 @@ private fun CreateKeePassDatabaseDialog(
                 enabled = isValid
             ) {
                 Text(stringResource(R.string.create))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+/**
+ * 导入外部数据库对话框
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ImportExternalDatabaseDialog(
+    uri: Uri,
+    onDismiss: () -> Unit,
+    onImport: (name: String, password: String, description: String?) -> Unit
+) {
+    val context = LocalContext.current
+    var name by remember { 
+        mutableStateOf(
+            // 从 URI 获取文件名作为默认名称
+            uri.lastPathSegment?.substringAfterLast("/")?.removeSuffix(".kdbx") ?: "KeePass Database"
+        )
+    }
+    var password by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+    
+    val isValid = name.isNotBlank() && password.isNotBlank()
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(R.string.import_existing_database),
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 文件位置提示
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.SdStorage,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            uri.lastPathSegment ?: uri.toString(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                
+                // 数据库显示名称
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.database_name)) },
+                    placeholder = { Text(stringResource(R.string.database_name_placeholder)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                // 密码
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text(stringResource(R.string.database_password)) },
+                    singleLine = true,
+                    visualTransformation = if (showPassword) 
+                        VisualTransformation.None 
+                    else 
+                        PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(
+                                if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = null
+                            )
+                        }
+                    },
+                    supportingText = {
+                        Text(stringResource(R.string.enter_database_password_hint))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                // 描述（可选）
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text(stringResource(R.string.description_optional)) },
+                    placeholder = { Text(stringResource(R.string.description_placeholder)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onImport(name, password, description.ifBlank { null })
+                },
+                enabled = isValid
+            ) {
+                Text(stringResource(R.string.import_button))
             }
         },
         dismissButton = {
