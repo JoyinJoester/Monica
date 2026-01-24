@@ -59,14 +59,18 @@ fun UnifiedProgressBar(
     }
     
     // 根据是否平滑来计算进度
+    // TOTP 周期是从 Unix 纪元开始计算的，需要精确对齐
+    val periodMs = period * 1000L
     val (remainingSeconds, progress) = if (smoothProgress) {
-        val remainingMs = (period * 1000) - (currentMillis % (period * 1000))
-        val remaining = (remainingMs / 1000).toInt() + 1  // 用于颜色判断
-        val prog = 1f - (remainingMs.toFloat() / (period * 1000))
+        val elapsedInPeriodMs = currentMillis % periodMs
+        val remainingMs = periodMs - elapsedInPeriodMs
+        val remaining = ((remainingMs + 999) / 1000).toInt()  // 向上取整，用于颜色判断
+        val prog = elapsedInPeriodMs.toFloat() / periodMs
         remaining to prog
     } else {
-        val remaining = period - (currentSeconds % period).toInt()
-        val prog = 1f - (remaining.toFloat() / period)
+        val elapsedInPeriod = (currentSeconds % period).toInt()
+        val remaining = period - elapsedInPeriod
+        val prog = elapsedInPeriod.toFloat() / period
         remaining to prog
     }
     
