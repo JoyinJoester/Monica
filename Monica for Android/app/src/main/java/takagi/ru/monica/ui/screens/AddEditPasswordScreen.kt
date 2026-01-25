@@ -79,6 +79,7 @@ fun AddEditPasswordScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val passwordGenerator = remember { PasswordGenerator() }
+    val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
 
     // 获取设置以读取进度条样式
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
@@ -320,7 +321,8 @@ fun AddEditPasswordScreen(
                                     originalIds = originalIds,
                                     commonEntry = commonEntry,
                                     passwords = passwords.toList(), // Snapshot
-                                    onComplete = { firstPasswordId ->
+                                    onComplete = { savedIds ->
+                                        val firstPasswordId = savedIds.firstOrNull()
                                         // Save TOTP if authenticatorKey is provided
                                         if (currentAuthKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
                                             // 检查是否已有相同密钥的验证器
@@ -354,6 +356,26 @@ fun AddEditPasswordScreen(
                                             }
                                             if (currentBindTitle && currentTitle.isNotEmpty()) {
                                                 viewModel.updateAppAssociationByTitle(currentTitle, currentAppPackageName, currentAppName)
+                                            }
+                                        }
+                                        val targetKeePassId = keepassDatabaseId
+                                        if (targetKeePassId != null && localKeePassViewModel != null && savedIds.isNotEmpty()) {
+                                            coroutineScope.launch {
+                                                val savedEntries = viewModel.getPasswordsByIds(savedIds)
+                                                val result = localKeePassViewModel.upsertPasswordEntriesToKdbx(
+                                                    databaseId = targetKeePassId,
+                                                    entries = savedEntries,
+                                                    decryptPassword = { encrypted ->
+                                                        securityManager.decryptData(encrypted) ?: ""
+                                                    }
+                                                )
+                                                if (result.isFailure) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "KeePass 同步失败: ${result.exceptionOrNull()?.message}",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
                                             }
                                         }
                                         onNavigateBack()

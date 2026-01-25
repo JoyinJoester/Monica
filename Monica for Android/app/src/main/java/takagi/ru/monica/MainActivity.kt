@@ -760,6 +760,7 @@ fun MonicaContent(
             if (passwordId > 0) {
                 takagi.ru.monica.ui.screens.PasswordDetailScreen(
                     viewModel = viewModel,
+                    localKeePassViewModel = localKeePassViewModel,
                     passwordId = passwordId,
                     onNavigateBack = {
                         navController.popBackStack()

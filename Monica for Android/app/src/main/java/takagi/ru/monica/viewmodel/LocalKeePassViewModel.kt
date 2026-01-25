@@ -16,6 +16,7 @@ import app.keemobile.kotpass.database.modifiers.modifyParentGroup
 import app.keemobile.kotpass.models.Entry
 import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
+import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -27,9 +28,12 @@ import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import java.util.UUID
 import takagi.ru.monica.security.SecurityManager
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.time.Instant
+import java.io.InputStream
+import java.util.Date
+import kotlin.math.abs
 
 /**
  * 本地 KeePass 数据库管理 ViewModel
@@ -59,6 +63,9 @@ class LocalKeePassViewModel(
     /** 操作状态 */
     private val _operationState = MutableStateFlow<OperationState>(OperationState.Idle)
     val operationState: StateFlow<OperationState> = _operationState.asStateFlow()
+
+    private val _syncVersion = MutableStateFlow(0L)
+    val syncVersion: StateFlow<Long> = _syncVersion.asStateFlow()
     
     /** 当前选中的数据库 */
     private val _selectedDatabase = MutableStateFlow<LocalKeePassDatabase?>(null)
@@ -447,113 +454,153 @@ class LocalKeePassViewModel(
         databaseId: Long,
         entries: List<PasswordEntry>,
         decryptPassword: (String) -> String
+    ): Result<Int> = upsertPasswordEntriesToKdbx(databaseId, entries, decryptPassword)
+
+    suspend fun readPasswordEntriesFromKdbx(databaseId: Long): Result<List<PasswordEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val database = dao.getDatabaseById(databaseId)
+                ?: return@withContext Result.failure(Exception("数据库不存在"))
+
+            val credentials = getCredentials(database)
+                ?: return@withContext Result.failure(Exception("数据库密码未设置"))
+
+            val keePassDatabase = loadKeePassDatabase(database, credentials)
+            val allEntries = mutableListOf<Entry>()
+            collectEntries(keePassDatabase.content.group, allEntries)
+
+            val mappedEntries = allEntries.mapNotNull { entry ->
+                val title = getEntryField(entry, "Title")
+                val username = getEntryField(entry, "UserName")
+                val password = getEntryField(entry, "Password")
+                val url = getEntryField(entry, "URL")
+                val notes = getEntryField(entry, "Notes")
+
+                if (title.isBlank() && username.isBlank() && password.isBlank()) {
+                    return@mapNotNull null
+                }
+
+                PasswordEntry(
+                    id = buildExternalEntryId(entry),
+                    title = title,
+                    website = url,
+                    username = username,
+                    password = password,
+                    notes = notes,
+                    keepassDatabaseId = databaseId,
+                    createdAt = Date(),
+                    updatedAt = Date()
+                )
+            }
+
+            dao.updateLastAccessedTime(databaseId)
+            dao.updateEntryCount(databaseId, mappedEntries.size)
+
+            Result.success(mappedEntries)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun upsertPasswordEntriesToKdbx(
+        databaseId: Long,
+        entries: List<PasswordEntry>,
+        decryptPassword: (String) -> String
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
             val database = dao.getDatabaseById(databaseId)
                 ?: return@withContext Result.failure(Exception("数据库不存在"))
-            
-            // 检查数据库密码是否存在
-            val encryptedDbPassword = database.encryptedPassword
+
+            val credentials = getCredentials(database)
                 ?: return@withContext Result.failure(Exception("数据库密码未设置"))
-            
-            // 解密数据库密码
-            val kdbxPassword = securityManager.decryptData(encryptedDbPassword)
-                ?: return@withContext Result.failure(Exception("无法解密数据库密码"))
-            val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
-            
-            // 读取现有的 kdbx 文件
-            val keePassDatabase = if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
-                val file = File(context.filesDir, database.filePath)
-                if (!file.exists()) {
-                    return@withContext Result.failure(Exception("数据库文件不存在"))
-                }
-                file.inputStream().use { input ->
-                    KeePassDatabase.decode(input, credentials)
-                }
-            } else {
-                val uri = Uri.parse(database.filePath)
-                
-                // 检查并尝试获取持久化权限
-                try {
-                    // 尝试重新获取持久化权限（如果之前已获取则不会报错）
-                    val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                   android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    try {
-                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    } catch (e: SecurityException) {
-                        // 权限已存在或无法获取，继续尝试打开
+
+            val keePassDatabase = loadKeePassDatabase(database, credentials)
+            val pendingEntries = entries.toMutableList()
+
+            val updatedRoot = updateEntriesInGroup(keePassDatabase.content.group) { existing ->
+                val matchIndex = pendingEntries.indexOfFirst { matchesEntry(existing, it) }
+                if (matchIndex >= 0) {
+                    val localEntry = pendingEntries.removeAt(matchIndex)
+                    val decryptedPassword = try {
+                        decryptPassword(localEntry.password)
+                    } catch (e: Exception) {
+                        localEntry.password
                     }
-                    
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        KeePassDatabase.decode(input, credentials)
-                    } ?: return@withContext Result.failure(Exception("无法打开数据库文件"))
-                } catch (e: SecurityException) {
-                    return@withContext Result.failure(Exception("没有文件访问权限，请重新打开数据库"))
+                    val newEntry = buildKeePassEntry(localEntry, decryptedPassword)
+                    existing.copy(fields = newEntry.fields)
+                } else {
+                    existing
                 }
             }
-            
-            // 将密码条目转换为 KeePass Entry
-            val newEntries = entries.map { entry ->
+
+            val additionalEntries = pendingEntries.map { entry ->
                 val decryptedPassword = try {
                     decryptPassword(entry.password)
                 } catch (e: Exception) {
-                    entry.password // 如果解密失败，使用原始值
+                    entry.password
                 }
-                
-                Entry(
-                    uuid = UUID.randomUUID(),
-                    fields = EntryFields.of(
-                        BasicField.Title() to EntryValue.Plain(entry.title),
-                        BasicField.UserName() to EntryValue.Plain(entry.username),
-                        BasicField.Password() to EntryValue.Encrypted(
-                            EncryptedValue.fromString(decryptedPassword)
-                        ),
-                        BasicField.Url() to EntryValue.Plain(entry.website),
-                        BasicField.Notes() to EntryValue.Plain(buildString {
-                            if (entry.notes.isNotEmpty()) {
-                                append(entry.notes)
-                            }
-                            if (entry.email.isNotEmpty()) {
-                                if (isNotEmpty()) append("\n")
-                                append("Email: ${entry.email}")
-                            }
-                            if (entry.phone.isNotEmpty()) {
-                                if (isNotEmpty()) append("\n")
-                                append("Phone: ${entry.phone}")
-                            }
-                        })
-                    )
-                )
+                buildKeePassEntry(entry, decryptedPassword)
             }
-            
-            // 将新条目添加到根组
-            val existingEntries = keePassDatabase.content.group.entries
+
+            val finalRoot = updatedRoot.copy(entries = updatedRoot.entries + additionalEntries)
             val updatedDatabase = keePassDatabase.modifyParentGroup {
-                copy(entries = existingEntries + newEntries)
+                finalRoot
             }
-            
-            // 保存更新后的数据库
-            if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
-                val file = File(context.filesDir, database.filePath)
-                FileOutputStream(file).use { output ->
-                    updatedDatabase.encode(output)
-                }
-            } else {
-                val uri = Uri.parse(database.filePath)
-                try {
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
-                        updatedDatabase.encode(output)
-                    } ?: return@withContext Result.failure(Exception("无法写入数据库文件"))
-                } catch (e: SecurityException) {
-                    return@withContext Result.failure(Exception("没有文件写入权限，请重新打开数据库"))
-                }
+
+            val writeResult = writeKeePassDatabase(database, updatedDatabase, credentials)
+            if (writeResult.isFailure) {
+                return@withContext Result.failure(writeResult.exceptionOrNull() ?: Exception("写入失败"))
             }
-            
-            // 更新条目计数
-            val newCount = (database.entryCount ?: 0) + entries.size
-            dao.updateEntryCount(databaseId, newCount)
-            
+
+            dao.updateEntryCount(databaseId, countEntries(updatedDatabase.content.group))
+            dao.updateLastSyncedTime(databaseId)
+            bumpSyncVersion()
+
             Result.success(entries.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deletePasswordEntriesFromKdbx(
+        databaseId: Long,
+        entries: List<PasswordEntry>
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val database = dao.getDatabaseById(databaseId)
+                ?: return@withContext Result.failure(Exception("数据库不存在"))
+
+            val credentials = getCredentials(database)
+                ?: return@withContext Result.failure(Exception("数据库密码未设置"))
+
+            val keePassDatabase = loadKeePassDatabase(database, credentials)
+            val pendingEntries = entries.toMutableList()
+            var deletedCount = 0
+
+            val updatedRoot = updateEntriesInGroup(keePassDatabase.content.group) { existing ->
+                val matchIndex = pendingEntries.indexOfFirst { matchesEntry(existing, it) }
+                if (matchIndex >= 0) {
+                    pendingEntries.removeAt(matchIndex)
+                    deletedCount += 1
+                    null
+                } else {
+                    existing
+                }
+            }
+
+            val updatedDatabase = keePassDatabase.modifyParentGroup {
+                updatedRoot
+            }
+
+            val writeResult = writeKeePassDatabase(database, updatedDatabase, credentials)
+            if (writeResult.isFailure) {
+                return@withContext Result.failure(writeResult.exceptionOrNull() ?: Exception("写入失败"))
+            }
+
+            dao.updateEntryCount(databaseId, countEntries(updatedDatabase.content.group))
+            dao.updateLastSyncedTime(databaseId)
+            bumpSyncVersion()
+
+            Result.success(deletedCount)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -567,6 +614,211 @@ class LocalKeePassViewModel(
     }
     
     // === 私有辅助方法 ===
+
+    private fun bumpSyncVersion() {
+        _syncVersion.value = _syncVersion.value + 1
+    }
+
+    private fun getCredentials(database: LocalKeePassDatabase): Credentials? {
+        val encryptedDbPassword = database.encryptedPassword ?: return null
+        val kdbxPassword = securityManager.decryptData(encryptedDbPassword) ?: return null
+        return Credentials.from(EncryptedValue.fromString(kdbxPassword))
+    }
+
+    private fun loadKeePassDatabase(
+        database: LocalKeePassDatabase,
+        credentials: Credentials
+    ): KeePassDatabase {
+        return if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+            val file = File(context.filesDir, database.filePath)
+            if (!file.exists()) {
+                throw Exception("数据库文件不存在")
+            }
+            file.inputStream().use { input ->
+                KeePassDatabase.decode(input, credentials)
+            }
+        } else {
+            val uri = Uri.parse(database.filePath)
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            try {
+                try {
+                    context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                } catch (e: SecurityException) {
+                }
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    KeePassDatabase.decode(input, credentials)
+                } ?: throw Exception("无法打开数据库文件")
+            } catch (e: SecurityException) {
+                throw Exception("没有文件访问权限，请重新打开数据库")
+            }
+        }
+    }
+
+    private fun writeKeePassDatabase(
+        database: LocalKeePassDatabase,
+        updatedDatabase: KeePassDatabase,
+        credentials: Credentials
+    ): Result<Unit> {
+        var externalBackup: ByteArray? = null
+        var internalBackup: File? = null
+        var internalTarget: File? = null
+        return try {
+            if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+                val file = File(context.filesDir, database.filePath)
+                internalTarget = file
+                val backupFile = File(file.parentFile, "${file.name}.bak")
+                internalBackup = backupFile
+                if (file.exists()) {
+                    file.inputStream().use { input ->
+                        FileOutputStream(backupFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                val tempFile = File(file.parentFile, "${file.name}.tmp")
+                FileOutputStream(tempFile).use { output ->
+                    updatedDatabase.encode(output)
+                }
+                if (file.exists()) {
+                    file.delete()
+                }
+                if (!tempFile.renameTo(file)) {
+                    if (backupFile.exists()) {
+                        backupFile.copyTo(file, overwrite = true)
+                    }
+                    return Result.failure(Exception("无法保存数据库文件"))
+                }
+                file.inputStream().use { input ->
+                    KeePassDatabase.decode(input, credentials)
+                }
+            } else {
+                val uri = Uri.parse(database.filePath)
+                externalBackup = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.readBytes()
+                }
+                val encodedBytes = ByteArrayOutputStream().use { output ->
+                    updatedDatabase.encode(output)
+                    output.toByteArray()
+                }
+                context.contentResolver.openOutputStream(uri, "rwt")?.use { output ->
+                    output.write(encodedBytes)
+                } ?: return Result.failure(Exception("无法写入数据库文件"))
+
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    KeePassDatabase.decode(input, credentials)
+                } ?: return Result.failure(Exception("无法重新验证数据库文件"))
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+                if (internalBackup != null && internalBackup!!.exists() && internalTarget != null) {
+                    try {
+                        internalBackup!!.copyTo(internalTarget!!, overwrite = true)
+                    } catch (restoreError: Exception) {
+                    }
+                }
+            }
+            if (database.storageLocation == KeePassStorageLocation.EXTERNAL) {
+                val uri = Uri.parse(database.filePath)
+                if (externalBackup != null) {
+                    try {
+                        context.contentResolver.openOutputStream(uri, "rwt")?.use { output ->
+                            output.write(externalBackup)
+                        }
+                    } catch (restoreError: Exception) {
+                    }
+                }
+            }
+            Result.failure(e)
+        }
+    }
+
+    private fun updateEntriesInGroup(
+        group: Group,
+        updater: (Entry) -> Entry?
+    ): Group {
+        val newEntries = group.entries.mapNotNull { entry ->
+            updater(entry)
+        }
+        val newGroups = group.groups.map { updateEntriesInGroup(it, updater) }
+        return group.copy(entries = newEntries, groups = newGroups)
+    }
+
+    private fun collectEntries(group: Group, entries: MutableList<Entry>) {
+        entries.addAll(group.entries)
+        group.groups.forEach { subGroup ->
+            collectEntries(subGroup, entries)
+        }
+    }
+
+    private fun countEntries(group: Group): Int {
+        var count = group.entries.size
+        group.groups.forEach { subGroup ->
+            count += countEntries(subGroup)
+        }
+        return count
+    }
+
+    private fun getEntryField(entry: Entry, key: String): String {
+        return try {
+            entry.fields[key]?.content ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun buildMatchKey(title: String, username: String, url: String): String {
+        return "${title.trim().lowercase()}|${username.trim().lowercase()}|${url.trim().lowercase()}"
+    }
+
+    private fun matchesEntry(existing: Entry, target: PasswordEntry): Boolean {
+        val monicaId = getEntryField(existing, "MonicaId")
+        if (monicaId.isNotBlank() && monicaId == target.id.toString()) {
+            return true
+        }
+        val existingKey = buildMatchKey(
+            getEntryField(existing, "Title"),
+            getEntryField(existing, "UserName"),
+            getEntryField(existing, "URL")
+        )
+        val targetKey = buildMatchKey(target.title, target.username, target.website)
+        return existingKey == targetKey
+    }
+
+    private fun buildKeePassEntry(entry: PasswordEntry, decryptedPassword: String): Entry {
+        return Entry(
+            uuid = UUID.randomUUID(),
+            fields = EntryFields.of(
+                BasicField.Title() to EntryValue.Plain(entry.title),
+                BasicField.UserName() to EntryValue.Plain(entry.username),
+                BasicField.Password() to EntryValue.Encrypted(
+                    EncryptedValue.fromString(decryptedPassword)
+                ),
+                BasicField.Url() to EntryValue.Plain(entry.website),
+                BasicField.Notes() to EntryValue.Plain(buildString {
+                    if (entry.notes.isNotEmpty()) {
+                        append(entry.notes)
+                    }
+                    if (entry.email.isNotEmpty()) {
+                        if (isNotEmpty()) append("\n")
+                        append("Email: ${entry.email}")
+                    }
+                    if (entry.phone.isNotEmpty()) {
+                        if (isNotEmpty()) append("\n")
+                        append("Phone: ${entry.phone}")
+                    }
+                }),
+                "MonicaId" to EntryValue.Plain(entry.id.toString())
+            )
+        )
+    }
+
+    private fun buildExternalEntryId(entry: Entry): Long {
+        val raw = entry.uuid.mostSignificantBits
+        val safe = if (raw == Long.MIN_VALUE) Long.MAX_VALUE else abs(raw)
+        return -(safe + 1)
+    }
     
     /**
      * 使用 kotpass 库创建真正的 KDBX 格式数据库文件

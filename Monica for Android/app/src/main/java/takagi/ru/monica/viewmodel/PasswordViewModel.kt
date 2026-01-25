@@ -490,19 +490,19 @@ class PasswordViewModel(
      */
     fun saveGroupedPasswords(
         originalIds: List<Long>,
-        commonEntry: PasswordEntry, // Contains common info and ONE password (ignored)
+        commonEntry: PasswordEntry,
         passwords: List<String>,
-        onComplete: (firstPasswordId: Long?) -> Unit = {}
+        onComplete: (List<Long>) -> Unit = {}
     ) {
         viewModelScope.launch {
-            var firstId: Long? = null
+            val savedIds = mutableListOf<Long>()
             
             // 1. Process each password
             passwords.forEachIndexed { index, password ->
                 if (index < originalIds.size) {
                     // Update existing
                     val id = originalIds[index]
-                    if (index == 0) firstId = id
+                    savedIds.add(id)
                     val updatedEntry = commonEntry.copy(
                         id = id,
                         password = password
@@ -519,7 +519,7 @@ class PasswordViewModel(
                         createdAt = java.util.Date(),
                         updatedAt = java.util.Date()
                     ))
-                    if (index == 0) firstId = newId
+                    savedIds.add(newId)
                     
                     // 记录创建操作
                     takagi.ru.monica.utils.OperationLogger.logCreate(
@@ -538,7 +538,13 @@ class PasswordViewModel(
                 }
             }
             
-            onComplete(firstId)
+            onComplete(savedIds)
+        }
+    }
+
+    suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry> {
+        return repository.getPasswordsByIds(ids).map { entry ->
+            entry.copy(password = securityManager.decryptData(entry.password))
         }
     }
 }

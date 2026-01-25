@@ -105,6 +105,9 @@ interface LocalKeePassDatabaseDao {
     
     @Query("UPDATE local_keepass_databases SET last_accessed_at = :time WHERE id = :id")
     suspend fun updateLastAccessedTime(id: Long, time: Long = System.currentTimeMillis())
+
+    @Query("UPDATE local_keepass_databases SET last_synced_at = :time WHERE id = :id")
+    suspend fun updateLastSyncedTime(id: Long, time: Long = System.currentTimeMillis())
     
     @Query("UPDATE local_keepass_databases SET entry_count = :count WHERE id = :id")
     suspend fun updateEntryCount(id: Long, count: Int)

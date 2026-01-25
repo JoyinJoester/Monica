@@ -669,7 +669,11 @@ fun SimpleMainScreen(
                                     passwordViewModel.deleteCategory(category)
                                 },
                                 onPasswordClick = { password ->
-                                    onNavigateToAddPassword(password.id)
+                                    if (password.id > 0) {
+                                        onNavigateToAddPassword(password.id)
+                                    } else {
+                                        Toast.makeText(context, "外部 KeePass 条目暂不支持编辑", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 onNavigateToAddPassword = onNavigateToAddPassword,
                                 onNavigateToPasswordDetail = onNavigateToPasswordDetail,
@@ -926,7 +930,11 @@ fun SimpleMainScreen(
                             passwordViewModel.deleteCategory(category)
                         },
                         onPasswordClick = { password ->
-                            onNavigateToAddPassword(password.id)
+                            if (password.id > 0) {
+                                onNavigateToAddPassword(password.id)
+                            } else {
+                                Toast.makeText(context, "外部 KeePass 条目暂不支持编辑", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onNavigateToAddPassword = onNavigateToAddPassword,
                         onNavigateToPasswordDetail = onNavigateToPasswordDetail,
@@ -1185,11 +1193,46 @@ private fun PasswordListContent(
     ) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val passwordEntries by viewModel.passwordEntries.collectAsState()
+    val localPasswordEntries by viewModel.passwordEntries.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
-    // settings
+    val currentFilter by viewModel.categoryFilter.collectAsState()
+    val syncVersion by localKeePassViewModel.syncVersion.collectAsState()
     val appSettings by settingsViewModel.settings.collectAsState()
+    var keepassEntries by remember { mutableStateOf<List<takagi.ru.monica.data.PasswordEntry>>(emptyList()) }
+
+    LaunchedEffect(currentFilter, keepassDatabases, syncVersion) {
+        keepassEntries = when (val filter = currentFilter) {
+            is CategoryFilter.KeePassDatabase -> {
+                localKeePassViewModel.readPasswordEntriesFromKdbx(filter.databaseId).getOrElse { emptyList() }
+            }
+            is CategoryFilter.All -> {
+                keepassDatabases.flatMap { database ->
+                    localKeePassViewModel.readPasswordEntriesFromKdbx(database.id).getOrElse { emptyList() }
+                }
+            }
+            else -> emptyList()
+        }
+    }
+
+    val filteredKeepassEntries = remember(keepassEntries, searchQuery) {
+        if (searchQuery.isBlank()) {
+            keepassEntries
+        } else {
+            keepassEntries.filter { matchesPasswordQuery(it, searchQuery) }
+        }
+    }
+
+    val passwordEntries = remember(localPasswordEntries, filteredKeepassEntries, currentFilter) {
+        when (currentFilter) {
+            is CategoryFilter.KeePassDatabase -> filteredKeepassEntries
+            is CategoryFilter.All -> {
+                val localKeys = localPasswordEntries.map { getKeePassMatchKey(it) }.toSet()
+                localPasswordEntries + filteredKeepassEntries.filter { getKeePassMatchKey(it) !in localKeys }
+            }
+            else -> localPasswordEntries
+        }
+    }
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -1340,7 +1383,7 @@ private fun PasswordListContent(
     val favoriteSelected = {
         // 智能批量收藏/取消收藏
         coroutineScope.launch {
-            val selectedEntries = passwordEntries.filter { selectedPasswords.contains(it.id) }
+            val selectedEntries = passwordEntries.filter { selectedPasswords.contains(it.id) && it.id > 0 }
             
             // 检查是否所有选中的密码都已收藏
             val allFavorited = selectedEntries.all { it.isFavorite }
@@ -1526,11 +1569,11 @@ private fun PasswordListContent(
                         }
                         
                         items(keepassDatabases) { database ->
-                            val count = passwordEntries.count { it.keepassDatabaseId == database.id }
+                            val count = localPasswordEntries.count { it.keepassDatabaseId == database.id }
                             Surface(
                                 onClick = {
                                     // 获取选中的密码条目
-                                    val selectedEntries = passwordEntries.filter { it.id in selectedPasswords }
+                                    val selectedEntries = localPasswordEntries.filter { it.id in selectedPasswords }
                                     
                                     // 真正写入 kdbx 文件并更新数据库关联
                                     coroutineScope.launch {
@@ -2068,15 +2111,17 @@ private fun PasswordListContent(
                             },
                         onPasswordClick = { password ->
                             if (isSelectionMode) {
-                                // 选择模式：切换选择状态
                                 selectedPasswords = if (selectedPasswords.contains(password.id)) {
                                     selectedPasswords - password.id
                                 } else {
                                     selectedPasswords + password.id
                                 }
                             } else {
-                                // 普通模式：显示详情页面
-                                onNavigateToPasswordDetail(password.id)
+                                if (password.id > 0) {
+                                    onNavigateToPasswordDetail(password.id)
+                                } else {
+                                    Toast.makeText(context, "外部 KeePass 条目暂不支持详情", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         },
                         onSwipeLeft = { password ->
@@ -2116,24 +2161,26 @@ private fun PasswordListContent(
                             }
                         },
                         onToggleFavorite = { password ->
-                            viewModel.toggleFavorite(password.id, !password.isFavorite)
+                            if (password.id > 0) {
+                                viewModel.toggleFavorite(password.id, !password.isFavorite)
+                            }
                         },
                         onToggleGroupFavorite = {
-                            // 智能切换整组收藏状态
                             coroutineScope.launch {
-                                val allFavorited = passwords.all { it.isFavorite }
+                                val localGroup = passwords.filter { it.id > 0 }
+                                if (localGroup.isEmpty()) {
+                                    return@launch
+                                }
+                                val allFavorited = localGroup.all { it.isFavorite }
                                 val newState = !allFavorited
-                                
-                                passwords.forEach { password ->
+                                localGroup.forEach { password ->
                                     viewModel.toggleFavorite(password.id, newState)
                                 }
-                                
                                 val message = if (newState) {
-                                    context.getString(R.string.group_favorited, passwords.size)
+                                    context.getString(R.string.group_favorited, localGroup.size)
                                 } else {
-                                    context.getString(R.string.group_unfavorited, passwords.size)
+                                    context.getString(R.string.group_unfavorited, localGroup.size)
                                 }
-                                
                                 android.widget.Toast.makeText(
                                     context,
                                     message,
@@ -2159,12 +2206,13 @@ private fun PasswordListContent(
                                         reordered.add(0, item) // 移到第一位
                                         
                                         // 更新sortOrder
-                                        val allPasswords = passwordEntries
+                                        val allPasswords = localPasswordEntries
                                         val firstItemInGroup = allPasswords.first { it.website.ifBlank { "未分类" } == websiteKey }
                                         val startSortOrder = allPasswords.indexOf(firstItemInGroup)
                                         
+                                        val localReordered = reordered.filter { it.id > 0 }
                                         viewModel.updateSortOrders(
-                                            reordered.mapIndexed { idx, entry -> 
+                                            localReordered.mapIndexed { idx, entry ->
                                                 entry.id to (startSortOrder + idx)
                                             }
                                         )
@@ -2172,7 +2220,9 @@ private fun PasswordListContent(
                                 }
                                 
                                 // 设置/取消封面
-                                viewModel.toggleGroupCover(password.id, websiteKey, newCoverState)
+                                if (password.id > 0) {
+                                    viewModel.toggleGroupCover(password.id, websiteKey, newCoverState)
+                                }
                             }
                         },
                         isSelectionMode = isSelectionMode,
@@ -2185,8 +2235,12 @@ private fun PasswordListContent(
                             }
                         },
                         onOpenMultiPasswordDialog = { passwords ->
-                            // 导航到详情页面 (现在详情页面支持多密码)
-                            onNavigateToPasswordDetail(passwords.first().id)
+                            val first = passwords.firstOrNull()
+                            if (first != null && first.id > 0) {
+                                onNavigateToPasswordDetail(first.id)
+                            } else {
+                                Toast.makeText(context, "外部 KeePass 条目暂不支持详情", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onLongClick = { password ->
                             // 长按进入多选模式
@@ -2274,15 +2328,41 @@ private fun PasswordListContent(
                 // 批量删除
                 coroutineScope.launch {
                     val toDelete = passwordEntries.filter { selectedPasswords.contains(it.id) }
-                    toDelete.forEach { viewModel.deletePasswordEntry(it) }
-                    
+                    val externalKeePass = toDelete.filter { it.id < 0 && it.keepassDatabaseId != null }
+                    val localKeePass = toDelete.filter { it.id > 0 && it.keepassDatabaseId != null }
+                    val localOnly = toDelete.filter { it.id > 0 && it.keepassDatabaseId == null }
+                    val deleteQueue = mutableListOf<takagi.ru.monica.data.PasswordEntry>()
+                    var deletedCount = 0
+
+                    externalKeePass.groupBy { it.keepassDatabaseId }.forEach { (databaseId, entries) ->
+                        if (databaseId != null) {
+                            val result = localKeePassViewModel.deletePasswordEntriesFromKdbx(databaseId, entries)
+                            if (result.isSuccess) {
+                                deletedCount += result.getOrNull() ?: 0
+                            }
+                        }
+                    }
+
+                    localKeePass.groupBy { it.keepassDatabaseId }.forEach { (databaseId, entries) ->
+                        if (databaseId != null) {
+                            val result = localKeePassViewModel.deletePasswordEntriesFromKdbx(databaseId, entries)
+                            if (result.isSuccess) {
+                                deleteQueue.addAll(entries)
+                                deletedCount += result.getOrNull() ?: 0
+                            }
+                        }
+                    }
+
+                    deleteQueue.forEach { viewModel.deletePasswordEntry(it) }
+                    localOnly.forEach { viewModel.deletePasswordEntry(it) }
+                    deletedCount += localOnly.size + deleteQueue.size
+
                     android.widget.Toast.makeText(
                         context,
-                        context.getString(R.string.deleted_items, toDelete.size),
+                        context.getString(R.string.deleted_items, deletedCount),
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
-                    
-                    // 退出选择模式
+
                     isSelectionMode = false
                     selectedPasswords = setOf()
                     passwordInput = ""
@@ -2321,12 +2401,22 @@ private fun PasswordListContent(
             onConfirmWithBiometric = {
                 // 指纹验证成功，直接删除
                 coroutineScope.launch {
-                    viewModel.deletePasswordEntry(item)
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.deleted),
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    val keepassId = item.keepassDatabaseId
+                    if (keepassId != null) {
+                        val result = localKeePassViewModel.deletePasswordEntriesFromKdbx(keepassId, listOf(item))
+                        if (result.isFailure) {
+                            Toast.makeText(
+                                context,
+                                "KeePass 删除失败: ${result.exceptionOrNull()?.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@launch
+                        }
+                    }
+                    if (item.id > 0) {
+                        viewModel.deletePasswordEntry(item)
+                    }
+                    Toast.makeText(context, context.getString(R.string.deleted), Toast.LENGTH_SHORT).show()
                     itemToDelete = null
                 }
             }
@@ -2338,16 +2428,24 @@ private fun PasswordListContent(
         LaunchedEffect(Unit) {
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
             if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
-                // 密码正确，执行真实删除
-                viewModel.deletePasswordEntry(itemToDelete!!)
-                
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.deleted),
-                    Toast.LENGTH_SHORT
-                ).show()
-                
-                // 清理状态（保持在 deletedItemIds 中，因为已真实删除）
+                val item = itemToDelete!!
+                val keepassId = item.keepassDatabaseId
+                if (keepassId != null) {
+                    val result = localKeePassViewModel.deletePasswordEntriesFromKdbx(keepassId, listOf(item))
+                    if (result.isFailure) {
+                        Toast.makeText(
+                            context,
+                            "KeePass 删除失败: ${result.exceptionOrNull()?.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        showSingleItemPasswordVerify = false
+                        return@LaunchedEffect
+                    }
+                }
+                if (item.id > 0) {
+                    viewModel.deletePasswordEntry(item)
+                }
+                Toast.makeText(context, context.getString(R.string.deleted), Toast.LENGTH_SHORT).show()
                 itemToDelete = null
                 singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
@@ -5204,6 +5302,21 @@ private fun DeleteConfirmDialog(
  */
 private fun getPasswordInfoKey(entry: takagi.ru.monica.data.PasswordEntry): String {
     return "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+}
+
+private fun getKeePassMatchKey(entry: takagi.ru.monica.data.PasswordEntry): String {
+    return "${entry.title.trim().lowercase()}|${entry.username.trim().lowercase()}|${entry.website.trim().lowercase()}"
+}
+
+private fun matchesPasswordQuery(entry: takagi.ru.monica.data.PasswordEntry, query: String): Boolean {
+    val normalizedQuery = query.trim().lowercase()
+    if (normalizedQuery.isEmpty()) {
+        return true
+    }
+    return entry.title.lowercase().contains(normalizedQuery) ||
+        entry.username.lowercase().contains(normalizedQuery) ||
+        entry.website.lowercase().contains(normalizedQuery) ||
+        entry.notes.lowercase().contains(normalizedQuery)
 }
 
 /**
