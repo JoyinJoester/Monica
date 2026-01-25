@@ -938,6 +938,21 @@
     <string name="autofill_info_card_text">自動入力にはAndroid 8.0以降が必要です。有効にすると、Monicaはアプリやウェブサイトにアクセスする際に保存されたパスワードを自動的に入力します。</string>
     <string name="autofill_status_enabled">自動入力が有効</string>
     <string name="autofill_status_disabled">自動入力が無効</string>
+    
+    <!-- OTP Notification Settings -->
+    <string name="autofill_otp_settings_title">認証器</string>
+    <string name="autofill_show_otp_notification">通知バーに認証コードを表示</string>
+    <string name="autofill_show_otp_notification_desc">自動入力時に2段階認証コードを通知バーに表示</string>
+    <string name="autofill_auto_copy_otp">認証コードを自動コピー</string>
+    <string name="autofill_auto_copy_otp_desc">自動入力時に2段階認証コードをクリップボードに自動コピー</string>
+    <string name="autofill_otp_notification_duration">通知表示時間</string>
+    <string name="autofill_otp_notification_duration_desc">通知が表示される時間（秒）</string>
+    <string name="autofill_otp_copy_action">%s をコピー</string>
+    <string name="autofill_otp_notification_channel">自動入力認証コード</string>
+    
+    <string name="autofill_respect_disabled_flag_title">自動入力無効フラグを尊重</string>
+    <string name="autofill_respect_disabled_flag_desc">自動入力が無効化されている入力欄には入力しない</string>
+    
     <string name="autofill_status_enabled_desc">Monicaがデフォルトの自動入力サービスとして設定されています</string>
     <string name="autofill_status_disabled_desc">システム設定でMonicaを有効にしてください</string>
     <string name="autofill_status_all_functional">すべての機能が正常</string>
@@ -1174,6 +1189,7 @@
     <string name="permission_vibrate_name">バイブレーション</string>
     <string name="permission_phone_state_name">電話状態</string>
     <string name="permission_location_name">位置情報</string>
+    <string name="permission_notification_name">通知</string>
     <string name="permission_autofill_name">自動入力サービス</string>
 
     <!-- Permission Descriptions -->
@@ -1185,6 +1201,7 @@
     <string name="permission_vibrate_description">用途：認証時の触覚フィードバック</string>
     <string name="permission_phone_state_description">用途：デバイス識別</string>
     <string name="permission_location_description">用途：位置情報ベースの機能（オプション）</string>
+    <string name="permission_notification_description">用途：通知バーにTOTP確認コードを表示</string>
     <string name="permission_autofill_description">用途：アプリとブラウザでのパスワード自動入力</string>
 
     <!-- Permission Stats -->

@@ -987,6 +987,22 @@
     <!-- 自动填充状态 -->
     <string name="autofill_status_enabled">自动填充已启用</string>
     <string name="autofill_status_disabled">自动填充未启用</string>
+    
+    <!-- OTP Notification Settings -->
+    <string name="autofill_otp_settings_title">验证器</string>
+    <string name="autofill_show_otp_notification">通知栏显示验证码</string>
+    <string name="autofill_show_otp_notification_desc">自动填充时在通知栏显示两步验证码</string>
+    <string name="autofill_auto_copy_otp">自动复制验证码</string>
+    <string name="autofill_auto_copy_otp_desc">自动填充时自动复制两步验证码到剪贴板</string>
+    <string name="autofill_otp_notification_duration">通知显示时长</string>
+    <string name="autofill_otp_notification_duration_desc">通知保留的时间 (秒)</string>
+    <string name="autofill_otp_copy_action">复制 %s</string>
+    <string name="autofill_otp_notification_channel">自动填充验证码</string>
+    
+    <string name="autofill_respect_disabled_flag_title">尊重禁止自动填充标识</string>
+    <string name="autofill_respect_disabled_flag_desc">对标记了禁用自动填充的输入框不进行填充</string>
+    
+
     <string name="autofill_status_enabled_desc">Monica已设置为默认自动填充服务</string>
     <string name="autofill_status_disabled_desc">请在系统设置中启用Monica</string>
     <string name="autofill_status_all_functional">所有功能正常</string>
@@ -1232,6 +1248,7 @@
     <string name="permission_vibrate_name">振动</string>
     <string name="permission_phone_state_name">手机状态</string>
     <string name="permission_location_name">位置</string>
+    <string name="permission_notification_name">通知</string>
     <string name="permission_autofill_name">自动填充服务</string>
 
     <!-- Permission Descriptions -->
@@ -1243,6 +1260,7 @@
     <string name="permission_vibrate_description">用于：验证器的触觉反馈</string>
     <string name="permission_phone_state_description">用于：设备识别</string>
     <string name="permission_location_description">用于：基于位置的功能（可选）</string>
+    <string name="permission_notification_description">用于：在通知栏显示TOTP验证码</string>
     <string name="permission_autofill_description">用于：在应用和浏览器中自动填充密码</string>
 
     <!-- Permission Stats -->

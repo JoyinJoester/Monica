@@ -80,9 +80,9 @@ fun UnifiedProgressBar(
     }
     
     // 根据剩余时间确定颜色
+    // 根据剩余时间确定颜色
     val progressColor = when {
         remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
-        remainingSeconds <= 10 -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.primary
     }
     
@@ -321,7 +321,6 @@ fun CompactUnifiedProgressBar(
     
     val progressColor = when {
         remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
-        remainingSeconds <= 10 -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.primary
     }
     

@@ -1100,6 +1100,19 @@
     <string name="autofill_fill_suggestions_desc">Automatically show matching password suggestions</string>
     <string name="autofill_fill_manual_selection">Manual Selection</string>
     <string name="autofill_fill_manual_selection_desc">Allow manual selection of password to fill</string>
+    <string name="autofill_respect_disabled_flag_title">Respect Autofill disabled flag</string>
+    <string name="autofill_respect_disabled_flag_desc">Disables autofill for a browser field that has autofill disabled flag set</string>
+    
+    <!-- OTP Notification Settings -->
+    <string name="autofill_otp_settings_title">Authenticator</string>
+    <string name="autofill_show_otp_notification">Show Authenticator Notification</string>
+    <string name="autofill_show_otp_notification_desc">Show 2FA code in notification when autofilling</string>
+    <string name="autofill_auto_copy_otp">Auto Copy Authenticator</string>
+    <string name="autofill_auto_copy_otp_desc">Automatically copy 2FA code to clipboard when autofilling</string>
+    <string name="autofill_otp_notification_duration">Notification Duration</string>
+    <string name="autofill_otp_notification_duration_desc">Seconds to keep notification visible</string>
+    <string name="autofill_otp_copy_action">Copy %s</string>
+    <string name="autofill_otp_notification_channel">Autofill Verification Code</string>
     
     <!-- Autofill Settings - Save Behavior -->
     <string name="autofill_save_behavior_title">Save Behavior</string>

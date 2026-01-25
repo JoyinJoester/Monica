@@ -87,6 +87,9 @@
                 android:name="android.autofill"
                 android:resource="@xml/autofill_service_config" />
         </service>
+        
+        <receiver android:name=".autofill.AutofillNotificationReceiver"
+            android:exported="false" />
 
         <!-- Notification Validator Service -->
         <service

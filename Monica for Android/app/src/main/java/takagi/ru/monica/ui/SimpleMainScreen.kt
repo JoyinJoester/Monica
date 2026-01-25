@@ -2422,7 +2422,7 @@ private fun TotpListContent(
                 currentSeconds = sharedTickSeconds,
                 period = 30,
                 smoothProgress = appSettings.validatorSmoothProgress,
-                timeOffset = (appSettings.totpTimeOffset).toLong() // 传递时间偏移
+                timeOffset = (appSettings.totpTimeOffset * 1000).toLong() // 传递时间偏移(毫秒)
             )
         }
 

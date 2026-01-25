@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -34,6 +35,14 @@ class AutofillPreferences(private val context: Context) {
         
         // 新架构：使用增强匹配引擎
         private val KEY_USE_ENHANCED_MATCHING = booleanPreferencesKey("use_enhanced_matching")
+        
+        // 是否尊重自动填充禁用标识
+        private val KEY_RESPECT_AUTOFILL_DISABLED = booleanPreferencesKey("respect_autofill_disabled")
+        
+        // OTP验证器设置
+        private val KEY_OTP_NOTIFICATION_ENABLED = booleanPreferencesKey("otp_notification_enabled")
+        private val KEY_AUTO_COPY_OTP = booleanPreferencesKey("auto_copy_otp")
+        private val KEY_OTP_NOTIFICATION_DURATION = intPreferencesKey("otp_notification_duration")
         
         // 🔐 密码建议功能配置
         private val KEY_PASSWORD_SUGGESTION_ENABLED = booleanPreferencesKey("password_suggestion_enabled")
@@ -178,6 +187,54 @@ class AutofillPreferences(private val context: Context) {
     suspend fun setUseEnhancedMatching(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_USE_ENHANCED_MATCHING] = enabled
+        }
+    }
+
+    /**
+     * 是否尊重"禁止自动填充"标识
+     * 如果为 true，遇到类似 autocomplete="off" 的字段将不进行填充
+     * 默认为 true (遵循标准)
+     */
+    val isRespectAutofillDisabledEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_RESPECT_AUTOFILL_DISABLED] ?: false // 默认为 false，即强制填充（更符合用户期望）
+    }
+
+    suspend fun setRespectAutofillDisabledEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_RESPECT_AUTOFILL_DISABLED] = enabled
+        }
+    }
+    
+    /**
+     * Auth Notification Settings
+     */
+    val isOtpNotificationEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_OTP_NOTIFICATION_ENABLED] ?: false
+    }
+
+    suspend fun setOtpNotificationEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_OTP_NOTIFICATION_ENABLED] = enabled
+        }
+    }
+
+    val isAutoCopyOtpEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_AUTO_COPY_OTP] ?: false
+    }
+
+    suspend fun setAutoCopyOtpEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_AUTO_COPY_OTP] = enabled
+        }
+    }
+
+    val otpNotificationDuration: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[KEY_OTP_NOTIFICATION_DURATION] ?: 30 // Default 30s
+    }
+
+    suspend fun setOtpNotificationDuration(seconds: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_OTP_NOTIFICATION_DURATION] = seconds
         }
     }
     

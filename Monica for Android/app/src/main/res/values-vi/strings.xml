@@ -937,6 +937,21 @@
     <!-- Trạng thái tự động điền -->
     <string name="autofill_status_enabled">Tự động điền đã bật</string>
     <string name="autofill_status_disabled">Tự động điền đã tắt</string>
+    
+    <!-- OTP Notification Settings -->
+    <string name="autofill_otp_settings_title">Trình xác thực</string>
+    <string name="autofill_show_otp_notification">Hiển thị mã xác thực trên thanh thông báo</string>
+    <string name="autofill_show_otp_notification_desc">Hiển thị mã xác thực 2 bước trên thanh thông báo khi tự động điền</string>
+    <string name="autofill_auto_copy_otp">Tự động sao chép mã xác thực</string>
+    <string name="autofill_auto_copy_otp_desc">Tự động sao chép mã xác thực 2 bước vào bảng nhớ tạm khi tự động điền</string>
+    <string name="autofill_otp_notification_duration">Thời gian hiển thị thông báo</string>
+    <string name="autofill_otp_notification_duration_desc">Thời gian thông báo được giữ lại (giây)</string>
+    <string name="autofill_otp_copy_action">Sao chép %s</string>
+    <string name="autofill_otp_notification_channel">Mã xác thực tự động điền</string>
+    
+    <string name="autofill_respect_disabled_flag_title">Tôn trọng cờ tắt tự động điền</string>
+    <string name="autofill_respect_disabled_flag_desc">Không điền vào các trường được đánh dấu tắt tự động điền</string>
+    
     <string name="autofill_status_enabled_desc">Monica được đặt làm dịch vụ tự động điền mặc định</string>
     <string name="autofill_status_disabled_desc">Vui lòng bật Monica trong cài đặt hệ thống</string>
     <string name="autofill_status_all_functional">Tất cả tính năng hoạt động bình thường</string>
@@ -1180,6 +1195,7 @@
     <string name="permission_vibrate_name">Rung</string>
     <string name="permission_phone_state_name">Trạng thái điện thoại</string>
     <string name="permission_location_name">Vị trí</string>
+    <string name="permission_notification_name">Thông báo</string>
     <string name="permission_autofill_name">Dịch vụ tự động điền</string>
 
     <!-- Permission Descriptions -->
@@ -1191,6 +1207,7 @@
     <string name="permission_vibrate_description">Dùng cho: Phản hồi xúc giác cho xác thực</string>
     <string name="permission_phone_state_description">Dùng cho: Nhận dạng thiết bị</string>
     <string name="permission_location_description">Dùng cho: Tính năng dựa trên vị trí (tùy chọn)</string>
+    <string name="permission_notification_description">Dùng cho: Hiển thị mã TOTP trên thanh thông báo</string>
     <string name="permission_autofill_description">Dùng cho: Tự động điền mật khẩu trong ứng dụng và trình duyệt</string>
 
     <!-- Permission Stats -->

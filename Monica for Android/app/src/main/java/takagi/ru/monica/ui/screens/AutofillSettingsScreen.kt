@@ -288,6 +288,87 @@ fun AutofillSettingsScreen(
                         }
                     }
                 )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                val respectAutofillDisabled by autofillPreferences.isRespectAutofillDisabledEnabled.collectAsState(initial = false)
+                SwitchSettingItem(
+                    icon = Icons.Outlined.DoNotDisturb,
+                    title = stringResource(R.string.autofill_respect_disabled_flag_title),
+                    subtitle = stringResource(R.string.autofill_respect_disabled_flag_desc),
+                    checked = respectAutofillDisabled,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setRespectAutofillDisabledEnabled(it)
+                        }
+                    }
+                )
+            }
+            
+            // 验证器设置卡片
+            SectionCard(
+                title = stringResource(R.string.autofill_otp_settings_title),
+                icon = Icons.Outlined.LockClock,
+                iconTint = MaterialTheme.colorScheme.secondary
+            ) {
+                val showOtpNotification by autofillPreferences.isOtpNotificationEnabled.collectAsState(initial = false)
+                val autoCopyOtp by autofillPreferences.isAutoCopyOtpEnabled.collectAsState(initial = false)
+                val otpDuration by autofillPreferences.otpNotificationDuration.collectAsState(initial = 30)
+
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Notifications,
+                    title = stringResource(R.string.autofill_show_otp_notification),
+                    subtitle = stringResource(R.string.autofill_show_otp_notification_desc),
+                    checked = showOtpNotification,
+                    onCheckedChange = {  enabled ->
+                        scope.launch {
+                            autofillPreferences.setOtpNotificationEnabled(enabled)
+                            if (enabled) {
+                                // 跳转到通知设置
+                                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                context.startActivity(intent)
+                            }
+                        }
+                    }
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.ContentCopy,
+                    title = stringResource(R.string.autofill_auto_copy_otp),
+                    subtitle = stringResource(R.string.autofill_auto_copy_otp_desc),
+                    checked = autoCopyOtp,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setAutoCopyOtpEnabled(it)
+                        }
+                    }
+                )
+                
+                // Duration Slider or Selection? Simple text input or predefined here for simplicity?
+                // Using a simple row for now as slider takes more space.
+                // Let's use a dialog selection or just a simple cycle for now.
+                // Or simply repurpose AutofillSettingItem to click and pick.
+                // Let's add a "Duration: Xs" item.
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                 AutofillSettingItem(
+                    icon = Icons.Outlined.Timer,
+                    title = stringResource(R.string.autofill_otp_notification_duration),
+                    subtitle = "${otpDuration}s",
+                    onClick = {
+                        // Cycle through values 15 -> 30 -> 60 -> 120 -> 15
+                        val next = when (otpDuration) {
+                            15 -> 30
+                            30 -> 60
+                            60 -> 120
+                            else -> 15
+                        }
+                        scope.launch {
+                            autofillPreferences.setOtpNotificationDuration(next)
+                        }
+                    }
+                )
             }
             
             // 保存行为卡片
@@ -665,6 +746,45 @@ fun SwitchSettingItem(
             checked = checked,
             onCheckedChange = onCheckedChange
         )
+    }
+}
+
+// 普通设置项组件
+@Composable
+fun AutofillSettingItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
