@@ -265,7 +265,7 @@ class FuzzyMatchingStrategy : BaseMatchingStrategy() {
         
         val matches = candidates.mapNotNull { entry ->
             val score = calculateScore(entry, context)
-            if (score >= 60) { // 模糊匹配阈值
+            if (score >= 70) { // 模糊匹配阈值 - 提高以减少误报
                 PasswordMatch(entry, PasswordMatch.MatchType.FUZZY, score)
             } else {
                 null

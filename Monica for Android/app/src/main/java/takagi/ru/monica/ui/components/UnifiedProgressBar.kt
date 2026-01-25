@@ -44,7 +44,8 @@ fun UnifiedProgressBar(
     style: ProgressBarStyle = ProgressBarStyle.LINEAR,
     currentSeconds: Long = System.currentTimeMillis() / 1000,
     period: Int = 30,
-    smoothProgress: Boolean = true
+    smoothProgress: Boolean = true,
+    timeOffset: Long = 0 // 新增：时间偏移量（毫秒）以同步 TOTP 生成
 ) {
     // 平滑进度：使用毫秒级更新
     var currentMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -62,13 +63,17 @@ fun UnifiedProgressBar(
     // TOTP 周期是从 Unix 纪元开始计算的，需要精确对齐
     val periodMs = period * 1000L
     val (remainingSeconds, progress) = if (smoothProgress) {
-        val elapsedInPeriodMs = currentMillis % periodMs
+        // 应用时间偏移
+        val correctedMillis = currentMillis + timeOffset
+        val elapsedInPeriodMs = correctedMillis % periodMs
         val remainingMs = periodMs - elapsedInPeriodMs
         val remaining = ((remainingMs + 999) / 1000).toInt()  // 向上取整，用于颜色判断
         val prog = elapsedInPeriodMs.toFloat() / periodMs
         remaining to prog
     } else {
-        val elapsedInPeriod = (currentSeconds % period).toInt()
+        // 非平滑模式下也要应用时间偏移（注意：非平滑模式 currentSeconds 是秒，timeOffset 是毫秒，需要转换）
+        val correctedSeconds = currentSeconds + (timeOffset / 1000)
+        val elapsedInPeriod = (correctedSeconds % period).toInt()
         val remaining = period - elapsedInPeriod
         val prog = elapsedInPeriod.toFloat() / period
         remaining to prog
@@ -283,7 +288,8 @@ fun CompactUnifiedProgressBar(
     style: ProgressBarStyle = ProgressBarStyle.LINEAR,
     currentSeconds: Long = System.currentTimeMillis() / 1000,
     period: Int = 30,
-    smoothProgress: Boolean = true
+    smoothProgress: Boolean = true,
+    timeOffset: Long = 0 // 新增：时间偏移量
 ) {
     // 平滑进度：使用毫秒级更新
     var currentMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -298,13 +304,18 @@ fun CompactUnifiedProgressBar(
     }
     
     val (remainingSeconds, progress) = if (smoothProgress) {
-        val remainingMs = (period * 1000) - (currentMillis % (period * 1000))
-        val remaining = (remainingMs / 1000).toInt() + 1
-        val prog = 1f - (remainingMs.toFloat() / (period * 1000))
+        val correctedMillis = currentMillis + timeOffset
+        val periodMs = period * 1000L
+        val elapsedInPeriodMs = correctedMillis % periodMs
+        val remainingMs = periodMs - elapsedInPeriodMs
+        val remaining = ((remainingMs + 999) / 1000).toInt()
+        val prog = elapsedInPeriodMs.toFloat() / periodMs
         remaining to prog
     } else {
-        val remaining = period - (currentSeconds % period).toInt()
-        val prog = 1f - (remaining.toFloat() / period)
+        val correctedSeconds = currentSeconds + (timeOffset / 1000)
+        val elapsedInPeriod = (correctedSeconds % period).toInt()
+        val remaining = period - elapsedInPeriod
+        val prog = elapsedInPeriod.toFloat() / period
         remaining to prog
     }
     

@@ -213,8 +213,7 @@ fun SimpleMainScreen(
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
-    val defaultTabKey = remember(initialTab) { indexToDefaultTabKey(initialTab) }
-    var selectedTabKey by rememberSaveable { mutableStateOf(defaultTabKey) }
+
     
     // 双击返回退出相关状态
     var backPressedOnce by remember { mutableStateOf(false) }
@@ -304,6 +303,15 @@ fun SimpleMainScreen(
         addAll(dataTabItems)
         add(BottomNavItem.Settings)
     }
+
+    val defaultTabKey = remember(initialTab, tabs) { 
+        if (initialTab == 0 && tabs.isNotEmpty()) {
+            tabs.first().key
+        } else {
+            indexToDefaultTabKey(initialTab) 
+        }
+    }
+    var selectedTabKey by rememberSaveable { mutableStateOf(defaultTabKey) }
 
     LaunchedEffect(tabs) {
         if (tabs.none { it.key == selectedTabKey }) {
@@ -2413,7 +2421,8 @@ private fun TotpListContent(
                 style = appSettings.validatorProgressBarStyle,
                 currentSeconds = sharedTickSeconds,
                 period = 30,
-                smoothProgress = appSettings.validatorSmoothProgress
+                smoothProgress = appSettings.validatorSmoothProgress,
+                timeOffset = (appSettings.totpTimeOffset).toLong() // 传递时间偏移
             )
         }
 

@@ -45,7 +45,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="查看所有密码"
+                android:text="Monica 自动填充"
                 android:textSize="15sp"
                 android:textColor="@color/autofill_text_primary"
                 android:textStyle="bold"
@@ -56,7 +56,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="打开完整密码列表"
+                android:text="点击进入选择界面"
                 android:textSize="13sp"
                 android:textColor="@color/autofill_text_secondary"
                 android:maxLines="1"

@@ -50,6 +50,7 @@
     </queries>
 
     <application
+        android:name=".MonicaApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -119,13 +120,12 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTop" />
         
-        <!-- Autofill Save Transparent Activity (新版半屏) -->
+        <!-- Autofill Save Activity (Keyguard 风格全屏) -->
         <activity
             android:name=".autofill.AutofillSaveTransparentActivity"
             android:exported="false"
-            android:theme="@style/Theme.Transparent"
+            android:theme="@style/Theme.Monica"
             android:excludeFromRecents="true"
-            android:noHistory="true"
             android:taskAffinity=":autofill_save"
             android:launchMode="singleTask"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize" />
@@ -154,6 +154,15 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTop" />
         
+        <!-- Autofill Picker Activity V2 (Keyguard Style Full Screen) -->
+        <activity
+            android:name=".autofill.AutofillPickerActivityV2"
+            android:exported="false"
+            android:theme="@style/Theme.Monica"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+        
+
         <!-- 🔐 Password Suggestion Activity (Strong Password Generator) -->
         <activity
             android:name=".autofill.PasswordSuggestionActivity"

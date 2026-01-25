@@ -9,11 +9,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,31 +26,63 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.data.PasswordEntry
 
 /**
+ * 密码列表项操作类型
+ */
+sealed class PasswordItemAction {
+    /** 自动填充（不保存URI） */
+    data class Autofill(val password: PasswordEntry) : PasswordItemAction()
+    
+    /** 自动填充并保存应用或网站信息 */
+    data class AutofillAndSaveUri(val password: PasswordEntry) : PasswordItemAction()
+    
+    /** 复制用户名 */
+    data class CopyUsername(val password: PasswordEntry) : PasswordItemAction()
+    
+    /** 复制密码 */
+    data class CopyPassword(val password: PasswordEntry) : PasswordItemAction()
+    
+    /** 查看详情 */
+    data class ViewDetails(val password: PasswordEntry) : PasswordItemAction()
+}
+
+/**
  * 全新设计的密码列表项
  * 
  * 设计特点:
  * - 更大的触摸区域 (最小56dp高度)
  * - 清晰的视觉层级
  * - 美观的图标展示
- * - 良好的间距和留白
+ * - 支持 Dropdown 菜单选择操作
  * 
  * @param password 密码条目
- * @param onItemClick 点击回调
+ * @param showDropdownMenu 是否显示 Dropdown 菜单模式
+ * @param onAction 操作回调（Dropdown模式）
+ * @param onItemClick 点击回调（简单模式）
  * @param modifier 修饰符
  */
 @Composable
 fun PasswordListItem(
     password: PasswordEntry,
-    onItemClick: () -> Unit,
+    showDropdownMenu: Boolean = false,
+    onAction: ((PasswordItemAction) -> Unit)? = null,
+    onItemClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var expanded by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onItemClick),
+            .clickable {
+                if (showDropdownMenu && onAction != null) {
+                    expanded = true
+                } else {
+                    onItemClick?.invoke()
+                }
+            },
         color = MaterialTheme.colorScheme.surface
     ) {
-        Row(
+        Box {
+            Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -97,6 +131,53 @@ fun PasswordListItem(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                }
+            }
+        }
+            
+            // Dropdown 菜单
+            if (showDropdownMenu && onAction != null) {
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    // 自动填充
+                    DropdownMenuItem(
+                        text = { Text("自动填充") },
+                        leadingIcon = {
+                            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+                        },
+                        onClick = {
+                            expanded = false
+                            onAction(PasswordItemAction.Autofill(password))
+                        }
+                    )
+                    
+                    // 自动填充并保存URI
+                    DropdownMenuItem(
+                        text = { Text("自动填充并保存URI") },
+                        leadingIcon = {
+                            Icon(Icons.Outlined.Save, contentDescription = null)
+                        },
+                        onClick = {
+                            expanded = false
+                            onAction(PasswordItemAction.AutofillAndSaveUri(password))
+                        }
+                    )
+                    
+                    HorizontalDivider()
+                    
+                    // 查看详情
+                    DropdownMenuItem(
+                        text = { Text("查看详情") },
+                        leadingIcon = {
+                            Icon(Icons.Outlined.Info, contentDescription = null)
+                        },
+                        onClick = {
+                            expanded = false
+                            onAction(PasswordItemAction.ViewDetails(password))
+                        }
+                    )
                 }
             }
         }
@@ -231,3 +312,145 @@ fun AppIcon(
     }
 }
 
+/**
+ * 建议密码列表项 - 高亮样式
+ * 
+ * 用于显示匹配当前上下文的建议密码，使用强调色背景
+ */
+@Composable
+fun SuggestedPasswordListItem(
+    password: PasswordEntry,
+    onAction: (PasswordItemAction) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { expanded = true },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 图标区域
+                AppIconOrFallback(
+                    password = password,
+                    modifier = Modifier.size(44.dp)
+                )
+                
+                // 文本信息区域
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = password.title.ifEmpty { password.username },
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    
+                    if (password.title.isNotEmpty() && password.username.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = password.username,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            
+            // Dropdown 菜单 - 参考 Keyguard 样式
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                // 自动填充
+                DropdownMenuItem(
+                    text = { Text("自动填充") },
+                    leadingIcon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onAction(PasswordItemAction.Autofill(password))
+                    }
+                )
+                
+                // 自动填充并保存应用或网站信息
+                DropdownMenuItem(
+                    text = { Text("自动填充并保存应用或网站信息") },
+                    leadingIcon = { Icon(Icons.Outlined.Save, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onAction(PasswordItemAction.AutofillAndSaveUri(password))
+                    }
+                )
+                
+                HorizontalDivider()
+                
+                // 复制用户名
+                DropdownMenuItem(
+                    text = { 
+                        Column {
+                            Text("复制用户名")
+                            Text(
+                                text = password.username,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onAction(PasswordItemAction.CopyUsername(password))
+                    }
+                )
+                
+                // 复制密码
+                DropdownMenuItem(
+                    text = { Text("复制密码") },
+                    leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onAction(PasswordItemAction.CopyPassword(password))
+                    }
+                )
+                
+                HorizontalDivider()
+                
+                // 查看详情
+                DropdownMenuItem(
+                    text = { Text("查看详情") },
+                    leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                    trailingIcon = { 
+                        Icon(
+                            Icons.Default.KeyboardArrowRight, 
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        ) 
+                    },
+                    onClick = {
+                        expanded = false
+                        onAction(PasswordItemAction.ViewDetails(password))
+                    }
+                )
+            }
+        }
+    }
+}

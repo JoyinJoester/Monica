@@ -35,7 +35,8 @@ object PasswordSaveHelper {
         val confirmPassword: String? = null,
         val packageName: String,
         val webDomain: String?,
-        val isNewPasswordScenario: Boolean = false
+        val isNewPasswordScenario: Boolean = false,
+        val keepassDatabaseId: Long? = null
     ) {
         /**
          * 验证保存数据的有效性
@@ -405,6 +406,7 @@ object PasswordSaveHelper {
             appPackageName = saveData.packageName,
             appName = appName,
             notes = if (saveData.isNewPasswordScenario) "通过自动填充保存(注册)" else "通过自动填充保存",
+            keepassDatabaseId = saveData.keepassDatabaseId,
             createdAt = Date(),
             updatedAt = Date()
         )
@@ -428,6 +430,7 @@ object PasswordSaveHelper {
         return existing.copy(
             password = encryptedPassword,
             updatedAt = Date(),
+            keepassDatabaseId = saveData.keepassDatabaseId ?: existing.keepassDatabaseId, // Update if new ID provided, else keep existing? Or should SaveData always have it? If UI selects it, SaveData has it.
             notes = existing.notes + "\n[${Date()}] 通过自动填充更新密码"
         )
     }

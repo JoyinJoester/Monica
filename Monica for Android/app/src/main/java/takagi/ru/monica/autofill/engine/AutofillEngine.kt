@@ -209,7 +209,20 @@ class AutofillEngine(
         // 按优先级应用策略
         val sortedStrategies = strategies.sortedByDescending { it.priority }
         
+        // 标记是否已找到高置信度匹配（精确匹配或域名匹配）
+        var hasHighConfidenceMatches = false
+        
         for (strategy in sortedStrategies) {
+            // 如果已有高置信度匹配，跳过模糊匹配策略
+            if (hasHighConfidenceMatches && strategy.name == "FuzzyMatcher") {
+                AutofillLogger.d(
+                    AutofillLogCategory.MATCHING,
+                    "跳过模糊匹配 - 已有精确匹配",
+                    mapOf("skippedStrategy" to strategy.name)
+                )
+                continue
+            }
+            
             if (!strategy.supports(context)) {
                 AutofillLogger.d(
                     AutofillLogCategory.MATCHING,
@@ -226,6 +239,15 @@ class AutofillEngine(
                 if (match.entry.id !in usedEntries) {
                     allMatches.add(match)
                     usedEntries.add(match.entry.id)
+                    
+                    // 检测高置信度匹配
+                    if (match.matchType in listOf(
+                        PasswordMatch.MatchType.EXACT_DOMAIN,
+                        PasswordMatch.MatchType.EXACT_PACKAGE,
+                        PasswordMatch.MatchType.SUBDOMAIN
+                    ) && match.score >= 70) {
+                        hasHighConfidenceMatches = true
+                    }
                 }
             }
             
@@ -235,7 +257,8 @@ class AutofillEngine(
                 mapOf(
                     "strategy" to strategy.name,
                     "matches" to matches.size,
-                    "totalMatches" to allMatches.size
+                    "totalMatches" to allMatches.size,
+                    "hasHighConfidence" to hasHighConfidenceMatches
                 )
             )
         }
@@ -249,7 +272,7 @@ class AutofillEngine(
      */
     private fun filterAndSort(matches: List<PasswordMatch>): List<PasswordMatch> {
         return matches
-            .filter { it.score >= 60 } // 过滤低分匹配
+            .filter { it.score >= 70 } // 过滤低分匹配 - 提高阈值以减少不相关建议
             .sortedWith(
                 compareByDescending<PasswordMatch> { it.score }
                     .thenByDescending { it.matchType.ordinal }

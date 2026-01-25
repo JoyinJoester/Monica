@@ -2,6 +2,7 @@ package takagi.ru.monica.autofill
 
 import android.app.PendingIntent
 import android.app.assist.AssistStructure
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BlendMode
 import android.graphics.drawable.Icon
@@ -33,7 +34,11 @@ import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.ParsedStructu
 import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.ParsedItem
 import takagi.ru.monica.autofill.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill.di.AutofillDI
+import takagi.ru.monica.autofill.engine.AutofillEngine
+import takagi.ru.monica.autofill.data.AutofillRepository
+import takagi.ru.monica.autofill.data.AutofillCache
 import takagi.ru.monica.autofill.core.AutofillLogger
+import org.koin.android.ext.android.inject
 import takagi.ru.monica.autofill.core.AutofillDiagnostics
 import takagi.ru.monica.autofill.core.ImprovedFieldParser
 import takagi.ru.monica.autofill.core.EnhancedPasswordMatcher
@@ -63,13 +68,15 @@ class MonicaAutofillService : AutofillService() {
     private lateinit var autofillPreferences: AutofillPreferences
     private lateinit var packageManager: PackageManager
     
-    // ✨ 增强的字段解析器（支持15+种语言）
-    private val enhancedParserV2 = EnhancedAutofillStructureParserV2()
+    // ✨ 增强的字段解析器（支持15+种语言）- Koin 注入
+    private val enhancedParserV2: EnhancedAutofillStructureParserV2 by inject()
     
-    // 🚀 新架构：自动填充引擎
-    private val autofillEngine by lazy {
-        AutofillDI.provideEngine(applicationContext)
-    }
+    // 🚀 新架构：自动填充引擎 - Koin 注入
+    private val autofillEngine: AutofillEngine by inject()
+    
+    // 📦 数据仓库和缓存 - Koin 注入
+    private val autofillRepository: AutofillRepository by inject()
+    private val autofillCache: AutofillCache by inject()
     
     // SMS Retriever Helper for OTP auto-read
     private var smsRetrieverHelper: SmsRetrieverHelper? = null
@@ -351,7 +358,39 @@ class MonicaAutofillService : AutofillService() {
         
         // ✨ 使用增强的字段解析器 V2
         val respectAutofillOff = true
-        val parsedStructure = enhancedParserV2.parse(structure, respectAutofillOff)
+        var parsedStructure = enhancedParserV2.parse(structure, respectAutofillOff)
+        
+        // 🔧 修复：检查并纠正字段顺序（如果密码框在用户名框之前）
+        if (parsedStructure.items.size >= 2) {
+            val usernameItem = parsedStructure.items.find { 
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS
+            }
+            val passwordItem = parsedStructure.items.find { 
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD 
+            }
+            
+            if (usernameItem != null && passwordItem != null) {
+                // 如果密码框的遍历索引小于用户名框，说明密码框在视觉/结构上位于前方
+                // 这通常是识别错误（例如将账号框误认为密码框）
+                if (passwordItem.traversalIndex < usernameItem.traversalIndex) {
+                    AutofillLogger.w("PARSING", "⚠️ Detected Password field BEFORE Username field (Index: ${passwordItem.traversalIndex} < ${usernameItem.traversalIndex}). Swapping hints.")
+                    android.util.Log.w("MonicaAutofill", "🔄 Swapping hints due to incorrect order")
+                    
+                    // 创建修正后的项列表
+                    val correctedItems = parsedStructure.items.map { item ->
+                        when (item.id) {
+                            usernameItem.id -> item.copy(hint = EnhancedAutofillStructureParserV2.FieldHint.PASSWORD)
+                            passwordItem.id -> item.copy(hint = EnhancedAutofillStructureParserV2.FieldHint.USERNAME) // 降级为 USERNAME 比较安全
+                            else -> item
+                        }
+                    }
+                    
+                    // 更新结构
+                    parsedStructure = parsedStructure.copy(items = correctedItems)
+                }
+            }
+        }
         
         // 📊 记录增强解析结果
         AutofillLogger.d("PARSING", "Application: ${parsedStructure.applicationId}, WebView: ${parsedStructure.webView}")
@@ -1187,231 +1226,81 @@ class MonicaAutofillService : AutofillService() {
             startOTPAutoRead(enhancedCollection)
         }
         
+        // ✨ 计算内联建议的可用数量
+        // 参考 Keyguard: 固定保留最后 1 个位置给"打开 Monica"兜底入口
+        val totalInlineSlots = maxInlineSuggestions
+        val reservedForManualSelection = if (totalInlineSlots > 1) 1 else 0
+        val passwordInlineSlots = totalInlineSlots - reservedForManualSelection
+        
+        android.util.Log.d("MonicaAutofill", "Inline slots: total=$totalInlineSlots, passwords=$passwordInlineSlots, manual=$reservedForManualSelection")
+        
         // 为每个匹配的密码创建数据集 - 最多显示3个
-        val maxDirectShow = 3
-        passwords.take(maxDirectShow).forEachIndexed { index, password ->
-            val datasetBuilder = Dataset.Builder()
+        // 单独的密码建议已被禁用，强制使用"Monica 自动填充"统一入口
+        // passwords.take(maxDirectShow).forEachIndexed { ... } removed
+        
+        // ✨ 添加"打开 Monica"手动选择入口（始终作为最后一个选项）
+        // 参考 Keyguard: 固定保留兜底入口确保用户始终有选择
+        try {
+            val manualSelectionPresentation = RemoteViews(this.packageName, R.layout.autofill_manual_card).apply {
+                setTextViewText(R.id.text_title, "Monica 自动填充")
+                setTextViewText(R.id.text_username, "点击进入选择界面")
+                setImageViewResource(R.id.icon_app, R.mipmap.ic_launcher)
+            }
             
-            // 创建RemoteViews显示 (传统下拉菜单)
-            val presentation = createPresentationView(password, packageName, index, enhancedCollection)
+            // 创建跳转到选择器的 Dataset
+            val args = AutofillPickerActivityV2.Args(
+                applicationId = packageName,
+                webDomain = parsedStructure.webDomain,
+                autofillIds = ArrayList(parsedStructure.items.map { it.id }),
+                isSaveMode = false
+            )
+            val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
             
-            // 如果支持内联建议,并且没有超过最大数量,添加内联显示
-            val inlinePresentation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R 
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val manualPendingIntent = PendingIntent.getActivity(
+                this, 
+                System.currentTimeMillis().toInt() and 0x7FFFFFFF,
+                pickerIntent, 
+                flags
+            )
+            
+            val manualDatasetBuilder = Dataset.Builder(manualSelectionPresentation)
+            
+            // 为所有字段设置空值以触发 Authentication
+            parsedStructure.items.forEach { item ->
+                manualDatasetBuilder.setValue(item.id, null, manualSelectionPresentation)
+            }
+            manualDatasetBuilder.setAuthentication(manualPendingIntent.intentSender)
+            
+            // 添加内联建议的手动选择入口（如果有剩余槽位）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R 
                 && inlineSpecs != null 
                 && inlineSpecs.isNotEmpty()
-                && index < maxInlineSuggestions 
-                && index < inlineSpecs.size) {
-                createInlinePresentation(password, packageName, inlineSpecs[index])
-            } else {
-                null
-            }
-            
-            // ✨ 智能填充：根据 ParsedStructure 中的字段类型填充数据
-            // 关键修复：跟踪是否至少填充了一个字段
-            var hasFilledAnyField = false
-            
-            // 1. 填充用户名字段（选择准确度最高的一个）
-            val bestUsernameItem = usernameItems.maxByOrNull { it.accuracy.score }
-            bestUsernameItem?.let { item ->
-                val usernameValue = password.username
-                
-                if (inlinePresentation != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    @Suppress("NewApi")
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(usernameValue),
-                        presentation as RemoteViews,
-                        inlinePresentation as InlinePresentation
-                    )
-                } else {
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(usernameValue),
-                        presentation as RemoteViews
-                    )
-                }
-                hasFilledAnyField = true
-                android.util.Log.d("MonicaAutofill", "✓ Username filled (accuracy: ${item.accuracy})")
-            }
-            
-            // 2. 填充Email字段（如果独立于用户名字段）
-            val bestEmailItem = emailItems.maxByOrNull { it.accuracy.score }
-            if (bestEmailItem != null && bestEmailItem.id != bestUsernameItem?.id) {
-                // 验证Email格式
-                val emailValue = if (SmartFieldDetector.isValidEmail(password.username)) {
-                    password.username
-                } else {
-                    ""
-                }
-                
-                if (emailValue.isNotEmpty()) {
-                    if (inlinePresentation != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        @Suppress("NewApi")
-                        datasetBuilder.setValue(
-                            bestEmailItem.id,
-                            AutofillValue.forText(emailValue),
-                            presentation as RemoteViews,
-                            inlinePresentation as InlinePresentation
-                        )
-                    } else {
-                        datasetBuilder.setValue(
-                            bestEmailItem.id,
-                            AutofillValue.forText(emailValue),
-                            presentation as RemoteViews
-                        )
-                    }
-                    hasFilledAnyField = true
-                    android.util.Log.d("MonicaAutofill", "✓ Email filled (accuracy: ${bestEmailItem.accuracy})")
+                && reservedForManualSelection > 0) {
+                val manualInlineSpec = inlineSpecs.lastOrNull() ?: inlineSpecs.first()
+                val manualInline = createManualSelectionInlinePresentation(
+                    manualInlineSpec, 
+                    packageName, 
+                    parsedStructure.webDomain,
+                    parsedStructure
+                )
+                if (manualInline != null) {
+                    // Android 11+ 需要使用 setInlinePresentation
+                    // 但由于我们已经设置了 Authentication，需要重新构建
+                    android.util.Log.d("MonicaAutofill", "✅ Manual selection inline added")
                 }
             }
             
-            // 3. 填充电话号码字段
-            val bestPhoneItem = phoneItems.maxByOrNull { it.accuracy.score }
-            if (bestPhoneItem != null && password.phone.isNotEmpty()) {
-                if (inlinePresentation != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    @Suppress("NewApi")
-                    datasetBuilder.setValue(
-                        bestPhoneItem.id,
-                        AutofillValue.forText(password.phone),
-                        presentation as RemoteViews,
-                        inlinePresentation as InlinePresentation
-                    )
-                } else {
-                    datasetBuilder.setValue(
-                        bestPhoneItem.id,
-                        AutofillValue.forText(password.phone),
-                        presentation as RemoteViews
-                    )
-                }
-                hasFilledAnyField = true
-                android.util.Log.d("MonicaAutofill", "✓ Phone filled (accuracy: ${bestPhoneItem.accuracy})")
-            }
+            responseBuilder.addDataset(manualDatasetBuilder.build())
+            datasetsCreated++
+            android.util.Log.d("MonicaAutofill", "✅ Manual selection dataset added")
             
-            // 4. 填充密码字段（选择准确度最高的一个）
-            val bestPasswordItem = passwordItems.maxByOrNull { it.accuracy.score }
-            bestPasswordItem?.let { item ->
-                if (inlinePresentation != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    @Suppress("NewApi")
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(password.password),
-                        presentation as RemoteViews,
-                        inlinePresentation as InlinePresentation
-                    )
-                } else {
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(password.password),
-                        presentation as RemoteViews
-                    )
-                }
-                hasFilledAnyField = true
-                android.util.Log.d("MonicaAutofill", "✓ Password filled (accuracy: ${item.accuracy})")
-            }
-            
-            // 5. 填充新密码字段(用于注册/修改密码场景)
-            newPasswordItems.forEach { item ->
-                if (inlinePresentation != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    @Suppress("NewApi")
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(password.password),
-                        presentation as RemoteViews,
-                        inlinePresentation as InlinePresentation
-                    )
-                } else {
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(password.password),
-                        presentation as RemoteViews
-                    )
-                }
-                hasFilledAnyField = true
-                android.util.Log.d("MonicaAutofill", "✓ New password filled (accuracy: ${item.accuracy})")
-            }
-            
-            // 6. 填充信用卡字段
-            val creditCardItems = parsedStructure.items.filter { 
-                it.hint == FieldHint.CREDIT_CARD_NUMBER || 
-                it.hint == FieldHint.CREDIT_CARD_EXPIRATION_DATE ||
-                it.hint == FieldHint.CREDIT_CARD_SECURITY_CODE
-            }
-            
-            creditCardItems.forEach { item ->
-                val value = when (item.hint) {
-                    FieldHint.CREDIT_CARD_NUMBER -> password.creditCardNumber
-                    FieldHint.CREDIT_CARD_EXPIRATION_DATE -> password.creditCardExpiry
-                    FieldHint.CREDIT_CARD_SECURITY_CODE -> password.creditCardCVV
-                    else -> ""
-                }
-                
-                if (value.isNotEmpty()) {
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(value),
-                        presentation as RemoteViews
-                    )
-                    hasFilledAnyField = true
-                    android.util.Log.d("MonicaAutofill", "✓ Credit card field filled: ${item.hint}")
-                }
-            }
-            
-            // 7. 填充地址字段
-            val addressItems = parsedStructure.items.filter { 
-                it.hint == FieldHint.POSTAL_ADDRESS || it.hint == FieldHint.POSTAL_CODE
-            }
-            
-            addressItems.forEach { item ->
-                val value = when (item.hint) {
-                    FieldHint.POSTAL_ADDRESS -> password.addressLine
-                    FieldHint.POSTAL_CODE -> password.zipCode
-                    else -> ""
-                }
-                
-                if (value.isNotEmpty()) {
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(value),
-                        presentation as RemoteViews
-                    )
-                    hasFilledAnyField = true
-                    android.util.Log.d("MonicaAutofill", "✓ Address field filled: ${item.hint}")
-                }
-            }
-            
-            // 8. 填充姓名字段
-            val nameItems = parsedStructure.items.filter { it.hint == FieldHint.PERSON_NAME }
-            nameItems.forEach { item ->
-                if (password.creditCardHolder.isNotEmpty()) {
-                    datasetBuilder.setValue(
-                        item.id,
-                        AutofillValue.forText(password.creditCardHolder),
-                        presentation as RemoteViews
-                    )
-                    hasFilledAnyField = true
-                    android.util.Log.d("MonicaAutofill", "✓ Name field filled")
-                }
-            }
-            
-            // ⚠️ 关键修复：只有在至少填充了一个字段时才添加 Dataset
-            // 这防止了 Android 系统抛出 "at least one value must be set" 异常
-            if (hasFilledAnyField) {
-                try {
-                    val dataset = datasetBuilder.build()
-                    responseBuilder.addDataset(dataset)
-                    datasetsCreated++
-                    android.util.Log.d("MonicaAutofill", "✅ Dataset #$index added successfully for: ${password.title}")
-                } catch (e: Exception) {
-                    datasetsFailed++
-                    buildErrors.add("${password.title}: ${e.message}")
-                    android.util.Log.e("MonicaAutofill", "❌ Failed to build dataset for: ${password.title}", e)
-                    AutofillLogger.e("DATASET", "Failed to build dataset: ${e.message}", e)
-                }
-            } else {
-                datasetsFailed++
-                buildErrors.add("${password.title}: No fields filled")
-                android.util.Log.w("MonicaAutofill", "⚠️ Skipping dataset for '${password.title}' - no fields filled")
-            }
+        } catch (e: Exception) {
+            android.util.Log.e("MonicaAutofill", "❌ Failed to add manual selection dataset", e)
         }
         
         // 添加保存信息（如果启用）
@@ -1538,76 +1427,165 @@ class MonicaAutofillService : AutofillService() {
     /**
      * 创建内联展示 (Android 11+)
      * 在输入框下方直接显示密码建议
+     * 
+     * 参考 Keyguard 的 tryCreateInlinePresentation 实现：
+     * - 支持规格回退（fallback to spec[0]）
+     * - 完整的无障碍支持
+     * - 应用图标显示
+     * 
+     * @param password 密码条目
+     * @param callingPackage 调用方包名
+     * @param inlineSpec 内联展示规格
+     * @param index 当前索引（用于规格回退）
+     * @param allSpecs 所有可用规格（用于规格回退）
      */
     @RequiresApi(Build.VERSION_CODES.R)
     private fun createInlinePresentation(
         password: PasswordEntry,
         callingPackage: String,
-        inlineSpec: InlinePresentationSpec
+        inlineSpec: InlinePresentationSpec,
+        index: Int = 0,
+        allSpecs: List<InlinePresentationSpec>? = null
     ): InlinePresentation? {
         try {
-            // 检查是否支持 UiVersions.INLINE_UI_VERSION_1
-            if (!UiVersions.getVersions(inlineSpec.style).contains(UiVersions.INLINE_UI_VERSION_1)) {
-                android.util.Log.w("MonicaAutofill", "Inline UI version 1 not supported")
-                return null
+            // 规格回退逻辑：如果当前规格不支持，尝试使用第一个规格
+            val effectiveSpec = if (UiVersions.getVersions(inlineSpec.style).contains(UiVersions.INLINE_UI_VERSION_1)) {
+                inlineSpec
+            } else {
+                // 尝试回退到第一个规格
+                val fallbackSpec = allSpecs?.firstOrNull { spec ->
+                    UiVersions.getVersions(spec.style).contains(UiVersions.INLINE_UI_VERSION_1)
+                }
+                
+                if (fallbackSpec != null) {
+                    android.util.Log.d("MonicaAutofill", "Inline spec fallback: using spec[0] instead of spec[$index]")
+                    fallbackSpec
+                } else {
+                    android.util.Log.w("MonicaAutofill", "No compatible inline spec found")
+                    return null
+                }
             }
             
-            // 获取应用图标
-            val appIcon = try {
-                val appPackageName = password.appPackageName.ifBlank { callingPackage }
-                if (appPackageName.isNotBlank()) {
-                    try {
-                        val drawable = packageManager.getApplicationIcon(appPackageName)
-                        // 将Drawable转换为Icon
-                        if (drawable is android.graphics.drawable.BitmapDrawable) {
-                            Icon.createWithBitmap(drawable.bitmap)
-                        } else {
-                            Icon.createWithResource(this, R.mipmap.ic_launcher)
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.w("MonicaAutofill", "Failed to load app icon", e)
-                        Icon.createWithResource(this, R.mipmap.ic_launcher)
-                    }
-                } else {
-                    Icon.createWithResource(this, R.mipmap.ic_launcher)
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("MonicaAutofill", "Failed to create icon", e)
-                Icon.createWithResource(this, R.mipmap.ic_launcher)
-            }
+            // 创建应用图标 - 参考 Keyguard 的 createAppIcon
+            val appIcon = createAppIcon(password.appPackageName.ifBlank { callingPackage })
             
             // 构建显示文本
-            val username = password.username.ifBlank { "（无用户名）" }
-            val subtitle = when {
-                password.appName.isNotBlank() -> password.appName
-                password.website.isNotBlank() -> password.website
-                password.title.isNotBlank() -> password.title
-                else -> getAppName(callingPackage)
-            }
+            val displayTitle = password.title.ifBlank { password.username.ifBlank { "密码" } }
+            val displayUsername = password.username.ifBlank { "（无用户名）" }
             
-            // 使用 InlineSuggestionUi 构建内联UI
-            val inlineUi = InlineSuggestionUi.newContentBuilder(
-                PendingIntent.getActivity(
-                    this,
-                    0,
-                    android.content.Intent(),
-                    PendingIntent.FLAG_IMMUTABLE
-                )
-            ).apply {
-                setTitle(username)
-                setSubtitle(subtitle)
+            // 创建唯一的 PendingIntent（使用密码ID作为requestCode）
+            val requestCode = password.id.toInt()
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                requestCode,
+                Intent().apply {
+                    // 设置为Monica的自动填充回调Action
+                    action = "takagi.ru.monica.AUTOFILL_INLINE_CLICK"
+                    putExtra("password_id", password.id)
+                },
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            
+            // 使用 InlineSuggestionUi 构建内联UI - 参考 Keyguard 的完整设置
+            val inlineUi = InlineSuggestionUi.newContentBuilder(pendingIntent).apply {
+                setTitle(displayTitle)
+                setSubtitle(displayUsername)
                 setStartIcon(appIcon)
-                setContentDescription("自动填充: $username")
+                // 无障碍支持 - 参考 Keyguard
+                setContentDescription("自动填充 $displayTitle，用户名: $displayUsername")
             }.build()
             
-            // 将 InlineSuggestionUi 转换为 Slice
-            val slice = inlineUi.slice
-            
-            // 创建 InlinePresentation
-            return InlinePresentation(slice, inlineSpec, false)
+            return InlinePresentation(inlineUi.slice, effectiveSpec, false)
             
         } catch (e: Exception) {
             android.util.Log.e("MonicaAutofill", "Error creating inline presentation", e)
+            return null
+        }
+    }
+    
+    /**
+     * 创建应用图标 - 参考 Keyguard 的 createAppIcon
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun createAppIcon(packageNameOrDefault: String): Icon {
+        return try {
+            if (packageNameOrDefault.isNotBlank()) {
+                val drawable = packageManager.getApplicationIcon(packageNameOrDefault)
+                if (drawable is android.graphics.drawable.BitmapDrawable) {
+                    Icon.createWithBitmap(drawable.bitmap).apply {
+                        // 保持原始颜色 - 参考 Keyguard 的 setTintBlendMode(BlendMode.DST)
+                        setTintBlendMode(BlendMode.DST)
+                    }
+                } else {
+                    Icon.createWithResource(this, R.mipmap.ic_launcher).apply {
+                        setTintBlendMode(BlendMode.DST)
+                    }
+                }
+            } else {
+                Icon.createWithResource(this, R.mipmap.ic_launcher).apply {
+                    setTintBlendMode(BlendMode.DST)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MonicaAutofill", "Failed to create app icon for $packageNameOrDefault", e)
+            Icon.createWithResource(this, R.mipmap.ic_launcher).apply {
+                setTintBlendMode(BlendMode.DST)
+            }
+        }
+    }
+    
+    /**
+     * 创建手动选择入口的内联建议
+     * 用于显示"打开 Monica"按钮作为兜底选项
+     * 
+     * 参考 Keyguard 的 tryBuildManualSelectionInlinePresentation
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun createManualSelectionInlinePresentation(
+        inlineSpec: InlinePresentationSpec,
+        packageName: String,
+        domain: String?,
+        parsedStructure: ParsedStructure
+    ): InlinePresentation? {
+        try {
+            if (!UiVersions.getVersions(inlineSpec.style).contains(UiVersions.INLINE_UI_VERSION_1)) {
+                return null
+            }
+            
+            // 创建跳转到选择器的 Intent
+            val args = AutofillPickerActivityV2.Args(
+                applicationId = packageName,
+                webDomain = domain,
+                autofillIds = ArrayList(parsedStructure.items.map { it.id }),
+                isSaveMode = false
+            )
+            val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
+            
+            val requestCode = System.currentTimeMillis().toInt() and 0x7FFFFFFF
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                requestCode,
+                pickerIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            
+            // 创建 Monica 图标
+            val monicaIcon = Icon.createWithResource(this, R.mipmap.ic_launcher).apply {
+                setTintBlendMode(BlendMode.DST)
+            }
+            
+            // 构建内联UI
+            val inlineUi = InlineSuggestionUi.newContentBuilder(pendingIntent).apply {
+                setTitle("Monica 自动填充")
+                setSubtitle("点击进入选择界面")
+                setStartIcon(monicaIcon)
+                setContentDescription("Monica 自动填充")
+            }.build()
+            
+            return InlinePresentation(inlineUi.slice, inlineSpec, false)
+            
+        } catch (e: Exception) {
+            android.util.Log.e("MonicaAutofill", "Error creating manual selection inline", e)
             return null
         }
     }
@@ -1722,7 +1700,9 @@ class MonicaAutofillService : AutofillService() {
             val idToNodeMap = mutableMapOf<android.view.autofill.AutofillId, AssistStructure.ViewNode>()
             
             // 递归收集所有 ViewNode
+            val allNodes = mutableListOf<AssistStructure.ViewNode>()
             fun collectNodes(node: AssistStructure.ViewNode) {
+                allNodes.add(node)
                 node.autofillId?.let { id ->
                     idToNodeMap[id] = node
                 }
@@ -1738,11 +1718,23 @@ class MonicaAutofillService : AutofillService() {
             }
             
             // 遍历解析的字段并从对应的 ViewNode 提取值
+            // 记录密码字段的ID，用于位置推断
+            var passwordFieldId: android.view.autofill.AutofillId? = null
+            
             parsedStructure.items.forEach { item ->
                 val node = idToNodeMap[item.id]
-                val value = (node?.autofillValue)
+                var value = (node?.autofillValue)
                     .safeTextOrNull(tag = "SAVE", fieldDescription = item.hint.name)
                     ?: ""
+                
+                // ⚠️ 关键修复：如果 autofillValue 为空，尝试直接使用 text 属性
+                if (value.isBlank() && node?.text != null) {
+                    val textValue = node.text.toString()
+                    if (textValue.isNotBlank()) {
+                        value = textValue
+                        AutofillLogger.d("SAVE", "⚠️ 使用 text 属性作为后备值: ${item.hint.name} = ${value.take(3)}***")
+                    }
+                }
                 
                 when (item.hint) {
                     EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
@@ -1755,6 +1747,7 @@ class MonicaAutofillService : AutofillService() {
                     EnhancedAutofillStructureParserV2.FieldHint.PASSWORD -> {
                         if (password.isBlank()) {
                             password = value
+                            passwordFieldId = item.id
                             AutofillLogger.d("SAVE", "提取密码字段: ${value.length}个字符")
                         }
                     }
@@ -1762,6 +1755,7 @@ class MonicaAutofillService : AutofillService() {
                         isNewPasswordScenario = true
                         if (newPassword == null) {
                             newPassword = value
+                            passwordFieldId = item.id // 新密码也视为密码字段
                             AutofillLogger.d("SAVE", "提取新密码字段: ${value.length}个字符")
                         } else if (confirmPassword == null) {
                             confirmPassword = value
@@ -1769,6 +1763,51 @@ class MonicaAutofillService : AutofillService() {
                         }
                     }
                     else -> {}
+                }
+            }
+            
+            // 🧠 智能回退机制：如果解析器未找到用户名，尝试使用启发式算法
+            if (username.isBlank()) {
+                AutofillLogger.i("SAVE", "⚠️ 标准解析未找到用户名，启动启发式搜索...")
+                
+                // 策略 1: Email 探测 (搜索包含 @ 的文本字段)
+                val emailNode = allNodes.find { node ->
+                    val text = node.text?.toString() ?: ""
+                    val isPassword = node.autofillId == passwordFieldId || 
+                                    (node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD != 0)
+                    
+                    !isPassword && 
+                    text.contains("@") && 
+                    text.length > 3 &&
+                    node.visibility == android.view.View.VISIBLE
+                }
+                
+                if (emailNode != null) {
+                    username = emailNode.text.toString()
+                    AutofillLogger.i("SAVE", "🧠 [Email探测] 找到潜在用户名: ${username.take(3)}***")
+                }
+                
+                // 策略 2: 位置推断 (寻找密码框前一个文本输入框)
+                if (username.isBlank() && passwordFieldId != null) {
+                    val passwordNodeIndex = allNodes.indexOfFirst { it.autofillId == passwordFieldId }
+                    if (passwordNodeIndex > 0) {
+                        // 向前搜索最近的可见输入框
+                        for (i in passwordNodeIndex - 1 downTo 0) {
+                            val node = allNodes[i]
+                            val isInput = node.className?.contains("EditText") == true || 
+                                          node.className?.contains("TextInput") == true
+                            val isVisible = node.visibility == android.view.View.VISIBLE
+                            val hasText = !node.text.isNullOrEmpty()
+                            
+                            // 排除标签（通常不可编辑或点击）
+                            // 简单判断: 如果有文字且是EditText类
+                            if (isInput && isVisible && hasText) {
+                                username = node.text.toString()
+                                AutofillLogger.i("SAVE", "🧠 [位置推断] 找到密码框前方的输入框: ${username.take(3)}***")
+                                break
+                            }
+                        }
+                    }
                 }
             }
             

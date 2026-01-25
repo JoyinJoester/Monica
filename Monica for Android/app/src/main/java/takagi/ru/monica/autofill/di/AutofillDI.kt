@@ -1,6 +1,9 @@
 package takagi.ru.monica.autofill.di
 
 import android.content.Context
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
+import org.koin.java.KoinJavaComponent.getKoin
 import takagi.ru.monica.autofill.data.*
 import takagi.ru.monica.autofill.strategy.*
 import takagi.ru.monica.autofill.engine.AutofillEngine
@@ -14,46 +17,60 @@ import takagi.ru.monica.autofill.AutofillPreferences
 /**
  * 自动填充依赖注入容器
  * 
- * 提供单例模式的依赖管理,避免重复创建对象
+ * ⚠️ 兼容层 - 渐进迁移到 Koin
  * 
- * 使用示例:
+ * 此对象现在作为 Koin 的兼容层，内部调用 Koin 获取依赖。
+ * 新代码应直接使用 Koin 注入，例如:
  * ```kotlin
- * val engine = AutofillDI.provideEngine(context)
+ * class MyService : KoinComponent {
+ *     private val engine: AutofillEngine by inject()
+ * }
  * ```
  * 
+ * 或者在 Activity/Service 中:
+ * ```kotlin
+ * val engine: AutofillEngine by inject()
+ * ```
+ * 
+ * @deprecated 优先使用 Koin 注入
  * @author Monica Team
  * @since 1.0
  */
-object AutofillDI {
+object AutofillDI : KoinComponent {
     
-    // ===== 单例实例 =====
+    // ===== Koin 注入的依赖 =====
     
-    @Volatile
-    private var engine: AutofillEngine? = null
+    private val koinEngine: AutofillEngine by inject()
+    private val koinRepository: AutofillRepository by inject()
+    private val koinCache: AutofillCache by inject()
     
-    @Volatile
-    private var repository: AutofillRepository? = null
-    
-    @Volatile
-    private var cache: AutofillCache? = null
-    
-    // ===== 公共API =====
-    
+    // ===== 公共API (兼容旧代码) =====
+
     /**
      * 提供自动填充引擎
      * 
-     * @param context Android Context
+     * @param context Android Context (现在被忽略，Koin 内部管理 Context)
      * @return AutofillEngine 单例
+     * @deprecated 使用 Koin 注入: `val engine: AutofillEngine by inject()`
      */
+    @Deprecated(
+        message = "使用 Koin 注入替代",
+        replaceWith = ReplaceWith(
+            "inject<AutofillEngine>()",
+            "org.koin.core.component.inject"
+        )
+    )
     fun provideEngine(context: Context): AutofillEngine {
-        return engine ?: synchronized(this) {
-            engine ?: createEngine(context).also { 
-                engine = it 
-                AutofillLogger.i(
-                    AutofillLogCategory.SERVICE,
-                    "自动填充引擎已初始化"
-                )
-            }
+        return try {
+            koinEngine
+        } catch (e: Exception) {
+            // Koin 未初始化时的回退（应用启动早期）
+            AutofillLogger.w(
+                AutofillLogCategory.SERVICE,
+                "Koin 未初始化，使用回退创建引擎",
+                mapOf("error" to (e.message ?: "unknown"))
+            )
+            createEngineFallback(context)
         }
     }
     
@@ -62,16 +79,24 @@ object AutofillDI {
      * 
      * @param context Android Context
      * @return AutofillRepository 单例
+     * @deprecated 使用 Koin 注入: `val repository: AutofillRepository by inject()`
      */
+    @Deprecated(
+        message = "使用 Koin 注入替代",
+        replaceWith = ReplaceWith(
+            "inject<AutofillRepository>()",
+            "org.koin.core.component.inject"
+        )
+    )
     fun provideRepository(context: Context): AutofillRepository {
-        return repository ?: synchronized(this) {
-            repository ?: createRepository(context).also { 
-                repository = it 
-                AutofillLogger.d(
-                    AutofillLogCategory.SERVICE,
-                    "数据仓库已初始化"
-                )
-            }
+        return try {
+            koinRepository
+        } catch (e: Exception) {
+            AutofillLogger.w(
+                AutofillLogCategory.SERVICE,
+                "Koin 未初始化，使用回退创建仓库"
+            )
+            createRepositoryFallback(context)
         }
     }
     
@@ -79,104 +104,86 @@ object AutofillDI {
      * 提供缓存
      * 
      * @return AutofillCache 单例
+     * @deprecated 使用 Koin 注入: `val cache: AutofillCache by inject()`
      */
+    @Deprecated(
+        message = "使用 Koin 注入替代",
+        replaceWith = ReplaceWith(
+            "inject<AutofillCache>()",
+            "org.koin.core.component.inject"
+        )
+    )
     fun provideCache(): AutofillCache {
-        return cache ?: synchronized(this) {
-            cache ?: AutofillCache().also { 
-                cache = it 
-                AutofillLogger.d(
-                    AutofillLogCategory.SERVICE,
-                    "缓存已初始化"
-                )
-            }
+        return try {
+            koinCache
+        } catch (e: Exception) {
+            AutofillLogger.w(
+                AutofillLogCategory.SERVICE,
+                "Koin 未初始化，使用回退创建缓存"
+            )
+            AutofillCache()
         }
     }
     
     /**
      * 重置所有单例
      * 
-     * 用于测试或重新初始化
+     * ⚠️ 注意: Koin 管理的依赖不会被重置
+     * 如需重置，请使用 Koin 的 scope 机制
      */
     fun reset() {
-        synchronized(this) {
-            engine = null
-            repository = null
-            cache = null
-            AutofillLogger.i(
-                AutofillLogCategory.SERVICE,
-                "依赖注入容器已重置"
-            )
-        }
+        AutofillLogger.i(
+            AutofillLogCategory.SERVICE,
+            "AutofillDI.reset() 调用 - Koin 管理的依赖保持不变"
+        )
     }
     
     /**
      * 清除缓存
      */
     fun clearCache() {
-        repository?.clearCache()
+        try {
+            koinRepository.clearCache()
+        } catch (e: Exception) {
+            // 忽略
+        }
         AutofillLogger.i(
             AutofillLogCategory.SERVICE,
             "缓存已清除"
         )
     }
     
-    // ===== 私有工厂方法 =====
+    // ===== 回退工厂方法 (Koin 未初始化时使用) =====
     
-    /**
-     * 创建自动填充引擎
-     */
-    private fun createEngine(context: Context): AutofillEngine {
-        val dataSource = provideRepository(context)
-        val strategies = createStrategies()
-        val preferences = loadPreferences(context)
+    private fun createEngineFallback(context: Context): AutofillEngine {
+        val dataSource = createRepositoryFallback(context)
+        val strategies = listOf(
+            DomainMatchingStrategy(),
+            PackageNameMatchingStrategy(),
+            FuzzyMatchingStrategy()
+        )
+        val preferences = AutofillPreferencesData(
+            enabled = true,
+            requireBiometric = false,
+            enableFuzzySearch = true,
+            autoSubmit = false,
+            maxSuggestions = 5,
+            enableInlineSuggestions = true,
+            enableLogging = true,
+            timeoutMs = 5000
+        )
         
         return AutofillEngineBuilder()
             .setDataSource(dataSource)
-            .apply {
-                strategies.forEach { addStrategy(it) }
-            }
+            .apply { strategies.forEach { addStrategy(it) } }
             .setPreferences(preferences)
             .build()
     }
     
-    /**
-     * 创建数据仓库
-     */
-    private fun createRepository(context: Context): AutofillRepository {
+    private fun createRepositoryFallback(context: Context): AutofillRepository {
         val database = PasswordDatabase.getDatabase(context.applicationContext)
         val passwordRepository = PasswordRepository(database.passwordEntryDao())
-        val cache = provideCache()
-        
-        return AutofillRepository(passwordRepository, cache)
-    }
-    
-    /**
-     * 创建匹配策略列表
-     */
-    private fun createStrategies(): List<MatchingStrategy> {
-        return listOf(
-            DomainMatchingStrategy(),          // 优先级 100
-            PackageNameMatchingStrategy(),     // 优先级 90
-            FuzzyMatchingStrategy()            // 优先级 50
-        )
-    }
-    
-    /**
-     * 加载用户偏好设置
-     */
-    private fun loadPreferences(context: Context): AutofillPreferencesData {
-        // val prefs = AutofillPreferences(context)
-        
-        return AutofillPreferencesData(
-            enabled = true,
-            requireBiometric = false, // TODO: 从 SharedPreferences 读取
-            enableFuzzySearch = true,
-            autoSubmit = false,
-            maxSuggestions = 5,
-            enableInlineSuggestions = true, // TODO: 从 SharedPreferences 读取
-            enableLogging = true,
-            timeoutMs = 5000
-        )
+        return AutofillRepository(passwordRepository, AutofillCache())
     }
 }
 
@@ -250,25 +257,45 @@ class AutofillLazy<T>(private val initializer: () -> T) {
  * Context 扩展函数
  * 
  * 提供便捷的依赖访问方式
+ * 
+ * @deprecated 优先在组件中使用 Koin 注入
  */
 
 /**
  * 获取自动填充引擎
+ * @deprecated 使用 Koin 注入: `val engine: AutofillEngine by inject()`
  */
+@Deprecated("使用 Koin 注入替代")
 fun Context.getAutofillEngine(): AutofillEngine {
-    return AutofillDI.provideEngine(this)
+    return try {
+        getKoin().get()
+    } catch (e: Exception) {
+        AutofillDI.provideEngine(this)
+    }
 }
 
 /**
  * 获取自动填充仓库
+ * @deprecated 使用 Koin 注入: `val repository: AutofillRepository by inject()`
  */
+@Deprecated("使用 Koin 注入替代")
 fun Context.getAutofillRepository(): AutofillRepository {
-    return AutofillDI.provideRepository(this)
+    return try {
+        getKoin().get()
+    } catch (e: Exception) {
+        AutofillDI.provideRepository(this)
+    }
 }
 
 /**
  * 获取自动填充缓存
+ * @deprecated 使用 Koin 注入: `val cache: AutofillCache by inject()`
  */
+@Deprecated("使用 Koin 注入替代")
 fun Context.getAutofillCache(): AutofillCache {
-    return AutofillDI.provideCache()
+    return try {
+        getKoin().get()
+    } catch (e: Exception) {
+        AutofillDI.provideCache()
+    }
 }

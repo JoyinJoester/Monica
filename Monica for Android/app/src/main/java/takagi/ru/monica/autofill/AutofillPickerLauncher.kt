@@ -8,8 +8,8 @@ import android.os.Build
 import android.service.autofill.Dataset
 import android.service.autofill.FillResponse
 import android.service.autofill.SaveInfo
+import android.view.autofill.AutofillId
 import android.widget.RemoteViews
-import androidx.annotation.RequiresApi
 import kotlinx.coroutines.flow.first
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
@@ -22,17 +22,10 @@ import takagi.ru.monica.data.PasswordEntry
 object AutofillPickerLauncher {
     
     /**
-     * 创建直接列表响应
+     * 创建直接列表响应 (单一入口模式)
      * 
-     * 显示所有匹配的密码作为独立的Dataset,并添加"手动选择"选项
-     * 
-     * @param context Context
-     * @param matchedPasswords 匹配的密码列表
-     * @param allPasswordIds 所有密码ID(用于手动选择)
-     * @param packageName 应用包名
-     * @param domain 网站域名
-     * @param parsedStructure 解析的结构
-     * @return FillResponse
+     * 始终只显示一个"解锁/搜索"入口，点击后跳转到全屏选择器
+     * 满足用户"始终是点进去进入一个页面然后填充"的需求
      */
     fun createDirectListResponse(
         context: Context,
@@ -44,186 +37,26 @@ object AutofillPickerLauncher {
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
         
-        // 检查是否启用了填充前验证
-        val autofillPreferences = AutofillPreferences(context)
-        var biometricQuickFillEnabled = false
+        android.util.Log.d("AutofillPicker", "Creating single entry point response (Unlock/Search style)")
         
-        // 同步读取 preference 值
-        kotlinx.coroutines.runBlocking {
-            biometricQuickFillEnabled = autofillPreferences.isBiometricQuickFillEnabled.first()
-        }
+        // 1. 构建跳转 Intent - 始终跳转到全屏选择器
+        val args = AutofillPickerActivityV2.Args(
+            applicationId = packageName,
+            webDomain = domain,
+            autofillIds = ArrayList(parsedStructure.items.map { it.id }),
+            suggestedPasswordIds = matchedPasswords.map { it.id }.toLongArray(),
+            isSaveMode = false,
+            // 如果只有用户名/密码字段，传过去以便预填
+            capturedUsername = parsedStructure.items.find { 
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME || 
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS 
+            }?.value,
+            capturedPassword = parsedStructure.items.find { 
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD 
+            }?.value
+        )
         
-        android.util.Log.d("AutofillPicker", "Biometric quick fill enabled: $biometricQuickFillEnabled")
-        
-        // 1. 为每个匹配的密码创建独立的Dataset - 只显示前3个最匹配的
-        val maxDirectShow = 3 // 最多直接显示3个密码
-        android.util.Log.d("AutofillPicker", "Creating direct list: showing ${minOf(matchedPasswords.size, maxDirectShow)} of ${matchedPasswords.size} passwords")
-        android.util.Log.d("AutofillPicker", "Parsed structure has ${parsedStructure.items.size} fields")
-        
-        // 初始化 SecurityManager 用于解密密码
-        val securityManager = takagi.ru.monica.security.SecurityManager(context)
-        
-        matchedPasswords.take(maxDirectShow).forEachIndexed { index, password -> // 限制显示前3个
-            android.util.Log.d("AutofillPicker", "Creating dataset for: ${password.title}")
-            
-            // 智能显示标题和用户名
-            val displayTitle = when {
-                password.title.isNotEmpty() -> password.title
-                password.username.isNotEmpty() -> password.username
-                else -> "密码 ${index + 1}"
-            }
-            
-            val displaySubtitle = when {
-                password.title.isNotEmpty() && password.username.isNotEmpty() -> password.username
-                password.website.isNotEmpty() -> password.website
-                password.appName.isNotEmpty() -> password.appName
-                else -> "点击填充"
-            }
-            
-            // 创建卡片样式的 presentation
-            val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
-                setTextViewText(R.id.text_title, displayTitle)
-                setTextViewText(R.id.text_username, displaySubtitle)
-                setImageViewResource(R.id.icon_app, R.drawable.ic_key)
-            }
-            
-            // 创建 Dataset.Builder
-            val datasetBuilder = Dataset.Builder(presentation)
-            var fieldCount = 0
-            
-            // 如果启用了身份验证,则为 dataset 添加验证
-            if (biometricQuickFillEnabled) {
-                // 创建验证 Intent
-                val authIntent = Intent(context, AutofillAuthenticationActivity::class.java).apply {
-                    putExtra(AutofillAuthenticationActivity.EXTRA_PASSWORD_ENTRY_ID, password.id)
-                    putExtra(AutofillAuthenticationActivity.EXTRA_USERNAME_VALUE, 
-                        if (password.username.contains("==") && password.username.length > 20) {
-                            securityManager.decryptData(password.username)
-                        } else {
-                            password.username
-                        })
-                    putExtra(AutofillAuthenticationActivity.EXTRA_PASSWORD_VALUE, 
-                        securityManager.decryptData(password.password))
-                    
-                    // 传递字段ID和类型
-                    val autofillIds = ArrayList<android.view.autofill.AutofillId>()
-                    val fieldTypes = ArrayList<String>()
-                    
-                    parsedStructure.items.forEach { item ->
-                        when (item.hint) {
-                            EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                            EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
-                                autofillIds.add(item.id)
-                                fieldTypes.add("username")
-                            }
-                            EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
-                            EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
-                                autofillIds.add(item.id)
-                                fieldTypes.add("password")
-                            }
-                            else -> {}
-                        }
-                    }
-                    
-                    putParcelableArrayListExtra(AutofillAuthenticationActivity.EXTRA_AUTOFILL_IDS, autofillIds)
-                    putStringArrayListExtra(AutofillAuthenticationActivity.EXTRA_FIELD_TYPES, fieldTypes)
-                }
-                
-                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-                } else {
-                    PendingIntent.FLAG_UPDATE_CURRENT
-                }
-                
-                val authPendingIntent = PendingIntent.getActivity(
-                    context,
-                    password.id.toInt(),
-                    authIntent,
-                    flags
-                )
-                
-                // 设置验证
-                datasetBuilder.setAuthentication(authPendingIntent.intentSender)
-                
-                android.util.Log.d("AutofillPicker", "  Dataset authentication configured for: ${password.title}")
-            }
-            
-            // 填充字段 - 如果有内联建议，需要传入到 setValue
-            parsedStructure.items.forEach { item ->
-                when (item.hint) {
-                    EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
-                        if (!biometricQuickFillEnabled) {
-                            // 不需要验证,直接填充
-                            // 用户名可能也需要解密(如果加密的话)
-                            val decryptedUsername = if (password.username.contains("==") && password.username.length > 20) {
-                                // 看起来像是Base64加密的,尝试解密
-                                securityManager.decryptData(password.username)
-                            } else {
-                                password.username
-                            }
-                            android.util.Log.d("AutofillPicker", "  Setting username field: ${item.hint}")
-                            android.util.Log.d("AutofillPicker", "  Username value: '${decryptedUsername}' (length: ${decryptedUsername.length})")
-                            
-                            datasetBuilder.setValue(
-                                item.id,
-                                android.view.autofill.AutofillValue.forText(decryptedUsername)
-                            )
-                            fieldCount++
-                        } else {
-                            // 需要验证,设置占位符
-                            datasetBuilder.setValue(item.id, null, presentation)
-                        }
-                    }
-                    EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
-                    EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
-                        if (!biometricQuickFillEnabled) {
-                            // 不需要验证,直接填充
-                            // 解密密码
-                            val decryptedPassword = securityManager.decryptData(password.password)
-                            android.util.Log.d("AutofillPicker", "  Setting password field: ${item.hint}")
-                            android.util.Log.d("AutofillPicker", "  Encrypted password: '${password.password}' (length: ${password.password.length})")
-                            android.util.Log.d("AutofillPicker", "  Decrypted password: '${decryptedPassword}' (length: ${decryptedPassword.length})")
-                            android.util.Log.d("AutofillPicker", "  Password title: '${password.title}')")
-                            
-                            datasetBuilder.setValue(
-                                item.id,
-                                android.view.autofill.AutofillValue.forText(decryptedPassword)
-                            )
-                            fieldCount++
-                        } else {
-                            // 需要验证,设置占位符
-                            datasetBuilder.setValue(item.id, null, presentation)
-                        }
-                    }
-                    else -> {
-                        android.util.Log.d("AutofillPicker", "  Skipping field: ${item.hint}")
-                    }
-                }
-            }
-            
-            android.util.Log.d("AutofillPicker", "  Dataset has $fieldCount fields set")
-            responseBuilder.addDataset(datasetBuilder.build())
-        }
-        
-        // 2. 添加"手动选择"选项 - 使用Authentication打开Bottom Sheet
-        val pickerIntent = Intent(context, AutofillPickerActivity::class.java).apply {
-            // 🔧 修复: 传递所有密码ID而不仅仅是匹配的密码,这样用户可以从所有密码中选择
-            putExtra(
-                AutofillPickerActivity.EXTRA_PASSWORD_IDS,
-                allPasswordIds.toLongArray() // 使用 allPasswordIds 而不是 matchedPasswords
-            )
-            putExtra(AutofillPickerActivity.EXTRA_PACKAGE_NAME, packageName)
-            putExtra(AutofillPickerActivity.EXTRA_DOMAIN, domain)
-            
-            // 传递字段ID列表
-            val autofillIds = ArrayList(parsedStructure.items.map { it.id })
-            putParcelableArrayListExtra("autofill_ids", autofillIds)
-            
-            putExtra(AutofillPickerActivity.EXTRA_FIELD_TYPE, "password")
-        }
-        
-        android.util.Log.d("AutofillPicker", "📋 Manual selection will show ${allPasswordIds.size} passwords (${matchedPasswords.size} matched + ${allPasswordIds.size - matchedPasswords.size} others)")
+        val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
         
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
@@ -233,88 +66,31 @@ object AutofillPickerLauncher {
         
         val pendingIntent = PendingIntent.getActivity(context, 0, pickerIntent, flags)
         
-        // 创建"手动选择"Dataset - 使用专门的卡片布局
-        val manualSelectPresentation = RemoteViews(context.packageName, R.layout.autofill_manual_card)
+        // 2. 创建单一入口的 Presentation
+        // 复用 autofill_manual_card 但修改文字以匹配"Unlock Keyguard"风格
+        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card).apply {
+            // 主标题
+            setTextViewText(R.id.text_title, "Unlock Monica") 
+            // 副标题显示域名或包名
+            setTextViewText(R.id.text_username, domain ?: packageName ?: "Tap to search passwords")
+            // 更换为锁图标
+            setImageViewResource(R.id.icon_app, R.drawable.ic_key) 
+        }
         
-        val manualSelectDataset = Dataset.Builder(manualSelectPresentation)
+        // 3. 创建单一 Dataset
+        val datasetBuilder = Dataset.Builder(presentation)
+        
+        // 绑定所有探测到的字段 (设置为null触发Authentication)
         parsedStructure.items.forEach { item ->
-            manualSelectDataset.setValue(item.id, null, manualSelectPresentation)
-        }
-        manualSelectDataset.setAuthentication(pendingIntent.intentSender)
-        
-        responseBuilder.addDataset(manualSelectDataset.build())
-        
-        // 3. 🔐 添加"生成强密码"Dataset
-        val passwordSuggestionIntent = Intent(context, PasswordSuggestionActivity::class.java).apply {
-            // 生成强密码
-            val generatedPassword = generateStrongPassword()
-            
-            // 提取用户名 (如果有)
-            val usernameValue = parsedStructure.items
-                .firstOrNull { 
-                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
-                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS
-                }?.value ?: ""
-            
-            // 获取密码字段 AutofillId
-            val passwordAutofillIds = parsedStructure.items
-                .filter { 
-                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
-                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
-                }
-                .map { it.id }
-            
-            putExtra(PasswordSuggestionActivity.EXTRA_USERNAME, usernameValue)
-            putExtra(PasswordSuggestionActivity.EXTRA_GENERATED_PASSWORD, generatedPassword)
-            putExtra(PasswordSuggestionActivity.EXTRA_PACKAGE_NAME, packageName)
-            putExtra(PasswordSuggestionActivity.EXTRA_WEB_DOMAIN, domain ?: "")
-            putParcelableArrayListExtra(
-                PasswordSuggestionActivity.EXTRA_PASSWORD_FIELD_IDS,
-                ArrayList(passwordAutofillIds)
-            )
-            
-            android.util.Log.d("AutofillPicker", "🔐 Password suggestion intent created:")
-            android.util.Log.d("AutofillPicker", "  - Username: $usernameValue")
-            android.util.Log.d("AutofillPicker", "  - Password fields count: ${passwordAutofillIds.size}")
-            passwordAutofillIds.forEachIndexed { index, id ->
-                android.util.Log.d("AutofillPicker", "  - Field $index: $id")
-            }
+             datasetBuilder.setValue(item.id, null, presentation)
         }
         
-        val passwordSuggestionPendingIntent = PendingIntent.getActivity(
-            context,
-            1001, // 使用独特的 requestCode
-            passwordSuggestionIntent,
-            flags
-        )
+        // 设置 Authentication 为 Picker Activity
+        datasetBuilder.setAuthentication(pendingIntent.intentSender)
         
-        // 创建密码建议卡片
-        val passwordSuggestionPresentation = RemoteViews(context.packageName, R.layout.autofill_password_suggestion_card)
+        responseBuilder.addDataset(datasetBuilder.build())
         
-        val passwordSuggestionDataset = Dataset.Builder(passwordSuggestionPresentation)
-        // 只为密码字段设置值，不为所有字段设置
-        parsedStructure.items.forEach { item ->
-            when (item.hint) {
-                EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
-                EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
-                    passwordSuggestionDataset.setValue(item.id, null, passwordSuggestionPresentation)
-                    android.util.Log.d("AutofillPicker", "🔐 Added password field to suggestion dataset: ${item.id}")
-                }
-                else -> {
-                    // 不为非密码字段设置值
-                }
-            }
-        }
-        passwordSuggestionDataset.setAuthentication(passwordSuggestionPendingIntent.intentSender)
-        
-        responseBuilder.addDataset(passwordSuggestionDataset.build())
-        
-        android.util.Log.d("AutofillPicker", "🔐 Password suggestion card added")
-        
-        // 4. 🎯 添加最小化的 SaveInfo
-        // Android 框架限制:无法完全移除系统对话框
-        // 策略:让系统对话框尽可能简洁,然后立即显示自定义 Bottom Sheet
-        // 用户体验:闪现系统对话框(< 0.5秒) → 立即切换到自定义 Bottom Sheet
+        // 4. 添加最小化 SaveInfo
         addMinimalSaveInfo(responseBuilder, parsedStructure)
         
         return responseBuilder.build()

@@ -44,7 +44,8 @@ class EnhancedAutofillStructureParserV2 {
         val value: String? = null,
         val isFocused: Boolean = false,
         val isVisible: Boolean = true,
-        val parentWebViewNodeId: Int? = null
+        val parentWebViewNodeId: Int? = null,
+        val traversalIndex: Int = 0 // 新增：遍历顺序索引，用于根据垂直位置纠错
     )
     
     /**
@@ -320,6 +321,8 @@ class EnhancedAutofillStructureParserV2 {
     /**
      * 非凭据字段的翻译（用于过滤，避免在非登录输入框弹出自动填充）
      * 包括：搜索框、评论框、聊天框、发帖框、备注框等
+     * 
+     * ⚠️ 重要：这些关键词会被用于排除非凭据输入框，防止在评论/聊天/搜索等场景误触发自动填充
      */
     private val searchTranslations = listOf(
         // ========== 搜索相关 ==========
@@ -333,33 +336,55 @@ class EnhancedAutofillStructureParserV2 {
         "buscar", "búsqueda",
         "pesquisar", "busca",
         
-        // ========== 评论相关 ==========
-        "comment", "comments", "reply", "replies", "review", "feedback",
-        "评论", "留言", "回复", "回覆", "评价",
-        "コメント", "댓글", "отзыв",
+        // ========== 评论相关 (增强) ==========
+        "comment", "comments", "commenting", "reply", "replies", "replying",
+        "review", "reviews", "feedback", "feedbacks",
+        "评论", "留言", "回复", "回覆", "评价", "吐槽", "弹幕", "发言",
+        "发表评论", "写评论", "添加评论", "我要评论", "说点什么", "来说点什么吧",
+        "コメント", "返信", "댓글", "답글", "отзыв", "комментарий",
         
-        // ========== 聊天/消息相关 ==========
-        "chat", "message", "msg", "messenger", "send",
-        "聊天", "消息", "私信", "发送", "訊息", "私訊",
-        "チャット", "メッセージ", "채팅", "메시지", "чат",
+        // ========== 聊天/消息相关 (增强) ==========
+        "chat", "chatting", "message", "messages", "messaging", "msg",
+        "messenger", "send", "sending", "input_message", "messagebox",
+        "im_input", "chat_input", "chatinput", "inputbox",
+        "聊天", "消息", "私信", "发送", "訊息", "私訊", "信息", "短信",
+        "发消息", "说些什么", "输入消息", "写消息", "发送消息",
+        "チャット", "メッセージ", "送信", "채팅", "메시지", "чат", "сообщение",
         
-        // ========== 发帖/发推相关 ==========
-        "post", "tweet", "status", "compose", "write", "publish", "share",
-        "发帖", "发推", "发文", "发布", "分享", "动态", "發文",
-        "投稿", "ツイート", "게시",
+        // ========== 发帖/发推/社交相关 (增强) ==========
+        "post", "posting", "tweet", "tweeting", "toot", "status", "statuses",
+        "compose", "composing", "write", "writing", "publish", "publishing",
+        "share", "sharing", "newpost", "new_post", "createpost", "create_post",
+        "发帖", "发推", "发文", "发布", "分享", "动态", "發文", "说说",
+        "朋友圈", "微博", "想法", "问答", "提问", "回答", "举报",
+        "投稿", "ツイート", "게시", "글쓰기",
         
         // ========== 备注/说明相关 ==========
-        "note", "notes", "memo", "remark", "description", "bio", "about",
-        "备注", "说明", "简介", "描述", "自我介绍",
-        "メモ", "備考", "메모", "заметка",
+        "note", "notes", "noting", "memo", "memos", "remark", "remarks",
+        "description", "descriptions", "bio", "biography", "about", "aboutme",
+        "备注", "说明", "简介", "描述", "自我介绍", "个人简介", "个性签名",
+        "メモ", "備考", "メモ帳", "メモを入力", "메모", "заметка",
         
-        // ========== 标题/内容相关 ==========
-        "title", "content", "body", "text", "article",
-        "标题", "内容", "正文", "文章",
+        // ========== 标题/内容/编辑相关 (增强) ==========
+        "title", "titles", "content", "contents", "body", "bodies",
+        "text", "texts", "article", "articles", "editor", "editing",
+        "textarea", "textfield", "textbox", "edittext", "inputfield",
+        "标题", "内容", "正文", "文章", "编辑", "输入框",
         
         // ========== 其他非凭据字段 ==========
-        "caption", "tag", "tags", "hashtag", "label", "location", "place",
-        "标签", "位置", "地点",
+        "caption", "captions", "tag", "tags", "hashtag", "hashtags",
+        "label", "labels", "location", "locations", "place", "places",
+        "address_search", "poi", "keyword", "keywords",
+        "标签", "位置", "地点", "关键词", "关键字",
+        
+        // ========== 游戏/应用特定 ==========
+        "nickname", "nick", "gameid", "playerid", "ingame",
+        "昵称", "游戏名", "角色名", "玩家名",
+        
+        // ========== 表单非凭据字段 ==========
+        "subject", "subjects", "reason", "reasons", "purpose", "purposes",
+        "suggestion", "suggestions", "opinion", "opinions", "idea", "ideas",
+        "主题", "原因", "目的", "建议", "意见", "想法",
     )
     
     // ==================== 标签匹配器列表 ====================
@@ -439,6 +464,9 @@ class EnhancedAutofillStructureParserV2 {
         // 获取应用ID
         applicationId = structure.activityComponent.packageName
         
+        // 全局遍历计数器
+        var globalTraversalIndex = 0
+        
         // 遍历所有窗口和节点
         for (i in 0 until structure.windowNodeCount) {
             val windowNode = structure.getWindowNodeAt(i)
@@ -446,11 +474,13 @@ class EnhancedAutofillStructureParserV2 {
 
             val info = WebViewInfo()
             
-            traverseNode(
+            // 使用可变计数器进行遍历
+            globalTraversalIndex = traverseNode(
                 node = rootNode,
                 items = items,
                 respectAutofillOff = respectAutofillOff,
-                webViewInfo = info
+                webViewInfo = info,
+                startIndex = globalTraversalIndex
             )
 
             if (info.isWebView) {
@@ -497,8 +527,11 @@ class EnhancedAutofillStructureParserV2 {
         items: MutableList<ParsedItem>,
         respectAutofillOff: Boolean,
         parentWebViewNodeId: Int? = null,
-        webViewInfo: WebViewInfo
-    ) {
+        webViewInfo: WebViewInfo,
+        startIndex: Int
+    ): Int {
+        var currentIndex = startIndex
+        
         // 检查是否是 WebView
         val currentWebViewNodeId = if (node.className == "android.webkit.WebView") {
             webViewInfo.isWebView = true
@@ -525,8 +558,11 @@ class EnhancedAutofillStructureParserV2 {
         // 检查是否需要忽略（autofill=off）
         if (respectAutofillOff && node.importantForAutofill == View.IMPORTANT_FOR_AUTOFILL_NO) {
             android.util.Log.d("EnhancedParser", "Skipping node with autofill=off: ${node.idEntry}")
-            return
+            return currentIndex
         }
+        
+        // 增加遍历索引（仅对可见节点计数，或者对所有节点计数皆可，这里统计所有节点以保持相对顺序）
+        currentIndex++
         
         // 尝试解析当前节点
         val autofillId = node.autofillId
@@ -537,27 +573,65 @@ class EnhancedAutofillStructureParserV2 {
                     android.util.Log.d("EnhancedParser", "🔍 Skipping search field: ${node.idEntry ?: node.hint ?: "unknown"}")
                     return@let
                 }
-                items.add(parsedItem)
-                android.util.Log.d("EnhancedParser", "Found ${parsedItem.hint} field with accuracy ${parsedItem.accuracy}")
+                
+                // 添加带有遍历索引的项
+                val itemWithIndex = parsedItem.copy(traversalIndex = currentIndex)
+                items.add(itemWithIndex)
+                
+                android.util.Log.d("EnhancedParser", "Found ${parsedItem.hint} field with accuracy ${parsedItem.accuracy} at index $currentIndex")
             }
         }
         
         // 递归处理子节点
         for (i in 0 until node.childCount) {
             node.getChildAt(i)?.let { childNode ->
-                traverseNode(childNode, items, respectAutofillOff, currentWebViewNodeId, webViewInfo)
+                currentIndex = traverseNode(childNode, items, respectAutofillOff, currentWebViewNodeId, webViewInfo, currentIndex)
             }
         }
+        
+        return currentIndex
     }
     
     /**
      * 检测字段类型
+     * 
+     * ⚠️ 优先级说明：
+     * - 首先检查是否为非凭据字段（评论/聊天/搜索等），避免误触发
+     * - 然后按 autofillHints > HTML属性 > inputType > 文本标签 的优先级检测
      */
     private fun detectFieldType(
         node: AssistStructure.ViewNode,
         parentWebViewNodeId: Int?
     ): ParsedItem? {
         val autofillId = node.autofillId ?: return null
+        
+        // ========== 首先：检查是否为非凭据字段（最高优先级排除）==========
+        // 收集所有可用于匹配的文本
+        val allTexts = listOfNotNull(
+            node.idEntry?.lowercase(),
+            node.hint?.lowercase(),
+            node.text?.toString()?.lowercase(),
+            node.contentDescription?.toString()?.lowercase()
+        )
+        
+        // 检查是否匹配任何非凭据字段关键词
+        for (text in allTexts) {
+            for (searchKeyword in searchTranslations) {
+                if (text.contains(searchKeyword, ignoreCase = true)) {
+                    android.util.Log.d("EnhancedParser", "⛔ Non-credential field detected: '$text' contains '$searchKeyword'")
+                    return ParsedItem(
+                        id = autofillId,
+                        hint = FieldHint.SEARCH_FIELD,
+                        accuracy = Accuracy.HIGHEST,
+                        value = null,
+                        isFocused = node.isFocused,
+                        isVisible = node.visibility == View.VISIBLE,
+                        parentWebViewNodeId = parentWebViewNodeId,
+                        traversalIndex = 0
+                    )
+                }
+            }
+        }
         
         var bestMatch: Pair<FieldHint, Accuracy>? = null
         
@@ -612,7 +686,8 @@ class EnhancedAutofillStructureParserV2 {
                     .safeTextOrNull(tag = "EnhancedParserV2", fieldDescription = hint.name),
                 isFocused = node.isFocused,
                 isVisible = node.visibility == View.VISIBLE,
-                parentWebViewNodeId = parentWebViewNodeId
+                parentWebViewNodeId = parentWebViewNodeId,
+                traversalIndex = 0 // 默认为0，将在 traverseNode 中重新赋值
             )
         }
     }

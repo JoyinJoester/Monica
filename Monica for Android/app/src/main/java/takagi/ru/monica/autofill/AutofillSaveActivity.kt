@@ -24,6 +24,9 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill.ui.AppInfo
+import takagi.ru.monica.autofill.ui.AutofillScaffold
+import takagi.ru.monica.autofill.ui.colorizePasswordString
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
@@ -210,60 +213,113 @@ fun SavePasswordDialog(
     var editedWebsite by remember { mutableStateOf(website) }
     var notes by remember { mutableStateOf(defaultNotes) }
     var showAdvancedOptions by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
     
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)
+    // 参考 Keyguard 的 AutofillScaffold 风格
+    takagi.ru.monica.autofill.ui.AutofillScaffold(
+        topBar = {
+            // 顶部信息头 - 参考 Keyguard 的 AutofillSaveActivity
+            SavePasswordHeader(
+                title = stringResource(R.string.autofill_save_password),
+                appName = appName.ifBlank { defaultTitle },
+                username = username,
+                password = password,
+                website = website,
+                packageName = packageName,
+                onClose = onCancel
+            )
+        }
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+        // 内容区域
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .wrapContentHeight(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    // 标题区域
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.autofill_save_password),
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = stringResource(R.string.autofill_save_to_monica),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+            // 用户名输入
+            OutlinedTextField(
+                value = editedUsername,
+                onValueChange = { editedUsername = it },
+                label = { Text(stringResource(R.string.autofill_username)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Person, contentDescription = null)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+            
+            // 密码输入 - 带彩色显示和可见性切换
+            OutlinedTextField(
+                value = editedPassword,
+                onValueChange = { editedPassword = it },
+                label = { Text(stringResource(R.string.autofill_password)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                },
+                trailingIcon = {
+                    Row {
+                        // 可见性切换
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = null
                             )
                         }
+                        // 生成密码按钮
+                        IconButton(onClick = { 
+                            // TODO: 调用密码生成器
+                        }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "生成密码")
+                        }
                     }
-                    
-                    Divider()
-                    
-                    // 基本信息
+                },
+                visualTransformation = if (passwordVisible) 
+                    androidx.compose.ui.text.input.VisualTransformation.None 
+                else 
+                    androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+            
+            // 高级选项折叠面板
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(12.dp),
+                onClick = { showAdvancedOptions = !showAdvancedOptions }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (showAdvancedOptions) 
+                            stringResource(R.string.autofill_hide_advanced)
+                        else 
+                            stringResource(R.string.autofill_show_advanced),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Icon(
+                        imageVector = if (showAdvancedOptions) 
+                            Icons.Default.ExpandLess 
+                        else 
+                            Icons.Default.ExpandMore,
+                        contentDescription = null
+                    )
+                }
+            }
+            
+            // 高级选项内容
+            androidx.compose.animation.AnimatedVisibility(visible = showAdvancedOptions) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 标题输入
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
@@ -272,125 +328,234 @@ fun SavePasswordDialog(
                             Icon(Icons.Default.Title, contentDescription = null)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
                     
+                    // 网站输入
                     OutlinedTextField(
-                        value = editedUsername,
-                        onValueChange = { editedUsername = it },
-                        label = { Text(stringResource(R.string.autofill_username)) },
+                        value = editedWebsite,
+                        onValueChange = { editedWebsite = it },
+                        label = { Text(stringResource(R.string.autofill_website_app)) },
                         leadingIcon = {
-                            Icon(Icons.Default.Person, contentDescription = null)
+                            Icon(Icons.Default.Language, contentDescription = null)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
                     
+                    // 备注输入
                     OutlinedTextField(
-                        value = editedPassword,
-                        onValueChange = { editedPassword = it },
-                        label = { Text(stringResource(R.string.autofill_password)) },
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text(stringResource(R.string.autofill_notes)) },
                         leadingIcon = {
-                            Icon(Icons.Default.Key, contentDescription = null)
+                            Icon(Icons.Default.Note, contentDescription = null)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        maxLines = 3,
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    
-                    // 高级选项
-                    TextButton(
-                        onClick = { showAdvancedOptions = !showAdvancedOptions },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = if (showAdvancedOptions) 
-                                Icons.Default.ExpandLess 
-                            else 
-                                Icons.Default.ExpandMore,
-                            contentDescription = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            if (showAdvancedOptions) 
-                                stringResource(R.string.autofill_hide_advanced)
-                            else 
-                                stringResource(R.string.autofill_show_advanced)
-                        )
-                    }
-                    
-                    if (showAdvancedOptions) {
-                        OutlinedTextField(
-                            value = editedWebsite,
-                            onValueChange = { editedWebsite = it },
-                            label = { Text(stringResource(R.string.autofill_website_app)) },
-                            leadingIcon = {
-                                Icon(Icons.Default.Language, contentDescription = null)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        
-                        OutlinedTextField(
-                            value = notes,
-                            onValueChange = { notes = it },
-                            label = { Text(stringResource(R.string.autofill_notes)) },
-                            leadingIcon = {
-                                Icon(Icons.Default.Note, contentDescription = null)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            maxLines = 3
-                        )
-                    }
-                    
-                    Divider()
-                    
-                    // 操作按钮
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // 保存按钮
-                        Button(
-                            onClick = {
-                                onSave(
-                                    title,
-                                    editedUsername,
-                                    editedPassword,
-                                    editedWebsite,
-                                    notes
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Save, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.autofill_save_button), style = MaterialTheme.typography.titleMedium)
-                        }
-                        
-                        // 取消按钮
-                        OutlinedButton(
-                            onClick = onCancel,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.autofill_cancel), style = MaterialTheme.typography.titleMedium)
-                        }
-                        
-                        // 从不为此网站保存
-                        TextButton(
-                            onClick = onNeverForThisSite,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Block, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.autofill_never_for_site))
-                        }
-                    }
                 }
             }
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
+            // 操作按钮区域
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 取消按钮
+                OutlinedButton(
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.autofill_cancel))
+                }
+                
+                // 保存按钮
+                Button(
+                    onClick = {
+                        onSave(
+                            title,
+                            editedUsername,
+                            editedPassword,
+                            editedWebsite,
+                            notes
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.autofill_save_button))
+                }
+            }
+            
+            // 从不为此网站保存
+            TextButton(
+                onClick = onNeverForThisSite,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    Icons.Default.Block, 
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.autofill_never_for_site),
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 保存密码头部组件
+ * 参考 Keyguard 的 AutofillSaveActivity 顶部设计
+ */
+@Composable
+private fun SavePasswordHeader(
+    title: String,
+    appName: String,
+    username: String,
+    password: String,
+    website: String,
+    packageName: String,
+    onClose: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // 标题行 + 关闭按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = appName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+            
+            TextButton(onClick = onClose) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // 捕获的凭据信息预览
+        if (username.isNotEmpty()) {
+            SaveInfoRow(
+                title = "用户名",
+                value = username
+            )
+        }
+        
+        if (password.isNotEmpty()) {
+            SaveInfoRow(
+                title = "密码",
+                value = takagi.ru.monica.autofill.ui.colorizePasswordString(password)
+            )
+        }
+        
+        // App/Website 信息 - 参考 Keyguard 使用更小的字体
+        if (packageName.isNotEmpty() || website.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            if (packageName.isNotEmpty()) {
+                SaveInfoRow(
+                    title = "App",
+                    value = packageName,
+                    isSecondary = true
+                )
+            }
+            
+            if (website.isNotEmpty()) {
+                SaveInfoRow(
+                    title = "Website",
+                    value = website,
+                    isSecondary = true
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveInfoRow(
+    title: String,
+    value: CharSequence,
+    isSecondary: Boolean = false
+) {
+    val textColor = if (isSecondary) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    
+    val textStyle = if (isSecondary) {
+        MaterialTheme.typography.bodySmall
+    } else {
+        MaterialTheme.typography.bodyMedium
+    }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = title,
+            style = textStyle,
+            fontWeight = FontWeight.Medium,
+            color = textColor,
+            modifier = Modifier.widthIn(max = 80.dp)
+        )
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        when (value) {
+            is String -> Text(
+                text = value,
+                style = textStyle,
+                color = textColor,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            is androidx.compose.ui.text.AnnotatedString -> Text(
+                text = value,
+                style = textStyle,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
