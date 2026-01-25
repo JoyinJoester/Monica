@@ -18,7 +18,8 @@ import androidx.core.graphics.drawable.toBitmap
 object AppIconCache {
     private const val MAX_CACHE_SIZE = 50
     
-    private val cache = LruCache<String, ImageBitmap?>(MAX_CACHE_SIZE)
+    private val cache = LruCache<String, ImageBitmap>(MAX_CACHE_SIZE)
+    private val missingIcons = mutableSetOf<String>()
     
     /**
      * 获取应用图标
@@ -30,11 +31,17 @@ object AppIconCache {
     fun getIcon(packageName: String, packageManager: PackageManager): ImageBitmap? {
         android.util.Log.d("AppIconCache", "getIcon: packageName = $packageName")
         
-        // 先从缓存获取
+        // 先从内存缓存获取
         val cached = cache.get(packageName)
-        if (cached != null || cache.get(packageName) == null && packageName in getCachedKeys()) {
-            android.util.Log.d("AppIconCache", "getIcon: returning cached icon for $packageName (cached=${cached != null})")
+        if (cached != null) {
+            android.util.Log.d("AppIconCache", "getIcon: returning cached icon for $packageName")
             return cached
+        }
+        
+        // 检查是否在"缺失"缓存中
+        if (packageName in missingIcons) {
+            android.util.Log.d("AppIconCache", "getIcon: returning cached null (missing) for $packageName")
+            return null
         }
         
         // 缓存未命中,加载图标
@@ -50,9 +57,14 @@ object AppIconCache {
             null
         }
         
-        // 存入缓存
-        cache.put(packageName, icon)
-        android.util.Log.d("AppIconCache", "getIcon: cached icon for $packageName (icon=${icon != null})")
+        // 存入对应的缓存
+        if (icon != null) {
+            cache.put(packageName, icon)
+            android.util.Log.d("AppIconCache", "getIcon: cached icon for $packageName")
+        } else {
+            missingIcons.add(packageName)
+            android.util.Log.d("AppIconCache", "getIcon: marked $packageName as missing")
+        }
         return icon
     }
     
@@ -61,6 +73,7 @@ object AppIconCache {
      */
     fun clear() {
         cache.evictAll()
+        missingIcons.clear()
     }
     
     /**

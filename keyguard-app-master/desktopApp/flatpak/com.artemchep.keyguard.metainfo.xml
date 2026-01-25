@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.artemchep.keyguard</id>
+  <name>Keyguard</name>
+  <developer id="com.artemchep">
+    <name>Artem Chepurnyi</name>
+  </developer>
+  <summary>
+    <keyguard_text_res token="listing_summary" />
+  </summary>
+  <branding>
+    <color type="primary" scheme_preference="light">#c4eff4</color>
+    <color type="primary" scheme_preference="dark">#081f26</color>
+  </branding>
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>LicenseRef-proprietary=https://github.com/AChep/keyguard-app/blob/master/LICENSE</project_license>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <description>
+    <p>
+      <keyguard_text_res token="listing_description_title" />
+    </p>
+    <p>
+      <keyguard_text_res token="listing_description_disclaimer_bitwarden_legal" />
+    </p>
+    <p>
+      <keyguard_text_res token="listing_description_highlights" />
+    </p>
+    <ul>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_design" />
+      </li>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_search" />
+      </li>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_watchtower" />
+      </li>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_multiple_accounts" />
+      </li>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_offline" />
+      </li>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_export" />
+      </li>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_generator" />
+      </li>
+      <li>
+        <keyguard_text_res token="listing_description_highlight_other" />
+      </li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.artemchep.keyguard.desktop</launchable>
+  <url type="homepage">https://github.com/AChep/keyguard-app/</url>
+  <url type="bugtracker">https://github.com/AChep/keyguard-app/issues/</url>
+  <url type="help">https://github.com/AChep/keyguard-app/discussions/</url>
+  <url type="translate">https://crowdin.com/project/keyguard/</url>
+  <url type="vcs-browser">https://github.com/AChep/keyguard-app/</url>
+  <url type="contribute">https://github.com/AChep/keyguard-app/</url>
+  <provides>
+    <binary>Keyguard</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>password manager</keyword>
+    <keyword>password generator</keyword>
+  </keywords>
+  <screenshots>
+    <screenshot type="default">
+      <caption>
+        <keyguard_text_res token="listing_screenshot_home_default" />
+      </caption>
+      <image>https://raw.githubusercontent.com/AChep/keyguard-app/9217702b8ff861c7432fc7f2385e833d17f8e6a8/screenshots/linux/home_default.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>
+        <keyguard_text_res token="listing_screenshot_home_dark" />
+      </caption>
+      <image>https://raw.githubusercontent.com/AChep/keyguard-app/9217702b8ff861c7432fc7f2385e833d17f8e6a8/screenshots/linux/home_dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>
+        <keyguard_text_res token="listing_screenshot_generator_default" />
+      </caption>
+      <image>https://raw.githubusercontent.com/AChep/keyguard-app/9217702b8ff861c7432fc7f2385e833d17f8e6a8/screenshots/linux/generator_default.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>
+        <keyguard_text_res token="listing_screenshot_watchtower_default" />
+      </caption>
+      <image>https://raw.githubusercontent.com/AChep/keyguard-app/9217702b8ff861c7432fc7f2385e833d17f8e6a8/screenshots/linux/watchtower_default.png</image>
+    </screenshot>
+  </screenshots>
+  <keyguard_releases />
+  <content_rating type="oars-1.1" />
+</component>

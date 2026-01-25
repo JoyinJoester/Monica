@@ -459,7 +459,7 @@ export const Settings = () => {
         <SectionTitle>{t('settings.about')}</SectionTitle>
         <Card>
           <CardTitle>Monica Browser Extension</CardTitle>
-          <div style={{ fontSize: 13, marginTop: 4, opacity: 0.7 }}>{t('settings.version')}: 1.0.22</div>
+          <div style={{ fontSize: 13, marginTop: 4, opacity: 0.7 }}>{t('settings.version')}: 1.0.23</div>
         </Card>
       </div>
 

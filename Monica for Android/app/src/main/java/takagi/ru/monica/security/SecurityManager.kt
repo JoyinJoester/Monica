@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import takagi.ru.monica.utils.SettingsManager
 import java.security.MessageDigest
@@ -17,6 +21,18 @@ import javax.crypto.SecretKeyFactory
 class SecurityManager(private val context: Context) {
     
     private val settingsManager = SettingsManager(context)
+    
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var isVerificationDisabled = false
+
+    init {
+        scope.launch {
+            settingsManager.settingsFlow.collect { settings ->
+                isVerificationDisabled = settings.disablePasswordVerification
+                android.util.Log.d("SecurityManager", "Updated cache: disablePasswordVerification = $isVerificationDisabled")
+            }
+        }
+    }
     
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -67,17 +83,11 @@ class SecurityManager(private val context: Context) {
      * 如果开发者设置中启用了"关闭密码验证",则直接返回true
      */
     fun verifyMasterPassword(inputPassword: String): Boolean {
-        // 检查是否禁用密码验证(开发者选项)
-        val disableVerification = runBlocking {
-            val settings = settingsManager.settingsFlow.first()
-            android.util.Log.d("SecurityManager", "Reading settings: disablePasswordVerification = ${settings.disablePasswordVerification}")
-            settings.disablePasswordVerification
-        }
-        
-        android.util.Log.d("SecurityManager", "Password verification check: disabled = $disableVerification")
+        // 检查是否禁用密码验证(开发者选项) - 使用缓存值，避免 runBlocking 阻塞主线程
+        android.util.Log.d("SecurityManager", "Password verification check: disabled = $isVerificationDisabled")
         
         // 如果禁用验证,直接返回true
-        if (disableVerification) {
+        if (isVerificationDisabled) {
             android.util.Log.d("SecurityManager", "Password verification BYPASSED by developer settings")
             return true
         }
@@ -246,10 +256,16 @@ class SecurityManager(private val context: Context) {
     }
     
     fun decryptData(encryptedData: String): String {
+        if (encryptedData.isEmpty()) {
+            return ""
+        }
         return try {
             val combined = android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
             if (combined.size <= 12) {
-                android.util.Log.e("SecurityManager", "Decryption failed: payload too short (len=${combined.size})")
+                // If the array is empty, it might be just an empty/invalid string that wasn't caught by isEmpty()
+                if (combined.isNotEmpty()) {
+                    android.util.Log.e("SecurityManager", "Decryption failed: payload too short (len=${combined.size})")
+                }
                 return encryptedData
             }
 

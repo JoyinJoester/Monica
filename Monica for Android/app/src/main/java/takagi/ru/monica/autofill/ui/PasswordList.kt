@@ -38,6 +38,7 @@ fun PasswordList(
     passwords: List<PasswordEntry>,
     onItemSelected: (AutofillItem) -> Unit,
     modifier: Modifier = Modifier,
+    iconCardsEnabled: Boolean = false,
     onShowAllPasswords: (() -> Unit)? = null
 ) {
     if (passwords.isEmpty()) {
@@ -58,6 +59,7 @@ fun PasswordList(
             ) { password ->
                 PasswordListItem(
                     password = password,
+                    iconCardsEnabled = iconCardsEnabled,
                     onItemClick = {
                         onItemSelected(AutofillItem.Password(password))
                     },

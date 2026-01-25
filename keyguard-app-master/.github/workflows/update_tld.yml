@@ -1,0 +1,20 @@
+name: "🕒 Synchronize TLD public suffix list"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync-tld:
+    name: Synchronize TLD public suffix list
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6
+      - name: "Update data"
+        run: |
+          wget https://publicsuffix.org/list/public_suffix_list.dat
+          mv -f public_suffix_list.dat common/src/commonMain/composeResources/files/public_suffix_list.txt
+      - uses: ./.github/actions/github_submit_pr
+        with:
+          github-token: ${{ secrets.PERSONAL_TOKEN }}
+          commit-message: "Update Public suffix list"
+          commit-branch: tld_public_suffix_list_action

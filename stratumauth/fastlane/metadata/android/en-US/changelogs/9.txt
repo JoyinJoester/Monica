@@ -1,0 +1,2 @@
+- General: Fixed crash on Android 6.0
+- General: 2 new icons

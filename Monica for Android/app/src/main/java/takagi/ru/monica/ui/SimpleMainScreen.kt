@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1187,6 +1188,8 @@ private fun PasswordListContent(
     val passwordEntries by viewModel.passwordEntries.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    // settings
+    val appSettings by settingsViewModel.settings.collectAsState()
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -1969,6 +1972,70 @@ private fun PasswordListContent(
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+
+                // Password Card Display Mode Section
+                Text(
+                    text = stringResource(R.string.password_card_display_mode_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                )
+
+                val displayModes = listOf(
+                    takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
+                    takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME,
+                    takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY
+                )
+
+                displayModes.forEach { mode ->
+                    val selected = mode == appSettings.passwordCardDisplayMode
+                    val (modeTitle, desc, icon) = when (mode) {
+                        takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL -> Triple(
+                            stringResource(R.string.display_mode_all),
+                            stringResource(R.string.display_mode_all_desc),
+                            Icons.Default.Visibility
+                        )
+                        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME -> Triple(
+                            stringResource(R.string.display_mode_title_username),
+                            stringResource(R.string.display_mode_title_username_desc),
+                            Icons.Default.Person
+                        )
+                        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY -> Triple(
+                            stringResource(R.string.display_mode_title_only),
+                            stringResource(R.string.display_mode_title_only_desc),
+                            Icons.Default.Title
+                        )
+                    }
+
+                    NavigationDrawerItem(
+                        label = {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = modeTitle,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        selected = selected,
+                        onClick = {
+                            settingsViewModel.updatePasswordCardDisplayMode(mode)
+                            displayMenuExpanded = false
+                        },
+                        icon = { Icon(icon, null) },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
             }
         }
     }
@@ -2128,7 +2195,9 @@ private fun PasswordListContent(
                                 isSelectionMode = true
                                 selectedPasswords = setOf(password.id)
                             }
-                        }
+                        },
+                        iconCardsEnabled = appSettings.iconCardsEnabled,
+                        passwordCardDisplayMode = appSettings.passwordCardDisplayMode
                     )
                     
                     Spacer(modifier = Modifier.height(12.dp))
@@ -3475,7 +3544,9 @@ private fun StackedPasswordGroup(
     selectedPasswords: Set<Long>,
     onToggleSelection: (Long) -> Unit,
     onOpenMultiPasswordDialog: (List<takagi.ru.monica.data.PasswordEntry>) -> Unit,
-    onLongClick: (takagi.ru.monica.data.PasswordEntry) -> Unit // 新增：长按进入多选模式
+    onLongClick: (takagi.ru.monica.data.PasswordEntry) -> Unit, // 新增：长按进入多选模式
+    iconCardsEnabled: Boolean = false,
+    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
 ) {
     // 检查是否为多密码合并卡片(除密码外信息完全相同)
     val isMergedPasswordCard = passwords.size > 1 && 
@@ -3505,7 +3576,9 @@ private fun StackedPasswordGroup(
                     isSelected = selectedPasswords.contains(password.id),
                     canSetGroupCover = false,
                     isInExpandedGroup = false,
-                    isSingleCard = true
+                    isSingleCard = true,
+                    iconCardsEnabled = iconCardsEnabled,
+                    passwordCardDisplayMode = passwordCardDisplayMode
                 )
             }
         }
@@ -3540,7 +3613,9 @@ private fun StackedPasswordGroup(
                 selectedPasswords = selectedPasswords,
                 canSetGroupCover = false,
                 hasGroupCover = false,
-                isInExpandedGroup = false
+                isInExpandedGroup = false,
+                iconCardsEnabled = iconCardsEnabled,
+                passwordCardDisplayMode = passwordCardDisplayMode
             )
         }
         return
@@ -3904,7 +3979,9 @@ private fun StackedPasswordGroup(
                                                     isSelected = selectedPasswords.contains(password.id),
                                                     canSetGroupCover = passwords.size > 1,
                                                     isInExpandedGroup = effectiveExpanded && passwords.size > 1,
-                                                    isSingleCard = false
+                                                    isSingleCard = false,
+                                                    iconCardsEnabled = iconCardsEnabled,
+                                                    passwordCardDisplayMode = passwordCardDisplayMode
                                                 )
                                             } else {
                                                 // 多个密码使用 MultiPasswordEntryCard
@@ -3931,7 +4008,9 @@ private fun StackedPasswordGroup(
                                                     selectedPasswords = selectedPasswords,
                                                     canSetGroupCover = passwords.size > 1,
                                                     hasGroupCover = hasGroupCover,
-                                                    isInExpandedGroup = effectiveExpanded && passwords.size > 1
+                                                    isInExpandedGroup = effectiveExpanded && passwords.size > 1,
+                                                    iconCardsEnabled = iconCardsEnabled,
+                                                    passwordCardDisplayMode = passwordCardDisplayMode
                                                 )
                                             }
                                         }
@@ -3974,7 +4053,9 @@ private fun StackedPasswordGroup(
                                     isSelected = selectedPasswords.contains(password.id),
                                     canSetGroupCover = false,
                                     isInExpandedGroup = false,
-                                    isSingleCard = true
+                                    isSingleCard = true,
+                                    iconCardsEnabled = iconCardsEnabled,
+                                    passwordCardDisplayMode = passwordCardDisplayMode
                                 )
                             } else {
                                 // 多个密码使用 MultiPasswordEntryCard
@@ -3999,9 +4080,12 @@ private fun StackedPasswordGroup(
                                     selectedPasswords = selectedPasswords,
                                     canSetGroupCover = false,
                                     hasGroupCover = false,
-                                    isInExpandedGroup = false
+                                    isInExpandedGroup = false,
+                                    iconCardsEnabled = iconCardsEnabled,
+                                    passwordCardDisplayMode = passwordCardDisplayMode
                                 )
                             }
+
                         }
                     }
                 }
@@ -4050,7 +4134,9 @@ private fun MultiPasswordEntryCard(
     selectedPasswords: Set<Long> = emptySet(),
     canSetGroupCover: Boolean = false,
     hasGroupCover: Boolean = false,
-    isInExpandedGroup: Boolean = false
+    isInExpandedGroup: Boolean = false,
+    iconCardsEnabled: Boolean = false,
+    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
 ) {
     // 使用第一个条目的共同信息
     val firstEntry = passwords.first()
@@ -4093,6 +4179,33 @@ private fun MultiPasswordEntryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Icon (NEW) - only show if enabled
+                if (iconCardsEnabled) {
+                    val appIcon = if (!firstEntry.appPackageName.isNullOrBlank()) {
+                         takagi.ru.monica.autofill.ui.rememberAppIcon(firstEntry.appPackageName)
+                    } else null
+                    
+                    val favicon = if (firstEntry.website.isNotBlank()) {
+                        takagi.ru.monica.autofill.ui.rememberFavicon(url = firstEntry.website, enabled = true)
+                    } else null
+                    
+                    if (appIcon != null) {
+                         Image(
+                            bitmap = appIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                         )
+                         Spacer(modifier = Modifier.width(12.dp))
+                    } else if (favicon != null) {
+                         Image(
+                            bitmap = favicon,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                         )
+                         Spacer(modifier = Modifier.width(12.dp))
+                    }
+                }
+
                 // 标题
                 Text(
                     text = firstEntry.title,
@@ -4177,7 +4290,7 @@ private fun MultiPasswordEntryCard(
             }
             
             // 网站信息
-            if (firstEntry.website.isNotBlank()) {
+            if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && firstEntry.website.isNotBlank()) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(if (isInExpandedGroup) 6.dp else 8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -4203,7 +4316,7 @@ private fun MultiPasswordEntryCard(
             }
             
             // 用户名信息
-            if (firstEntry.username.isNotBlank()) {
+            if (passwordCardDisplayMode != takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY && firstEntry.username.isNotBlank()) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(if (isInExpandedGroup) 6.dp else 8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -4230,7 +4343,7 @@ private fun MultiPasswordEntryCard(
             
             // 附加信息预览
             val additionalInfo = buildAdditionalInfoPreview(firstEntry)
-            if (additionalInfo.isNotEmpty()) {
+            if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && additionalInfo.isNotEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(if (isInExpandedGroup) 8.dp else 10.dp),
                     color = if (isInExpandedGroup) {
@@ -4371,7 +4484,9 @@ private fun PasswordEntryCard(
     isSelected: Boolean = false,
     canSetGroupCover: Boolean = false,
     isInExpandedGroup: Boolean = false,
-    isSingleCard: Boolean = false
+    isSingleCard: Boolean = false,
+    iconCardsEnabled: Boolean = false,
+    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -4422,6 +4537,50 @@ private fun PasswordEntryCard(
                 Spacer(modifier = Modifier.width(12.dp))
             }
             
+            // Icon - only show if enabled
+            if (iconCardsEnabled) {
+                val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
+                     takagi.ru.monica.autofill.ui.rememberAppIcon(entry.appPackageName)
+                } else null
+                
+                val favicon = if (entry.website.isNotBlank()) {
+                    takagi.ru.monica.autofill.ui.rememberFavicon(url = entry.website, enabled = true)
+                } else null
+                
+                if (appIcon != null) {
+                     Image(
+                        bitmap = appIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                     )
+                     Spacer(modifier = Modifier.width(16.dp))
+                } else if (favicon != null) {
+                     Image(
+                        bitmap = favicon,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                     )
+                     Spacer(modifier = Modifier.width(16.dp))
+                } else {
+                     // Key Icon
+                     Surface(
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(40.dp)
+                     ) {
+                         Box(contentAlignment = Alignment.Center) {
+                             Icon(
+                                Icons.Default.Key, 
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(24.dp)
+                             )
+                         }
+                     }
+                     Spacer(modifier = Modifier.width(16.dp))
+                }
+            }
+
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(
@@ -4511,7 +4670,7 @@ private fun PasswordEntryCard(
                 }
                 
                 // 网站信息 - 优化显示
-                if (entry.website.isNotBlank()) {
+                if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && entry.website.isNotBlank()) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(
                             if (isSingleCard) 8.dp else 6.dp
@@ -4539,10 +4698,10 @@ private fun PasswordEntryCard(
                 }
                 
                 // 用户名信息 - 优化显示
-                if (entry.username.isNotBlank()) {
+                if (passwordCardDisplayMode != takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY && entry.username.isNotBlank()) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(
-                            if (isSingleCard) 8.dp else 6.dp
+                            if (isSingleCard) 8.dp else 10.dp
                         ),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -4568,7 +4727,7 @@ private fun PasswordEntryCard(
                 
                 // 新字段预览 - 优化显示样式
                 val additionalInfo = buildAdditionalInfoPreview(entry)
-                if (additionalInfo.isNotEmpty()) {
+                if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && additionalInfo.isNotEmpty()) {
                     Surface(
                         shape = RoundedCornerShape(if (isSingleCard) 10.dp else 8.dp),
                         color = if (isSingleCard) {

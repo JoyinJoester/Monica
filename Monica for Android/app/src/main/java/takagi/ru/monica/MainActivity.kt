@@ -1206,6 +1206,14 @@ fun MonicaContent(
                 onCopyNextCodeWhenExpiringChange = { enabled ->
                     settingsViewModel.updateCopyNextCodeWhenExpiring(enabled)
                 },
+                iconCardsEnabled = settings.iconCardsEnabled,
+                onIconCardsEnabledChange = { enabled ->
+                    settingsViewModel.updateIconCardsEnabled(enabled)
+                },
+                passwordCardDisplayMode = settings.passwordCardDisplayMode,
+                onPasswordCardDisplayModeChange = { mode ->
+                    settingsViewModel.updatePasswordCardDisplayMode(mode)
+                },
                 validatorUnifiedProgressBar = settings.validatorUnifiedProgressBar,
                 onValidatorUnifiedProgressBarChange = { mode ->
                     settingsViewModel.updateValidatorUnifiedProgressBar(mode)

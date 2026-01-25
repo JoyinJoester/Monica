@@ -57,6 +57,8 @@ class SettingsManager(private val context: Context) {
         private val TOTP_TIME_OFFSET_KEY = intPreferencesKey("totp_time_offset") // TOTP时间偏移（秒）
         private val TRASH_ENABLED_KEY = booleanPreferencesKey("trash_enabled") // 回收站功能开关
         private val TRASH_AUTO_DELETE_DAYS_KEY = intPreferencesKey("trash_auto_delete_days") // 回收站自动清空天数
+        private val ICON_CARDS_ENABLED_KEY = booleanPreferencesKey("icon_cards_enabled") // 带图标卡片开关
+        private val PASSWORD_CARD_DISPLAY_MODE_KEY = stringPreferencesKey("password_card_display_mode") // 密码卡片显示模式
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -121,7 +123,12 @@ class SettingsManager(private val context: Context) {
             passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart",
             totpTimeOffset = preferences[TOTP_TIME_OFFSET_KEY] ?: 0,
             trashEnabled = preferences[TRASH_ENABLED_KEY] ?: true,
-            trashAutoDeleteDays = preferences[TRASH_AUTO_DELETE_DAYS_KEY] ?: 30
+            trashAutoDeleteDays = preferences[TRASH_AUTO_DELETE_DAYS_KEY] ?: 30,
+            iconCardsEnabled = preferences[ICON_CARDS_ENABLED_KEY] ?: false,
+            passwordCardDisplayMode = runCatching {
+                val modeString = preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] ?: takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name
+                takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(modeString)
+            }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL)
         )
     }
     
@@ -290,6 +297,18 @@ class SettingsManager(private val context: Context) {
     suspend fun updateValidatorSmoothProgress(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] = enabled
+        }
+    }
+
+    suspend fun updateIconCardsEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[ICON_CARDS_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updatePasswordCardDisplayMode(mode: takagi.ru.monica.data.PasswordCardDisplayMode) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] = mode.name
         }
     }
 }

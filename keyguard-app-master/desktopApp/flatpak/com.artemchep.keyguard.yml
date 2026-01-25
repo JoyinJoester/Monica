@@ -1,0 +1,31 @@
+app-id: com.artemchep.keyguard
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+tags: [ proprietary ]
+command: Keyguard
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --device=dri
+  - --filesystem=xdg-download
+modules:
+  - name: keyguard
+    buildsystem: simple
+    build-commands:
+      - cp -rf app/* /app/
+      - chmod +x /app/bin/Keyguard
+    sources:
+      # Pre-built x86_64 binaries of the app
+      - type: dir
+        only-arches:
+          - x86_64
+        path: "app-x86_64/"
+        dest: "app/"
+      # Pre-built aarch64 binaries of the app
+      - type: dir
+        only-arches:
+          - aarch64
+        path: "app-aarch64/"
+        dest: "app/"

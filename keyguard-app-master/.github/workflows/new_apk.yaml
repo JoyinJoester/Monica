@@ -1,0 +1,34 @@
+name: "New APK"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-android-app:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup_gradle
+      - name: "Prepare env"
+        run: |
+          echo ${{ secrets.KEYSTORE_B64 }} | base64 -d | zcat >> androidApp/keyguard-release.keystore
+          echo ${{ secrets.KEYSTORE_PROPS_B64 }} | base64 -d | zcat >> androidApp/keyguard-release.properties
+          echo ${{ secrets.GOOGLE_SERVICES }} | base64 -d | zcat >> androidApp/google-services.json
+          echo "" >> gradle.properties
+          echo "versionRef=$(git rev-parse --short HEAD)" >> gradle.properties
+          echo buildkonfig.flavor=release >> gradle.properties
+      - uses: ./.github/actions/build_android_licenses
+        with:
+          build-flavor: "None"
+      - name: "Build"
+        run: ./gradlew :androidApp:assembleNoneRelease
+      - name: 'Upload .apk'
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-android
+          path: |
+            androidApp/build/outputs/apk/**/*.apk
+            androidApp/build/outputs/mapping/**/mapping.txt
+          retention-days: 7

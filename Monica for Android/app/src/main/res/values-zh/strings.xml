@@ -632,6 +632,19 @@
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
     
+    <!-- Icon Cards -->
+    <string name="icon_cards_title">网站图标</string>
+    <string name="icon_cards_description">在密码卡片上显示网站图标</string>
+    
+    <!-- Password Card Display Mode -->
+    <string name="password_card_display_mode_title">卡片显示内容</string>
+    <string name="display_mode_all">详细模式</string>
+    <string name="display_mode_all_desc">显示标题、网站和用户名</string>
+    <string name="display_mode_title_username">紧凑模式</string>
+    <string name="display_mode_title_username_desc">仅显示标题和用户名</string>
+    <string name="display_mode_title_only">极简模式</string>
+    <string name="display_mode_title_only_desc">仅显示标题</string>
+    
     <!-- Bottom Sheet -->
     <string name="all_navigation_items">所有导航项</string>
     <string name="hidden">已隐藏</string>
@@ -759,6 +772,8 @@
     <!-- 验证器震动 -->
     <string name="validator_vibration">验证器震动</string>
     <string name="validator_vibration_description">倒计时快结束时震动提醒</string>
+
+
     
     <!-- Support Author -->
     <string name="support_author">支持作者</string>

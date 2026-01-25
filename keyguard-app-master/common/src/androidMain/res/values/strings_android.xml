@@ -1,0 +1,38 @@
+<resources>
+    <string name="app_name">Keyguard</string>
+
+    <string name="notification_attachment_upload_channel_id" translatable="false">com.artemchep.keyguard.UPLOAD_ATTACHMENTS</string>
+    <string name="notification_attachment_upload_channel_name">Uploading attachments</string>
+    <string name="notification_attachment_upload_title">Uploading attachments</string>
+    <string name="notification_attachment_upload_content">Uploading attachments</string>
+
+    <string name="notification_attachment_download_channel_id" translatable="false">com.artemchep.keyguard.DOWNLOAD_ATTACHMENTS</string>
+    <string name="notification_attachment_download_channel_name">Download attachments</string>
+    <string name="notification_attachment_download_title">Downloading attachments</string>
+
+    <string name="notification_vault_export_channel_id" translatable="false">com.artemchep.keyguard.EXPORT_VAULT</string>
+    <string name="notification_vault_export_channel_name">Export</string>
+    <string name="notification_vault_export_title">Exporting vault</string>
+
+    <string name="notification_clipboard_channel_id" translatable="false">com.artemchep.keyguard.CLIPBOARD</string>
+    <string name="notification_clipboard_channel_name">Clipboard</string>
+
+    <string name="notification_watchtower_channel_id" translatable="false">com.artemchep.keyguard.WATCHTOWER</string>
+    <string name="notification_watchtower_channel_name">Watchtower</string>
+
+    <string name="notification_sync_vault_channel_id" translatable="false">com.artemchep.keyguard.SYNC_VAULT</string>
+    <string name="notification_sync_vault_channel_name">Sync vault</string>
+    <string name="notification_sync_vault_title">Syncing vault</string>
+
+    <string name="about">About</string>
+    <string name="home_generator_label">Generator</string>
+    <string name="autofill_service_name">Keyguard form autofilling</string>
+    <string name="autofill_sign_in_prompt">Unlock Keyguard</string>
+    <string name="autofill_explanation_summary">Enable autofilling to quickly fill out forms in other apps</string>
+    <string name="autofill_select_entry">Open Keyguard</string>
+    <string name="set_autofill_service_title">Set default autofill service</string>
+    <string name="autofill_preference_title">Autofill settings</string>
+
+    <string name="android_autofill_open_keyguard">Open Keyguard</string>
+    <string name="android_autofill_unlock_keyguard">Unlock Keyguard</string>
+</resources>

@@ -128,5 +128,16 @@ data class AppSettings(
     val passwordGroupMode: String = "smart", // 密码分组模式
     val totpTimeOffset: Int = 0, // TOTP时间偏移（秒），用于校正系统时间误差
     val trashEnabled: Boolean = true, // 回收站功能是否启用
-    val trashAutoDeleteDays: Int = 30 // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
+    val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
+    val iconCardsEnabled: Boolean = false, // 是否启用带图标卡片
+    val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL // 卡片显示模式
 )
+
+/**
+ * 密码卡片显示模式
+ */
+enum class PasswordCardDisplayMode {
+    SHOW_ALL,       // 显示所有信息（默认）
+    TITLE_USERNAME, // 仅显示标题和用户名
+    TITLE_ONLY      // 仅显示标题
+}

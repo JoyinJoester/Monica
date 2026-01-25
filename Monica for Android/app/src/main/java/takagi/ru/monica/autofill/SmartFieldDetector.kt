@@ -207,6 +207,14 @@ object SmartFieldDetector {
         val htmlSignature = buildHtmlSignature(htmlInfo)
         val combined = "$id $hintText $labelText"
         val contextCombined = "$combined $classText $htmlSignature"
+        
+        // 0. 优先排除非凭据字段（评论/聊天/搜索等），避免在这些场景误触发
+        // 即使有 autofill hints 或特定的 inputType，如果命中排除关键词也应忽略
+        if (matchesKeywords(combined, SEARCH_KEYWORDS)) {
+            android.util.Log.d("SmartFieldDetector", "⛔ Detected search/chat/comment field, skipping autofill")
+            return AutofillFieldType.SEARCH
+        }
+
         val sensitivePaymentField = isSensitivePaymentField(
             autofillHints,
             contextCombined,
@@ -248,12 +256,6 @@ object SmartFieldDetector {
         }
         
         // 3. 使用关键词匹配
-        // 搜索框检测 - 必须在凭据字段检测之前，避免误判搜索栏为用户名/密码输入框
-        if (matchesKeywords(combined, SEARCH_KEYWORDS)) {
-            android.util.Log.d("SmartFieldDetector", "🔍 Detected search field, skipping autofill")
-            return AutofillFieldType.SEARCH
-        }
-        
         // Email 检测
         if (matchesKeywords(combined, EMAIL_KEYWORDS)) {
             return AutofillFieldType.EMAIL
@@ -493,6 +495,7 @@ object SmartFieldDetector {
         "filter", "keyword", "q", "searchbox", "search_box", "search-box",
         "searchfield", "search_field", "search-field", "searchinput",
         "search_input", "search-input", "searchbar", "search_bar", "search-bar",
+        "input_bar", "bottom_bar", "input_panel",
         // 中文
         "搜索", "查找", "检索", "探索", "筛选", "搜一搜", "搜尋", "查詢", "檢索",
         // 日语
@@ -508,41 +511,49 @@ object SmartFieldDetector {
         
         // ========== 评论相关 ==========
         "comment", "comments", "reply", "replies", "review", "feedback",
-        "评论", "留言", "回复", "回覆", "评价", "意见",
+        "评论", "留言", "回复", "回覆", "评价", "意见", "吐槽", "弹幕", "说一个",
+        "发表评论", "写评论", "添加评论", "我要评论", "留言板", "评论框",
+        "说点什么", "来说点什么吧", "有什么想说的", "发表你的评论",
         "コメント", "댓글", "отзыв", "comentario", "comentário",
         
         // ========== 聊天/消息相关 ==========
-        "chat", "message", "msg", "messenger", "im", "send",
-        "聊天", "消息", "私信", "发送", "訊息", "私訊",
+        "chat", "message", "msg", "messenger", "im", "send", "inputtext",
+        "聊天", "消息", "私信", "发送", "訊息", "私訊", "聊天框", "写消息",
+        "发消息", "说些什么", "输入消息", "发送消息", "打字机", "键盘输入", "写点什么",
+        "输入点什么", "写点什么吧", "想说点什么", "聊点什么",
         "チャット", "メッセージ", "채팅", "메시지", "чат", "сообщение",
         
         // ========== 发帖/发推相关 ==========
         "post", "tweet", "status", "compose", "write", "publish", "share",
         "whats_happening", "what_happening", "whatshappening",
-        "发帖", "发推", "发文", "发布", "分享", "动态", "發文", "發佈",
+        "发帖", "发推", "发文", "发布", "分享", "动态", "说说", "發文", "發佈",
+        "朋友圈", "微博", "想法", "问答", "提问", "回答内容", "发布动态",
         "投稿", "ツイート", "게시", "публикация",
         
         // ========== 备注/说明相关 ==========
         "note", "notes", "memo", "remark", "description", "desc", "bio",
-        "about", "intro", "introduction", "summary",
-        "备注", "说明", "简介", "描述", "個人簡介", "自我介绍",
+        "about", "intro", "introduction", "summary", "个性签名", "签到",
+        "备注", "说明", "简介", "描述", "個人簡介", "自我介绍", "个人简介",
         "メモ", "備考", "説明", "메모", "설명", "заметка", "описание",
         
         // ========== 输入提示相关 ==========
         "placeholder", "hint", "tip", "prompt",
-        "type_something", "type_here", "enter_text",
+        "type_something", "type_here", "enter_text", "inputbox", "inputfield",
         "what_on_your_mind", "whats_on_your_mind",
-        "说点什么", "写点什么", "请输入", "有什么想法",
+        "说点什么", "写点什么", "请输入", "有什么想法", "输入点什么", "写点什么吧",
         
         // ========== 标题/内容相关 ==========
-        "title", "content", "body", "text", "article",
-        "标题", "内容", "正文", "文章",
+        "title", "subject", "content", "body", "text", "article", "摘要", "引言",
+        "标题", "内容", "正文", "文章", "主题", "输入框", "文本内容",
         
         // ========== 其他非凭据字段 ==========
-        "caption", "tag", "tags", "hashtag", "label",
-        "location", "place", "venue",
+        "caption", "tag", "tags", "hashtag", "label", "poi", "关键词", "关键字",
+        "location", "place", "venue", "分类",
         "emoji", "sticker", "gif",
-        "标签", "位置", "地点"
+        "标签", "位置", "地点",
+        
+        // ========== 游戏/昵称相关 ==========
+        "nickname", "nick", "绰号", "别名", "角色名", "玩家名", "昵称"
     )
     
     private val EMAIL_KEYWORDS = listOf(
@@ -560,7 +571,7 @@ object SmartFieldDetector {
     )
     
     private val USERNAME_KEYWORDS = listOf(
-        "user", "username", "userid", "login", "account", "id",
+        "username", "userid", "login", "account",
         "用户", "用户名", "账号", "登录名", "账户"
     )
     

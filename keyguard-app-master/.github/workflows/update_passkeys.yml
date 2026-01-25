@@ -1,0 +1,27 @@
+name: "🕒 Synchronize Passkeys"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      # Configuration.
+      - '.github/update_passkeys.py'
+      - '.github/update_passkeys.requirements.txt'
+
+jobs:
+  sync-passkeys:
+    name: Synchronize Passkeys
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6
+      - run: pip install -r .github/update_passkeys.requirements.txt
+      - name: "Update library"
+        run: |
+          python .github/update_passkeys.py "${{ secrets.PASSKEYS_API_KEY }}"
+      - uses: ./.github/actions/github_submit_pr
+        with:
+          github-token: ${{ secrets.PERSONAL_TOKEN }}
+          commit-message: "Update passkeys library"
+          commit-branch: passkeys_action

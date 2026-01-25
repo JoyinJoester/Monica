@@ -53,8 +53,13 @@ fun QrCodeDialog(
             try {
                 val totpData = Json.decodeFromString<TotpData>(item.itemData)
                 val uri = generateOtpUri(totpData, item.title)
+                val hints = mapOf(
+                    com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8",
+                    com.google.zxing.EncodeHintType.ERROR_CORRECTION to com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.Q,
+                    com.google.zxing.EncodeHintType.MARGIN to 2
+                )
                 val barcodeEncoder = BarcodeEncoder()
-                val bitmap = barcodeEncoder.encodeBitmap(uri, BarcodeFormat.QR_CODE, 600, 600)
+                val bitmap = barcodeEncoder.encodeBitmap(uri, BarcodeFormat.QR_CODE, 800, 800, hints)
                 qrBitmap = bitmap
             } catch (e: Exception) {
                 e.printStackTrace()

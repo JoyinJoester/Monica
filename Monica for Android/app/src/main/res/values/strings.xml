@@ -796,6 +796,19 @@
     <!-- Validator Vibration -->
     <string name="validator_vibration">Validator Vibration</string>
     <string name="validator_vibration_description">Vibrate when countdown is about to end</string>
+
+    <!-- Icon Cards -->
+    <string name="icon_cards_title">Icon Cards</string>
+    <string name="icon_cards_description">Display website icons for password cards</string>
+    
+    <!-- Password Card Display Mode -->
+    <string name="password_card_display_mode_title">Card Content Display</string>
+    <string name="display_mode_all">Detailed</string>
+    <string name="display_mode_all_desc">Show title, website, and username</string>
+    <string name="display_mode_title_username">Compact</string>
+    <string name="display_mode_title_username_desc">Show only title and username</string>
+    <string name="display_mode_title_only">Minimal</string>
+    <string name="display_mode_title_only_desc">Show only title</string>
     
     <!-- Support Author -->
     <string name="support_author">Support Author</string>

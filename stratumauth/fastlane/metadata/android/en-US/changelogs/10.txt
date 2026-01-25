@@ -1,0 +1,3 @@
+- General: Fixed inverted code colour on some devices
+- General: 3 new icons
+- General: Translation updates

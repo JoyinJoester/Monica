@@ -1,0 +1,6 @@
+<linker>
+    <assembly fullname="Stratum.Core" preserve="all"/>
+    <assembly fullname="Stratum.WearOS" preserve="all"/>
+    <assembly fullname="Stratum.Droid.Shared" preserve="all"/>
+    <assembly fullname="Autofac" preserve="all"/>
+</linker>

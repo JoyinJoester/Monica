@@ -668,6 +668,19 @@
     <string name="support_author">Ủng hộ tác giả</string>
     <string name="support_author_subtitle">Phần mềm hoàn toàn miễn phí, cảm ơn sự ủng hộ của bạn</string>
     
+    <!-- Icon Cards -->
+    <string name="icon_cards_title">Biểu tượng trang web</string>
+    <string name="icon_cards_description">Hiển thị biểu tượng trang web trên thẻ mật khẩu</string>
+    
+    <!-- Password Card Display Mode -->
+    <string name="password_card_display_mode_title">Hiển thị nội dung thẻ</string>
+    <string name="display_mode_all">Chi tiết</string>
+    <string name="display_mode_all_desc">Hiển thị tiêu đề, trang web và tên người dùng</string>
+    <string name="display_mode_title_username">Thu gọn</string>
+    <string name="display_mode_title_username_desc">Chỉ hiển thị tiêu đề và tên người dùng</string>
+    <string name="display_mode_title_only">Tối giản</string>
+    <string name="display_mode_title_only_desc">Chỉ hiển thị tiêu đề</string>
+    
     <!-- Data Management in Settings -->
     <string name="data_management">Quản lý dữ liệu</string>
     

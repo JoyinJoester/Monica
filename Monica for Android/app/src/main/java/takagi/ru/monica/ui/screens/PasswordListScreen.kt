@@ -760,7 +760,9 @@ fun PasswordEntryCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onClick: () -> Unit = {},
-    onLongPress: () -> Unit = {}
+    onLongPress: () -> Unit = {},
+    iconCardsEnabled: Boolean = false,
+    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
@@ -809,21 +811,52 @@ fun PasswordEntryCard(
                     }
                     
                     // 应用图标或默认密钥图标
-                    android.util.Log.d("PasswordEntryCard", "Entry: title=${entry.title}, appPackageName=${entry.appPackageName}")
-                    val appIcon = rememberAppIcon(context, entry.appPackageName)
-                    android.util.Log.d("PasswordEntryCard", "AppIcon loaded: ${appIcon != null}")
-                    if (appIcon != null) {
-                        // 显示应用图标
-                        Image(
-                            painter = rememberDrawablePainter(drawable = appIcon),
-                            contentDescription = "App Icon",
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .padding(end = 12.dp)
-                        )
+                    if (iconCardsEnabled) {
+                        android.util.Log.d("PasswordEntryCard", "Entry: title=${entry.title}, appPackageName=${entry.appPackageName}")
+                        val appIcon = rememberAppIcon(context, entry.appPackageName)
+                        
+                        // 尝试加载 Favicon
+                        val favicon = if (entry.website.isNotBlank()) {
+                            takagi.ru.monica.autofill.ui.rememberFavicon(url = entry.website, enabled = true)
+                        } else {
+                            null
+                        }
+
+                        android.util.Log.d("PasswordEntryCard", "AppIcon loaded: ${appIcon != null}")
+                        
+                        if (appIcon != null) {
+                            // 显示应用图标
+                            Image(
+                                painter = rememberDrawablePainter(drawable = appIcon),
+                                contentDescription = "App Icon",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .padding(end = 12.dp)
+                            )
+                        } else if (favicon != null) {
+                             // 显示网站图标
+                            Image(
+                                bitmap = favicon,
+                                contentDescription = "Website Icon",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .padding(end = 12.dp)
+                            )
+                        } else {
+                            // 显示默认密钥图标
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = "Password Icon",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .padding(end = 12.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     } else {
-                        // 显示默认密钥图标
+                        // 如果禁用图标，直接显示默认密钥图标
                         Icon(
                             imageVector = Icons.Default.Key,
                             contentDescription = "Password Icon",
@@ -841,9 +874,18 @@ fun PasswordEntryCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (entry.website.isNotEmpty()) {
+                        if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && entry.website.isNotEmpty()) {
                             Text(
                                 text = entry.website,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (passwordCardDisplayMode != takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY && entry.username.isNotEmpty()) {
+                            Text(
+                                text = entry.username,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -917,7 +959,7 @@ fun PasswordEntryCard(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 
                 // Website with copy button
-                if (entry.website.isNotEmpty()) {
+                if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && entry.website.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -942,7 +984,7 @@ fun PasswordEntryCard(
                 }
                 
                 // Username
-                if (entry.username.isNotEmpty()) {
+                if (passwordCardDisplayMode != takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY && entry.username.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -989,7 +1031,7 @@ fun PasswordEntryCard(
                 }
                 
                 // Notes
-                if (entry.notes.isNotEmpty()) {
+                if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && entry.notes.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),

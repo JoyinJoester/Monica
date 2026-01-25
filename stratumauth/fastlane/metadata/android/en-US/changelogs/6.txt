@@ -1,0 +1,4 @@
+- General: QR code scanning changes
+- General: Bug fixes
+- General: 5 new icons
+- General: Translation updates

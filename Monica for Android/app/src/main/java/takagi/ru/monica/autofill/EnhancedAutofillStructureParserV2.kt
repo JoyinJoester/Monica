@@ -126,10 +126,8 @@ class EnhancedAutofillStructureParserV2 {
      */
     private val usernameTranslations = listOf(
         "username",     // 英语
-        "user",
         "login",
         "account",
-        "id",
         "用户名",       // 中文简体
         "用戶名",       // 中文繁体
         "账号",
@@ -328,7 +326,7 @@ class EnhancedAutofillStructureParserV2 {
         // ========== 搜索相关 ==========
         "search", "query", "find", "lookup", "explore", "filter", "q",
         "searchbox", "searchfield", "searchinput", "searchbar",
-        "搜索", "查找", "检索", "探索", "筛选",
+        "搜索", "查找", "检索", "探索", "筛选", "搜一搜",
         "搜尋", "查詢", "檢索",
         "検索", "探す",
         "검색", "찾기",
@@ -341,14 +339,16 @@ class EnhancedAutofillStructureParserV2 {
         "review", "reviews", "feedback", "feedbacks",
         "评论", "留言", "回复", "回覆", "评价", "吐槽", "弹幕", "发言",
         "发表评论", "写评论", "添加评论", "我要评论", "说点什么", "来说点什么吧",
+        "说一个", "输入评论", "评论框", "留言板",
         "コメント", "返信", "댓글", "답글", "отзыв", "комментарий",
         
         // ========== 聊天/消息相关 (增强) ==========
         "chat", "chatting", "message", "messages", "messaging", "msg",
         "messenger", "send", "sending", "input_message", "messagebox",
-        "im_input", "chat_input", "chatinput", "inputbox",
+        "im_input", "chat_input", "chatinput", "inputbox", "inputtext",
         "聊天", "消息", "私信", "发送", "訊息", "私訊", "信息", "短信",
-        "发消息", "说些什么", "输入消息", "写消息", "发送消息",
+        "发消息", "说些什么", "输入消息", "写消息", "发送消息", "聊天框",
+        "输入点什么", "打字机", "键盘输入", "写点什么",
         "チャット", "メッセージ", "送信", "채팅", "메시지", "чат", "сообщение",
         
         // ========== 发帖/发推/社交相关 (增强) ==========
@@ -356,35 +356,38 @@ class EnhancedAutofillStructureParserV2 {
         "compose", "composing", "write", "writing", "publish", "publishing",
         "share", "sharing", "newpost", "new_post", "createpost", "create_post",
         "发帖", "发推", "发文", "发布", "分享", "动态", "發文", "说说",
-        "朋友圈", "微博", "想法", "问答", "提问", "回答", "举报",
+        "朋友圈", "微博", "想法", "问答", "提问", "回答", "举报", "发布动态",
         "投稿", "ツイート", "게시", "글쓰기",
         
         // ========== 备注/说明相关 ==========
         "note", "notes", "noting", "memo", "memos", "remark", "remarks",
         "description", "descriptions", "bio", "biography", "about", "aboutme",
-        "备注", "说明", "简介", "描述", "自我介绍", "个人简介", "个性签名",
+        "备注", "说明", "简介", "描述", "自我介绍", "个人简介", "个性签名", "签到",
         "メモ", "備考", "メモ帳", "メモを入力", "메모", "заметка",
         
         // ========== 标题/内容/编辑相关 (增强) ==========
         "title", "titles", "content", "contents", "body", "bodies",
         "text", "texts", "article", "articles", "editor", "editing",
+
         "textarea", "textfield", "textbox", "edittext", "inputfield",
-        "标题", "内容", "正文", "文章", "编辑", "输入框",
+        "input_bar", "bottom_bar", "input_panel", "smile_panel",
+        "标题", "内容", "正文", "文章", "编辑", "输入框", "文本内容",
+        "主题", "摘要", "引言",
         
         // ========== 其他非凭据字段 ==========
         "caption", "captions", "tag", "tags", "hashtag", "hashtags",
         "label", "labels", "location", "locations", "place", "places",
         "address_search", "poi", "keyword", "keywords",
-        "标签", "位置", "地点", "关键词", "关键字",
+        "标签", "位置", "地点", "关键词", "关键字", "分类",
         
         // ========== 游戏/应用特定 ==========
         "nickname", "nick", "gameid", "playerid", "ingame",
-        "昵称", "游戏名", "角色名", "玩家名",
+        "昵称", "游戏名", "角色名", "玩家名", "绰号", "别名",
         
         // ========== 表单非凭据字段 ==========
         "subject", "subjects", "reason", "reasons", "purpose", "purposes",
         "suggestion", "suggestions", "opinion", "opinions", "idea", "ideas",
-        "主题", "原因", "目的", "建议", "意见", "想法",
+        "主题", "原因", "目的", "建议", "意见", "想法", "问题", "回答内容"
     )
     
     // ==================== 标签匹配器列表 ====================

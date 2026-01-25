@@ -1,0 +1,4 @@
+- General: Improvements to QR code scanning
+- General: 9 new icons
+- Fixed: Fixed crash on Android 5.1
+- Localization: Translation updates

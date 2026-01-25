@@ -2104,10 +2104,10 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
             parseNode(windowNode.rootViewNode, collection)
         }
         
-        // 如果没有找到字段，尝试更宽松的匹配
-        if (!collection.hasCredentialFields()) {
-            parseWithFallback(collection)
-        }
+        // 如果没有找到字段，不再尝试更宽松的匹配，以避免误触发（如聊天框）
+        // if (!collection.hasCredentialFields()) {
+        //     parseWithFallback(collection)
+        // }
         
         return collection
     }
@@ -2178,6 +2178,12 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
      * 判断是否是用户名字段
      */
     private fun isUsernameField(idEntry: String, hint: String, text: String): Boolean {
+        // 排除非凭据字段
+        val combined = "$idEntry $hint $text".lowercase()
+        if (EXCLUSION_KEYWORDS.any { combined.contains(it) }) {
+            return false
+        }
+
         val usernameKeywords = listOf(
             "user", "username", "email", "login", "account", "id",
             "用户", "账号", "邮箱", "登录"
@@ -2192,6 +2198,12 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
      * 判断是否是密码字段
      */
     private fun isPasswordField(idEntry: String, hint: String, text: String, node: AssistStructure.ViewNode): Boolean {
+        // 排除非凭据字段
+        val combined = "$idEntry $hint $text".lowercase()
+        if (EXCLUSION_KEYWORDS.any { combined.contains(it) }) {
+            return false
+        }
+
         val passwordKeywords = listOf(
             "pass", "password", "pwd", "secret", "pin",
             "密码", "口令"
@@ -2206,6 +2218,16 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
             idEntry.contains(keyword) || hint.contains(keyword) || text.contains(keyword)
         }
     }
+
+    private val EXCLUSION_KEYWORDS = listOf(
+        "search", "query", "find", "filter", "搜索", "查找", "筛选", "搜一搜",
+        "chat", "message", "msg", "messenger", "聊天", "消息", "私信", "发送", 
+        "訊息", "私訊", "聊天框", "写消息", "发消息", "说些什么", "输入消息", 
+        "打字机", "键盘输入", "说点什么", "写点什么", "说一个", "来说点什么吧",
+        "comment", "reply", "评论", "回复", "留言", "评价", "吐槽", "弹幕",
+        "note", "memo", "备注", "说明", "简介", "是个签名", "签到",
+        "title", "subject", "content", "body", "标题", "主题", "内容", "正文"
+    )
     
     /**
      * 备用解析方法：更宽松的字段识别

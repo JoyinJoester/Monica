@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <plurals name="emailleak_breach_accounts_count_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> cuenta</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> cuentas</item>
+    </plurals>
+    <plurals name="passwordleak_occurrences_count_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> ocurrencia</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> ocurrencias</item>
+    </plurals>
+    <plurals name="word_count_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> palabra</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> palabras</item>
+    </plurals>
+    <plurals name="result_count_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> resultado</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> resultados</item>
+    </plurals>
+    <plurals name="seconds_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> segundo</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> segundos</item>
+    </plurals>
+    <plurals name="minutes_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> minuto</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> minutos</item>
+    </plurals>
+    <plurals name="hours_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> hora</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> horas</item>
+    </plurals>
+    <plurals name="days_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> dia</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> días</item>
+    </plurals>
+    <plurals name="weeks_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> semana</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> semanas</item>
+    </plurals>
+    <plurals name="months_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> mes</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> meses</item>
+    </plurals>
+    <plurals name="years_plural">
+        <item quantity="one"><xliff:g id="number" example="1">%1$s</xliff:g> año</item>
+        <item quantity="other"><xliff:g id="number">%1$s</xliff:g> años</item>
+    </plurals>
+</resources>

@@ -694,6 +694,19 @@
     <string name="support_author">作者をサポート</string>
     <string name="support_author_subtitle">ソフトウェアは完全無料、ご支援ありがとうございます</string>
     
+    <!-- Icon Cards -->
+    <string name="icon_cards_title">ウェブサイトアイコン</string>
+    <string name="icon_cards_description">パスワードカードにウェブサイトのアイコンを表示</string>
+    
+    <!-- Password Card Display Mode -->
+    <string name="password_card_display_mode_title">カードの表示内容</string>
+    <string name="display_mode_all">詳細</string>
+    <string name="display_mode_all_desc">タイトル、ウェブサイト、ユーザー名を表示</string>
+    <string name="display_mode_title_username">コンパクト</string>
+    <string name="display_mode_title_username_desc">タイトルとユーザー名のみを表示</string>
+    <string name="display_mode_title_only">最小</string>
+    <string name="display_mode_title_only_desc">タイトルのみを表示</string>
+    
     <!-- Data Management in Settings -->
     <string name="data_management">データ管理</string>
     <string name="export_data">データをエクスポート</string>

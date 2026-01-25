@@ -64,6 +64,7 @@ sealed class PasswordItemAction {
 fun PasswordListItem(
     password: PasswordEntry,
     showDropdownMenu: Boolean = false,
+    iconCardsEnabled: Boolean = false,
     onAction: ((PasswordItemAction) -> Unit)? = null,
     onItemClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -92,6 +93,7 @@ fun PasswordListItem(
             // 图标区域
             AppIconOrFallback(
                 password = password,
+                iconCardsEnabled = iconCardsEnabled,
                 modifier = Modifier.size(48.dp)
             )
             
@@ -189,23 +191,32 @@ fun PasswordListItem(
  * 
  * 显示逻辑:
  * 1. 如果有应用包名,尝试加载应用图标
- * 2. 如果没有应用图标,显示首字母头像
- * 3. 如果都没有,显示默认钥匙图标
+ * 2. 如果开启了Web Icon, 尝试加载网站Favicon
+ * 3. 如果没有应用图标,显示首字母头像
+ * 4. 如果都没有,显示默认钥匙图标
  */
 @Composable
 private fun AppIconOrFallback(
     password: PasswordEntry,
+    iconCardsEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    android.util.Log.d("PasswordListItem", "AppIconOrFallback: title=${password.title}, appPackageName=${password.appPackageName}")
+    android.util.Log.d("PasswordListItem", "AppIconOrFallback: title=${password.title}, appPackageName=${password.appPackageName}, iconCardsEnabled=$iconCardsEnabled")
     
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
+        // 尝试加载 Favicon (如果开启) - 放在这里是为了rememberFavicon
+        val favicon = if (iconCardsEnabled && password.website.isNotBlank()) {
+            rememberFavicon(url = password.website, enabled = true)
+        } else {
+            null
+        }
+
         when {
             // 尝试加载应用图标
-            !password.appPackageName.isNullOrBlank() -> {
+            iconCardsEnabled && !password.appPackageName.isNullOrBlank() -> {
                 android.util.Log.d("PasswordListItem", "AppIconOrFallback: trying to load app icon for ${password.appPackageName}")
                 val icon = rememberAppIcon(password.appPackageName)
                 android.util.Log.d("PasswordListItem", "AppIconOrFallback: icon loaded = ${icon != null}")
@@ -217,10 +228,29 @@ private fun AppIconOrFallback(
                             .fillMaxSize()
                             .clip(RoundedCornerShape(12.dp))
                     )
+                } else if (favicon != null) {
+                     // 降级到 Favicon
+                    Image(
+                        bitmap = favicon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                    )
                 } else {
                     // 降级到首字母头像
                     InitialsAvatar(text = password.title.ifEmpty { password.username })
                 }
+            }
+            // 尝试加载网站图标
+            iconCardsEnabled && favicon != null -> {
+                Image(
+                    bitmap = favicon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                )
             }
             // 显示首字母头像
             password.title.isNotEmpty() || password.username.isNotEmpty() -> {
@@ -320,6 +350,7 @@ fun AppIcon(
 @Composable
 fun SuggestedPasswordListItem(
     password: PasswordEntry,
+    iconCardsEnabled: Boolean = false,
     onAction: (PasswordItemAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -346,6 +377,7 @@ fun SuggestedPasswordListItem(
                 // 图标区域
                 AppIconOrFallback(
                     password = password,
+                    iconCardsEnabled = iconCardsEnabled,
                     modifier = Modifier.size(44.dp)
                 )
                 

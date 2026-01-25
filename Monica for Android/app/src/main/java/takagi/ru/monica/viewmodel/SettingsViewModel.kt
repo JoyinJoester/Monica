@@ -191,4 +191,16 @@ class SettingsViewModel(
             settingsManager.updateTrashAutoDeleteDays(days)
         }
     }
+
+    fun updateIconCardsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateIconCardsEnabled(enabled)
+        }
+    }
+
+    fun updatePasswordCardDisplayMode(mode: takagi.ru.monica.data.PasswordCardDisplayMode) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordCardDisplayMode(mode)
+        }
+    }
 }

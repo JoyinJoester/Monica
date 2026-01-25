@@ -78,11 +78,11 @@ class PasswordViewModel(
             }
         }
         .map { entries ->
-            // 解密所有密码
             entries.map { entry ->
                 entry.copy(password = securityManager.decryptData(entry.password))
             }
         }
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -95,6 +95,7 @@ class PasswordViewModel(
                 entry.copy(password = securityManager.decryptData(entry.password))
             }
         }
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

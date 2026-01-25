@@ -39,6 +39,10 @@ fun ExtensionsScreen(
     onValidatorVibrationChange: (Boolean) -> Unit = {},
     copyNextCodeWhenExpiring: Boolean = false,
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
+    iconCardsEnabled: Boolean = false,
+    onIconCardsEnabledChange: (Boolean) -> Unit = {},
+    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
+    onPasswordCardDisplayModeChange: (takagi.ru.monica.data.PasswordCardDisplayMode) -> Unit = {},
     validatorUnifiedProgressBar: takagi.ru.monica.data.UnifiedProgressBarMode = takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED,
     onValidatorUnifiedProgressBarChange: (takagi.ru.monica.data.UnifiedProgressBarMode) -> Unit = {},
     // 通知栏验证器参数
@@ -52,6 +56,56 @@ fun ExtensionsScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    
+    // 密码卡片显示模式选择对话框
+    var showDisplayModeDialog by remember { mutableStateOf(false) }
+    
+    if (showDisplayModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisplayModeDialog = false },
+            title = { Text(stringResource(R.string.password_card_display_mode_title)) },
+            text = {
+                Column {
+                    takagi.ru.monica.data.PasswordCardDisplayMode.values().forEach { mode ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onPasswordCardDisplayModeChange(mode)
+                                    showDisplayModeDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = (mode == passwordCardDisplayMode),
+                                onClick = {
+                                    onPasswordCardDisplayModeChange(mode)
+                                    showDisplayModeDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = when (mode) {
+                                    takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL -> 
+                                        stringResource(R.string.display_mode_all)
+                                    takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME -> 
+                                        stringResource(R.string.display_mode_title_username)
+                                    takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY -> 
+                                        stringResource(R.string.display_mode_title_only)
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDisplayModeDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
     
     Scaffold(
         topBar = {
@@ -113,6 +167,58 @@ fun ExtensionsScreen(
             // 常用账号信息设置
             ExtensionSection(title = stringResource(R.string.extensions_account_settings)) {
                 CommonAccountCard()
+                
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                
+                ExtensionSwitchItem(
+                    icon = Icons.Default.Web,
+                    title = stringResource(R.string.icon_cards_title),
+                    description = stringResource(R.string.icon_cards_description),
+                    checked = iconCardsEnabled,
+                    onCheckedChange = onIconCardsEnabledChange
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                // 密码卡片显示内容模式选择
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDisplayModeDialog = true }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Dns,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.password_card_display_mode_title),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = when (passwordCardDisplayMode) {
+                                takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL -> 
+                                    stringResource(R.string.display_mode_all)
+                                takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME -> 
+                                    stringResource(R.string.display_mode_title_username)
+                                takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY -> 
+                                    stringResource(R.string.display_mode_title_only)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             
             // 验证器设置（需要 Plus）
