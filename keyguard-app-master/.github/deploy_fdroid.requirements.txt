@@ -1,3 +1,0 @@
-androguard
-beautifulsoup4
-requests
