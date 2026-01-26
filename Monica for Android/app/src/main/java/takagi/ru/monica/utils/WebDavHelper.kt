@@ -159,6 +159,14 @@ private data class WebDavConfigBackupEntry(
     val autoBackupEnabled: Boolean = false
 )
 
+@Serializable
+private data class KeePassWebDavConfigBackupEntry(
+    val serverUrl: String = "",
+    val username: String = "",
+    val encryptedPassword: String = "",
+    val encryptedKdbxPassword: String = ""
+)
+
 /**
  * ✅ KeePass 数据库备份数据类
  * 用于备份本地 KeePass 数据库的元信息
@@ -218,6 +226,11 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_TIMELINE = "backup_include_timeline"
         private const val KEY_BACKUP_INCLUDE_TRASH = "backup_include_trash"
         private const val KEY_BACKUP_INCLUDE_WEBDAV_CONFIG = "backup_include_webdav_config"
+        private const val KEEPASS_WEBDAV_PREFS_NAME = "keepass_webdav_config"
+        private const val KEY_KEEPASS_SERVER_URL = "server_url"
+        private const val KEY_KEEPASS_USERNAME = "username"
+        private const val KEY_KEEPASS_PASSWORD = "password"
+        private const val KEY_KEEPASS_KDBX_PASSWORD = "kdbx_password"
     }
     
     // 加密相关
@@ -1014,6 +1027,51 @@ class WebDavHelper(
                         }
                     }
                     
+                    if (preferences.includeWebDavConfig) {
+                        val keepassPrefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
+                        val keepassServerUrl = keepassPrefs.getString(KEY_KEEPASS_SERVER_URL, "") ?: ""
+                        val keepassUsername = keepassPrefs.getString(KEY_KEEPASS_USERNAME, "") ?: ""
+                        val keepassPassword = keepassPrefs.getString(KEY_KEEPASS_PASSWORD, "") ?: ""
+                        val keepassKdbxPassword = keepassPrefs.getString(KEY_KEEPASS_KDBX_PASSWORD, "") ?: ""
+                        
+                        if (keepassServerUrl.isNotEmpty() && keepassUsername.isNotEmpty() && keepassPassword.isNotEmpty()) {
+                            try {
+                                val backupEncryptPassword = if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                                    encryptionPassword
+                                } else {
+                                    "Monica_WebDAV_Config_Key"
+                                }
+                                
+                                val encryptedKeepassPassword = EncryptionHelper.encryptString(keepassPassword, backupEncryptPassword)
+                                val encryptedKdbxPassword = if (keepassKdbxPassword.isNotEmpty()) {
+                                    EncryptionHelper.encryptString(keepassKdbxPassword, backupEncryptPassword)
+                                } else {
+                                    ""
+                                }
+                                
+                                val keepassWebDavConfigBackup = KeePassWebDavConfigBackupEntry(
+                                    serverUrl = keepassServerUrl,
+                                    username = keepassUsername,
+                                    encryptedPassword = encryptedKeepassPassword,
+                                    encryptedKdbxPassword = encryptedKdbxPassword
+                                )
+                                
+                                val json = Json { prettyPrint = false }
+                                val keepassWebDavConfigFile = File(cacheBackupDir, "keepass_webdav_config.json")
+                                keepassWebDavConfigFile.writeText(
+                                    json.encodeToString(KeePassWebDavConfigBackupEntry.serializer(), keepassWebDavConfigBackup),
+                                    Charsets.UTF_8
+                                )
+                                addFileToZip(zipOut, keepassWebDavConfigFile, keepassWebDavConfigFile.name)
+                                keepassWebDavConfigFile.delete()
+                                android.util.Log.d("WebDavHelper", "Backup KeePass WebDAV config (server: $keepassServerUrl)")
+                            } catch (e: Exception) {
+                                android.util.Log.w("WebDavHelper", "Failed to backup KeePass WebDAV config: ${e.message}")
+                                warnings.add("KeePass WebDAV配置备份失败: ${e.message}")
+                            }
+                        }
+                    }
+                    
                     // 7.9 ✅ 备份本地 KeePass 数据库
                     if (preferences.includeLocalKeePass) {
                         try {
@@ -1751,6 +1809,60 @@ class WebDavHelper(
                                     } catch (e: Exception) {
                                         android.util.Log.w("WebDavHelper", "Failed to restore WebDAV config: ${e.message}")
                                         warnings.add("WebDAV配置恢复失败: ${e.message}")
+                                    }
+                                }
+                                entryName.equals("keepass_webdav_config.json", ignoreCase = true) -> {
+                                    try {
+                                        val keepassConfigJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val keepassWebDavConfigBackup = json.decodeFromString<KeePassWebDavConfigBackupEntry>(keepassConfigJson)
+                                        
+                                        val keepassPrefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
+                                        val existingUrl = keepassPrefs.getString(KEY_KEEPASS_SERVER_URL, "") ?: ""
+                                        val existingUser = keepassPrefs.getString(KEY_KEEPASS_USERNAME, "") ?: ""
+                                        val existingPass = keepassPrefs.getString(KEY_KEEPASS_PASSWORD, "") ?: ""
+                                        
+                                        if (existingUrl.isEmpty() && existingUser.isEmpty() && existingPass.isEmpty()) {
+                                            val backupEncryptPassword = if (decryptPassword != null && decryptPassword.isNotEmpty()) {
+                                                decryptPassword
+                                            } else {
+                                                "Monica_WebDAV_Config_Key"
+                                            }
+                                            
+                                            try {
+                                                val decryptedKeepassPassword = if (keepassWebDavConfigBackup.encryptedPassword.isNotEmpty()) {
+                                                    EncryptionHelper.decryptString(keepassWebDavConfigBackup.encryptedPassword, backupEncryptPassword)
+                                                } else {
+                                                    ""
+                                                }
+                                                
+                                                val decryptedKdbxPassword = if (keepassWebDavConfigBackup.encryptedKdbxPassword.isNotEmpty()) {
+                                                    EncryptionHelper.decryptString(keepassWebDavConfigBackup.encryptedKdbxPassword, backupEncryptPassword)
+                                                } else {
+                                                    ""
+                                                }
+                                                
+                                                if (keepassWebDavConfigBackup.serverUrl.isNotEmpty() &&
+                                                    keepassWebDavConfigBackup.username.isNotEmpty() &&
+                                                    decryptedKeepassPassword.isNotEmpty()
+                                                ) {
+                                                    keepassPrefs.edit().apply {
+                                                        putString(KEY_KEEPASS_SERVER_URL, keepassWebDavConfigBackup.serverUrl)
+                                                        putString(KEY_KEEPASS_USERNAME, keepassWebDavConfigBackup.username)
+                                                        putString(KEY_KEEPASS_PASSWORD, decryptedKeepassPassword)
+                                                        putString(KEY_KEEPASS_KDBX_PASSWORD, decryptedKdbxPassword)
+                                                        apply()
+                                                    }
+                                                    warnings.add("✓ KeePass WebDAV配置已恢复: ${keepassWebDavConfigBackup.serverUrl}")
+                                                }
+                                            } catch (e: Exception) {
+                                                warnings.add("KeePass WebDAV配置解密失败（可能密码不匹配）: ${e.message}")
+                                            }
+                                        } else {
+                                            warnings.add("KeePass WebDAV已配置，跳过恢复")
+                                        }
+                                    } catch (e: Exception) {
+                                        warnings.add("KeePass WebDAV配置恢复失败: ${e.message}")
                                     }
                                 }
                                 // ✅ 恢复 KeePass 数据库（恢复为内部存储）

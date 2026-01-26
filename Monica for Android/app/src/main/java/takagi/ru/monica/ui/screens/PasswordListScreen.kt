@@ -3,15 +3,22 @@ package takagi.ru.monica.ui.screens
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,7 +28,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,6 +44,7 @@ import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
@@ -48,6 +64,56 @@ fun PasswordListScreen(
     val clipboardUtils = remember { ClipboardUtils(context) }
     val passwordEntries by viewModel.passwordEntries.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val listState = rememberLazyListState()
+    val haptic = rememberHapticFeedback()
+    val density = LocalDensity.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    
+    var searchExpanded by remember { mutableStateOf(false) }
+    var pullDistance by remember { mutableStateOf(0f) }
+    val triggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 0
+                if (available.y < 0 || !atTop) {
+                    pullDistance = 0f
+                }
+                return Offset.Zero
+            }
+            
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 0
+                if (!searchExpanded && source == NestedScrollSource.UserInput && available.y > 0 && atTop) {
+                    pullDistance += available.y
+                    if (pullDistance >= triggerDistance) {
+                        searchExpanded = true
+                        pullDistance = 0f
+                        haptic.performWarning()
+                    }
+                } else if (available.y < 0 || !atTop) {
+                    pullDistance = 0f
+                }
+                return Offset.Zero
+            }
+        }
+    }
+    
+    LaunchedEffect(searchExpanded) {
+        if (searchExpanded) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+            pullDistance = 0f
+        }
+    }
+    
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            searchExpanded = true
+        }
+    }
     
     var showLogoutDialog by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
@@ -257,32 +323,71 @@ fun PasswordListScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = viewModel::updateSearchQuery,
-                label = { Text(context.getString(R.string.search_passwords)) },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = context.getString(R.string.search))
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = context.getString(R.string.clear_search))
+            AnimatedVisibility(
+                visible = searchExpanded || searchQuery.isNotBlank(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        if (!searchExpanded) {
+                            searchExpanded = true
                         }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 28.dp, bottomEnd = 28.dp)
-            )
+                        viewModel.updateSearchQuery(it)
+                    },
+                    label = { Text(context.getString(R.string.search_passwords)) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = context.getString(R.string.search))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { 
+                                viewModel.updateSearchQuery("")
+                                searchExpanded = false
+                                keyboardController?.hide()
+                            }) {
+                                Icon(Icons.Default.Clear, contentDescription = context.getString(R.string.clear_search))
+                            }
+                        } else if (searchExpanded) {
+                            IconButton(onClick = {
+                                searchExpanded = false
+                                keyboardController?.hide()
+                            }) {
+                                Icon(Icons.Default.Close, contentDescription = context.getString(R.string.cancel))
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .focusRequester(focusRequester),
+                    singleLine = true,
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 28.dp, bottomEnd = 28.dp)
+                )
+            }
             
             // Password List
             if (passwordEntries.isEmpty()) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(searchExpanded, passwordEntries.size) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    if (!searchExpanded && dragAmount > 0f) {
+                                        pullDistance += dragAmount
+                                        if (pullDistance >= triggerDistance) {
+                                            searchExpanded = true
+                                            pullDistance = 0f
+                                            haptic.performWarning()
+                                        }
+                                    }
+                                },
+                                onDragEnd = { pullDistance = 0f },
+                                onDragCancel = { pullDistance = 0f }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -307,7 +412,10 @@ fun PasswordListScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(nestedScrollConnection),
+                    state = listState,
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
