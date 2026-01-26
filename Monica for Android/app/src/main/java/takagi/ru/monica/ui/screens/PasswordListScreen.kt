@@ -50,6 +50,9 @@ import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.data.Category
 
+import androidx.compose.ui.unit.Velocity
+import takagi.ru.monica.util.VibrationPatterns
+
 @OptIn(ExperimentalMaterial3Api::class)  
 @Composable
 fun PasswordListScreen(
@@ -71,41 +74,99 @@ fun PasswordListScreen(
     val focusRequester = remember { FocusRequester() }
     
     var searchExpanded by remember { mutableStateOf(false) }
-    var pullDistance by remember { mutableStateOf(0f) }
+    // 使用带阻尼的偏移量
+    var currentOffset by remember { mutableFloatStateOf(0f) }
     val triggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    
+    // 震动服务
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        }
+    }
+    
+    // 记录是否已经震动过，避免重复震动
+    var hasVibrated by remember { mutableStateOf(false) }
     
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 0
-                if (available.y < 0 || !atTop) {
-                    pullDistance = 0f
+                // 如果正在向上滑动(available.y < 0)且有偏移量，先消耗偏移量
+                if (currentOffset > 0 && available.y < 0) {
+                    val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
+                    val consumed = currentOffset - newOffset
+                    currentOffset = newOffset
+                    return Offset(0f, -consumed)
                 }
                 return Offset.Zero
             }
             
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 0
-                if (!searchExpanded && source == NestedScrollSource.UserInput && available.y > 0 && atTop) {
-                    pullDistance += available.y
-                    if (pullDistance >= triggerDistance) {
-                        searchExpanded = true
-                        pullDistance = 0f
-                        haptic.performWarning()
+                // android.util.Log.d("PullToSearch", "onPostScroll: available=$available, source=$source, currentOffset=$currentOffset, searchExpanded=$searchExpanded")
+                
+                // Allow both UserInput and potentially other sources if needed, but usually UserInput is correct for drag.
+                // We will relax the check slightly or just debug.
+                if (!searchExpanded && available.y > 0) {
+                     // Check if we are really dragging (sometimes fling comes here too, but we only want drag usually)
+                     // However, letting fling contribute to 'pull' might feel weird, but let's test.
+                     // Strict check: source == NestedScrollSource.UserInput
+                     
+                    if (source == NestedScrollSource.UserInput) {
+                        // 添加阻尼感 (0.5f 系数)
+                        val delta = available.y * 0.5f
+                        val newOffset = (currentOffset + delta)
+                        val oldOffset = currentOffset
+                        currentOffset = newOffset
+                        
+                        android.util.Log.d("PullToSearch", "Pulling: old=$oldOffset, new=$newOffset, trigger=$triggerDistance")
+
+                        // 触发界限检测
+                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                            hasVibrated = true
+                            android.util.Log.d("PullToSearch", "Vibration Triggered!")
+                            // 播放轻微的机械感震动 (Tick)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                 vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                vibrator?.vibrate(20) // Fallback
+                            }
+                        } else if (newOffset < triggerDistance) {
+                            hasVibrated = false
+                        }
+                        
+                        return available // 消费掉所有滚动
                     }
-                } else if (available.y < 0 || !atTop) {
-                    pullDistance = 0f
                 }
                 return Offset.Zero
+            }
+            
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (currentOffset >= triggerDistance) {
+                    searchExpanded = true
+                    hasVibrated = false // 重置状态
+                }
+                // 且无论如何松手后都要弹回去
+                androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
+                    currentOffset = value
+                }
+                return super.onPreFling(available)
             }
         }
     }
     
+    // 监听搜索展开，处理键盘
     LaunchedEffect(searchExpanded) {
         if (searchExpanded) {
+            // 给一点点延迟确保UI布局完成
+            kotlinx.coroutines.delay(100)
             focusRequester.requestFocus()
             keyboardController?.show()
-            pullDistance = 0f
+            currentOffset = 0f
         }
     }
     
@@ -372,26 +433,55 @@ fun PasswordListScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(searchExpanded, passwordEntries.size) {
+                        .pointerInput(searchExpanded) {
                             detectVerticalDragGestures(
                                 onVerticalDrag = { _, dragAmount ->
                                     if (!searchExpanded && dragAmount > 0f) {
-                                        pullDistance += dragAmount
-                                        if (pullDistance >= triggerDistance) {
-                                            searchExpanded = true
-                                            pullDistance = 0f
-                                            haptic.performWarning()
+                                        // 阻尼效果
+                                        val newOffset = currentOffset + dragAmount * 0.5f
+                                        val oldOffset = currentOffset
+                                        currentOffset = newOffset
+                                        
+                                        // 震动触发
+                                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                                            hasVibrated = true
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                                 vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                                            } else {
+                                                @Suppress("DEPRECATION")
+                                                vibrator?.vibrate(20)
+                                            }
+                                        } else if (newOffset < triggerDistance) {
+                                            hasVibrated = false
                                         }
                                     }
                                 },
-                                onDragEnd = { pullDistance = 0f },
-                                onDragCancel = { pullDistance = 0f }
+                                onDragEnd = { 
+                                    if (currentOffset >= triggerDistance) {
+                                        searchExpanded = true
+                                        hasVibrated = false
+                                    }
+                                    // 回弹动画
+                                    scope.launch {
+                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
+                                            currentOffset = value
+                                        }
+                                    }
+                                },
+                                onDragCancel = { 
+                                    scope.launch {
+                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
+                                            currentOffset = value
+                                        }
+                                    }
+                                }
                             )
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
                     ) {
                         Icon(
                             Icons.Default.Lock,
@@ -414,6 +504,7 @@ fun PasswordListScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
+                        .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) } // 应用下拉偏移
                         .nestedScroll(nestedScrollConnection),
                     state = listState,
                     contentPadding = PaddingValues(16.dp),

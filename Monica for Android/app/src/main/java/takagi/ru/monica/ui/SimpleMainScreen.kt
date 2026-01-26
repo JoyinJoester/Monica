@@ -8,10 +8,19 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -1206,8 +1215,82 @@ private fun PasswordListContent(
     
     val context = androidx.compose.ui.platform.LocalContext.current
     
+    // Display options menu state (moved here)
+    var displayMenuExpanded by remember { mutableStateOf(false) }
+    // Search state hoisted for morphing animation
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    // Category sheet state
+    var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
+    
     // 添加触觉反馈
     val haptic = rememberHapticFeedback()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    
+    // Pull-to-search state
+    var currentOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val triggerDistance = remember(density) { with(density) { 40.dp.toPx() } }
+    val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
+    var hasVibrated by remember { mutableStateOf(false) }
+    
+    // Vibrator
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        }
+    }
+
+    val nestedScrollConnection = remember {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (currentOffset > 0 && available.y < 0) {
+                    val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
+                    val consumed = currentOffset - newOffset
+                    currentOffset = newOffset
+                    return androidx.compose.ui.geometry.Offset(0f, -consumed)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+            
+            override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                 // Allow UserInput to trigger pull
+                if (available.y > 0 && source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
+                    val delta = available.y * 0.5f // Damping
+                    val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
+                    val oldOffset = currentOffset
+                    currentOffset = newOffset
+                    
+                    if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                        hasVibrated = true
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                             vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator?.vibrate(20)
+                        }
+                    } else if (newOffset < triggerDistance) {
+                        hasVibrated = false
+                    }
+                    return available
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+            
+            override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                if (currentOffset >= triggerDistance) {
+                     isSearchExpanded = true
+                     hasVibrated = false
+                }
+                androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
+                    currentOffset = value
+                }
+                return androidx.compose.ui.unit.Velocity.Zero
+            }
+        }
+    }
     
     // 添加单项删除对话框状态
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.PasswordEntry?>(null) }
@@ -1617,14 +1700,8 @@ private fun PasswordListContent(
         )
     }
 
-    // Display options menu state (moved from global top bar)
-    var displayMenuExpanded by remember { mutableStateOf(false) }
-
-    // Search state hoisted for morphing animation
-    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
-    // Category sheet state
-    var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
-
+    // Display options/search state moved to top
+    
     Column {
         // M3E Top Bar with integrated search - 始终显示
         val currentFilter by viewModel.categoryFilter.collectAsState()
@@ -2041,11 +2118,86 @@ private fun PasswordListContent(
     }
 
         // 密码列表 - 使用堆叠分组视图
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp)
-        ) {
-            groupedPasswords.forEach { (groupKey, passwords) ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (passwordEntries.isEmpty() && searchQuery.isEmpty()) {
+                // Empty state with pull-to-search
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
+                        .pointerInput(Unit) {
+                            detectDragGesturesAfterLongPress(
+                                onDrag = { _, _ -> } // Consume long press to prevent issues
+                            )
+                        }
+                        .pointerInput(Unit) {
+                             detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    if (dragAmount > 0) {
+                                        val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
+                                        val oldOffset = currentOffset
+                                        currentOffset = newOffset
+                                        
+                                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                                            hasVibrated = true
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                                 vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                                            } else {
+                                                @Suppress("DEPRECATION")
+                                                vibrator?.vibrate(20)
+                                            }
+                                        } else if (newOffset < triggerDistance) {
+                                           hasVibrated = false
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    if (currentOffset >= triggerDistance) {
+                                        isSearchExpanded = true
+                                        hasVibrated = false
+                                    }
+                                    coroutineScope.launch {
+                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) { currentOffset = value }
+                                    }
+                                },
+                                onDragCancel = {
+                                    coroutineScope.launch {
+                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) { currentOffset = value }
+                                    }
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
+                    ) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                         Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.no_passwords_saved),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = androidx.compose.foundation.lazy.rememberLazyListState(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
+                        .nestedScroll(nestedScrollConnection),
+                    contentPadding = PaddingValues(horizontal = 16.dp)
+                ) {
+                    groupedPasswords.forEach { (groupKey, passwords) ->
                     val isExpanded = when (stackCardMode) {
                         StackCardMode.AUTO -> expandedGroups.contains(groupKey)
                         StackCardMode.ALWAYS_EXPANDED -> true
@@ -2208,7 +2360,9 @@ private fun PasswordListContent(
                 Spacer(modifier = Modifier.height(80.dp))
             }
         }
-    }
+            } // Close else
+        } // Close Box
+    } // Close PasswordListContent
     
     // 批量删除确认对话框
     if (showBatchDeleteDialog) {
