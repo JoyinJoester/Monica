@@ -17,7 +17,7 @@ import androidx.room.TypeConverters
         OperationLog::class,
         LocalKeePassDatabase::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -352,6 +352,7 @@ abstract class PasswordDatabase : RoomDatabase() {
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         name TEXT NOT NULL,
                         filePath TEXT NOT NULL,
+                        keyFileUri TEXT,
                         storage_location TEXT NOT NULL,
                         encrypted_password TEXT,
                         description TEXT,
@@ -389,6 +390,7 @@ abstract class PasswordDatabase : RoomDatabase() {
                             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                             name TEXT NOT NULL,
                             filePath TEXT NOT NULL,
+                            keyFileUri TEXT,
                             storage_location TEXT NOT NULL,
                             encrypted_password TEXT,
                             description TEXT,
@@ -404,7 +406,7 @@ abstract class PasswordDatabase : RoomDatabase() {
                     // 3. 复制数据
                     database.execSQL("""
                         INSERT INTO local_keepass_databases 
-                        SELECT id, name, filePath, storage_location, encrypted_password, description,
+                        SELECT id, name, filePath, NULL, storage_location, encrypted_password, description,
                                created_at, last_accessed_at, last_synced_at, is_default, entry_count, sort_order
                         FROM local_keepass_databases_backup
                     """.trimIndent())
@@ -421,6 +423,7 @@ abstract class PasswordDatabase : RoomDatabase() {
                             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                             name TEXT NOT NULL,
                             filePath TEXT NOT NULL,
+                            keyFileUri TEXT,
                             storage_location TEXT NOT NULL,
                             encrypted_password TEXT,
                             description TEXT,
@@ -434,6 +437,13 @@ abstract class PasswordDatabase : RoomDatabase() {
                     """.trimIndent())
                     database.execSQL("CREATE INDEX IF NOT EXISTS index_local_keepass_databases_storage_location ON local_keepass_databases(storage_location)")
                 }
+            }
+        }
+        
+        // Migration 25 → 26 - 为本地 KeePass 数据库添加密钥文件字段
+        private val MIGRATION_25_26 = object : androidx.room.migration.Migration(25, 26) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE local_keepass_databases ADD COLUMN keyFileUri TEXT")
             }
         }
 
@@ -468,7 +478,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_21_22,  // 添加第三方登录(SSO)字段
                         MIGRATION_22_23,  // 添加本地 KeePass 数据库管理表
                         MIGRATION_23_24,  // 为密码条目添加 KeePass 数据库归属字段
-                        MIGRATION_24_25   // 修复 local_keepass_databases 表结构
+                        MIGRATION_24_25,  // 修复 local_keepass_databases 表结构
+                        MIGRATION_25_26   // 添加 KeePass 密钥文件字段
                     )
                     .build()
                 INSTANCE = instance

@@ -28,6 +28,9 @@ data class LocalKeePassDatabase(
     /** 文件路径（内部存储时为相对路径，外部存储时为 URI） */
     val filePath: String,
     
+    /** 密钥文件 URI（可选，使用 SAF 选择或生成的密钥文件） */
+    val keyFileUri: String? = null,
+    
     /** 存储位置 */
     @ColumnInfo(name = "storage_location")
     val storageLocation: KeePassStorageLocation = KeePassStorageLocation.INTERNAL,

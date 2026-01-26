@@ -234,12 +234,13 @@ fun LocalKeePassScreen(
         }
     }
     
-    // 创建数据库对话框
+    // 创建数据库 BottomSheet
     if (showCreateDialog) {
-        CreateKeePassDatabaseDialog(
+        CreateKeePassDatabaseBottomSheet(
             onDismiss = { showCreateDialog = false },
-            onCreate = { name, password, location, externalUri, description ->
-                viewModel.createDatabase(name, password, location, externalUri, description)
+            onGenerateKeyFile = { uri -> viewModel.generateKeyFile(uri) },
+            onCreate = { name, password, location, externalUri, keyFileUri ->
+                viewModel.createDatabase(name, password, location, externalUri, keyFileUri, null)
                 showCreateDialog = false
             }
         )
@@ -253,8 +254,8 @@ fun LocalKeePassScreen(
                 showImportDialog = false
                 selectedExternalUri = null
             },
-            onImport = { name, password, description ->
-                viewModel.importExternalDatabase(name, selectedExternalUri!!, password, description)
+            onImport = { name, password, keyFileUri ->
+                viewModel.importExternalDatabase(name, selectedExternalUri!!, password, keyFileUri, null)
                 showImportDialog = false
                 selectedExternalUri = null
             }
@@ -654,21 +655,26 @@ private fun OperationStatusBar(state: LocalKeePassViewModel.OperationState) {
 }
 
 /**
- * 创建数据库对话框
+ * 创建数据库 BottomSheet
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CreateKeePassDatabaseDialog(
+private fun CreateKeePassDatabaseBottomSheet(
     onDismiss: () -> Unit,
-    onCreate: (name: String, password: String, location: KeePassStorageLocation, externalUri: Uri?, description: String?) -> Unit
+    onGenerateKeyFile: (Uri) -> Unit,
+    onCreate: (name: String, password: String, location: KeePassStorageLocation, externalUri: Uri?, keyFileUri: Uri?) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
     var storageLocation by remember { mutableStateOf(KeePassStorageLocation.INTERNAL) }
     var showPassword by remember { mutableStateOf(false) }
     var externalUri by remember { mutableStateOf<Uri?>(null) }
+    
+    // 密钥文件相关状态
+    var useKeyFile by remember { mutableStateOf(false) }
+    var keyFileUri by remember { mutableStateOf<Uri?>(null) }
+    var keyFileName by remember { mutableStateOf("") }
     
     // 外部存储选择器
     val directoryPickerLauncher = rememberLauncherForActivityResult(
@@ -677,24 +683,59 @@ private fun CreateKeePassDatabaseDialog(
         externalUri = uri
     }
     
+    // 密钥文件选择器
+    val keyFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            keyFileUri = it
+            keyFileName = it.lastPathSegment?.substringAfterLast("/") ?: "keyfile"
+        }
+    }
+    
+    // 密钥文件生成器
+    val createKeyFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/xml")
+    ) { uri: Uri? ->
+        uri?.let {
+            // 调用 ViewModel 生成文件内容
+            onGenerateKeyFile(it)
+            keyFileUri = it
+            keyFileName = it.lastPathSegment?.substringAfterLast("/") ?: "new_keyfile.xml"
+        }
+    }
+    
     val isValid = name.isNotBlank() && 
                   password.isNotBlank() && 
                   password == confirmPassword &&
-                  (storageLocation == KeePassStorageLocation.INTERNAL || externalUri != null)
+                  (storageLocation == KeePassStorageLocation.INTERNAL || externalUri != null) &&
+                  (!useKeyFile || keyFileUri != null)
     
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // 标题
             Text(
                 stringResource(R.string.create_keepass_database),
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            
+            // 表单区域
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 // 数据库名称
                 OutlinedTextField(
                     value = name,
@@ -702,7 +743,9 @@ private fun CreateKeePassDatabaseDialog(
                     label = { Text(stringResource(R.string.database_name)) },
                     placeholder = { Text(stringResource(R.string.database_name_placeholder)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) }
                 )
                 
                 // 密码
@@ -711,11 +754,13 @@ private fun CreateKeePassDatabaseDialog(
                     onValueChange = { password = it },
                     label = { Text(stringResource(R.string.database_password)) },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     visualTransformation = if (showPassword) 
                         VisualTransformation.None 
                     else 
                         PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    leadingIcon = { Icon(Icons.Default.Password, contentDescription = null) },
                     trailingIcon = {
                         IconButton(onClick = { showPassword = !showPassword }) {
                             Icon(
@@ -733,74 +778,180 @@ private fun CreateKeePassDatabaseDialog(
                     onValueChange = { confirmPassword = it },
                     label = { Text(stringResource(R.string.confirm_password)) },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     visualTransformation = if (showPassword) 
                         VisualTransformation.None 
                     else 
                         PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                     isError = confirmPassword.isNotBlank() && password != confirmPassword,
                     supportingText = if (confirmPassword.isNotBlank() && password != confirmPassword) {
                         { Text(stringResource(R.string.password_mismatch)) }
                     } else null,
                     modifier = Modifier.fillMaxWidth()
                 )
-                
-                // 描述（可选）
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text(stringResource(R.string.description_optional)) },
-                    placeholder = { Text(stringResource(R.string.description_placeholder)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+            }
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // 安全设置区
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "安全选项",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
                 )
                 
-                HorizontalDivider()
+                // 密钥文件开关
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    onClick = { useKeyFile = !useKeyFile }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Key,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "使用密钥文件",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "增加额外的安全层",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = useKeyFile,
+                            onCheckedChange = { useKeyFile = it }
+                        )
+                    }
+                }
                 
-                // 存储位置选择
+                // 密钥文件选择
+                AnimatedVisibility(visible = useKeyFile) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = keyFileName,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("密钥文件") },
+                            placeholder = { Text("点击选择或生成") },
+                            shape = RoundedCornerShape(12.dp),
+                            leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) },
+                            trailingIcon = {
+                                Row {
+                                    IconButton(onClick = { createKeyFileLauncher.launch("monica.key") }) {
+                                        Icon(Icons.Default.Add, contentDescription = "生成新密钥文件")
+                                    }
+                                    IconButton(onClick = { keyFilePickerLauncher.launch(arrayOf("*/*")) }) {
+                                        Icon(Icons.Default.FolderOpen, contentDescription = "选择现有密钥文件")
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { keyFilePickerLauncher.launch(arrayOf("*/*")) }
+                        )
+                    }
+                }
+            }
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            
+            // 存储位置选择
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     stringResource(R.string.storage_location),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
                 )
                 
-                // 内部存储选项
-                StorageLocationOption(
-                    icon = Icons.Outlined.PhoneAndroid,
-                    title = stringResource(R.string.internal_storage),
-                    description = stringResource(R.string.internal_storage_option_description),
-                    selected = storageLocation == KeePassStorageLocation.INTERNAL,
-                    onClick = { storageLocation = KeePassStorageLocation.INTERNAL }
-                )
-                
-                // 外部存储选项
-                StorageLocationOption(
-                    icon = Icons.Outlined.SdStorage,
-                    title = stringResource(R.string.external_storage),
-                    description = if (externalUri != null)
-                        stringResource(R.string.location_selected)
-                    else
-                        stringResource(R.string.external_storage_option_description),
-                    selected = storageLocation == KeePassStorageLocation.EXTERNAL,
-                    onClick = { 
-                        storageLocation = KeePassStorageLocation.EXTERNAL
-                        if (externalUri == null) {
-                            directoryPickerLauncher.launch(null)
-                        }
-                    },
-                    trailing = if (storageLocation == KeePassStorageLocation.EXTERNAL) {
-                        {
-                            TextButton(
-                                onClick = { directoryPickerLauncher.launch(null) }
-                            ) {
-                                Text(stringResource(R.string.select_location))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 内部存储卡片
+                    StorageCard(
+                        icon = Icons.Outlined.PhoneAndroid,
+                        title = stringResource(R.string.internal_storage),
+                        selected = storageLocation == KeePassStorageLocation.INTERNAL,
+                        onClick = { storageLocation = KeePassStorageLocation.INTERNAL },
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    // 外部存储卡片
+                    StorageCard(
+                        icon = Icons.Outlined.SdStorage,
+                        title = stringResource(R.string.external_storage),
+                        selected = storageLocation == KeePassStorageLocation.EXTERNAL,
+                        onClick = { 
+                            storageLocation = KeePassStorageLocation.EXTERNAL
+                            if (externalUri == null) {
+                                directoryPickerLauncher.launch(null)
                             }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                
+                // 外部存储路径显示
+                AnimatedVisibility(visible = storageLocation == KeePassStorageLocation.EXTERNAL) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        onClick = { directoryPickerLauncher.launch(null) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                if (externalUri != null) 
+                                    stringResource(R.string.location_selected) 
+                                else 
+                                    stringResource(R.string.select_location),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
-                    } else null
-                )
+                    }
+                }
             }
-        },
-        confirmButton = {
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 创建按钮
             Button(
                 onClick = {
                     onCreate(
@@ -808,20 +959,76 @@ private fun CreateKeePassDatabaseDialog(
                         password,
                         storageLocation,
                         externalUri,
-                        description.ifBlank { null }
+                        if (useKeyFile) keyFileUri else null
                     )
                 },
-                enabled = isValid
+                enabled = isValid,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Text(stringResource(R.string.create))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                Text(
+                    stringResource(R.string.create),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
-    )
+    }
+}
+
+/**
+ * 存储位置选择卡片
+ */
+@Composable
+private fun StorageCard(
+    icon: ImageVector,
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        selected = selected,
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) 
+            MaterialTheme.colorScheme.primaryContainer 
+        else 
+            MaterialTheme.colorScheme.surfaceContainer,
+        border = if (selected) 
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary) 
+        else 
+            null,
+        modifier = modifier.height(80.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(8.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) 
+                    MaterialTheme.colorScheme.onPrimaryContainer 
+                else 
+                    MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) 
+                    MaterialTheme.colorScheme.onPrimaryContainer 
+                else 
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }
 
 /**
@@ -832,7 +1039,7 @@ private fun CreateKeePassDatabaseDialog(
 private fun ImportExternalDatabaseDialog(
     uri: Uri,
     onDismiss: () -> Unit,
-    onImport: (name: String, password: String, description: String?) -> Unit
+    onImport: (name: String, password: String, keyFileUri: Uri?) -> Unit
 ) {
     val context = LocalContext.current
     var name by remember { 
@@ -842,8 +1049,18 @@ private fun ImportExternalDatabaseDialog(
         )
     }
     var password by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
+    var keyFileUri by remember { mutableStateOf<Uri?>(null) }
+    var keyFileName by remember { mutableStateOf("") }
+    
+    val keyFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { selectedUri: Uri? ->
+        selectedUri?.let {
+            keyFileUri = it
+            keyFileName = it.lastPathSegment?.substringAfterLast("/") ?: "keyfile"
+        }
+    }
     
     val isValid = name.isNotBlank() && password.isNotBlank()
     
@@ -922,21 +1139,34 @@ private fun ImportExternalDatabaseDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 
-                // 描述（可选）
                 OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text(stringResource(R.string.description_optional)) },
-                    placeholder = { Text(stringResource(R.string.description_placeholder)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    value = keyFileName,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("密钥文件（可选）") },
+                    placeholder = { Text("点击选择密钥文件") },
+                    trailingIcon = {
+                        IconButton(onClick = { keyFilePickerLauncher.launch(arrayOf("*/*")) }) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = "选择密钥文件")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { keyFilePickerLauncher.launch(arrayOf("*/*")) }
+                )
+                
+                Text(
+                    if (keyFileUri == null) "未选择密钥文件" else "已选择密钥文件",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp)
                 )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    onImport(name, password, description.ifBlank { null })
+                    onImport(name, password, keyFileUri)
                 },
                 enabled = isValid
             ) {

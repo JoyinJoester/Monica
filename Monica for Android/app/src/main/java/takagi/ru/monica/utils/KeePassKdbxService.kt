@@ -285,7 +285,16 @@ class KeePassKdbxService(
     private fun buildCredentials(database: LocalKeePassDatabase): Credentials {
         val encryptedDbPassword = database.encryptedPassword ?: throw Exception("数据库密码未设置")
         val kdbxPassword = securityManager.decryptData(encryptedDbPassword)
-        return Credentials.from(EncryptedValue.fromString(kdbxPassword))
+        val keyFileBytes = database.keyFileUri?.takeIf { it.isNotBlank() }?.let { uriString ->
+            val uri = Uri.parse(uriString)
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw Exception("无法读取密钥文件")
+        }
+        return if (keyFileBytes != null) {
+            Credentials.from(EncryptedValue.fromString(kdbxPassword), keyFileBytes)
+        } else {
+            Credentials.from(EncryptedValue.fromString(kdbxPassword))
+        }
     }
 
     private fun readDatabaseBytes(database: LocalKeePassDatabase): ByteArray {

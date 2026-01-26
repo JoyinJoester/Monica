@@ -2,6 +2,7 @@ package takagi.ru.monica.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
@@ -67,6 +68,7 @@ class LocalKeePassViewModel(
         password: String,
         storageLocation: KeePassStorageLocation,
         externalUri: Uri? = null,
+        keyFileUri: Uri? = null,
         description: String? = null
     ) {
         viewModelScope.launch {
@@ -76,6 +78,21 @@ class LocalKeePassViewModel(
                 withContext(Dispatchers.IO) {
                     // 加密密码
                     val encryptedPassword = securityManager.encryptData(password)
+                    
+                    // 读取密钥文件
+                    val keyFileBytes = keyFileUri?.let { uri ->
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                            ?: throw Exception("无法读取密钥文件")
+                    }
+                    
+                    if (keyFileUri != null) {
+                        runCatching {
+                            context.contentResolver.takePersistableUriPermission(
+                                keyFileUri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            )
+                        }
+                    }
                     
                     // 生成文件名
                     val fileName = "${name.replace(Regex("[^a-zA-Z0-9\\u4e00-\\u9fa5]"), "_")}.kdbx"
@@ -91,7 +108,7 @@ class LocalKeePassViewModel(
                         
                         // 创建空的 kdbx 文件（实际应该用 KeePass 库创建）
                         val dbFile = File(keepassDir, fileName)
-                        createEmptyKdbxFile(dbFile, password)
+                        createEmptyKdbxFile(dbFile, password, keyFileBytes)
                         
                         filePath = "keepass/$fileName"
                     } else {
@@ -106,7 +123,7 @@ class LocalKeePassViewModel(
                         
                         if (newFile?.uri != null) {
                             context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                                createEmptyKdbxContent(password).let { content ->
+                                createEmptyKdbxContent(password, keyFileBytes).let { content ->
                                     output.write(content)
                                 }
                             }
@@ -120,6 +137,7 @@ class LocalKeePassViewModel(
                     val database = LocalKeePassDatabase(
                         name = name,
                         filePath = filePath,
+                        keyFileUri = keyFileUri?.toString(),
                         storageLocation = storageLocation,
                         encryptedPassword = encryptedPassword,
                         description = description,
@@ -137,12 +155,62 @@ class LocalKeePassViewModel(
     }
     
     /**
+     * 生成新的密钥文件 (XML 格式)
+     */
+    fun generateKeyFile(uri: Uri) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在生成密钥文件...")
+            
+            try {
+                withContext(Dispatchers.IO) {
+                    // 1. 生成 32 字节随机数据
+                    val randomBytes = ByteArray(32)
+                    java.security.SecureRandom().nextBytes(randomBytes)
+                    
+                    // 2. Base64 编码
+                    val base64Key = android.util.Base64.encodeToString(randomBytes, android.util.Base64.NO_WRAP)
+                    
+                    // 3. 构建 XML 内容 (KeePass 2.x 格式)
+                    val xmlContent = """
+                        <?xml version="1.0" encoding="utf-8"?>
+                        <KeyFile>
+                        	<Meta>
+                        		<Version>1.00</Version>
+                        	</Meta>
+                        	<Key>
+                        		<Data>$base64Key</Data>
+                        	</Key>
+                        </KeyFile>
+                    """.trimIndent()
+                    
+                    // 4. 写入文件
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(xmlContent.toByteArray())
+                    } ?: throw Exception("无法写入文件")
+                    
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                    }
+                }
+                
+                _operationState.value = OperationState.Success("密钥文件生成成功")
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error("生成密钥文件失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * 导入外部 KeePass 数据库（添加引用，不复制文件）
      */
     fun importExternalDatabase(
         name: String,
         uri: Uri,
         password: String,
+        keyFileUri: Uri? = null,
         description: String? = null
     ) {
         viewModelScope.launch {
@@ -164,9 +232,21 @@ class LocalKeePassViewModel(
                         android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     )
                     
+                    if (keyFileUri != null) {
+                        runCatching {
+                            context.contentResolver.takePersistableUriPermission(
+                                keyFileUri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            )
+                        }
+                        context.contentResolver.openInputStream(keyFileUri)?.close()
+                            ?: throw Exception("无法访问密钥文件")
+                    }
+                    
                     val database = LocalKeePassDatabase(
                         name = name,
                         filePath = uri.toString(),
+                        keyFileUri = keyFileUri?.toString(),
                         storageLocation = KeePassStorageLocation.EXTERNAL,
                         encryptedPassword = encryptedPassword,
                         description = description,
@@ -468,9 +548,13 @@ class LocalKeePassViewModel(
     /**
      * 使用 kotpass 库创建真正的 KDBX 格式数据库文件
      */
-    private fun createEmptyKdbxFile(file: File, password: String) {
+    private fun createEmptyKdbxFile(file: File, password: String, keyFileBytes: ByteArray? = null) {
         // 创建凭据
-        val credentials = Credentials.from(EncryptedValue.fromString(password))
+        val credentials = if (keyFileBytes != null) {
+            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
+        } else {
+            Credentials.from(EncryptedValue.fromString(password))
+        }
         
         // 创建元数据
         val meta = Meta(
@@ -494,9 +578,13 @@ class LocalKeePassViewModel(
     /**
      * 使用 kotpass 库创建真正的 KDBX 格式数据库内容
      */
-    private fun createEmptyKdbxContent(password: String): ByteArray {
+    private fun createEmptyKdbxContent(password: String, keyFileBytes: ByteArray? = null): ByteArray {
         // 创建凭据
-        val credentials = Credentials.from(EncryptedValue.fromString(password))
+        val credentials = if (keyFileBytes != null) {
+            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
+        } else {
+            Credentials.from(EncryptedValue.fromString(password))
+        }
         
         // 创建元数据
         val meta = Meta(
