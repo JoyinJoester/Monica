@@ -87,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: app/build/test-results/
+          path: "Monica for Android/app/build/test-results/"
           retention-days: 7
           if-no-files-found: ignore
 
@@ -134,19 +134,19 @@ jobs:
         run: |
           cd app/build/outputs/apk/release
           sha256sum *.apk > checksums.txt
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-obfuscated
           path: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/release/checksums.txt
+            "Monica for Android/app/build/outputs/apk/release/*.apk"
+            "Monica for Android/app/build/outputs/apk/release/checksums.txt"
           retention-days: 14
+          if-no-files-found: error
 
       - name: Upload ProGuard/R8 mapping
         uses: actions/upload-artifact@v4
         with:
           name: mapping-release
-          path: app/build/outputs/mapping/release/mapping.txt
+          path: "Monica for Android/app/build/outputs/mapping/release/mapping.txt"
           retention-days: 30
