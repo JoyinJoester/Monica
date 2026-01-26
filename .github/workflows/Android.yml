@@ -116,12 +116,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       - name: Decode keystore
-        run: echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > $PWD/release.jks
+        run: echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ./release.jks
 
       - name: Build Release APK (signed & obfuscated)
         run: |
           ./gradlew assembleRelease --stacktrace \
-            -Pandroid.injected.signing.store.file=$PWD/release.jks \
+            -Pandroid.injected.signing.store.file=./release.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.DEBUG_STORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.DEBUG_KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.DEBUG_KEY_PASSWORD }}
