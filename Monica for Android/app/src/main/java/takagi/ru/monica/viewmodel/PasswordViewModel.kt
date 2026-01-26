@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
@@ -13,6 +14,8 @@ import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.utils.KeePassEntryData
+import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -33,11 +36,17 @@ class PasswordViewModel(
     private val repository: PasswordRepository,
     private val securityManager: SecurityManager,
     private val secureItemRepository: SecureItemRepository? = null,
-    context: Context? = null
+    context: Context? = null,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
     
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
     private val settingsManager: takagi.ru.monica.utils.SettingsManager? = context?.let { takagi.ru.monica.utils.SettingsManager(it) }
+    private val keepassService = if (context != null && localKeePassDatabaseDao != null) {
+        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    } else {
+        null
+    }
     
     // 回收站设置
     private val trashSettings = settingsManager?.settingsFlow?.map { 
@@ -65,7 +74,7 @@ class PasswordViewModel(
         .debounce(300)
         .distinctUntilChanged()
         .flatMapLatest { (query, filter) ->
-            if (query.isNotBlank()) {
+            val baseFlow = if (query.isNotBlank()) {
                 repository.searchPasswordEntries(query)
             } else {
                 when (filter) {
@@ -76,10 +85,15 @@ class PasswordViewModel(
                     is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
                 }
             }
-        }
-        .map { entries ->
-            entries.map { entry ->
-                entry.copy(password = securityManager.decryptData(entry.password))
+            baseFlow.map { entries ->
+                val filtered = if (filter is CategoryFilter.All) {
+                    dedupeForAll(entries)
+                } else {
+                    entries
+                }
+                filtered.map { entry ->
+                    entry.copy(password = securityManager.decryptData(entry.password))
+                }
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
@@ -101,6 +115,70 @@ class PasswordViewModel(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    private fun dedupeForAll(entries: List<PasswordEntry>): List<PasswordEntry> {
+        val localKeys = entries
+            .filter { it.keepassDatabaseId == null }
+            .map { buildDedupeKey(it) }
+            .toSet()
+        return entries.filter { entry ->
+            entry.keepassDatabaseId == null || buildDedupeKey(entry) !in localKeys
+        }
+    }
+
+    private fun buildDedupeKey(entry: PasswordEntry): String {
+        val title = entry.title.trim().lowercase()
+        val username = entry.username.trim().lowercase()
+        val website = entry.website.trim().lowercase()
+        return "$title|$username|$website"
+    }
+
+    private fun syncKeePassDatabase(databaseId: Long) {
+        val service = keepassService ?: return
+        viewModelScope.launch {
+            val result = service.readPasswordEntries(databaseId)
+            val data = result.getOrNull() ?: return@launch
+            upsertKeePassEntries(databaseId, data)
+        }
+    }
+
+    private suspend fun upsertKeePassEntries(databaseId: Long, entries: List<KeePassEntryData>) {
+        entries.forEach { item ->
+            val existingById = item.monicaLocalId?.let { repository.getPasswordEntryById(it) }
+            val existing = if (existingById != null && existingById.keepassDatabaseId == databaseId) {
+                existingById
+            } else {
+                repository.getDuplicateEntryInKeePass(databaseId, item.title, item.username, item.url)
+            }
+            val encryptedPassword = securityManager.encryptData(item.password)
+            if (existing != null) {
+                val updated = existing.copy(
+                    title = item.title,
+                    username = item.username,
+                    password = encryptedPassword,
+                    website = item.url,
+                    notes = item.notes,
+                    keepassDatabaseId = databaseId,
+                    isDeleted = false,
+                    deletedAt = null,
+                    updatedAt = Date()
+                )
+                repository.updatePasswordEntry(updated)
+            } else {
+                val newEntry = PasswordEntry(
+                    title = item.title,
+                    username = item.username,
+                    password = encryptedPassword,
+                    website = item.url,
+                    notes = item.notes,
+                    createdAt = Date(),
+                    updatedAt = Date(),
+                    keepassDatabaseId = databaseId
+                )
+                repository.insertPasswordEntry(newEntry)
+            }
+        }
+    }
     
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -108,6 +186,9 @@ class PasswordViewModel(
 
     fun setCategoryFilter(filter: CategoryFilter) {
         _categoryFilter.value = filter
+        if (filter is CategoryFilter.KeePassDatabase) {
+            syncKeePassDatabase(filter.databaseId)
+        }
     }
 
     fun addCategory(name: String, onResult: (Long) -> Unit = {}) {
@@ -173,11 +254,27 @@ class PasswordViewModel(
     
     fun addPasswordEntry(entry: PasswordEntry, onResult: (Long) -> Unit = {}) {
         viewModelScope.launch {
-            val id = repository.insertPasswordEntry(entry.copy(
+            val encryptedEntry = entry.copy(
                 password = securityManager.encryptData(entry.password),
                 createdAt = Date(),
                 updatedAt = Date()
-            ))
+            )
+            val id = repository.insertPasswordEntry(encryptedEntry)
+            if (entry.keepassDatabaseId != null) {
+                val service = keepassService
+                if (service != null) {
+                    val syncResult = service.updatePasswordEntry(
+                        databaseId = entry.keepassDatabaseId,
+                        entry = entry.copy(id = id),
+                        resolvePassword = { it.password }
+                    )
+                    if (syncResult.isFailure) {
+                        repository.deletePasswordEntryById(id)
+                        Log.e("PasswordViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
+                        return@launch
+                    }
+                }
+            }
             // 记录创建操作（包含详细字段信息）
             val createDetails = mutableListOf<takagi.ru.monica.utils.FieldChange>()
             if (entry.username.isNotBlank()) {
@@ -230,6 +327,29 @@ class PasswordViewModel(
             // 获取旧数据用于对比
             val oldEntry = repository.getPasswordEntryById(entry.id)
             val oldPassword = oldEntry?.let { securityManager.decryptData(it.password) } ?: ""
+            val service = keepassService
+            val oldKeepassId = oldEntry?.keepassDatabaseId
+            val newKeepassId = entry.keepassDatabaseId
+            if (service != null) {
+                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                    val deleteResult = service.deletePasswordEntries(oldKeepassId, listOf(entry.copy(keepassDatabaseId = oldKeepassId)))
+                    if (deleteResult.isFailure) {
+                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        return@launch
+                    }
+                }
+                if (newKeepassId != null) {
+                    val updateResult = service.updatePasswordEntry(
+                        databaseId = newKeepassId,
+                        entry = entry,
+                        resolvePassword = { it.password }
+                    )
+                    if (updateResult.isFailure) {
+                        Log.e("PasswordViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                        return@launch
+                    }
+                }
+            }
 
             repository.updatePasswordEntry(entry.copy(
                 password = securityManager.encryptData(entry.password),
@@ -277,8 +397,17 @@ class PasswordViewModel(
     fun deletePasswordEntry(entry: PasswordEntry) {
         viewModelScope.launch {
             val trashEnabled = trashSettings?.value?.first ?: true
+            val service = keepassService
+            val keepassId = entry.keepassDatabaseId
             
             if (trashEnabled) {
+                if (service != null && keepassId != null) {
+                    val deleteResult = service.deletePasswordEntries(keepassId, listOf(entry))
+                    if (deleteResult.isFailure) {
+                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        return@launch
+                    }
+                }
                 // 软删除：移动到回收站
                 val softDeletedEntry = entry.copy(
                     isDeleted = true,
@@ -294,6 +423,13 @@ class PasswordViewModel(
                     detail = "移入回收站"
                 )
             } else {
+                if (service != null && keepassId != null) {
+                    val deleteResult = service.deletePasswordEntries(keepassId, listOf(entry))
+                    if (deleteResult.isFailure) {
+                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        return@launch
+                    }
+                }
                 // 直接永久删除
                 repository.deletePasswordEntry(entry)
                 // 记录删除操作
@@ -490,19 +626,19 @@ class PasswordViewModel(
      */
     fun saveGroupedPasswords(
         originalIds: List<Long>,
-        commonEntry: PasswordEntry,
+        commonEntry: PasswordEntry, // Contains common info and ONE password (ignored)
         passwords: List<String>,
-        onComplete: (List<Long>) -> Unit = {}
+        onComplete: (firstPasswordId: Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val savedIds = mutableListOf<Long>()
+            var firstId: Long? = null
             
             // 1. Process each password
             passwords.forEachIndexed { index, password ->
                 if (index < originalIds.size) {
                     // Update existing
                     val id = originalIds[index]
-                    savedIds.add(id)
+                    if (index == 0) firstId = id
                     val updatedEntry = commonEntry.copy(
                         id = id,
                         password = password
@@ -519,7 +655,7 @@ class PasswordViewModel(
                         createdAt = java.util.Date(),
                         updatedAt = java.util.Date()
                     ))
-                    savedIds.add(newId)
+                    if (index == 0) firstId = newId
                     
                     // 记录创建操作
                     takagi.ru.monica.utils.OperationLogger.logCreate(
@@ -538,13 +674,7 @@ class PasswordViewModel(
                 }
             }
             
-            onComplete(savedIds)
-        }
-    }
-
-    suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry> {
-        return repository.getPasswordsByIds(ids).map { entry ->
-            entry.copy(password = securityManager.decryptData(entry.password))
+            onComplete(firstId)
         }
     }
 }

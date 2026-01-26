@@ -253,7 +253,13 @@ fun MonicaApp(
     }
 
     val viewModel: PasswordViewModel = viewModel {
-        PasswordViewModel(repository, securityManager, secureItemRepository, navController.context)
+        PasswordViewModel(
+            repository,
+            securityManager,
+            secureItemRepository,
+            navController.context,
+            database.localKeePassDatabaseDao()
+        )
     }
     val totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel = viewModel {
         takagi.ru.monica.viewmodel.TotpViewModel(secureItemRepository, repository)
@@ -760,7 +766,6 @@ fun MonicaContent(
             if (passwordId > 0) {
                 takagi.ru.monica.ui.screens.PasswordDetailScreen(
                     viewModel = viewModel,
-                    localKeePassViewModel = localKeePassViewModel,
                     passwordId = passwordId,
                     onNavigateBack = {
                         navController.popBackStack()

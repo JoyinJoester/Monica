@@ -42,12 +42,10 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.ui.components.MasterPasswordDialog
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.viewmodel.PasswordViewModel
-import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.data.model.TotpData
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
@@ -77,14 +75,12 @@ import takagi.ru.monica.data.SsoProvider
 @Composable
 fun PasswordDetailScreen(
     viewModel: PasswordViewModel,
-    localKeePassViewModel: LocalKeePassViewModel,
     passwordId: Long,
     onNavigateBack: () -> Unit,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     
     // 密码条目状态
@@ -99,36 +95,26 @@ fun PasswordDetailScreen(
     
     // Helper function for deletion
     fun executeDeletion() {
-        val target = itemToDelete ?: passwordEntry
-        if (target == null) {
-            showDeleteDialog = false
-            itemToDelete = null
-            return
-        }
-        coroutineScope.launch {
-            val keepassId = target.keepassDatabaseId
-            if (keepassId != null) {
-                val result = localKeePassViewModel.deletePasswordEntriesFromKdbx(keepassId, listOf(target))
-                if (result.isFailure) {
-                    Toast.makeText(
-                        context,
-                        "KeePass 删除失败: ${result.exceptionOrNull()?.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    showDeleteDialog = false
-                    itemToDelete = null
-                    return@launch
-                }
-            }
-            if (target.id > 0) {
-                viewModel.deletePasswordEntry(target)
-            }
-            if (itemToDelete == null) {
+        if (itemToDelete != null) {
+            // Delete specific password
+            viewModel.deletePasswordEntry(itemToDelete!!)
+            // If it was the only one, navigate back is handled by Flow collection update or check
+            // logic below will handle UI update via groupPasswords flow
+        } else {
+            // Delete ALL (current entry context) - usually from top menu
+            // If top menu delete is clicked, we probably want to delete ALL in group or just this one?
+            // "Delete" usually implies deleting the "Item". 
+            // If we have multiple passwords, maybe we should ask?
+            // User said: "essentially multiple items ... joined". 
+            // If I click delete on the main screen, I probably delete the whole group.
+            // Let's assume delete = delete current entry for now.
+            passwordEntry?.let { entry ->
+                viewModel.deletePasswordEntry(entry)
                 onNavigateBack()
             }
-            showDeleteDialog = false
-            itemToDelete = null
         }
+        showDeleteDialog = false
+        itemToDelete = null
     }
 
     // Biometric Helper

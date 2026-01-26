@@ -105,6 +105,9 @@ interface PasswordEntryDao {
      */
     @Query("SELECT * FROM password_entries WHERE title = :title AND username = :username AND website = :website LIMIT 1")
     suspend fun findDuplicateEntry(title: String, username: String, website: String): PasswordEntry?
+
+    @Query("SELECT * FROM password_entries WHERE keepassDatabaseId = :databaseId AND title = :title AND username = :username AND website = :website LIMIT 1")
+    suspend fun findDuplicateEntryInKeePass(databaseId: Long, title: String, username: String, website: String): PasswordEntry?
     
     /**
      * 按包名和用户名查询密码

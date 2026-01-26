@@ -131,6 +131,10 @@ class PasswordRepository(
     suspend fun getDuplicateEntry(title: String, username: String, website: String): PasswordEntry? {
         return passwordEntryDao.findDuplicateEntry(title, username, website)
     }
+
+    suspend fun getDuplicateEntryInKeePass(databaseId: Long, title: String, username: String, website: String): PasswordEntry? {
+        return passwordEntryDao.findDuplicateEntryInKeePass(databaseId, title, username, website)
+    }
     
     /**
      * 按包名和用户名查询密码(自动填充保存功能)
