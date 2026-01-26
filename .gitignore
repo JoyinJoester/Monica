@@ -33,3 +33,7 @@ Monica for Android/build_errors.txt
 Monica for Android/build_log.txt
 # TRAE files
 .trae/
+
+# Exclude attached folders
+KeePassDX-master/
+keyguard-app-master/
