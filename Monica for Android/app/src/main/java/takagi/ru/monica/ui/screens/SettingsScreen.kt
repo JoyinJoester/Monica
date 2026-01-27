@@ -92,6 +92,7 @@ fun SettingsScreen(
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
     var previewFeaturesExpanded by remember { mutableStateOf(false) }
     var developerPasswordInput by remember { mutableStateOf("") }
+    var showWeakBiometricWarning by remember { mutableStateOf(false) }
     
     // 生物识别帮助类
     val biometricHelper = remember(context) { BiometricAuthHelper(context) }
@@ -105,6 +106,55 @@ fun SettingsScreen(
     // 使用本地状态跟踪生物识别开关,避免验证失败时状态不一致
     var biometricSwitchState by remember(settings.biometricEnabled) { 
         mutableStateOf(settings.biometricEnabled) 
+    }
+
+    val startBiometricEnable = {
+        if (activity != null) {
+            android.util.Log.d("SettingsScreen", "Starting biometric authentication...")
+            biometricHelper.authenticate(
+                activity = activity,
+                title = context.getString(R.string.biometric_login_title),
+                subtitle = "验证指纹以启用指纹解锁",
+                description = context.getString(R.string.biometric_login_description),
+                negativeButtonText = context.getString(R.string.cancel),
+                onSuccess = {
+                    android.util.Log.d("SettingsScreen", "Biometric authentication SUCCESS")
+                    biometricSwitchState = true
+                    viewModel.updateBiometricEnabled(true)
+                    Toast.makeText(
+                        context,
+                        "指纹解锁已启用",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
+                onError = { errorCode, errorMsg ->
+                    android.util.Log.e("SettingsScreen", "Biometric authentication ERROR: code=$errorCode, msg=$errorMsg")
+                    biometricSwitchState = false
+                    Toast.makeText(
+                        context,
+                        "指纹验证失败: $errorMsg",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
+                onCancel = {
+                    android.util.Log.d("SettingsScreen", "Biometric authentication CANCELLED")
+                    biometricSwitchState = false
+                    Toast.makeText(
+                        context,
+                        "已取消",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+        } else {
+            android.util.Log.e("SettingsScreen", "Activity is NULL! Cannot authenticate")
+            biometricSwitchState = false
+            Toast.makeText(
+                context,
+                context.getString(R.string.biometric_cannot_enable),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
     
     Scaffold(
@@ -231,57 +281,11 @@ fun SettingsScreen(
                     onCheckedChange = { newState ->
                         android.util.Log.d("SettingsScreen", "Switch clicked: newState=$newState, activity=$activity")
                         if (newState) {
-                            // 用户想启用指纹解锁
-                            if (activity != null) {
-                                android.util.Log.d("SettingsScreen", "Starting biometric authentication...")
-                                // 需要先验证指纹
-                                biometricHelper.authenticate(
-                                    activity = activity,
-                                    title = context.getString(R.string.biometric_login_title),
-                                    subtitle = "验证指纹以启用指纹解锁",
-                                    description = context.getString(R.string.biometric_login_description),
-                                    negativeButtonText = context.getString(R.string.cancel),
-                                    onSuccess = {
-                                        // 验证成功,启用指纹解锁
-                                        android.util.Log.d("SettingsScreen", "Biometric authentication SUCCESS")
-                                        biometricSwitchState = true
-                                        viewModel.updateBiometricEnabled(true)
-                                        Toast.makeText(
-                                            context,
-                                            "指纹解锁已启用",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    onError = { errorCode, errorMsg ->
-                                        // 验证失败,保持关闭状态
-                                        android.util.Log.e("SettingsScreen", "Biometric authentication ERROR: code=$errorCode, msg=$errorMsg")
-                                        biometricSwitchState = false
-                                        Toast.makeText(
-                                            context,
-                                            "指纹验证失败: $errorMsg",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    onCancel = {
-                                        // 用户取消,保持关闭状态
-                                        android.util.Log.d("SettingsScreen", "Biometric authentication CANCELLED")
-                                        biometricSwitchState = false
-                                        Toast.makeText(
-                                            context,
-                                            "已取消",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                )
+                            val weakOnly = biometricHelper.isWeakBiometricOnly()
+                            if (weakOnly) {
+                                showWeakBiometricWarning = true
                             } else {
-                                // activity 为空,无法验证,恢复开关状态
-                                android.util.Log.e("SettingsScreen", "Activity is NULL! Cannot authenticate")
-                                biometricSwitchState = false
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.biometric_cannot_enable),
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                startBiometricEnable()
                             }
                         } else {
                             // 用户想禁用指纹解锁,直接禁用不需要验证
@@ -674,6 +678,38 @@ fun SettingsScreen(
                     }
                 ) {
                     Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showWeakBiometricWarning) {
+        AlertDialog(
+            onDismissRequest = { showWeakBiometricWarning = false },
+            icon = {
+                Icon(
+                    Icons.Default.Fingerprint,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text(stringResource(R.string.biometric_weak_warning_title)) },
+            text = { Text(stringResource(R.string.biometric_weak_warning_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showWeakBiometricWarning = false
+                        startBiometricEnable()
+                    }
+                ) {
+                    Text(stringResource(R.string.biometric_weak_warning_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showWeakBiometricWarning = false }
+                ) {
+                    Text(stringResource(R.string.biometric_weak_warning_cancel))
                 }
             }
         )

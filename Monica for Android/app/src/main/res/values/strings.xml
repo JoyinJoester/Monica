@@ -61,6 +61,10 @@
     <string name="biometric_unlock_enabled">Fingerprint unlock enabled</string>
     <string name="biometric_unlock_disabled">Fingerprint unlock disabled</string>
     <string name="biometric_cannot_enable">Cannot enable fingerprint unlock</string>
+    <string name="biometric_weak_warning_title">Weaker biometric detected</string>
+    <string name="biometric_weak_warning_message">This device only supports weaker biometric authentication, which has lower anti-spoofing capability. Do you want to continue enabling fingerprint unlock?</string>
+    <string name="biometric_weak_warning_confirm">Continue</string>
+    <string name="biometric_weak_warning_cancel">Cancel</string>
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">Verify to Autofill</string>

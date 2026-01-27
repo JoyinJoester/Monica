@@ -1,19 +1,27 @@
 package takagi.ru.monica.security
 
 import android.content.Context
+import android.os.Build
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.security.keystore.UserNotAuthenticatedException
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import takagi.ru.monica.utils.SettingsManager
+import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
-import javax.crypto.spec.PBEKeySpec
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * Security manager for encryption and master password handling
@@ -37,6 +45,10 @@ class SecurityManager(private val context: Context) {
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
+
+    // Secure Data Key Alias and Prefix
+    private val KEY_ALIAS_DATA = "monica_data_key_v2"
+    private val DATA_PREFIX_V2 = "V2|"
     
     private val sharedPreferences = EncryptedSharedPreferences.create(
         context,
@@ -229,19 +241,89 @@ class SecurityManager(private val context: Context) {
     }
     
     /**
+     * Get or create a secure key from Android KeyStore
+     * This key requires user authentication (biometric) to be used.
+     */
+    private fun getOrGenerateSecureKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        keyStore.load(null)
+        
+        if (keyStore.containsAlias(KEY_ALIAS_DATA)) {
+            val entry = keyStore.getEntry(KEY_ALIAS_DATA, null) as? KeyStore.SecretKeyEntry
+            if (entry != null) {
+                return entry.secretKey
+            }
+        }
+        
+        // Generate new key
+        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        val builder = KeyGenParameterSpec.Builder(
+            KEY_ALIAS_DATA,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        )
+        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setKeySize(256)
+        .setUserAuthenticationRequired(true)
+        .setUserAuthenticationValidityDurationSeconds(300) // Allow use for 5 minutes after authentication
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            builder.setInvalidatedByBiometricEnrollment(true) // Key becomes permanently invalid if new biometric is enrolled
+        }
+        
+        keyGenerator.init(builder.build())
+        return keyGenerator.generateKey()
+    }
+
+    /**
      * AES encryption for sensitive data (additional layer)
+     * Automatically chooses between V2 (Secure KeyStore) and V1 (Legacy) based on biometric settings.
      */
     fun encryptData(data: String): String {
+        // Decide whether to use Secure Key (V2) or Legacy Key (V1)
+        if (isBiometricEnabled()) {
+            return try {
+                encryptDataV2(data)
+            } catch (e: Exception) {
+                android.util.Log.e("SecurityManager", "V2 Encryption failed, falling back to V1", e)
+                // If V2 fails (e.g. auth required), we might fallback to V1 to avoid data loss during save,
+                // BUT this defeats the security purpose. 
+                // However, crashing is worse.
+                // Given user requirement "reject key if biometric changed", throwing exception is correct for KeyPermanentlyInvalidatedException.
+                if (e is android.security.keystore.KeyPermanentlyInvalidatedException || e is UserNotAuthenticatedException) {
+                    throw e
+                }
+                encryptDataV1(data)
+            }
+        } else {
+            return encryptDataV1(data)
+        }
+    }
+
+    private fun encryptDataV2(data: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val secretKey = getOrGenerateSecureKey()
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        
+        val iv = cipher.iv
+        val encryptedBytes = cipher.doFinal(data.toByteArray())
+        
+        // Combine IV and encrypted data
+        val combined = iv + encryptedBytes
+        return DATA_PREFIX_V2 + android.util.Base64.encodeToString(combined, android.util.Base64.DEFAULT)
+    }
+
+    private fun encryptDataV1(data: String): String {
         return try {
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             val keyGenerator = javax.crypto.KeyGenerator.getInstance("AES")
             keyGenerator.init(256)
             
-            // Use the master key for encryption
+            // Use the master key for encryption (Legacy)
             val keyBytes = masterKey.toString().toByteArray().copyOf(32)
             val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
             
-            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey)
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
             val iv = cipher.iv
             val encryptedBytes = cipher.doFinal(data.toByteArray())
             
@@ -259,6 +341,37 @@ class SecurityManager(private val context: Context) {
         if (encryptedData.isEmpty()) {
             return ""
         }
+
+        if (encryptedData.startsWith(DATA_PREFIX_V2)) {
+            return try {
+                decryptDataV2(encryptedData)
+            } catch (e: Exception) {
+                android.util.Log.e("SecurityManager", "V2 Decryption failed", e)
+                throw e // Rethrow to let caller handle auth failure
+            }
+        }
+
+        return decryptDataV1(encryptedData)
+    }
+
+    private fun decryptDataV2(encryptedData: String): String {
+        val combined = android.util.Base64.decode(encryptedData.substring(DATA_PREFIX_V2.length), android.util.Base64.DEFAULT)
+        
+        // Extract IV and encrypted data
+        val iv = combined.copyOfRange(0, 12) // GCM IV is 12 bytes
+        val encrypted = combined.copyOfRange(12, combined.size)
+
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val secretKey = getOrGenerateSecureKey()
+        
+        val gcmSpec = GCMParameterSpec(128, iv)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+        
+        val decryptedBytes = cipher.doFinal(encrypted)
+        return String(decryptedBytes, kotlin.text.Charsets.UTF_8)
+    }
+
+    private fun decryptDataV1(encryptedData: String): String {
         return try {
             val combined = android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
             if (combined.size <= 12) {
@@ -273,15 +386,15 @@ class SecurityManager(private val context: Context) {
             val iv = combined.copyOfRange(0, 12) // GCM IV is 12 bytes
             val encrypted = combined.copyOfRange(12, combined.size)
 
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             val keyBytes = masterKey.toString().toByteArray().copyOf(32)
             val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
             
-            val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+            val gcmSpec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
             
             val decryptedBytes = cipher.doFinal(encrypted)
-            String(decryptedBytes)
+            String(decryptedBytes, kotlin.text.Charsets.UTF_8)
         } catch (e: Exception) {
             android.util.Log.e("SecurityManager", "Decryption failed", e)
             // Fallback to original data if decryption fails
@@ -302,8 +415,8 @@ class SecurityManager(private val context: Context) {
         val random = SecureRandom()
         
         return (1..length)
-            .map { charset[random.nextInt(charset.length)] }
-            .joinToString("")
+        .map { charset[random.nextInt(charset.length)] }
+        .joinToString("")
     }
     
     /**

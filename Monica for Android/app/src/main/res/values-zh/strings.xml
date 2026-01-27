@@ -61,6 +61,10 @@
     <string name="biometric_unlock_enabled">指纹解锁已启用</string>
     <string name="biometric_unlock_disabled">指纹解锁已禁用</string>
     <string name="biometric_cannot_enable">无法启用指纹解锁</string>
+    <string name="biometric_weak_warning_title">检测到较弱的生物识别</string>
+    <string name="biometric_weak_warning_message">设备仅支持较弱的生物识别，抗欺骗能力较低。确定继续启用指纹解锁吗？</string>
+    <string name="biometric_weak_warning_confirm">继续启用</string>
+    <string name="biometric_weak_warning_cancel">取消</string>
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">验证身份以填充</string>

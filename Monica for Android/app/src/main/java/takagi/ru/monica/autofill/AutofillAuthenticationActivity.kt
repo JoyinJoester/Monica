@@ -172,12 +172,22 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
             }
         )
         
+        val biometricManager = BiometricManager.from(this)
+        val allowedAuthenticators = if (
+            biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+        ) {
+            BiometricManager.Authenticators.BIOMETRIC_STRONG
+        } else {
+            BiometricManager.Authenticators.BIOMETRIC_WEAK
+        }
+
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(getString(R.string.autofill_auth_title))
             .setSubtitle(getString(R.string.autofill_auth_subtitle))
             .setDescription(getString(R.string.autofill_auth_description))
             .setNegativeButtonText(getString(R.string.use_password))
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            .setAllowedAuthenticators(allowedAuthenticators)
             .setConfirmationRequired(false)
             .build()
         

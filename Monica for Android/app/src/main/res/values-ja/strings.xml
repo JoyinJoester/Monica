@@ -66,6 +66,10 @@
     <string name="biometric_unlock_enabled">指紋ロック解除が有効です</string>
     <string name="biometric_unlock_disabled">指紋ロック解除が無効です</string>
     <string name="biometric_cannot_enable">指紋ロック解除を有効にできません</string>
+    <string name="biometric_weak_warning_title">弱い生体認証が検出されました</string>
+    <string name="biometric_weak_warning_message">この端末は弱い生体認証のみ対応しており、なりすまし耐性が低くなります。指紋ロック解除を有効にしますか？</string>
+    <string name="biometric_weak_warning_confirm">有効にする</string>
+    <string name="biometric_weak_warning_cancel">キャンセル</string>
     
     <!-- Password List Screen -->
     <string name="search_passwords">パスワードを検索...</string>

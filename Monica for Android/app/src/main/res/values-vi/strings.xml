@@ -65,6 +65,10 @@
     <string name="biometric_unlock_enabled">Đã bật mở khóa bằng vân tay</string>
     <string name="biometric_unlock_disabled">Đã tắt mở khóa bằng vân tay</string>
     <string name="biometric_cannot_enable">Không thể bật mở khóa bằng vân tay</string>
+    <string name="biometric_weak_warning_title">Phát hiện sinh trắc học yếu</string>
+    <string name="biometric_weak_warning_message">Thiết bị này chỉ hỗ trợ sinh trắc học yếu, khả năng chống giả mạo thấp hơn. Bạn có muốn tiếp tục bật mở khóa bằng vân tay không?</string>
+    <string name="biometric_weak_warning_confirm">Tiếp tục</string>
+    <string name="biometric_weak_warning_cancel">Hủy</string>
     
     <!-- Password List Screen -->
     <string name="search_passwords">Tìm kiếm mật khẩu...</string>

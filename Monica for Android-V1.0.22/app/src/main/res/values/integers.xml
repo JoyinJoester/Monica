@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- requestCode常量 -->
-    <integer name="request_code_export_data">2001</integer>
-    <integer name="request_code_import_data">2002</integer>
-</resources>

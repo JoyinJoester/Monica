@@ -32,7 +32,12 @@ class BiometricAuthHelper(
      */
     fun isBiometricAvailable(): Boolean {
         val biometricManager = BiometricManager.from(context)
-        val result = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        val strongResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        val result = if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
+            BiometricManager.BIOMETRIC_SUCCESS
+        } else {
+            biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        }
         
         // 记录 vivo 设备信息
         if (VivoFingerprintHelper.isVivoDevice()) {
@@ -51,6 +56,23 @@ class BiometricAuthHelper(
             else -> false
         }
     }
+
+    fun isStrongBiometricAvailable(): Boolean {
+        val biometricManager = BiometricManager.from(context)
+        return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+    }
+
+    fun isWeakBiometricOnly(): Boolean {
+        val biometricManager = BiometricManager.from(context)
+        val strongAvailable = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+        if (strongAvailable) {
+            return false
+        }
+        return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+    }
     
     /**
      * 检查设备是否已注册生物识别信息
@@ -58,6 +80,10 @@ class BiometricAuthHelper(
      */
     fun isBiometricEnrolled(): Boolean {
         val biometricManager = BiometricManager.from(context)
+        val strongResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
+            return true
+        }
         return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == 
                BiometricManager.BIOMETRIC_SUCCESS
     }
@@ -67,7 +93,13 @@ class BiometricAuthHelper(
      */
     fun getBiometricStatusMessage(): String {
         val biometricManager = BiometricManager.from(context)
-        val baseMessage = when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)) {
+        val strongResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        val result = if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
+            BiometricManager.BIOMETRIC_SUCCESS
+        } else {
+            biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        }
+        val baseMessage = when (result) {
             BiometricManager.BIOMETRIC_SUCCESS -> 
                 context.getString(R.string.biometric_available)
             BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> 
@@ -168,10 +200,20 @@ class BiometricAuthHelper(
             .setSubtitle(subtitle)
             .setDescription(description)
             .setNegativeButtonText(negativeButtonText)
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK) // 使用 WEAK 级别支持更多设备
+            .setAllowedAuthenticators(getAllowedAuthenticators())
             .setConfirmationRequired(false) // 不需要额外确认,提高用户体验
             .build()
         
         biometricPrompt.authenticate(promptInfo)
+    }
+
+    private fun getAllowedAuthenticators(): Int {
+        val biometricManager = BiometricManager.from(context)
+        val strongResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        return if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
+            BiometricManager.Authenticators.BIOMETRIC_STRONG
+        } else {
+            BiometricManager.Authenticators.BIOMETRIC_WEAK
+        }
     }
 }
