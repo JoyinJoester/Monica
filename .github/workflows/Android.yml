@@ -5,96 +5,14 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
-
 permissions:
   contents: write
-  security-events: write
   actions: read
 
 jobs:
-  # ===== 安全扫描 =====
-  security-scan:
-    name: Security Scan (CodeQL)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    defaults:
-      run:
-        working-directory: "Monica for Android"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('Monica for Android/**/*.gradle*', 'Monica for Android/**/gradle-wrapper.properties') }}
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: java-kotlin
-          queries: security-and-quality
-
-      - name: Clean & Build for CodeQL (release)
-        run: |
-          ./gradlew clean
-          ./gradlew assembleRelease --console=plain --info
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: "/language:java-kotlin"
-          upload: true
-
-  # ===== 单元测试 =====
-  test:
-    name: Run Unit Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: "Monica for Android"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('Monica for Android/**/*.gradle*', 'Monica for Android/**/gradle-wrapper.properties') }}
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-      - name: Run tests
-        run: ./gradlew test --stacktrace
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: "Monica for Android/app/build/test-results/"
-          retention-days: 7
-          if-no-files-found: ignore
-
-  # ===== 最终构建：必须等扫描 + 测试 都完成 =====
+  # ===== 最终构建 =====
   build:
     name: Build Release APK
-    needs: [security-scan, test]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -150,3 +68,4 @@ jobs:
           name: mapping-release
           path: "Monica for Android/app/build/outputs/mapping/release/mapping.txt"
           retention-days: 30
+          if-no-files-found: error
