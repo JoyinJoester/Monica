@@ -850,6 +850,11 @@
     <string name="webdav_backup_documents">证件: %d 个</string>
     <string name="webdav_backup_bank_cards">银行卡: %d 个</string>
     
+    <!-- Restore Settings -->
+    <string name="webdav_restore_settings">恢复设置</string>
+    <string name="webdav_overwrite_local">覆盖本地数据</string>
+    <string name="webdav_overwrite_local_desc">从备份恢复前清除所有本地数据</string>
+
     <!-- Selection Mode -->
     <string name="selected_items">已选择 %d 项</string>
     <string name="exit_selection_mode">退出选择模式</string>
