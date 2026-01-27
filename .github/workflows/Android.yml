@@ -56,9 +56,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-obfuscated
-          path: |
-            "Monica for Android/app/build/outputs/apk/release/*.apk"
-            "Monica for Android/app/build/outputs/apk/release/checksums.txt"
+          path:
+            - "Monica for Android/app/build/outputs/apk/release/*.apk"
+            - "Monica for Android/app/build/outputs/apk/release/checksums.txt"
           retention-days: 14
           if-no-files-found: error
 
