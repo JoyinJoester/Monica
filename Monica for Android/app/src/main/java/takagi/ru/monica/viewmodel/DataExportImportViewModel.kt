@@ -81,10 +81,10 @@ class DataExportImportViewModel(
     /**
      * 导入数据
      */
-    suspend fun importData(inputUri: Uri): Result<Int> {
+    suspend fun importData(inputUri: Uri, formatHint: DataExportImportManager.CsvFormat? = null): Result<Int> {
         return try {
             // 导入数据
-            val result = exportManager.importData(inputUri)
+            val result = exportManager.importData(inputUri, formatHint)
             
             result.fold(
                 onSuccess = { items ->
@@ -222,6 +222,13 @@ class DataExportImportViewModel(
             android.util.Log.e("DataImport", "导入异常: ${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    /**
+     * 导入KeePass CSV文件
+     */
+    suspend fun importKeePassCsv(inputUri: Uri): Result<Int> {
+        return importData(inputUri, DataExportImportManager.CsvFormat.KEEPASS_PASSWORD)
     }
     
     /**

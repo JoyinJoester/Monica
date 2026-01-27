@@ -705,11 +705,12 @@ private fun CreateKeePassDatabaseBottomSheet(
         }
     }
     
-    val isValid = name.isNotBlank() && 
-                  password.isNotBlank() && 
-                  password == confirmPassword &&
+    val isValid = name.isNotBlank() &&
                   (storageLocation == KeePassStorageLocation.INTERNAL || externalUri != null) &&
-                  (!useKeyFile || keyFileUri != null)
+                  (
+                    (password.isNotBlank() && password == confirmPassword) ||
+                    (useKeyFile && keyFileUri != null)
+                  )
     
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1062,7 +1063,7 @@ private fun ImportExternalDatabaseDialog(
         }
     }
     
-    val isValid = name.isNotBlank() && password.isNotBlank()
+    val isValid = name.isNotBlank() && (password.isNotBlank() || keyFileUri != null)
     
     AlertDialog(
         onDismissRequest = onDismiss,

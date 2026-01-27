@@ -124,7 +124,8 @@ fun ImportDataScreen(
     onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>,  // 加密的Aegis JSON导入
     onImportSteamMaFile: suspend (Uri) -> Result<Int>,  // Steam maFile导入
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
-    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("未实现")) }  // KDBX导入
+    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("未实现")) },  // KDBX导入
+    onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("未实现")) }  // KeePass CSV导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -418,6 +419,7 @@ fun ImportDataScreen(
                         when (importType) {
                             "monica_zip" -> FileOperationHelper.importFromZip(act)
                             "kdbx" -> FileOperationHelper.importFromKdbx(act)
+                            "keepass_csv" -> FileOperationHelper.importFromCsv(act)
                             "aegis" -> FileOperationHelper.importFromJson(act)
                             "steam" -> FileOperationHelper.importFromMaFile(act)
                             else -> FileOperationHelper.importFromCsv(act)

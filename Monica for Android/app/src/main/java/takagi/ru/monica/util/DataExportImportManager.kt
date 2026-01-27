@@ -109,13 +109,15 @@ class DataExportImportManager(private val context: Context) {
      * @return 导入的数据项列表
      */
     suspend fun importData(
-        inputUri: Uri
+        inputUri: Uri,
+        formatHint: CsvFormat? = null
     ): Result<List<ExportItem>> = withContext(Dispatchers.IO) {
         try {
             val items = mutableListOf<ExportItem>()
             var lineCount = 0
             var errorCount = 0
             var csvFormat: CsvFormat = CsvFormat.UNKNOWN
+            var headerIndexMap: Map<String, Int>? = null
             
             val inputStream = context.contentResolver.openInputStream(inputUri)
                 ?: return@withContext Result.failure(Exception("无法读取文件，请检查文件是否存在"))
@@ -144,7 +146,7 @@ class DataExportImportManager(private val context: Context) {
                     }
                     
                     // 检测CSV格式
-                    csvFormat = detectCsvFormat(firstLine)
+                    csvFormat = formatHint ?: detectCsvFormat(firstLine)
                     android.util.Log.d("DataImport", "检测到格式: $csvFormat")
                     
                     // 如果第一行是标题，跳过它
@@ -156,10 +158,16 @@ class DataExportImportManager(private val context: Context) {
                                                     firstLine.contains("url") && 
                                                     firstLine.contains("username") &&
                                                     firstLine.contains("password")
+                        CsvFormat.KEEPASS_PASSWORD -> true
                         else -> false
                     }
                     
                     android.util.Log.d("DataImport", "是否为标题行: $isHeader")
+                    
+                    if (isHeader && csvFormat == CsvFormat.KEEPASS_PASSWORD) {
+                        val headers = parseCsvLine(firstLine)
+                        headerIndexMap = buildHeaderIndexMap(headers)
+                    }
                     
                     if (!isHeader && firstLine.isNotBlank()) {
                         // 第一行就是数据，处理它
@@ -167,7 +175,7 @@ class DataExportImportManager(private val context: Context) {
                         try {
                             val fields = parseCsvLine(firstLine)
                             android.util.Log.d("DataImport", "第一行字段数: ${fields.size}, 内容: $fields")
-                            val item = createExportItemFromFormat(fields, csvFormat)
+                            val item = createExportItemFromFormat(fields, csvFormat, headerIndexMap)
                             if (item != null) {
                                 items.add(item)
                                 android.util.Log.d("DataImport", "成功添加第一行数据")
@@ -193,7 +201,7 @@ class DataExportImportManager(private val context: Context) {
                             try {
                                 val fields = parseCsvLine(currentLine)
                                 android.util.Log.d("DataImport", "第${lineCount}行字段数: ${fields.size}")
-                                val item = createExportItemFromFormat(fields, csvFormat)
+                                val item = createExportItemFromFormat(fields, csvFormat, headerIndexMap)
                                 if (item != null) {
                                     items.add(item)
                                     android.util.Log.d("DataImport", "成功添加第${lineCount}行数据")
@@ -242,9 +250,10 @@ class DataExportImportManager(private val context: Context) {
     /**
      * CSV格式类型
      */
-    private enum class CsvFormat {
+    enum class CsvFormat {
         APP_EXPORT,        // 应用导出格式 (9个字段)
         CHROME_PASSWORD,   // Chrome密码格式 (name,url,username,password,note)
+        KEEPASS_PASSWORD,  // KeePass CSV 格式
         ALIPAY_TRANSACTION, // 支付宝交易明细格式
         UNKNOWN
     }
@@ -263,6 +272,11 @@ class DataExportImportManager(private val context: Context) {
             lowerLine.contains("name") && lowerLine.contains("url") && 
             lowerLine.contains("username") && lowerLine.contains("password") -> 
                 CsvFormat.CHROME_PASSWORD
+            
+            lowerLine.contains("title") && 
+            (lowerLine.contains("user name") || lowerLine.contains("username")) &&
+            lowerLine.contains("password") -> 
+                CsvFormat.KEEPASS_PASSWORD
             
             lowerLine.contains("type") && lowerLine.contains("title") && 
             lowerLine.contains("data") -> 
@@ -284,7 +298,11 @@ class DataExportImportManager(private val context: Context) {
     /**
      * 根据格式创建导出项
      */
-    private fun createExportItemFromFormat(fields: List<String>, format: CsvFormat): ExportItem? {
+    private fun createExportItemFromFormat(
+        fields: List<String>,
+        format: CsvFormat,
+        headerIndexMap: Map<String, Int>? = null
+    ): ExportItem? {
         return try {
             when (format) {
                 CsvFormat.APP_EXPORT -> {
@@ -330,6 +348,45 @@ class DataExportImportManager(private val context: Context) {
                     } else null
                 }
                 
+                CsvFormat.KEEPASS_PASSWORD -> {
+                    if (fields.size >= 3) {
+                        val title = getFieldValue(fields, headerIndexMap, listOf("title", "标题", "account", "账户", "name", "名称")) 
+                            ?: fields.getOrNull(0)?.trim().orEmpty()
+                        val username = getFieldValue(fields, headerIndexMap, listOf("user name", "username", "user_name", "login name", "login", "用户名", "账号", "登录名"))
+                            ?: fields.getOrNull(1)?.trim().orEmpty()
+                        val password = getFieldValue(fields, headerIndexMap, listOf("password", "pass", "pwd", "密码", "口令"))
+                            ?: fields.getOrNull(2)?.trim().orEmpty()
+                        val url = getFieldValue(fields, headerIndexMap, listOf("url", "website", "web site", "web_site", "location", "address", "网址", "链接", "地址"))
+                            ?: fields.getOrNull(3)?.trim().orEmpty()
+                        val note = getFieldValue(fields, headerIndexMap, listOf("notes", "note", "comment", "comments", "description", "备注", "注释", "描述"))
+                            ?: fields.getOrNull(4)?.trim().orEmpty()
+                        
+                        if (title.isBlank() && username.isBlank() && password.isBlank()) {
+                            return null
+                        }
+                        
+                        val passwordData = buildString {
+                            append("username:$username;")
+                            append("password:$password")
+                            if (url.isNotEmpty()) {
+                                append(";website:$url")
+                            }
+                        }
+                        
+                        ExportItem(
+                            id = 0,
+                            itemType = "PASSWORD",
+                            title = title.ifBlank { url.ifBlank { username } },
+                            itemData = passwordData,
+                            notes = note,
+                            isFavorite = false,
+                            imagePaths = "",
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } else null
+                }
+                
                 CsvFormat.ALIPAY_TRANSACTION -> {
                     // 支付宝格式在专门的方法中处理,这里返回null
                     null
@@ -341,6 +398,25 @@ class DataExportImportManager(private val context: Context) {
             android.util.Log.e("DataImport", "创建导出项失败: ${e.message}", e)
             null
         }
+    }
+    
+    private fun buildHeaderIndexMap(headers: List<String>): Map<String, Int> {
+        return headers.mapIndexedNotNull { index, header ->
+            val normalized = header.trim().lowercase()
+            if (normalized.isNotBlank()) normalized to index else null
+        }.toMap()
+    }
+    
+    private fun getFieldValue(
+        fields: List<String>,
+        headerIndexMap: Map<String, Int>?,
+        keys: List<String>
+    ): String? {
+        if (headerIndexMap == null) return null
+        val index = keys.firstNotNullOfOrNull { key ->
+            headerIndexMap[key]
+        } ?: return null
+        return fields.getOrNull(index)?.trim()
     }
 
     /**

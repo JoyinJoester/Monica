@@ -52,6 +52,7 @@ import takagi.ru.monica.data.Category
 
 import androidx.compose.ui.unit.Velocity
 import takagi.ru.monica.util.VibrationPatterns
+import androidx.activity.compose.BackHandler
 
 @OptIn(ExperimentalMaterial3Api::class)  
 @Composable
@@ -186,7 +187,6 @@ fun PasswordListScreen(
     // 分组模式: "none" 不分组, "website" 按网站分组, "title" 按标题分组
     var groupMode by remember { mutableStateOf("none") }
     
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val categories by viewModel.categories.collectAsState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
@@ -195,80 +195,10 @@ fun PasswordListScreen(
     var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
     var categoryNameInput by remember { mutableStateOf("") }
     
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet {
-                Spacer(Modifier.height(12.dp))
-                NavigationDrawerItem(
-                    label = { Text("全部") },
-                    selected = currentFilter is CategoryFilter.All,
-                    onClick = {
-                        viewModel.setCategoryFilter(CategoryFilter.All)
-                        scope.launch { drawerState.close() }
-                    },
-                    icon = { Icon(Icons.Default.AllInclusive, null) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-                NavigationDrawerItem(
-                    label = { Text("标星") },
-                    selected = currentFilter is CategoryFilter.Starred,
-                    onClick = {
-                        viewModel.setCategoryFilter(CategoryFilter.Starred)
-                        scope.launch { drawerState.close() }
-                    },
-                    icon = { Icon(Icons.Default.Star, null) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-                Divider(Modifier.padding(vertical = 8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 28.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("分类", style = MaterialTheme.typography.titleSmall)
-                    IconButton(onClick = { 
-                        categoryNameInput = ""
-                        showAddCategoryDialog = true 
-                    }) {
-                        Icon(Icons.Default.Add, "添加分类")
-                    }
-                }
-                categories.forEach { category ->
-                    NavigationDrawerItem(
-                        label = { 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(category.name)
-                                Row {
-                                    IconButton(onClick = { 
-                                        categoryNameInput = category.name
-                                        showEditCategoryDialog = category 
-                                    }) {
-                                        Icon(Icons.Default.Edit, "编辑", modifier = Modifier.size(16.dp))
-                                    }
-                                    IconButton(onClick = { viewModel.deleteCategory(category) }) {
-                                        Icon(Icons.Default.Delete, "删除", modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                        },
-                        selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id,
-                        onClick = {
-                            viewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
-                            scope.launch { drawerState.close() }
-                        },
-                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                    )
-                }
-            }
-        }
-    ) {
+    BackHandler(enabled = selectionMode) {
+        selectionMode = false
+        selectedItems = setOf()
+    }
     Scaffold(
         topBar = {
             if (!hideTopBar) {
@@ -277,20 +207,17 @@ fun PasswordListScreen(
                         if (selectionMode) {
                             Text("已选择 ${selectedItems.size} 项")
                         } else {
-                            TextButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Text(
-                                    text = when(currentFilter) {
-                                        is CategoryFilter.All -> context.getString(R.string.app_name)
-                                        is CategoryFilter.Starred -> "标星"
-                                        is CategoryFilter.Uncategorized -> "未分类"
-                                        is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
-                                        is CategoryFilter.KeePassDatabase -> "KeePass"
-                                    },
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                            }
+                            Text(
+                                text = when(currentFilter) {
+                                    is CategoryFilter.All -> context.getString(R.string.app_name)
+                                    is CategoryFilter.Starred -> "标星"
+                                    is CategoryFilter.Uncategorized -> "未分类"
+                                    is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+                                    is CategoryFilter.KeePassDatabase -> "KeePass"
+                                },
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     },
                     navigationIcon = {
@@ -849,8 +776,6 @@ fun PasswordListScreen(
             }
         )
     }
-    
-    } // End of ModalNavigationDrawer
 
     if (showAddCategoryDialog) {
         AlertDialog(

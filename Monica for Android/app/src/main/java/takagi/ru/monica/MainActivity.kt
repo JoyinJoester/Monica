@@ -899,6 +899,9 @@ fun MonicaContent(
                 onImport = { uri ->
                     dataExportImportViewModel.importData(uri)
                 },
+                onImportKeePassCsv = { uri ->
+                    dataExportImportViewModel.importKeePassCsv(uri)
+                },
                 onImportAegis = { uri ->
                     dataExportImportViewModel.importAegisJson(uri)
                 },

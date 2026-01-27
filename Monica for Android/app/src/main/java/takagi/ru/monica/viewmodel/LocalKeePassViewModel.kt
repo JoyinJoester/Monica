@@ -76,8 +76,7 @@ class LocalKeePassViewModel(
             
             try {
                 withContext(Dispatchers.IO) {
-                    // 加密密码
-                    val encryptedPassword = securityManager.encryptData(password)
+                    val encryptedPassword = if (password.isNotBlank()) securityManager.encryptData(password) else null
                     
                     // 读取密钥文件
                     val keyFileBytes = keyFileUri?.let { uri ->
@@ -222,8 +221,7 @@ class LocalKeePassViewModel(
                     context.contentResolver.openInputStream(uri)?.close()
                         ?: throw Exception("无法访问文件")
                     
-                    // 加密密码
-                    val encryptedPassword = securityManager.encryptData(password)
+                    val encryptedPassword = if (password.isNotBlank()) securityManager.encryptData(password) else null
                     
                     // 获取持久化 URI 权限
                     context.contentResolver.takePersistableUriPermission(

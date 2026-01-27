@@ -540,7 +540,7 @@ private fun SsoLoginCard(
                     tint = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 Text(
-                    text = "第三方账号登录",
+                    text = stringResource(R.string.sso_login_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -554,7 +554,7 @@ private fun SsoLoginCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "使用",
+                    text = stringResource(R.string.use_sso),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
@@ -586,7 +586,7 @@ private fun SsoLoginCard(
                 }
                 
                 Text(
-                    text = "登录",
+                    text = stringResource(R.string.sso_login_btn),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
@@ -603,7 +603,7 @@ private fun SsoLoginCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "关联账号",
+                        text = stringResource(R.string.sso_ref_account),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
                     )

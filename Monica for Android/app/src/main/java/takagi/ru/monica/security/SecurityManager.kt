@@ -32,6 +32,7 @@ class SecurityManager(private val context: Context) {
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isVerificationDisabled = false
+    private var cachedMdk: ByteArray? = null
 
     init {
         scope.launch {
@@ -68,6 +69,10 @@ class SecurityManager(private val context: Context) {
         private const val SECURITY_QUESTION_2_ID_KEY = "security_question_2_id"
         private const val SECURITY_QUESTION_2_ANSWER_KEY = "security_question_2_answer"
         private const val PBKDF2_ITERATIONS = 100000
+        private const val MDK_PASSWORD_BLOB_KEY = "mdk_password_blob"
+        private const val MDK_PASSWORD_SALT_KEY = "mdk_password_salt"
+        private const val MDK_KEYSTORE_BLOB_KEY = "mdk_keystore_blob"
+        private const val MDK_READY_KEY = "mdk_ready"
     }
     
     /**
@@ -113,6 +118,13 @@ class SecurityManager(private val context: Context) {
         val (computedHash, _) = hashMasterPassword(inputPassword, storedSalt)
         val result = computedHash == storedHash
         android.util.Log.d("SecurityManager", "Password verification result: $result")
+        if (result) {
+            try {
+                ensureMdkInitializedWithPassword(inputPassword)
+            } catch (e: Exception) {
+                android.util.Log.w("SecurityManager", "MDK init failed: ${e.message}")
+            }
+        }
         return result
     }
     
@@ -125,6 +137,11 @@ class SecurityManager(private val context: Context) {
             .putString(MASTER_PASSWORD_HASH_KEY, hashedPassword)
             .putString(MASTER_PASSWORD_SALT_KEY, salt.joinToString("") { "%02x".format(it) })
             .apply()
+        try {
+            ensureMdkInitializedWithPassword(password, true)
+        } catch (e: Exception) {
+            android.util.Log.w("SecurityManager", "MDK init on setMasterPassword failed: ${e.message}")
+        }
     }
     
     /**
@@ -161,7 +178,12 @@ class SecurityManager(private val context: Context) {
             .remove(SECURITY_QUESTION_1_ANSWER_KEY)
             .remove(SECURITY_QUESTION_2_ID_KEY)
             .remove(SECURITY_QUESTION_2_ANSWER_KEY)
+            .remove(MDK_PASSWORD_BLOB_KEY)
+            .remove(MDK_PASSWORD_SALT_KEY)
+            .remove(MDK_KEYSTORE_BLOB_KEY)
+            .remove(MDK_READY_KEY)
             .apply()
+        cachedMdk = null
     }
     
     /**
@@ -275,11 +297,171 @@ class SecurityManager(private val context: Context) {
         return keyGenerator.generateKey()
     }
 
+    private fun generateRandom(bytes: Int): ByteArray {
+        val b = ByteArray(bytes)
+        SecureRandom().nextBytes(b)
+        return b
+    }
+
+    private fun deriveAesKeyFromPassword(password: String, salt: ByteArray): SecretKeySpec {
+        val spec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val keyBytes = factory.generateSecret(spec).encoded
+        return SecretKeySpec(keyBytes, "AES")
+    }
+
+    private fun aesGcmEncrypt(key: SecretKeySpec, data: ByteArray): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        val enc = cipher.doFinal(data)
+        val combined = iv + enc
+        return android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
+    }
+
+    private fun aesGcmDecrypt(key: SecretKeySpec, combinedBase64: String): ByteArray {
+        val combined = android.util.Base64.decode(combinedBase64, android.util.Base64.NO_WRAP)
+        val iv = combined.copyOfRange(0, 12)
+        val enc = combined.copyOfRange(12, combined.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val spec = GCMParameterSpec(128, iv)
+        cipher.init(Cipher.DECRYPT_MODE, key, spec)
+        return cipher.doFinal(enc)
+    }
+
+    private fun ensureMdkInitializedWithPassword(password: String, forceUpdate: Boolean = false) {
+        val hasPasswordBlob = sharedPreferences.contains(MDK_PASSWORD_BLOB_KEY)
+        val hasKeystoreBlob = sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)
+        var mdk: ByteArray? = null
+        if (!hasPasswordBlob && !hasKeystoreBlob) {
+            mdk = generateRandom(32)
+        }
+        val salt = if (forceUpdate || !sharedPreferences.contains(MDK_PASSWORD_SALT_KEY)) {
+            generateRandom(32)
+        } else {
+            val saltHex = sharedPreferences.getString(MDK_PASSWORD_SALT_KEY, null)
+            saltHex?.chunked(2)?.map { it.toInt(16).toByte() }?.toByteArray() ?: generateRandom(32)
+        }
+        val pwKey = deriveAesKeyFromPassword(password, salt)
+        val actualMdk = if (hasPasswordBlob && !forceUpdate) {
+            val blob = sharedPreferences.getString(MDK_PASSWORD_BLOB_KEY, null)
+            if (blob != null) {
+                aesGcmDecrypt(pwKey, blob)
+            } else {
+                mdk ?: getOrCreateMdkBytes()
+            }
+        } else {
+            mdk ?: getOrCreateMdkBytes()
+        }
+        cachedMdk = actualMdk
+        if (!hasPasswordBlob || forceUpdate) {
+            val blob = aesGcmEncrypt(pwKey, actualMdk)
+            sharedPreferences.edit()
+                .putString(MDK_PASSWORD_BLOB_KEY, blob)
+                .putString(MDK_PASSWORD_SALT_KEY, salt.joinToString("") { "%02x".format(it) })
+                .putBoolean(MDK_READY_KEY, true)
+                .apply()
+        } else {
+            sharedPreferences.edit().putBoolean(MDK_READY_KEY, true).apply()
+        }
+        try {
+            if (!hasKeystoreBlob) {
+                val ksKey = getOrGenerateSecureKey()
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, ksKey)
+                val iv = cipher.iv
+                val enc = cipher.doFinal(actualMdk)
+                val combined = iv + enc
+                val blob = android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
+                sharedPreferences.edit()
+                    .putString(MDK_KEYSTORE_BLOB_KEY, blob)
+                    .apply()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SecurityManager", "Create keystore MDK wrapper failed: ${e.message}")
+        }
+    }
+
+    private fun ensureMdkKeystoreWrapper() {
+        if (sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)) return
+        val mdk = getOrCreateMdkBytes()
+        try {
+            val ksKey = getOrGenerateSecureKey()
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, ksKey)
+            val iv = cipher.iv
+            val enc = cipher.doFinal(mdk)
+            val combined = iv + enc
+            val blob = android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
+            sharedPreferences.edit().putString(MDK_KEYSTORE_BLOB_KEY, blob).apply()
+        } catch (e: Exception) {
+            android.util.Log.w("SecurityManager", "Keystore MDK wrapper creation failed: ${e.message}")
+        }
+    }
+
+    private fun getOrCreateMdkBytes(): ByteArray {
+        val passwordBlob = sharedPreferences.getString(MDK_PASSWORD_BLOB_KEY, null)
+        val keystoreBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null)
+        if (passwordBlob == null && keystoreBlob == null) {
+            return generateRandom(32)
+        }
+        return try {
+            val ksBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null) ?: return ByteArray(0)
+            val ksKey = getOrGenerateSecureKey()
+            val combined = android.util.Base64.decode(ksBlob, android.util.Base64.NO_WRAP)
+            val iv = combined.copyOfRange(0, 12)
+            val enc = combined.copyOfRange(12, combined.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val spec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.DECRYPT_MODE, ksKey, spec)
+            cipher.doFinal(enc)
+        } catch (e: Exception) {
+            android.util.Log.w("SecurityManager", "Get MDK by keystore failed: ${e.message}")
+            ByteArray(0)
+        }
+    }
+
+    private fun getMdkForCrypto(): ByteArray? {
+        cachedMdk?.let { return it }
+        val ready = sharedPreferences.getBoolean(MDK_READY_KEY, false)
+        if (!ready) return null
+        val ksBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null) ?: return null
+        return try {
+            val ksKey = getOrGenerateSecureKey()
+            val combined = android.util.Base64.decode(ksBlob, android.util.Base64.NO_WRAP)
+            val iv = combined.copyOfRange(0, 12)
+            val enc = combined.copyOfRange(12, combined.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val spec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.DECRYPT_MODE, ksKey, spec)
+            val mdk = cipher.doFinal(enc)
+            cachedMdk = mdk
+            mdk
+        } catch (e: Exception) {
+            if (e is android.security.keystore.KeyPermanentlyInvalidatedException || e is UserNotAuthenticatedException) {
+                throw e
+            }
+            null
+        }
+    }
+
+    private val DATA_PREFIX_MDK = "MDK|"
+
     /**
      * AES encryption for sensitive data (additional layer)
      * Automatically chooses between V2 (Secure KeyStore) and V1 (Legacy) based on biometric settings.
      */
     fun encryptData(data: String): String {
+        val mdk = getMdkForCrypto()
+        if (mdk != null && mdk.isNotEmpty()) {
+            val key = SecretKeySpec(mdk, "AES")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, key)
+            val iv = cipher.iv
+            val enc = cipher.doFinal(data.toByteArray())
+            val combined = iv + enc
+            return DATA_PREFIX_MDK + android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
+        }
         // Decide whether to use Secure Key (V2) or Legacy Key (V1)
         if (isBiometricEnabled()) {
             return try {
@@ -340,6 +522,20 @@ class SecurityManager(private val context: Context) {
     fun decryptData(encryptedData: String): String {
         if (encryptedData.isEmpty()) {
             return ""
+        }
+
+        if (encryptedData.startsWith(DATA_PREFIX_MDK)) {
+            val mdk = getMdkForCrypto()
+            if (mdk == null || mdk.isEmpty()) throw Exception("MDK not available")
+            val combined = android.util.Base64.decode(encryptedData.substring(DATA_PREFIX_MDK.length), android.util.Base64.NO_WRAP)
+            val iv = combined.copyOfRange(0, 12)
+            val enc = combined.copyOfRange(12, combined.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val spec = GCMParameterSpec(128, iv)
+            val key = SecretKeySpec(mdk, "AES")
+            cipher.init(Cipher.DECRYPT_MODE, key, spec)
+            val dec = cipher.doFinal(enc)
+            return String(dec, kotlin.text.Charsets.UTF_8)
         }
 
         if (encryptedData.startsWith(DATA_PREFIX_V2)) {

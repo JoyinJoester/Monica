@@ -419,6 +419,12 @@
     <string name="qr_code_description">Support author QR code</string>
     <string name="save_qr_code">Save QR code to album</string>
     <string name="your_support_message">Your support is my motivation to keep developing!</string>
+
+    <!-- SSO -->
+    <string name="sso_login_title">第三方账号登录</string>
+    <string name="sso_login_btn">登录</string>
+    <string name="use_sso">使用</string>
+    <string name="sso_ref_account">关联账号</string>
     <string name="thank_you_title">Thank you for using Monica Password Manager!</string>
     <string name="thank_you_message">Hope it brings security and convenience to your digital life.</string>
     <string name="storage_permission_needed">Storage permission is required to save images</string>
@@ -884,6 +890,12 @@
     <string name="webdav_backup_authenticators">Authenticators: %d</string>
     <string name="webdav_backup_documents">Documents: %d</string>
     <string name="webdav_backup_bank_cards">Bank Cards: %d</string>
+    
+    <!-- Restore Settings -->
+    <string name="webdav_restore_settings">Restore Settings</string>
+    <string name="webdav_overwrite_local">Overwrite Local Data</string>
+    <string name="webdav_overwrite_local_desc">Clear all local data before restoring from backup</string>
+
     
     <!-- Selection Mode -->
     <string name="selected_items">%d items selected</string>
