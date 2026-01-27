@@ -3,6 +3,8 @@ package takagi.ru.monica.ui.components
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -90,11 +92,35 @@ fun ExpressiveTopBar(
             contentAlignment = Alignment.CenterEnd
         ) {
             Surface(
+
                 modifier = Modifier
-                    .then(
-                        if (isSearchExpanded) Modifier.fillMaxWidth() else Modifier.wrapContentWidth()
-                    )
-                    .height(56.dp),
+
+                    .height(56.dp)
+                    // 添加左滑展开/右滑关闭手势
+                    .pointerInput(isSearchExpanded) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onDragEnd = { totalDrag = 0f },
+                            onDragCancel = { totalDrag = 0f }
+                        ) { change, dragAmount ->
+                            totalDrag += dragAmount
+                            // 阈值设为 40px，避免过于灵敏
+                            val threshold = 40f
+                            
+                            if (!isSearchExpanded && totalDrag < -threshold) {
+                                change.consume()
+                                onSearchExpandedChange(true)
+                                totalDrag = 0f
+                            } else if (isSearchExpanded && totalDrag > threshold) {
+                                change.consume()
+                                onSearchExpandedChange(false)
+                                onSearchQueryChange("")
+                                focusManager.clearFocus()
+                                totalDrag = 0f
+                            }
+                        }
+                    },
                 shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 2.dp

@@ -86,7 +86,7 @@ class SettingsManager(private val context: Context) {
             language = Language.valueOf(
                 preferences[LANGUAGE_KEY] ?: Language.SYSTEM.name
             ),
-            biometricEnabled = preferences[BIOMETRIC_ENABLED_KEY] ?: true, // 默认启用指纹验证
+            biometricEnabled = preferences[BIOMETRIC_ENABLED_KEY] ?: false,
             autoLockMinutes = preferences[AUTO_LOCK_MINUTES_KEY] ?: 5,
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true, // 默认启用动态颜色

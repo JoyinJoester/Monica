@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.fragment.app.FragmentActivity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -332,8 +333,6 @@ fun SimpleMainScreen(
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
     val currentTabLabel = stringResource(currentTab.fullLabelRes())
 
-    // Drawer state
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
     val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
@@ -341,169 +340,6 @@ fun SimpleMainScreen(
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
     var categoryNameInput by remember { mutableStateOf("") }
-
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = currentTab == BottomNavItem.Passwords,
-        drawerContent = {
-            ModalDrawerSheet {
-                // App Header
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 28.dp, vertical = 24.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                NavigationDrawerItem(
-                    label = { Text(stringResource(R.string.category_all)) },
-                    selected = currentFilter is CategoryFilter.All,
-                    onClick = {
-                        passwordViewModel.setCategoryFilter(CategoryFilter.All)
-                        scope.launch { drawerState.close() }
-                    },
-                    icon = { Icon(Icons.Default.List, null) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    label = { Text("标星") },
-                    selected = currentFilter is CategoryFilter.Starred,
-                    onClick = {
-                        passwordViewModel.setCategoryFilter(CategoryFilter.Starred)
-                        scope.launch { drawerState.close() }
-                    },
-                    icon = { Icon(Icons.Default.Star, null) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    label = { Text("未分类") },
-                    selected = currentFilter is CategoryFilter.Uncategorized,
-                    onClick = {
-                        passwordViewModel.setCategoryFilter(CategoryFilter.Uncategorized)
-                        scope.launch { drawerState.close() }
-                    },
-                    icon = { Icon(Icons.Default.FolderOff, null) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                if (categories.isNotEmpty()) {
-                    Text(
-                        text = "分类",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                    )
-                }
-
-                categories.forEach { category ->
-                    var showMenu by remember(category.id) { mutableStateOf(false) }
-
-                    NavigationDrawerItem(
-                        label = { Text(category.name) },
-                        selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id,
-                        onClick = {
-                            passwordViewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
-                            scope.launch { drawerState.close() }
-                        },
-                        icon = { Icon(Icons.Default.Label, null) },
-                        badge = {
-                            IconButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = null)
-                            }
-                        },
-                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                    )
-
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("重命名") },
-                            onClick = {
-                                showMenu = false
-                                categoryNameInput = category.name
-                                showEditCategoryDialog = category
-                            },
-                            leadingIcon = { Icon(Icons.Default.Edit, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("删除") },
-                            onClick = {
-                                showMenu = false
-                                passwordViewModel.deleteCategory(category)
-                            },
-                            leadingIcon = { Icon(Icons.Default.Delete, null) }
-                        )
-                    }
-                }
-
-                NavigationDrawerItem(
-                    label = { Text("新建分类") },
-                    selected = false,
-                    onClick = {
-                        categoryNameInput = ""
-                        showAddCategoryDialog = true
-                    },
-                    icon = { Icon(Icons.Default.Add, null) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-                
-                // KeePass 数据库部分
-                if (keepassDatabases.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    
-                    Text(
-                        text = stringResource(R.string.local_keepass_database),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                    )
-                    
-                    keepassDatabases.forEach { database ->
-                        NavigationDrawerItem(
-                            label = { Text(database.name) },
-                            selected = currentFilter is CategoryFilter.KeePassDatabase && 
-                                      (currentFilter as CategoryFilter.KeePassDatabase).databaseId == database.id,
-                            onClick = {
-                                passwordViewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(database.id))
-                                scope.launch { drawerState.close() }
-                            },
-                            icon = { 
-                                Icon(
-                                    Icons.Default.Key, 
-                                    contentDescription = null,
-                                    tint = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
-                                        MaterialTheme.colorScheme.tertiary 
-                                    else 
-                                        MaterialTheme.colorScheme.primary
-                                )
-                            },
-                            badge = {
-                                Text(
-                                    text = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
-                                        stringResource(R.string.external_storage) 
-                                    else 
-                                        stringResource(R.string.internal_storage),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                        )
-                    }
-                }
-            }
-        }
-    ) {
     // 可拖拽导航栏模式开关 (将来可从设置中读取)
     val useDraggableNav = appSettings.useDraggableBottomNav
     
@@ -682,8 +518,7 @@ fun SimpleMainScreen(
                                 },
                                 onNavigateToAddPassword = onNavigateToAddPassword,
                                 onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                onMenuClick = { scope.launch { drawerState.open() } },
-                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
+                                                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
                                     isPasswordSelectionMode = isSelectionMode
                                     selectedPasswordCount = count
                                     onExitPasswordSelection = onExit
@@ -939,7 +774,6 @@ fun SimpleMainScreen(
                         },
                         onNavigateToAddPassword = onNavigateToAddPassword,
                         onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onMenuClick = { scope.launch { drawerState.open() } }, // Pass menu click
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
                             isPasswordSelectionMode = isSelectionMode
                             selectedPasswordCount = count
@@ -1097,8 +931,7 @@ fun SimpleMainScreen(
             }
         }
     }
-    } // End of if (!useDraggableNav) traditional Scaffold
-    } // End of ModalNavigationDrawer
+}
 
     if (showAddCategoryDialog) {
         AlertDialog(
@@ -1182,7 +1015,6 @@ private fun PasswordListContent(
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit,
-    onMenuClick: () -> Unit,
     onSelectionModeChange: (
         isSelectionMode: Boolean,
         selectedCount: Int,
@@ -1219,6 +1051,20 @@ private fun PasswordListContent(
     var displayMenuExpanded by remember { mutableStateOf(false) }
     // Search state hoisted for morphing animation
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // 如果搜索框展开，按返回键关闭搜索框
+    val focusManager = LocalFocusManager.current
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        viewModel.updateSearchQuery("")
+        focusManager.clearFocus()
+    }
+
+    // Handle back press for selection mode
+    BackHandler(enabled = isSelectionMode) {
+        isSelectionMode = false
+        selectedPasswords = setOf()
+    }
     // Category sheet state
     var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
     
@@ -2541,9 +2387,85 @@ private fun TotpListContent(
         onDelete: () -> Unit
     ) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val totpItems by viewModel.totpItems.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val haptic = rememberHapticFeedback()
+    val focusManager = LocalFocusManager.current
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // 如果搜索框展开，按返回键关闭搜索框
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        viewModel.updateSearchQuery("")
+        focusManager.clearFocus()
+    }
+
+    // Pull-to-search state
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var currentOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val triggerDistance = remember(density) { with(density) { 40.dp.toPx() } }
+    val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
+    var hasVibrated by remember { mutableStateOf(false) }
+    
+    // Vibrator
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        }
+    }
+
+    val nestedScrollConnection = remember {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (currentOffset > 0 && available.y < 0) {
+                    val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
+                    val consumed = currentOffset - newOffset
+                    currentOffset = newOffset
+                    return androidx.compose.ui.geometry.Offset(0f, -consumed)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+            
+            override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (available.y > 0 && source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
+                    val delta = available.y * 0.5f // Damping
+                    val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
+                    val oldOffset = currentOffset
+                    currentOffset = newOffset
+                    
+                    if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                        hasVibrated = true
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                             vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator?.vibrate(20)
+                        }
+                    } else if (newOffset < triggerDistance) {
+                        hasVibrated = false
+                    }
+                    return available
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+            
+            override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                if (currentOffset >= triggerDistance) {
+                     isSearchExpanded = true
+                     hasVibrated = false
+                }
+                androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
+                    currentOffset = value
+                }
+                return androidx.compose.ui.unit.Velocity.Zero
+            }
+        }
+    }
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -2551,7 +2473,6 @@ private fun TotpListContent(
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var showPasswordVerify by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
@@ -2609,7 +2530,7 @@ private fun TotpListContent(
 
     Column {
         // M3E Top Bar with integrated search - 始终显示
-        var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+
         ExpressiveTopBar(
             title = "验证器", // Or stringResource(R.string.authenticator)
             searchQuery = searchQuery,
@@ -2653,7 +2574,10 @@ private fun TotpListContent(
         if (filteredTotpItems.isEmpty()) {
             // 空状态
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
+                    .nestedScroll(nestedScrollConnection),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -2717,7 +2641,10 @@ private fun TotpListContent(
             
             LazyColumn(
                 state = lazyListState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
+                    .nestedScroll(nestedScrollConnection),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {

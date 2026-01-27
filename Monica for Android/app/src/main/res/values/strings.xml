@@ -61,6 +61,10 @@
     <string name="biometric_unlock_enabled">Fingerprint unlock enabled</string>
     <string name="biometric_unlock_disabled">Fingerprint unlock disabled</string>
     <string name="biometric_cannot_enable">Cannot enable fingerprint unlock</string>
+    <string name="biometric_weak_warning_title">Weaker biometric detected</string>
+    <string name="biometric_weak_warning_message">This device only supports weaker biometric authentication, which has lower anti-spoofing capability. Do you want to continue enabling fingerprint unlock?</string>
+    <string name="biometric_weak_warning_confirm">Continue</string>
+    <string name="biometric_weak_warning_cancel">Cancel</string>
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">Verify to Autofill</string>
@@ -415,6 +419,12 @@
     <string name="qr_code_description">Support author QR code</string>
     <string name="save_qr_code">Save QR code to album</string>
     <string name="your_support_message">Your support is my motivation to keep developing!</string>
+
+    <!-- SSO -->
+    <string name="sso_login_title">第三方账号登录</string>
+    <string name="sso_login_btn">登录</string>
+    <string name="use_sso">使用</string>
+    <string name="sso_ref_account">关联账号</string>
     <string name="thank_you_title">Thank you for using Monica Password Manager!</string>
     <string name="thank_you_message">Hope it brings security and convenience to your digital life.</string>
     <string name="storage_permission_needed">Storage permission is required to save images</string>
@@ -664,7 +674,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.23</string>
+    <string name="settings_version_number">V1.0.24</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -880,6 +890,12 @@
     <string name="webdav_backup_authenticators">Authenticators: %d</string>
     <string name="webdav_backup_documents">Documents: %d</string>
     <string name="webdav_backup_bank_cards">Bank Cards: %d</string>
+    
+    <!-- Restore Settings -->
+    <string name="webdav_restore_settings">Restore Settings</string>
+    <string name="webdav_overwrite_local">Overwrite Local Data</string>
+    <string name="webdav_overwrite_local_desc">Clear all local data before restoring from backup</string>
+
     
     <!-- Selection Mode -->
     <string name="selected_items">%d items selected</string>

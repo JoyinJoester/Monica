@@ -40,9 +40,8 @@
 > Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
 
 > Task :app:compileReleaseKotlin
-e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/components/ExpressiveTopBar.kt:101:22 Unresolved reference: pointerInput
-e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/components/ExpressiveTopBar.kt:103:25 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
-public suspend fun PointerInputScope.detectHorizontalDragGestures(onDragStart: (Offset) -> Unit = ..., onDragEnd: () -> Unit = ..., onDragCancel: () -> Unit = ..., onHorizontalDrag: (change: PointerInputChange, dragAmount: Float) -> Unit): Unit defined in androidx.compose.foundation.gestures
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2576:35 Unresolved reference: context
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2580:13 Unresolved reference: context
 
 > Task :app:compileReleaseKotlin FAILED
 
@@ -59,11 +58,11 @@ Execution failed for task ':app:compileReleaseKotlin'.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-
 Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
 
 You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
 
 For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
-BUILD FAILED in 9s
+
+BUILD FAILED in 20s
 36 actionable tasks: 1 executed, 35 up-to-date

@@ -1372,9 +1372,27 @@ class WebDavHelper(
      */
     suspend fun restoreFromBackupFile(
         backupFile: File,
-        decryptPassword: String? = null
+        decryptPassword: String? = null,
+        overwrite: Boolean = false
     ): Result<RestoreResult> = withContext(Dispatchers.IO) {
         try {
+            // P0修复: 如果需要覆盖，先执行清除操作
+            if (overwrite) {
+                try {
+                    android.util.Log.d("WebDavHelper", "Overwrite mode enabled: clearing local data...")
+                    val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                    database.passwordEntryDao().deleteAllPasswordEntries()
+                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.TOTP)
+                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
+                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.NOTE)
+                    android.util.Log.d("WebDavHelper", "Local data cleared successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("WebDavHelper", "Failed to clear local data: ${e.message}")
+                    return@withContext Result.failure(Exception("无法清除本地数据: ${e.message}"))
+                }
+            }
+
             // P0修复：错误跟踪
             val failedItems = mutableListOf<FailedItem>()
             val warnings = mutableListOf<String>()
@@ -2060,7 +2078,8 @@ class WebDavHelper(
      */
     suspend fun downloadAndRestoreBackup(
         backupFile: BackupFile,
-        decryptPassword: String? = null
+        decryptPassword: String? = null,
+        overwrite: Boolean = false
     ): Result<RestoreResult> = 
         withContext(Dispatchers.IO) {
         try {
@@ -2075,7 +2094,7 @@ class WebDavHelper(
             
             try {
                 // 2. 调用的恢复方法
-                val restoreResult = restoreFromBackupFile(downloadedFile, decryptPassword)
+                val restoreResult = restoreFromBackupFile(downloadedFile, decryptPassword, overwrite)
                 if (restoreResult.isFailure) {
                     // 如果是密码错误，传递具体的异常
                     val ex = restoreResult.exceptionOrNull()

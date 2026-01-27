@@ -379,18 +379,16 @@ abstract class PasswordDatabase : RoomDatabase() {
         private val MIGRATION_24_25 = object : androidx.room.migration.Migration(24, 25) {
             override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
                 // 检查表是否存在并需要修复
-                // 使用安全的重建表方式：重命名 → 创建新表 → 复制数据 → 删除旧表
                 try {
                     // 1. 重命名旧表
                     database.execSQL("ALTER TABLE local_keepass_databases RENAME TO local_keepass_databases_backup")
                     
-                    // 2. 创建正确结构的新表（无DEFAULT值）
+                    // 2. 创建正确结构的新表（统一不包含 keyFileUri，留给 25->26 添加）
                     database.execSQL("""
                         CREATE TABLE IF NOT EXISTS local_keepass_databases (
                             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                             name TEXT NOT NULL,
                             filePath TEXT NOT NULL,
-                            keyFileUri TEXT,
                             storage_location TEXT NOT NULL,
                             encrypted_password TEXT,
                             description TEXT,
@@ -406,7 +404,7 @@ abstract class PasswordDatabase : RoomDatabase() {
                     // 3. 复制数据
                     database.execSQL("""
                         INSERT INTO local_keepass_databases 
-                        SELECT id, name, filePath, NULL, storage_location, encrypted_password, description,
+                        SELECT id, name, filePath, storage_location, encrypted_password, description,
                                created_at, last_accessed_at, last_synced_at, is_default, entry_count, sort_order
                         FROM local_keepass_databases_backup
                     """.trimIndent())
@@ -417,13 +415,13 @@ abstract class PasswordDatabase : RoomDatabase() {
                     // 5. 重建索引
                     database.execSQL("CREATE INDEX IF NOT EXISTS index_local_keepass_databases_storage_location ON local_keepass_databases(storage_location)")
                 } catch (e: Exception) {
-                    // 如果旧表不存在，直接创建新表
+                    // 如果出错（例如旧表不存在），确保新建一个干净的表
+                    database.execSQL("DROP TABLE IF EXISTS local_keepass_databases_backup")
                     database.execSQL("""
                         CREATE TABLE IF NOT EXISTS local_keepass_databases (
                             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                             name TEXT NOT NULL,
                             filePath TEXT NOT NULL,
-                            keyFileUri TEXT,
                             storage_location TEXT NOT NULL,
                             encrypted_password TEXT,
                             description TEXT,
@@ -441,9 +439,31 @@ abstract class PasswordDatabase : RoomDatabase() {
         }
         
         // Migration 25 → 26 - 为本地 KeePass 数据库添加密钥文件字段
+        // 修复版：增加容错检查，防止重复添加字段导致崩溃
         private val MIGRATION_25_26 = object : androidx.room.migration.Migration(25, 26) {
             override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE local_keepass_databases ADD COLUMN keyFileUri TEXT")
+                val cursor = database.query("PRAGMA table_info(local_keepass_databases)")
+                var hasColumn = false
+                try {
+                    val nameIndex = cursor.getColumnIndex("name")
+                    while (cursor.moveToNext()) {
+                        if (nameIndex != -1 && cursor.getString(nameIndex) == "keyFileUri") {
+                            hasColumn = true
+                            break
+                        }
+                    }
+                } finally {
+                    cursor.close()
+                }
+
+                if (!hasColumn) {
+                    try {
+                        database.execSQL("ALTER TABLE local_keepass_databases ADD COLUMN keyFileUri TEXT")
+                    } catch (e: Exception) {
+                        // 忽略错误，例如字段已存在（虽然我们检查了，但为了双重保险）
+                        android.util.Log.e("PasswordDatabase", "Failed to add column keyFileUri: ${e.message}")
+                    }
+                }
             }
         }
 

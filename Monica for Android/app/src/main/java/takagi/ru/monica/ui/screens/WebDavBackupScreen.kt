@@ -85,6 +85,9 @@ fun WebDavBackupScreen(
     var localKeePassCount by remember { mutableStateOf(0) }
     var isKeePassWebDavConfigured by remember { mutableStateOf(false) }
     
+    // 恢复设置
+    var restoreOverwriteMode by remember { mutableStateOf(false) }
+    
     // 备份进行中状态（防止重复点击）
     var isBackupInProgress by remember { mutableStateOf(false) }
     
@@ -991,6 +994,7 @@ private fun BackupItem(
     var showRestoreDialog by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var overwriteAll by remember { mutableStateOf(false) }
     
     // New state variables for smart decryption
     var showPasswordInputDialog by remember { mutableStateOf(false) }
@@ -1003,6 +1007,10 @@ private fun BackupItem(
             val report = restoreResult.report
             val passwords: List<PasswordEntry> = content.passwords
             val secureItems: List<DataExportImportManager.ExportItem> = content.secureItems
+            
+            // 注意：清除本地数据的逻辑已移动到 WebDavHelper.restoreFromBackupFile 中
+            // 这样做是为了确保在恢复 Trash、Categories 等辅助数据之前执行清除操作
+            // 从而避免"先恢复辅助数据，然后被此处的清除逻辑误删"的 bug
             
             // 调试日志：记录备份中的数据统计
             android.util.Log.d("WebDavBackup", "===== 开始恢复 =====")
@@ -1370,7 +1378,15 @@ private fun BackupItem(
             onDismissRequest = { showRestoreDialog = false },
             title = { Text("恢复备份") },
             text = { 
-                Text("确定要从此备份恢复数据吗?\n\n${backup.name}\n\n注意: 这将导入备份中的所有数据到当前应用中。")
+                Column {
+                    Text("确定要从此备份恢复数据吗?\n\n${backup.name}\n\n注意: 这将导入备份中的所有数据到当前应用中。")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = overwriteAll, onCheckedChange = { overwriteAll = it })
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.webdav_overwrite_local))
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -1380,7 +1396,7 @@ private fun BackupItem(
                         coroutineScope.launch {
                             try {
                                 // 下载并恢复备份
-                                val result = webDavHelper.downloadAndRestoreBackup(backup)
+                                val result = webDavHelper.downloadAndRestoreBackup(backup, overwrite = overwriteAll)
                                 handleRestoreResult(result)
                             } catch (e: Exception) {
                                 isRestoring = false
@@ -1431,7 +1447,7 @@ private fun BackupItem(
                         isRestoring = true
                         coroutineScope.launch {
                             try {
-                                val result = webDavHelper.downloadAndRestoreBackup(backup, tempPassword)
+                                val result = webDavHelper.downloadAndRestoreBackup(backup, tempPassword, overwrite = overwriteAll)
                                 handleRestoreResult(result)
                             } catch (e: Exception) {
                                 isRestoring = false

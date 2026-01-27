@@ -124,7 +124,8 @@ fun ImportDataScreen(
     onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>,  // 加密的Aegis JSON导入
     onImportSteamMaFile: suspend (Uri) -> Result<Int>,  // Steam maFile导入
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
-    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("未实现")) }  // KDBX导入
+    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("未实现")) },  // KDBX导入
+    onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("未实现")) }  // KeePass CSV导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -163,10 +164,17 @@ fun ImportDataScreen(
                 fileHint = "选择 .kdbx 文件"
             ),
             ImportTypeInfo(
+                key = "keepass_csv",
+                icon = Icons.Default.Description,
+                title = "KeePass CSV",
+                description = "导入 KeePass 导出的 CSV 文件",
+                fileHint = "选择 .csv 文件"
+            ),
+            ImportTypeInfo(
                 key = "normal",
                 icon = Icons.Default.TableChart,
                 title = "CSV 数据",
-                description = "导入应用导出的 CSV 文件或支付宝账单",
+                description = "导入应用导出的 CSV 文件",
                 fileHint = "选择 .csv 文件"
             ),
             ImportTypeInfo(
@@ -305,6 +313,10 @@ fun ImportDataScreen(
                                                 showKdbxPasswordDialog = true
                                                 kdbxPassword = ""
                                             }
+                                            "keepass_csv" -> {
+                                                val result = onImportKeePassCsv(uri)
+                                                handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                            }
                                             else -> {
                                                 // 普通CSV导入
                                                 val result = onImport(uri)
@@ -418,6 +430,7 @@ fun ImportDataScreen(
                         when (importType) {
                             "monica_zip" -> FileOperationHelper.importFromZip(act)
                             "kdbx" -> FileOperationHelper.importFromKdbx(act)
+                            "keepass_csv" -> FileOperationHelper.importFromCsv(act)
                             "aegis" -> FileOperationHelper.importFromJson(act)
                             "steam" -> FileOperationHelper.importFromMaFile(act)
                             else -> FileOperationHelper.importFromCsv(act)
