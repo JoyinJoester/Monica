@@ -56,9 +56,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-obfuscated
-          path:
-            - "Monica for Android/app/build/outputs/apk/release/*.apk"
-            - "Monica for Android/app/build/outputs/apk/release/checksums.txt"
+          path: |
+            ${{ github.workspace }}/Monica for Android/app/build/outputs/apk/release/*.apk
+            ${{ github.workspace }}/Monica for Android/app/build/outputs/apk/release/checksums.txt
           retention-days: 14
           if-no-files-found: error
 
@@ -66,6 +66,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mapping-release
-          path: "Monica for Android/app/build/outputs/mapping/release/mapping.txt"
+          path: ${{ github.workspace }}/Monica for Android/app/build/outputs/mapping/release/mapping.txt
           retention-days: 30
           if-no-files-found: error
