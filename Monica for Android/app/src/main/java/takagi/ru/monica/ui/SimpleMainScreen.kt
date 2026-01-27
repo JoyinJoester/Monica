@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.fragment.app.FragmentActivity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -1219,6 +1220,14 @@ private fun PasswordListContent(
     var displayMenuExpanded by remember { mutableStateOf(false) }
     // Search state hoisted for morphing animation
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // 如果搜索框展开，按返回键关闭搜索框
+    val focusManager = LocalFocusManager.current
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        viewModel.updateSearchQuery("")
+        focusManager.clearFocus()
+    }
     // Category sheet state
     var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
     
