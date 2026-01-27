@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Biometric permission for fingerprint/face unlock -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+    
+    <!-- Camera permission for QR code scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    
+    <!-- Network permissions for WebDAV backup -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
+    <!-- Storage permissions for saving images -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    
+    <!-- Autofill permission -->
+    <uses-permission android:name="android.permission.BIND_AUTOFILL_SERVICE"
+        tools:ignore="ProtectedPermissions" />
+    
+    <!-- Phase 9: Haptic feedback permission -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- Foreground Service permissions for Notification Validator -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- 添加电话状态权限 -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    
+    <!-- 如果需要精确位置 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Android 11+ 包可见性声明 - 用于应用列表功能 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Monica"
+        tools:targetApi="31">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Monica"
+            android:windowSoftInputMode="adjustResize"
+            android:enableOnBackInvokedCallback="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        
+        <!-- Autofill Service -->
+        <service
+            android:name=".autofill.MonicaAutofillService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service_config" />
+        </service>
+
+        <!-- Notification Validator Service -->
+        <service
+            android:name=".service.NotificationValidatorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Displaying TOTP codes in notification" />
+        </service>
+
+        <!-- Accessibility Service -->
+        <service
+            android:name=".service.MonicaAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+        
+        <!-- Autofill Save Activity (旧版全屏) -->
+        <activity
+            android:name=".autofill.AutofillSaveActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Monica"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+        
+        <!-- Autofill Save Transparent Activity (新版半屏) -->
+        <activity
+            android:name=".autofill.AutofillSaveTransparentActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Transparent"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=":autofill_save"
+            android:launchMode="singleTask"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize" />
+        
+        <!-- Phase 8: Biometric Authentication Activity for Autofill -->
+        <activity
+            android:name=".autofill.BiometricAuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Transparent"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+        
+        <!-- Autofill Authentication Activity -->
+        <activity
+            android:name=".autofill.AutofillAuthenticationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TransparentDialog"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+        
+        <!-- Autofill Picker Activity (UI Improvement) -->
+        <activity
+            android:name=".autofill.AutofillPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Monica.BottomSheet"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+        
+        <!-- 🔐 Password Suggestion Activity (Strong Password Generator) -->
+        <activity
+            android:name=".autofill.PasswordSuggestionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TransparentDialog"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTop" />
+        
+        <!-- FileProvider for camera photos -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest>

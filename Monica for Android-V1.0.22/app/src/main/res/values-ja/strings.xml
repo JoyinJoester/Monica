@@ -1,0 +1,1208 @@
+<resources>
+    <string name="app_name">Monica</string>
+    
+    <!-- General -->
+    <string name="accessibility_service_description">Monicaアクセシビリティサービスは、パスワードフィールドをより正確に検出することで、自動入力機能の向上に役立ちます。</string>
+    
+    <string name="ok">OK</string>
+    <string name="cancel">キャンセル</string>
+    <string name="save">保存</string>
+    <string name="delete">削除</string>
+    <string name="edit">編集</string>
+    <string name="search">検索</string>
+    
+    <!-- Swipe Actions -->
+    <string name="swipe_action_select">選択</string>
+    <string name="swipe_action_delete">削除</string>
+    
+    <string name="settings">設定</string>
+    <string name="back">戻る</string>
+    <string name="close">閉じる</string>
+    <string name="logout">ログアウト</string>
+    <string name="yes">はい</string>
+    <string name="no">いいえ</string>
+    <string name="share">共有</string>
+    <string name="no_results">結果が見つかりません</string>
+    
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_title">自動入力の確認</string>
+    <string name="autofill_auth_subtitle">指紋またはパスワードを使用</string>
+    <string name="autofill_auth_description">確認後に自動入力</string>
+    
+    <!-- 🔐 Password Suggestion -->
+    <string name="password_suggestion">強力なパスワードの提案</string>
+    <string name="password_suggestion_title">強力なパスワードを生成</string>
+    <string name="password_suggestion_subtitle">Monicaが安全なパスワードを作成します</string>
+    <string name="password_suggestion_accept">このパスワードを使用</string>
+    <string name="password_suggestion_decline">いいえ、結構です</string>
+    <string name="password_suggestion_copied">パスワードをコピーしました</string>
+    
+    <!-- Login Screen -->
+    <string name="setup_master_password">マスターパスワードを設定</string>
+    <string name="enter_master_password">マスターパスワードを入力</string>
+    <string name="master_password">マスターパスワード</string>
+    <string name="confirm_master_password">マスターパスワードを確認</string>
+    <string name="set_up_password">パスワードを設定</string>
+    <string name="unlock">ロック解除</string>
+    <string name="use_biometric">生体認証を使用</string>
+    <string name="biometric_title">生体認証</string>
+    <string name="biometric_subtitle">指紋または顔認証でMonicaをロック解除</string>
+    <string name="use_master_password">マスターパスワードを使用</string>
+    <string name="show_password">パスワードを表示</string>
+    <string name="hide_password">パスワードを非表示</string>
+    
+    <!-- Biometric Authentication -->
+    <string name="biometric_login_title">Monicaをロック解除</string>
+    <string name="biometric_login_subtitle">本人確認</string>
+    <string name="biometric_login_description">指紋でロック解除</string>
+    <string name="biometric_available">生体認証が利用可能です</string>
+    <string name="biometric_no_hardware">生体認証ハードウェアがありません</string>
+    <string name="biometric_hw_unavailable">生体認証ハードウェアが利用できません</string>
+    <string name="biometric_none_enrolled">生体情報が未登録です。システム設定で指紋または顔認証を設定してください</string>
+    <string name="biometric_not_available">生体認証が利用できません</string>
+    <string name="biometric_error">生体認証エラー: %s</string>
+    <string name="biometric_success">認証成功</string>
+    <string name="biometric_unlock">指紋ロック解除</string>
+    <string name="biometric_unlock_enabled">指紋ロック解除が有効です</string>
+    <string name="biometric_unlock_disabled">指紋ロック解除が無効です</string>
+    <string name="biometric_cannot_enable">指紋ロック解除を有効にできません</string>
+    
+    <!-- Password List Screen -->
+    <string name="search_passwords">パスワードを検索...</string>
+    <string name="no_passwords_saved">パスワードがまだ保存されていません</string>
+    <string name="no_passwords_found">一致するパスワードが見つかりません</string>
+    <string name="add_password">パスワードを追加</string>
+    <string name="clear_search">検索をクリア</string>
+    <string name="logout_confirmation">ログアウトしてもよろしいですか？</string>
+    <string name="copy_username">ユーザー名をコピー</string>
+    <string name="copy_password">パスワードをコピー</string>
+    <string name="copy">コピー</string>
+    <string name="username_copied">ユーザー名をクリップボードにコピーしました</string>
+    <string name="password_copied">パスワードをクリップボードにコピーしました</string>
+    
+    <!-- Form Fields -->
+    <string name="field_email">メール</string>
+    <string name="field_phone">電話</string>
+    <string name="field_address">住所</string>
+    <string name="field_address_placeholder">番地、建物名など</string>
+    <string name="field_city">市区</string>
+    <string name="field_state">都道府県</string>
+    <string name="field_postal_code">郵便</string>
+    <string name="field_country">国</string>
+    <string name="field_card_number">カード番号</string>
+    <string name="field_card_valid">✓ 有効</string>
+    <string name="field_cardholder">名義人</string>
+    <string name="field_expiry">期限</string>
+    <string name="field_cvv">CVV</string>
+    
+    <!-- Password Group Actions -->
+    <string name="collapse">折りたたむ</string>
+    <string name="collapse_group">%d 件のパスワードを折りたたむ</string>
+    <string name="passwords_count">%d 件のパスワード</string>
+    
+    <!-- Add/Edit Password Screen -->
+    <string name="add_password_title">パスワードを追加</string>
+    <string name="edit_password_title">パスワードを編集</string>
+    <string name="title_required">タイトル *</string>
+    <string name="website_url">ウェブサイト/URL</string>
+    <string name="username_email">ユーザー名/メールアドレス</string>
+    <string name="password_required">パスワード *</string>
+    <string name="notes">メモ</string>
+    <string name="generate_password">パスワードを生成</string>
+    <string name="password_strength_very_weak">非常に弱い</string>
+    <string name="password_strength_weak">弱い</string>
+    <string name="password_strength_moderate">普通</string>
+    <string name="password_strength_strong">強い</string>
+    <string name="password_strength_very_strong">非常に強い</string>
+    
+    <!-- Password Generator -->
+    <string name="password_generator_title">パスワード生成器</string>
+    <string name="length">長さ：%d</string>
+    <string name="length_value">長さ：%d</string>
+    <string name="uppercase_letters">大文字 (A-Z)</string>
+    <string name="uppercase_az">大文字 (A-Z)</string>
+    <string name="lowercase_letters">小文字 (a-z)</string>
+    <string name="lowercase_az">小文字 (a-z)</string>
+    <string name="numbers">数字 (0-9)</string>
+    <string name="numbers_09">数字 (0-9)</string>
+    <string name="symbols">記号 (!@#$...)</string>
+    <string name="exclude_similar">類似文字を除外</string>
+    <string name="analyze_common_passwords">よく使われるパスワード分析</string>
+    <string name="analyze_common_passwords_desc">保存されたパスワードを分析して似ていて覚えやすいパスワードを生成します</string>
+    <string name="analyze_weight_label">類似度の強さ: %d</string>
+    <string name="use_password">パスワードを使用</string>
+    <string name="generate_new_password">新しいパスワードを生成</string>
+    <string name="show">表示</string>
+    <string name="hide">非表示</string>
+    
+    <!-- TOTP Authenticator -->
+    <string name="add_totp_title">認証器を追加</string>
+    <string name="edit_totp_title">認証器を編集</string>
+    <string name="totp_name_required">名前 *</string>
+    <string name="totp_name_example">例：Googleアカウント</string>
+    <string name="enter_name">名前を入力してください</string>
+    <string name="secret_key_required">シークレットキー *</string>
+    <string name="secret_key_example">ABCD EFGH IJKL MNOP</string>
+    <string name="secret_key_hint">Base32エンコードされたキー、通常はQRコードの下に表示されます</string>
+    <string name="enter_secret_key">シークレットキーを入力してください</string>
+    <string name="scan_qr_code">QRコードをスキャン</string>
+    <string name="issuer">発行者</string>
+    <string name="issuer_example">例：Google</string>
+    <string name="account_name">アカウント名</string>
+    <string name="account_name_example">例：user@gmail.com</string>
+    <string name="notes_optional">オプションのメモ情報</string>
+    <string name="advanced_options">詳細オプション</string>
+    <string name="time_period_seconds">時間間隔（秒）</string>
+    <string name="usually_30_seconds">通常は30秒</string>
+    <string name="code_digits">認証コードの桁数</string>
+    <string name="usually_6_digits">通常は6桁</string>
+    <string name="how_to_get_secret_key">シークレットキーの取得方法</string>
+    <string name="secret_key_instructions">1. 2FAを有効にしたいウェブサイトで「2段階認証」設定を見つける\n2. 「認証アプリを使用」を選択\n3. 表示されたキーをコピーするか、QRコードをスキャン\n4. キーを上の入力欄に貼り付ける</string>
+    
+    <!-- Bank Card -->
+    <string name="add_bank_card_title">銀行カードを追加</string>
+    <string name="edit_bank_card_title">銀行カードを編集</string>
+    <string name="no_bank_cards_title">銀行カードがありません</string>
+    <string name="no_bank_cards_description">右下の + ボタンをタップして最初の銀行カードを追加</string>
+    <string name="card_name">カード名</string>
+    <string name="card_name_example">例: 給与カード</string>
+    <string name="bank_name">銀行名</string>
+    <string name="bank_name_example">例: みずほ銀行</string>
+    <string name="card_type">カードの種類</string>
+    <string name="debit_card">デビットカード</string>
+    <string name="credit_card">クレジットカード</string>
+    <string name="prepaid_card">プリペイドカード</string>
+    <string name="card_number_required">カード番号 *</string>
+    <string name="cardholder_name">カード名義人</string>
+    <string name="expiry_date">有効期限</string>
+    <string name="month">月</string>
+    <string name="year">年</string>
+    <string name="cvv">CVV</string>
+    <string name="billing_address">請求先住所</string>
+    <string name="add_billing_address">請求先住所を追加</string>
+    <string name="edit_billing_address">請求先住所を編集</string>
+    <string name="billing_address_empty">請求先住所が未保存です</string>
+    <string name="remove_billing_address">請求先住所を削除</string>
+    <string name="billing_address_removed">請求先住所を削除しました</string>
+    <string name="street_address">住所</string>
+    <string name="street_address_placeholder">例：中央区123番地</string>
+    <string name="apartment">マンション/部屋番号（任意）</string>
+    <string name="apartment_placeholder">例：2号棟501号室</string>
+    <string name="city">市区町村</string>
+    <string name="city_placeholder">例：東京都</string>
+    <string name="state_province">都道府県</string>
+    <string name="state_province_placeholder">例：東京</string>
+    <string name="postal_code">郵便番号</string>
+    <string name="postal_code_placeholder">例：100-0000</string>
+    <string name="country">国</string>
+    <string name="country_placeholder">例：日本</string>
+    <string name="billing_address_saved">請求先住所を保存しました</string>
+    <string name="notes_placeholder">メモ情報を追加...</string>
+    <string name="bottom_nav_settings">ボトムナビゲーションバー</string>
+    <string name="bottom_nav_toggle_subtitle">ボトムバーにこのタブを表示または非表示</string>
+    <string name="bottom_nav_reorder_hint">矢印で順序を調整、設定ページは常に最後に配置されます。</string>
+    <string name="bottom_nav_move_up">タブを上に移動</string>
+    <string name="bottom_nav_move_down">タブを下に移動</string>
+    <string name="bottom_nav_settings_entry_subtitle">表示するタブを選択し、順序を調整</string>
+    
+    <!-- Document -->
+    <string name="add_document_title">証明書を追加</string>
+    <string name="edit_document_title">証明書を編集</string>
+    <string name="no_documents_title">証明書がありません</string>
+    <string name="no_documents_description">右下の + ボタンをタップして最初の証明書を追加</string>
+    <string name="document_name">証明書名</string>
+    <string name="document_name_example">例: マイナンバーカード</string>
+    <string name="document_type">証明書の種類</string>
+    <string name="id_card">身分証明書</string>
+    <string name="passport">パスポート</string>
+    <string name="drivers_license">運転免許証</string>
+    <string name="social_security_card">保険証</string>
+    <string name="other_document">その他の証明書</string>
+    <string name="document_number_required">証明書番号 *</string>
+    <string name="holder_name">名義人</string>
+    <string name="holder_name_example">山田太郎</string>
+    <string name="issue_date">発行日</string>
+    <string name="expiry_date_label">有効期限</string>
+    <string name="issuing_authority">発行機関</string>
+    <string name="issuing_authority_example">例: ○○市役所</string>
+    <string name="document_encryption_notice">すべての証明書情報と写真は、ローカルデバイスに暗号化して保存されます</string>
+    <string name="document_photo_front">%s写真（表面）</string>
+    <string name="document_photo_back">%s写真（裏面、任意）</string>
+    
+    <!-- Document Card Labels -->
+    <string name="document_number_label">証明書番号</string>
+    <string name="holder_label">所持者</string>
+    <string name="valid_until">有効期限</string>
+    
+    <!-- Bank Card Labels -->
+    <string name="cardholder_label">カード名義人</string>
+    <string name="expiry_label">有効期限</string>
+    
+    <!-- Menu Actions -->
+    <string name="move_up">上に移動</string>
+    <string name="move_down">下に移動</string>
+    
+    <!-- Content Descriptions -->
+    <string name="favorite">お気に入り</string>
+    <string name="more_options">その他</string>
+    
+    <!-- Document Type Names -->
+    <string name="document_type_id_card">身分証明書</string>
+    <string name="document_type_passport">パスポート</string>
+    <string name="document_type_driver_license">運転免許証</string>
+    <string name="document_type_social_security">保険証</string>
+    <string name="document_type_other">その他の証明書</string>
+    
+    <!-- TOTP List -->
+    <string name="search_authenticator">認証器を検索</string>
+    <string name="clear">クリア</string>
+    <string name="no_authenticators_title">認証器がありません</string>
+    <string name="no_authenticators_description">右下の + ボタンをタップして認証器を追加</string>
+    <string name="delete_authenticator_title">認証器を削除</string>
+    <string name="delete_authenticator_message">「%s」を削除してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="delete_document_title">証明書を削除</string>
+    <string name="delete_document_message">「%s」を削除してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="delete_bank_card_title">銀行カードを削除</string>
+    <string name="delete_bank_card_message">「%s」を削除してもよろしいですか？この操作は元に戻せません。</string>
+    
+    <!-- QR Scanner -->
+    <string name="scan_qr_code_title">QRコードをスキャン</string>
+    <string name="grant_permission">権限を付与</string>
+    <string name="go_back">戻る</string>
+    <string name="camera_permission_required">QRコードをスキャンするにはカメラへのアクセスが必要です。続行するにはカメラ権限を付与してください。</string>
+    
+    <!-- Image Picker -->
+    <string name="gallery">ギャラリー</string>
+    <string name="camera">写真を撮る</string>
+    <string name="download">ダウンロード</string>
+    <string name="download_success">画像をアルバムに保存しました</string>
+    <string name="download_failed">画像の保存に失敗しました</string>
+    <string name="camera_permission_needed">写真を撮るにはカメラ権限が必要です</string>
+    <string name="error_launch_gallery">ギャラリーを開けませんでした：%1$s</string>
+    <string name="error_launch_camera">カメラを開けませんでした：%1$s</string>
+    
+    <!-- Export/Import Data -->
+    <string name="export_data_title">データをエクスポート</string>
+    <string name="exporting">エクスポート中...</string>
+    <string name="start_export">エクスポート開始</string>
+        <string name="error_export_failed">エクスポートに失敗しました</string>
+        <string name="error_launch_export">ファイル選択画面を開けませんでした：%1$s</string>
+    <string name="import_data_title">データをインポート</string>
+    <string name="importing">インポート中...</string>
+    <string name="start_import">インポート開始</string>
+    <string name="export_data_select_type">エクスポートするデータタイプを選択：</string>
+    <string name="export_data_type_passwords">パスワード</string>
+    <string name="export_data_type_totp">TOTP認証コード</string>
+    <string name="export_data_type_bank_cards">銀行カード</string>
+    <string name="export_data_type_documents">証明書</string>
+    <string name="export_data_type_all">すべてのデータ</string>
+    <string name="export_data_button">エクスポート</string>
+    <string name="export_data_success">データのエクスポートに成功しました</string>
+    <string name="export_data_error">エクスポートに失敗しました</string>
+    <string name="export_data_warning">CSVファイルは暗号化されていません。エクスポートしたファイルは適切に管理してください</string>
+    
+    <!-- 新しいエクスポート画面 -->
+    <string name="export_select_option">エクスポートオプションを選択</string>
+    <string name="export_option_all">すべてのデータをエクスポート</string>
+    <string name="export_option_all_desc">すべてのパスワード、TOTP、銀行カード、証明書をCSV形式でエクスポート</string>
+    <string name="export_option_passwords">パスワードのみエクスポート</string>
+    <string name="export_option_passwords_desc">パスワードエントリのみをCSV形式でエクスポート</string>
+    <string name="export_option_totp">TOTPのみエクスポート</string>
+    <string name="export_option_totp_desc">TOTP認証器をCSVまたはAegis互換形式でエクスポート</string>
+    <string name="export_option_cards_docs">銀行カードと証明書をエクスポート</string>
+    <string name="export_option_cards_docs_desc">銀行カードと証明書を結合してCSV形式でエクスポート</string>
+    <string name="export_totp_format">TOTPエクスポート形式を選択</string>
+    <string name="export_enable_encryption">暗号化を有効にする</string>
+    <string name="export_encryption_hint">TOTPデータをパスワードで保護（Aegis互換）</string>
+    <string name="export_encryption_password">暗号化パスワードを入力</string>
+    <string name="export_encryption_password_hint">ファイルをインポートする際にこのパスワードが必要です</string>
+    
+    <string name="import_data_warning_title">警告</string>
+    <string name="import_data_warning_message">データをインポートすると既存のデータが上書きされる可能性があります。インポート前に現在のデータをバックアップしてください。</string>
+    <string name="import_data_select_file">ファイルを選択</string>
+    <string name="import_data_button">インポート</string>
+    <string name="import_data_success">データのインポートに成功しました</string>
+    <string name="import_data_error">インポートに失敗しました</string>
+    <string name="import_data_supported_formats">アプリでエクスポートされたCSVファイルとAlipay取引明細をサポート</string>
+    <string name="import_data_select_type">インポートタイプを選択</string>
+    <string name="import_data_type_normal">アプリデータ</string>
+    <string name="import_data_type_alipay">Alipay明細</string>
+    <string name="import_data_file_selected">ファイルが選択されました</string>
+    <string name="import_data_file_hint">.csv ファイルをタップして選択</string>
+    <string name="import_data_file_hint_csv">.csv ファイルをタップして選択</string>
+    <string name="import_data_file_hint_csv_alipay">Alipay .csv ファイルをタップして選択</string>
+    <string name="import_data_file_hint_json">.json ファイルをタップして選択</string>
+    <string name="import_data_success_normal">%d 件のデータを正常にインポートしました</string>
+    <string name="import_data_success_alipay">%d 件のAlipay取引を正常にインポートしました</string>
+    <string name="import_data_error_exception">インポートに失敗しました：%s</string>
+    <string name="import_data_notice">インポートされたデータは既存のデータに追加され、現在のデータは削除されません</string>
+    
+    <!-- Support Author -->
+    <string name="support_author_title">作者をサポート</string>
+    <string name="software_free_title">💝 ソフトウェアは完全無料</string>
+    <string name="software_free_description">Monicaパスワードマネージャーは完全無料のオープンソースソフトウェアです。強制課金はなく、すべての機能を無料で使用できます。</string>
+    <string name="if_helpful_title">🙏 このアプリが役に立った場合</string>
+    <string name="support_ways_description">以下の方法で作者の今後の開発をサポートしていただければ幸いです：</string>
+    <string name="support_author_qr">作者をサポート ❤️</string>
+    <string name="qr_code_description">作者サポート用QRコード</string>
+    <string name="save_qr_code">QRコードをアルバムに保存</string>
+    <string name="your_support_message">あなたのサポートが継続的な開発の原動力です！</string>
+    <string name="thank_you_title">Monicaパスワードマネージャーをご利用いただきありがとうございます！</string>
+    <string name="thank_you_message">あなたのデジタルライフに安全と利便性をもたらせることを願っています。</string>
+    <string name="storage_permission_needed">画像を保存するにはストレージ権限が必要です</string>
+    <string name="qr_code_saved">QRコードをアルバムに保存しました</string>
+    <string name="save_failed">保存に失敗しました</string>
+    <string name="save_failed_with_error">保存に失敗しました: %s</string>
+    
+    <!-- Password Entry Card -->
+    <string name="username">ユーザー名</string>
+    <string name="password">パスワード</string>
+    <string name="password_hidden">••••••••</string>
+    <string name="delete_password_title">パスワードを削除</string>
+    <string name="delete_password_message">「%s」を削除してもよろしいですか？</string>
+    
+    <!-- Error Messages -->
+    <string name="error_password_too_short">マスターパスワードは最低6文字必要です</string>
+    <string name="error_password_must_be_6_digits">パスワードは6桁の数字である必要があります</string>
+    <string name="error_password_min_6_digits">パスワードは最低6桁の数字が必要です</string>
+    <string name="error_password_must_be_numeric">パスワードは数字のみ使用できます</string>
+    <string name="error_passwords_not_match">パスワードが一致しません</string>
+    <string name="error_invalid_password">マスターパスワードが無効です</string>
+    <string name="error_authentication_failed">認証に失敗しました</string>
+    <string name="error_title_required">タイトルは必須項目です</string>
+    <string name="error_password_required">パスワードは必須項目です</string>
+    <string name="password_min_6_digits">最低6桁の数字が必要です</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">設定</string>
+    <string name="language">言語</string>
+    <string name="theme">外観</string>
+    <string name="security">セキュリティ</string>
+    <string name="auto_lock">自動ロック</string>
+    <string name="auto_lock_summary">アイドル状態後にアプリをロック</string>
+    <string name="about">アプリについて</string>
+    <string name="version">バージョン</string>
+    <string name="cannot_open_browser">ブラウザを開けません</string>
+    
+    <!-- Language Options -->
+    <string name="language_system">システムに従う</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">中文</string>
+    <string name="language_vietnamese">Tiếng Việt</string>
+    <string name="language_japanese">日本語</string>
+    
+    <!-- Theme Options -->
+    <string name="theme_system">システムに従う</string>
+    <string name="theme_light">ライト</string>
+    <string name="theme_dark">ダーク</string>
+    
+    <!-- Auto Lock Options -->
+    <string name="auto_lock_immediately">即座</string>
+    <string name="auto_lock_1_minute">1分</string>
+    <string name="auto_lock_5_minutes">5分</string>
+    <string name="auto_lock_15_minutes">15分</string>
+    <string name="auto_lock_30_minutes">30分</string>
+    <string name="auto_lock_10_minutes">10分</string>
+    <string name="auto_lock_1_hour">1時間</string>
+    <string name="auto_lock_5_hours">5時間</string>
+    <string name="auto_lock_1_day">1日</string>
+    <string name="auto_lock_never">なし</string>
+    
+    <!-- Reset Password Screen -->
+    <string name="reset_password_title">パスワードをリセット</string>
+    <string name="reset_password">パスワードをリセット</string>
+    <string name="reset_master_password">マスターパスワードをリセット</string>
+    <string name="reset_password_description">現在のパスワードを入力し、新しい数字パスワード（最低6桁）を設定してください</string>
+    <string name="reset_password_verified_description">新しい数字パスワード（最低6桁）を設定してください</string>
+    <string name="current_password">現在のパスワード</string>
+    <string name="enter_current_password">現在のパスワードを入力</string>
+    <string name="new_password">新しいパスワード</string>
+    <string name="enter_new_password">新しい数字パスワードを入力（最低6桁）</string>
+    <string name="confirm_new_password">新しいパスワードを確認</string>
+    <string name="enter_confirm_password">新しいパスワードを確認</string>
+    <string name="current_password_required">現在のパスワードを入力してください</string>
+    <string name="new_password_required">新しいパスワードを入力してください</string>
+    <string name="current_password_incorrect">現在のパスワードが正しくありません</string>
+    <string name="password_reset_success">パスワードのリセットが完了しました</string>
+    <string name="password_reset_success_message">マスターパスワードが正常に変更されました。新しいパスワードを覚えておいてください。</string>
+    <string name="passwords_do_not_match">パスワードが一致しません</string>
+    <string name="password_too_short">パスワードは最低6文字必要です</string>
+    
+    <!-- Forgot Password -->
+    <string name="forgot_password">パスワードを忘れた場合</string>
+    <string name="forgot_password_title">アプリをリセット</string>
+    <string name="forgot_password_warning">これにより、保存されているすべてのパスワードが永久に削除され、アプリがリセットされます。この操作は元に戻せません。</string>
+    <string name="forgot_password_confirm">すべてのデータをリセットしてもよろしいですか？</string>
+    <string name="reset_all_data">すべてのデータをリセット</string>
+    <string name="data_reset_complete">すべてのデータがリセットされました。新しいマスターパスワードを設定できます。</string>
+    
+    <!-- Security Questions -->
+    <string name="security_questions">セキュリティ質問</string>
+    <string name="setup_security_questions">セキュリティ質問を設定</string>
+    <string name="edit_security_questions">セキュリティ質問を編集</string>
+    <string name="security_questions_description">パスワードを忘れた場合にアカウントを復旧するためのセキュリティ質問を設定します。これらの質問は本人確認に役立ちます。</string>
+    <string name="security_question_1">セキュリティ質問 1</string>
+    <string name="security_question_2">セキュリティ質問 2</string>
+    <string name="select_question">質問を選択</string>
+    <string name="your_answer">あなたの回答</string>
+    <string name="enter_answer_hint">回答を入力（大文字小文字を区別しません）</string>
+    <string name="save_questions">セキュリティ質問を保存</string>
+    <string name="update_questions">セキュリティ質問を更新</string>
+    <string name="select_first_question">最初のセキュリティ質問を選択してください</string>
+    <string name="select_second_question">2番目のセキュリティ質問を選択してください</string>
+    <string name="questions_must_be_different">2つの異なる質問を選択してください</string>
+    <string name="first_answer_required">最初の質問の回答を入力してください</string>
+    <string name="second_answer_required">2番目の質問の回答を入力してください</string>
+    
+    <!-- Security Questions Verification -->
+    <string name="verify_identity">本人確認</string>
+    <string name="answer_security_questions">セキュリティ質問に回答</string>
+    <string name="security_questions_verify_description">パスワードをリセットするにはセキュリティ質問に回答してください</string>
+    <string name="question_1">質問 1：</string>
+    <string name="question_2">質問 2：</string>
+    <string name="verify_answers">回答を確認</string>
+    <string name="incorrect_answers">回答が正しくありません。もう一度お試しください。</string>
+    <string name="verification_attempts" formatted="false">試行回数：%d / %d</string>
+    <string name="too_many_attempts">試行回数が多すぎます。カスタマーサポートに連絡するか、完全リセットオプションを使用してください。</string>
+    <string name="back_to_login">ログインに戻る</string>
+    
+    <!-- Main Screen Bottom Navigation -->
+    <string name="nav_passwords">パスワード</string>
+    <string name="nav_authenticator">認証器</string>
+    <string name="nav_documents">証明書</string>
+    <string name="nav_bank_cards">銀行カード</string>
+    <string name="nav_notes">メモ</string>
+    <string name="nav_ledger">明細</string>
+    <string name="nav_generator">生成器</string>
+    <string name="nav_settings">設定</string>
+    <string name="add">追加</string>
+    
+    <!-- Main Screen Bottom Navigation (Short) -->
+    <string name="nav_passwords_short">パス</string>
+    <string name="nav_authenticator_short">認証</string>
+    <string name="nav_documents_short">証明</string>
+    <string name="nav_bank_cards_short">カード</string>
+    <string name="nav_notes_short">メモ</string>
+    <string name="nav_ledger_short">明細</string>
+    <string name="nav_generator_short">生成</string>
+    <string name="nav_settings_short">設定</string>
+    
+    <!-- Notes -->
+    <string name="add_note_title">メモを追加</string>
+    <string name="edit_note_title">メモを編集</string>
+    <string name="note_title_label">タイトル</string>
+    <string name="note_title_placeholder">例：プロジェクトのアイデア</string>
+    <string name="note_content">内容</string>
+    <string name="note_content_placeholder">意味のあることを書いてください...</string>
+    <string name="note_tags">タグ</string>
+    <string name="note_tags_placeholder">タグ1, タグ2</string>
+    <string name="note_markdown_label">Markdown形式</string>
+    <string name="no_notes_title">メモがありません</string>
+    <string name="no_notes_description">+ ボタンをタップして最初の安全なメモを作成</string>
+    <string name="delete_note_title">メモを削除</string>
+    <string name="delete_note_message">「%s」を削除してもよろしいですか？この操作は元に戻せません。</string>
+    <string name="search_notes">メモを検索</string>
+    <string name="batch_delete_notes_title">メモを削除</string>
+    <string name="batch_delete_notes_message">選択した%1$d件のメモを削除しますか？</string>
+    <string name="note_detail_title">メモ</string>
+    <string name="note_detail_not_found_title">メモが利用できません</string>
+    <string name="note_detail_not_found_message">お探しのメモは削除または移動された可能性があります。</string>
+    <string name="note_detail_copied">メモをクリップボードにコピーしました</string>
+    <string name="note_detail_share_title">メモを共有</string>
+    <string name="note_detail_tags_label">タグ</string>
+    <string name="note_detail_preview_tab">プレビュー</string>
+    <string name="note_detail_raw_tab">プレーンテキスト</string>
+    <string name="note_detail_preview_fullscreen">全画面プレビュー</string>
+    <string name="note_detail_preview_fullscreen_title">Markdownプレビュー</string>
+    <string name="note_detail_empty_content">このメモは空です。</string>
+    <string name="note_detail_additional_notes">追加メモ</string>
+    <string name="note_detail_updated_at">最終更新</string>
+    
+    <!-- Generator Screen -->
+    <string name="generator_title">生成器</string>
+    <string name="random_symbol_generator">ランダム記号生成器</string>
+    <string name="random_symbol_generator_tab">ランダム記号</string>
+    <string name="password_generator">パスフレーズ生成器</string>
+    <string name="password_generator_tab">パスフレーズ</string>
+    <string name="pin_generator">PIN生成器</string>
+    <string name="pin_generator_tab">PIN</string>
+    <string name="generator_length">長さ</string>
+    <string name="generator_include_uppercase">大文字を含む (A-Z)</string>
+    <string name="generator_include_lowercase">小文字を含む (a-z)</string>
+    <string name="generator_include_numbers">数字を含む (0-9)</string>
+    <string name="generator_include_symbols">記号を含む (!@#$...)</string>
+    <string name="generator_exclude_similar">類似文字を除外 (0,O,l,I)</string>
+    <string name="generator_exclude_ambiguous">曖昧な文字を除外</string>
+    <string name="generator_first_letter_uppercase">最初の文字を大文字</string>
+    <string name="generator_include_numbers_in_password">数字を含む</string>
+    <string name="generator_custom_separator">カスタム区切り文字</string>
+    <string name="generator_separator_counts_towards_length">区切り文字を長さに含める</string>
+    <string name="generator_segment_length">セグメントの長さ</string>
+    <string name="generator_pin_length">PINの長さ</string>
+    <string name="generator_generate">生成</string>
+    <string name="generator_result">結果</string>
+    <string name="generator_copy">コピー</string>
+    <string name="generator_copied">クリップボードにコピーしました</string>
+    <string name="generator_invalid_length">無効な長さです</string>
+    <string name="generator_action">生成</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_general">一般</string>
+    <string name="settings_security">セキュリティ</string>
+    <string name="settings_data_management">データ管理</string>
+    <string name="settings_about">アプリについて</string>
+    <string name="settings_language_description">言語</string>
+    <string name="settings_auto_lock_title">自動ロック</string>
+    <string name="settings_auto_lock_description">アプリを離れた後に自動ロック</string>
+    <string name="settings_biometric_title">生体認証</string>
+    <string name="settings_biometric_description">指紋または顔認証でロック解除</string>
+    <string name="settings_change_password">マスターパスワードを変更</string>
+    <string name="settings_change_password_description">ログインパスワードを変更</string>
+    <string name="settings_security_questions">セキュリティ質問</string>
+    <string name="settings_security_questions_description">パスワード復旧用のセキュリティ質問を設定</string>
+    <string name="settings_bottom_sheet_title">ボトムシートモード</string>
+    <string name="settings_bottom_sheet_description">引き上げ可能な引き出し式ナビゲーションを有効化</string>
+    <string name="settings_export_data">データをエクスポート</string>
+    <string name="settings_export_data_description">CSVファイルとしてローカルにエクスポート</string>
+    <string name="settings_import_data">データをインポート</string>
+    <string name="settings_import_data_description">バックアップファイルから復元</string>
+    <string name="settings_version_info">バージョン情報</string>
+    <string name="settings_version_number">V1.0.22</string>
+    <string name="settings_support_author">作者をサポート</string>
+    <string name="settings_support_author_description">ご支援ありがとうございます</string>
+    <string name="settings_privacy_policy">プライバシーポリシー</string>
+    
+    <!-- Bottom Sheet -->
+    <string name="all_navigation_items">すべてのナビゲーション項目</string>
+    <string name="hidden">非表示</string>
+    
+    <!-- Language Selection Dialog -->
+    <string name="dialog_select_language">言語を選択</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english_name">English</string>
+    
+    <!-- Change Password Screen -->
+    <string name="change_password_title">マスターパスワードを変更</string>
+    <string name="change_password_warning_title">重要なお知らせ</string>
+    <string name="change_password_warning_message">マスターパスワードを変更すると、保存されているすべてのデータが新しいパスワードで再暗号化されます。新しいパスワードを覚えていないとデータにアクセスできなくなりますのでご注意ください。</string>
+    <string name="change_password_current">現在のパスワード *</string>
+    <string name="change_password_new">新しいパスワード *</string>
+    <string name="change_password_confirm">新しいパスワードを確認 *</string>
+    <string name="change_password_hint">パスワードは最低6桁の数字</string>
+    <string name="change_password_button">パスワードを変更</string>
+    <string name="change_password_success_title">パスワード変更成功</string>
+    <string name="change_password_success_message">マスターパスワードが正常に変更され、すべてのデータが新しいパスワードで再暗号化されました。新しいパスワードでログインしてください。</string>
+    <string name="change_password_error_current_empty">現在のパスワードを入力してください</string>
+    <string name="change_password_error_new_empty">新しいパスワードを入力してください</string>
+    <string name="change_password_error_new_too_short">新しいパスワードは最低6桁の数字が必要です</string>
+    <string name="change_password_error_confirm_empty">新しいパスワードを確認してください</string>
+    <string name="change_password_error_not_match">入力された新しいパスワードが一致しません</string>
+    <string name="change_password_error_same_as_current">新しいパスワードは現在のパスワードと同じにできません</string>
+    <string name="show_password_desc">パスワードを表示</string>
+    <string name="hide_password_desc">パスワードを非表示</string>
+    
+    <!-- Security Question Screen -->
+    <string name="security_question_title">セキュリティ質問</string>
+    <string name="security_question_description">パスワードを忘れた場合にアカウントを復旧するためのセキュリティ質問を設定します。これらの質問は本人確認に役立ちます。</string>
+    <string name="security_question_label_1">セキュリティ質問 1 *</string>
+    <string name="security_question_label_2">セキュリティ質問 2 *</string>
+    <string name="security_question_label_3">セキュリティ質問 3 *</string>
+    <string name="security_question_select">質問を選択</string>
+    <string name="security_question_custom">カスタム質問</string>
+    <string name="security_question_answer">あなたの回答 *</string>
+    <string name="security_question_answer_hint">回答を入力（大文字小文字を区別しません）</string>
+    <string name="security_question_save">セキュリティ質問を保存</string>
+    <string name="security_question_success_title">設定完了</string>
+    <string name="security_question_success_message">セキュリティ質問が正常に設定されました。これらの質問を使用してパスワードを復旧できます。</string>
+    <string name="security_question_error_q1_empty">最初のセキュリティ質問を選択してください</string>
+    <string name="security_question_error_q2_empty">2番目のセキュリティ質問を選択してください</string>
+    <string name="security_question_error_q3_empty">3番目のセキュリティ質問を選択してください</string>
+    <string name="security_question_error_duplicate">すべての質問は異なっている必要があります</string>
+    <string name="security_question_error_a1_empty">最初の質問の回答を入力してください</string>
+    <string name="security_question_error_a2_empty">2番目の質問の回答を入力してください</string>
+    <string name="security_question_error_a3_empty">3番目の質問の回答を入力してください</string>
+    
+    <!-- Preset Security Questions -->
+    <string name="security_question_preset_1">お母さんの旧姓は何ですか？</string>
+    <string name="security_question_preset_2">最初のペットの名前は何ですか？</string>
+    <string name="security_question_preset_3">どの都市で生まれましたか？</string>
+    <string name="security_question_preset_4">お気に入りの本は何ですか？</string>
+    <string name="security_question_preset_5">小学校の名前は何ですか？</string>
+    <string name="security_question_preset_6">お気に入りの食べ物は何ですか？</string>
+    <string name="security_question_preset_7">子供の頃のニックネームは何ですか？</string>
+    <string name="security_question_preset_8">子供の頃の親友の名前は何ですか？</string>
+    <string name="security_question_preset_9">最初の仕事は何ですか？</string>
+    <string name="security_question_preset_10">お気に入りの映画は何ですか？</string>
+    
+    <!-- Support Author Screen (legacy) -->
+    <string name="support_author_description">このアプリが役に立った場合は、作者をサポートすることをご検討ください。あなたのサポートが継続的な改善の最大の原動力です！</string>
+    <string name="support_author_thanks">ありがとうございます！</string>
+    <string name="support_author_thanks_message">Monicaパスワードマネージャーをご利用いただきありがとうございます。あなたのサポートは私たちにとって大きな意味があります！</string>
+    
+    <!-- Common -->
+    <string name="search_passwords_hint">パスワードを検索</string>
+    <string name="return_text">戻る</string>
+    <string name="confirm">確定</string>
+    
+    <!-- Screenshot Protection -->
+    <string name="screenshot_protection">スクリーンショット保護</string>
+    <string name="screenshot_protection_enabled">有効 - 機密情報を保護</string>
+    <string name="screenshot_protection_disabled">無効 - スクリーンショット許可</string>
+    
+    <!-- Dynamic Color -->
+    <string name="disable_wallpaper_color_extraction">壁紙の色抽出を無効化</string>
+    <string name="disable_wallpaper_color_extraction_description">壁紙から色を抽出せず、システムのデフォルト配色を使用</string>
+    
+    <!-- Color Scheme -->
+    <string name="color_scheme">配色方案</string>
+    <string name="color_scheme_description">アプリの配色を選択</string>
+    <string name="default_color_scheme">デフォルト</string>
+    <string name="ocean_blue_scheme">オーシャンブルー</string>
+    <string name="sunset_orange_scheme">サンセットオレンジ</string>
+    <string name="forest_green_scheme">フォレストグリーン</string>
+    <string name="tech_purple_scheme">テックパープル</string>
+    <string name="black_mamba_scheme">ブラックマンバ</string>
+    <string name="grey_style_scheme">グレースタイル</string>
+    <string name="custom_color_scheme">カスタムカラー</string>
+    <string name="custom_color_scheme_description">アプリテーマ用に3つの色を設定</string>
+    <string name="current_colors">現在の色</string>
+    <string name="primary_color">プライマリカラー</string>
+    <string name="secondary_color">セカンダリカラー</string>
+    <string name="tertiary_color">ターシャリカラー</string>
+    <string name="apply_custom_colors">カスタムカラーを適用</string>
+    <string name="select_color">色を選択</string>
+    <string name="select_from_preset_colors">プリセットカラーから選択</string>
+    
+    <!-- Validator Progress Bar Style -->
+    <string name="validator_progress_bar_style">検証プログレスバー</string>
+    <string name="progress_bar_style_linear">リニア</string>
+    <string name="progress_bar_style_wave">ウェーブ</string>
+    
+    <!-- Unified Progress Bar -->
+    <string name="unified_progress_bar_title">統一プログレスバー</string>
+    <string name="unified_progress_bar_description">すべての標準TOTPエントリに対して、上部に30秒の統一プログレスバーを表示</string>
+    <string name="smooth_progress_bar_title">スムーズプログレスバー</string>
+    <string name="smooth_progress_bar_description">スムーズなアニメーションを有効にし、カクつきのない進行表示</string>
+    <string name="validator_settings_section">検証設定</string>
+    <string name="experimental_features_section">実験的機能</string>
+    
+    <!-- Validator Vibration -->
+    <string name="validator_vibration">検証バイブレーション</string>
+    <string name="validator_vibration_description">カウントダウン終了時に振動</string>
+    
+    <!-- Support Author -->
+    <string name="support_author">作者をサポート</string>
+    <string name="support_author_subtitle">ソフトウェアは完全無料、ご支援ありがとうございます</string>
+    
+    <!-- Data Management in Settings -->
+    <string name="data_management">データ管理</string>
+    <string name="export_data">データをエクスポート</string>
+    <string name="export_data_description">すべてのデータをCSVファイルにエクスポート</string>
+    <string name="import_data">データをインポート</string>
+    <string name="import_data_description">CSVファイルからデータをインポート</string>
+    
+    <!-- WebDAV Backup -->
+    <string name="webdav_backup">WebDAVバックアップ</string>
+    <string name="webdav_backup_description">WebDAVサーバーにバックアップ</string>
+    <string name="webdav_config">WebDAV設定</string>
+    <string name="webdav_server_url">サーバーアドレス</string>
+    <string name="webdav_test_connection">接続テスト</string>
+    <string name="webdav_reconfigure">再設定</string>
+    <string name="webdav_connection_success">接続成功</string>
+    <string name="webdav_connection_failed">接続失敗: %s</string>
+    <string name="webdav_fill_all_fields">すべてのフィールドを入力してください</string>
+    <string name="webdav_backup_list">バックアップリスト</string>
+    <string name="webdav_no_backups">バックアップが見つかりません</string>
+    <string name="delete_backup">バックアップを削除</string>
+    <string name="delete_backup_confirm">バックアップを削除してもよろしいですか:\n%s?</string>
+    <string name="backup_deleted">バックアップを削除しました</string>
+    <string name="delete_failed">削除に失敗しました: %s</string>
+    <string name="refresh">更新</string>
+    
+    <!-- WebDAV Encryption -->
+    <string name="webdav_enable_encryption">暗号化を有効にする</string>
+    <string name="webdav_encryption_description">AES-256でバックアップを暗号化</string>
+    <string name="webdav_encryption_password">暗号化パスワード</string>
+    <string name="webdav_encryption_password_hint">暗号化パスワードを入力</string>
+    <string name="webdav_encryption_password_confirm">パスワードの確認</string>
+    <string name="webdav_encryption_password_mismatch">パスワードが一致しません</string>
+    <string name="webdav_encryption_password_empty">暗号化パスワードは空にできません</string>
+    <string name="webdav_encryption_password_short">パスワードは8文字以上である必要があります</string>
+    <string name="webdav_backup_encrypted">暗号化済み</string>
+    <string name="webdav_backup_unencrypted">暗号化なし</string>
+    <string name="webdav_enter_decrypt_password">復号化パスワードを入力</string>
+    <string name="webdav_decrypt_password_hint">バックアップを復号化するパスワード</string>
+    <string name="webdav_decryption_failed">復号化失敗: パスワードが間違っているか、ファイルが破損しています</string>
+    
+    <!-- WebDAV Auto Backup -->
+    <string name="webdav_auto_backup">自動バックアップ</string>
+    <string name="webdav_auto_backup_description">毎日初回起動時または12時間ごとに自動バックアップ</string>
+    <string name="webdav_auto_backup_enabled">自動バックアップが有効です</string>
+    <string name="webdav_auto_backup_disabled">自動バックアップが無効です</string>
+    <string name="webdav_last_backup">最後のバックアップ</string>
+    <string name="webdav_last_backup_never">未実施</string>
+    <string name="webdav_last_backup_time">%s 前</string>
+    <string name="webdav_backup_now">今すぐバックアップ</string>
+    <string name="webdav_backup_in_progress">バックアップ中…</string>
+    <string name="webdav_backup_success">バックアップが完了しました</string>
+    <string name="webdav_backup_failed">バックアップ失敗: %s</string>
+    <string name="webdav_clear_config">設定をクリア</string>
+    <string name="webdav_config_cleared">WebDAV設定をクリアしました</string>
+    <string name="webdav_network_unreachable">ネットワークに到達できません。ネットワーク接続を確認してください</string>
+    <string name="webdav_connection_timeout">接続タイムアウト。サーバーアドレスとネットワーク接続を確認してください</string>
+    <string name="webdav_auth_failed">認証失敗。ユーザー名とパスワードを確認してください</string>
+    <string name="webdav_path_not_found">サーバーパスが見つかりません。サーバーアドレスを確認してください</string>
+    <string name="webdav_backup_trigger_failed">バックアップのトリガーに失敗しました: %s</string>
+    <string name="webdav_create_backup_failed">バックアップの作成に失敗しました</string>
+    <string name="webdav_create_new_backup">新しいバックアップを作成</string>
+    <string name="webdav_backup_success_detail">バックアップ成功: %s</string>
+    <string name="webdav_backup_passwords">パスワード: %d 件</string>
+    <string name="webdav_backup_authenticators">認証アプリ: %d 件</string>
+    <string name="webdav_backup_documents">証明書: %d 件</string>
+    <string name="webdav_backup_bank_cards">銀行カード: %d 枚</string>
+    
+    <!-- Selection Mode -->
+    <string name="selected_items">%d 件選択済み</string>
+    <string name="exit_selection_mode">選択モードを終了</string>
+    <string name="select_all">すべて選択</string>
+    <string name="batch_delete">一括削除</string>
+    <string name="batch_delete_passwords_title">パスワードを一括削除</string>
+    <string name="batch_delete_passwords_message">%d 件のパスワードを削除してもよろしいですか?</string>
+    <string name="batch_delete_totp_title">TOTPを一括削除</string>
+    <string name="batch_delete_totp_message">%d 件のTOTP項目を削除してもよろしいですか?</string>
+    <string name="batch_delete_documents_title">証明書を一括削除</string>
+    <string name="batch_delete_documents_message">%d 件の証明書を削除してもよろしいですか?</string>
+    <string name="batch_delete_bankcards_title">銀行カードを一括削除</string>
+    <string name="batch_delete_bankcards_message">%d 枚の銀行カードを削除してもよろしいですか?</string>
+    <string name="deleted_items">%d 件を削除しました</string>
+    <string name="deleted">削除しました</string>
+    <string name="batch_favorite">一括お気に入り登録</string>
+    <string name="batch_favorited">%d 件のパスワードをお気に入りに追加しました</string>
+    <string name="batch_unfavorited">%d 件のパスワードをお気に入りから削除しました</string>
+    <string name="group_favorited">グループ全体の %d 件のパスワードをお気に入りに追加しました</string>
+    <string name="group_unfavorited">グループ全体の %d 件のパスワードをお気に入りから削除しました</string>
+    <string name="add_to_favorites">お気に入りに追加</string>
+    <string name="remove_from_favorites">お気に入りから削除</string>
+    <string name="enter_master_password_confirm">マスターパスワードを入力して確認してください</string>
+    
+    <!-- Autofill -->
+    <string name="autofill">自動入力</string>
+    <string name="autofill_subtitle">アプリやウェブサイトのパスワードを自動入力</string>
+    <string name="autofill_save_password">パスワードを保存</string>
+    <string name="autofill_save_to_monica">このパスワードをMonicaに保存</string>
+    <string name="autofill_title">タイトル</string>
+    <string name="autofill_username">ユーザー名</string>
+    <string name="autofill_password">パスワード</string>
+    <string name="autofill_website_app">ウェブサイト/アプリ</string>
+    <string name="autofill_notes">メモ</string>
+    <string name="autofill_show_advanced">詳細オプションを表示</string>
+    <string name="autofill_hide_advanced">詳細オプションを非表示</string>
+    <string name="autofill_save_button">パスワードを保存</string>
+    <string name="autofill_cancel">キャンセル</string>
+    <string name="autofill_never_for_site">このサイトでは保存しない</string>
+    <string name="autofill_saved_via">自動入力経由で保存</string>
+    <string name="linked_app">関連アプリ</string>
+    <string name="select_app">アプリを選択</string>
+    <string name="app_package_name">アプリパッケージ名</string>
+    <string name="no_app_selected">アプリが選択されていません</string>
+    <string name="search_apps">アプリを検索…</string>
+    <string name="clear_app_selection">クリア</string>
+    <string name="app_icon">アプリアイコン</string>
+    
+    <!-- Clear All Data -->
+    <string name="clear_all_data">すべてのデータをクリア</string>
+    <string name="clear_all_data_subtitle">すべてのパスワード、認証器、銀行カード、証明書データを削除</string>
+    <string name="clear_all_data_confirm">すべてのデータをクリアしてもよろしいですか?</string>
+    <string name="clear_all_data_warning">この操作により、すべてのパスワード、認証器、銀行カード、証明書データが永久に削除され、復元できなくなります。\n\nクリアする前にエクスポートでバックアップすることをお勧めします!</string>
+    <string name="clearing_data">データをクリア中…</string>
+    <string name="password_incorrect">パスワードが正しくありません</string>
+    <string name="data_type_passwords">パスワード</string>
+    <string name="data_type_totp">認証器</string>
+    <string name="data_type_ledger">明細</string>
+    <string name="data_type_documents">証明書</string>
+    <string name="data_type_bank_cards">銀行カード</string>
+    <string name="data_type_generator_history">パスワード生成履歴</string>
+    
+    <!-- Security Analysis -->
+    <string name="security_analysis">セキュリティ分析</string>
+    <string name="security_analysis_description">パスワードのセキュリティ、漏洩状況、2FA状態を確認</string>
+    <string name="start_security_analysis">セキュリティ分析を開始</string>
+    <string name="analysis_may_take_time">分析には数分かかる場合があります</string>
+    <string name="security_overview">セキュリティ概要</string>
+    <string name="analyzing_security">セキュリティを分析中…</string>
+    <string name="duplicate_passwords">重複パスワード</string>
+    <string name="duplicate_urls">重複URL</string>
+    <string name="compromised_passwords">漏洩パスワード</string>
+    <string name="no_twofa">2FA未設定</string>
+    <string name="duplicate_short">重複</string>
+    <string name="duplicate_url_short">重複URL</string>
+    <string name="compromised_short">漏洩</string>
+    <string name="no_2fa_short">2FAなし</string>
+    <string name="checking_duplicate_passwords">重複パスワードを確認中…</string>
+    <string name="checking_duplicate_urls">重複URLを確認中…</string>
+    <string name="checking_compromised_passwords">パスワード漏洩状況を確認中…</string>
+    <string name="checking_2fa_status">2FA状態を確認中…</string>
+    <string name="analysis_complete">分析完了！</string>
+    <string name="used_in_accounts">%d 件のアカウントで使用</string>
+    <string name="count_accounts">%d 件のアカウント</string>
+    <string name="breached_times">%,d 回漏洩</string>
+    <string name="supports_twofa">二段階認証をサポート</string>
+    <string name="no_duplicate_passwords">素晴らしい！重複パスワードは見つかりませんでした</string>
+    <string name="no_duplicate_urls">素晴らしい！重複URLは見つかりませんでした</string>
+    <string name="no_compromised_passwords">とても良いです！漏洩パスワードは見つかりませんでした</string>
+    <string name="all_accounts_have_twofa">すべての重要なアカウントで二段階認証が有効です</string>
+    <string name="pwned_passwords_attribution">技術サポート：Have I Been Pwned</string>
+    <string name="twofa_directory_attribution">参照：2FA Directory</string>
+
+
+    <!-- Ledger / Accounting -->
+    <string name="ledger_title">明細</string>
+    <string name="ledger_balance">残高</string>
+    <string name="ledger_income">収入</string>
+    <string name="ledger_expense">支出</string>
+    <string name="ledger_transfer">振替</string>
+    <string name="ledger_add_entry">エントリを追加</string>
+    <string name="ledger_edit_entry">エントリを編集</string>
+    <string name="ledger_entry_type">タイプ</string>
+    <string name="ledger_amount">金額</string>
+    <string name="ledger_category">カテゴリ</string>
+    <string name="ledger_category_none">カテゴリなし</string>
+    <string name="ledger_no_category_available">このタイプに利用可能なカテゴリがありません</string>
+    <string name="ledger_time">時間</string>
+    <string name="ledger_note">メモ</string>
+    <string name="ledger_select_category">カテゴリを選択</string>
+    <string name="ledger_empty">エントリがまだありません。+ をタップして追加</string>
+    <string name="ledger_payment_method">支払い方法</string>
+    <string name="ledger_payment_wechat">WeChat</string>
+    <string name="ledger_payment_alipay">Alipay</string>
+    <string name="ledger_payment_unionpay">UnionPay</string>
+    <string name="ledger_delete">削除</string>
+    <string name="ledger_delete_confirm_title">エントリを削除</string>
+    <string name="ledger_delete_confirm_message">このエントリを削除してもよろしいですか？</string>
+    <string name="ledger_cancel">キャンセル</string>
+    <string name="ledger_view_switch">表示切替</string>
+    <string name="ledger_view_daily">日次表示</string>
+    <string name="ledger_view_weekly">週次表示</string>
+    <string name="ledger_view_monthly">月次表示</string>
+    <string name="ledger_view_yearly">年次表示</string>
+    <string name="ledger_view_all">すべてのデータ</string>
+    
+    <!-- Ledger Entry Detail -->
+    <string name="ledger_entry_detail">エントリ詳細</string>
+    
+    <!-- Phase 8: 生物識別自動填充 -->
+    <string name="biometric_auth_failed">生体認証に失敗しました。もう一度お試しください。</string>
+    <string name="biometric_auth_error">認証エラー: %s</string>
+    
+    <!-- 自動入力設定 -->
+    <string name="autofill_settings_title">自動入力</string>
+    <string name="autofill_settings_refresh">ステータスを更新</string>
+    <string name="autofill_settings_back">戻る</string>
+    <string name="autofill_system_settings_title">システム設定</string>
+    <string name="autofill_system_set_provider">認証情報プロバイダーを設定</string>
+    <string name="autofill_system_set_provider_desc">システム設定でMonicaを自動入力サービスとして選択</string>
+    <string name="autofill_system_passkey_settings">パスキーとパスワード設定</string>
+    <string name="autofill_system_passkey_settings_desc">パスキー、パスワード、データサービスを管理</string>
+    <string name="autofill_system_chrome_settings">Chrome自動入力設定</string>
+    <string name="autofill_system_chrome_settings_desc">Chromeでサードパーティ入力サービスのサポートを有効化</string>
+    <string name="autofill_match_settings_title">マッチング設定</string>
+    <string name="autofill_domain_strategy_title">ドメインマッチング戦略</string>
+    <string name="autofill_fill_behavior_title">入力動作</string>
+    <string name="autofill_fill_verify_identity">入力前に本人確認</string>
+    <string name="autofill_fill_verify_identity_desc">パスワード選択後に指紋またはパスワード認証が必要</string>
+    <string name="autofill_fill_suggestions">入力候補</string>
+    <string name="autofill_fill_suggestions_desc">一致するパスワード候補を自動表示</string>
+    <string name="autofill_fill_manual_selection">手動選択</string>
+    <string name="autofill_fill_manual_selection_desc">入力するパスワードを手動で選択可能</string>
+    <string name="autofill_save_behavior_title">保存動作</string>
+    <string name="autofill_save_enable">自動保存を有効化</string>
+    <string name="autofill_save_enable_desc">フォーム入力時にパスワードの保存を自動的に促す</string>
+    <string name="autofill_save_update_duplicate">重複パスワードを自動更新</string>
+    <string name="autofill_save_update_duplicate_desc">重複するユーザー名が検出された場合、パスワードを自動更新</string>
+    <string name="autofill_save_show_notification">保存通知を表示</string>
+    <string name="autofill_save_show_notification_desc">パスワードが正常に保存された後に通知を表示</string>
+    <string name="autofill_save_smart_title">スマートタイトル生成</string>
+    <string name="autofill_save_smart_title_desc">アプリ名またはドメインからパスワードタイトルを自動生成</string>
+    <string name="autofill_save_app_info">アプリ情報を自動保存</string>
+    <string name="autofill_save_app_info_desc">アプリパッケージ名をパスワードエントリに自動記録</string>
+    <string name="autofill_save_website_info">ウェブサイト情報を自動保存</string>
+    <string name="autofill_save_website_info_desc">ウェブサイトドメインをパスワードエントリに自動記録</string>
+    <string name="autofill_blacklist_title">ブラックリスト</string>
+    <string name="autofill_blacklist_enable">ブラックリストを有効化</string>
+    <string name="autofill_blacklist_enable_desc">特定のアプリで自動入力を無効化</string>
+    <string name="autofill_blacklist_manage">ブラックリストアプリを管理</string>
+    <string name="autofill_blacklist_manage_desc">%d個のアプリを追加済み</string>
+    <string name="autofill_blacklist_dialog_title">ブラックリスト管理</string>
+    <string name="autofill_blacklist_dialog_desc">ブラックリストのアプリは自動入力を使用できません</string>
+    <string name="autofill_blacklist_dialog_done">完了</string>
+    <string name="autofill_info_card_text">自動入力にはAndroid 8.0以降が必要です。有効にすると、Monicaはアプリやウェブサイトにアクセスする際に保存されたパスワードを自動的に入力します。</string>
+    <string name="autofill_status_enabled">自動入力が有効</string>
+    <string name="autofill_status_disabled">自動入力が無効</string>
+    <string name="autofill_status_enabled_desc">Monicaがデフォルトの自動入力サービスとして設定されています</string>
+    <string name="autofill_status_disabled_desc">システム設定でMonicaを有効にしてください</string>
+    <string name="autofill_status_all_functional">すべての機能が正常</string>
+    <string name="autofill_status_enable_prompt">システム設定でMonicaを自動入力サービスとして有効にしてください</string>
+    <string name="autofill_status_go_to_settings">システム設定へ</string>
+    <string name="autofill_status_compatibility_issues">互換性の問題が検出されました:</string>
+    <string name="autofill_status_more_issues">他に%d個の問題があります...</string>
+    <string name="autofill_status_troubleshoot">トラブルシューティング</string>
+    <string name="autofill_status_summary_operational">自動入力サービスは正常に動作しています</string>
+    <string name="autofill_status_summary_not_declared">サービスが正しく宣言されていません</string>
+    <string name="autofill_status_summary_system_disabled">システムで自動入力サービスが有効になっていません</string>
+    <string name="autofill_status_summary_app_disabled">アプリ内で自動入力が有効になっていません</string>
+    <string name="autofill_status_summary_no_permissions">必要な権限がありません</string>
+    <string name="autofill_status_summary_compatibility_issues">互換性の問題が存在します</string>
+    <string name="autofill_status_summary_abnormal">サービスステータスが異常です</string>
+    <string name="autofill_domain_strategy_base_domain">ベースドメイン</string>
+    <string name="autofill_domain_strategy_base_domain_desc">ベースドメインとすべてのサブドメインをマッチング（推奨）</string>
+    <string name="autofill_domain_strategy_domain">ドメイン</string>
+    <string name="autofill_domain_strategy_domain_desc">指定されたドメインとサブドメインのみをマッチング</string>
+    <string name="autofill_domain_strategy_starts_with">前方一致</string>
+    <string name="autofill_domain_strategy_starts_with_desc">URLが指定された文字列で始まる場合にマッチング</string>
+    <string name="autofill_domain_strategy_exact_match">完全一致</string>
+    <string name="autofill_domain_strategy_exact_match_desc">URLが完全に一致する必要があります</string>
+    <string name="autofill_domain_strategy_regex">正規表現</string>
+    <string name="autofill_domain_strategy_regex_desc">正規表現を使用した高度なマッチング</string>
+    <string name="autofill_domain_strategy_never">無効</string>
+    <string name="autofill_domain_strategy_never_desc">自動入力を無効化</string>
+    <string name="autofill_domain_strategy_dialog_title">ドメインマッチング戦略を選択</string>
+    <string name="autofill_domain_strategy_dialog_close">閉じる</string>
+    <string name="autofill_troubleshoot_title">自動入力診断</string>
+    <string name="autofill_troubleshoot_device_info">デバイス情報</string>
+    <string name="autofill_troubleshoot_manufacturer">製造元</string>
+    <string name="autofill_troubleshoot_model">モデル</string>
+    <string name="autofill_troubleshoot_android_version">Androidバージョン</string>
+    <string name="autofill_troubleshoot_rom_type">ROMタイプ</string>
+    <string name="autofill_troubleshoot_inline_support">インライン候補のサポート</string>
+    <string name="autofill_troubleshoot_yes">はい</string>
+    <string name="autofill_troubleshoot_no">いいえ</string>
+    <string name="autofill_troubleshoot_service_status">サービスステータス</string>
+    <string name="autofill_troubleshoot_service_declared">サービス宣言済み</string>
+    <string name="autofill_troubleshoot_system_enabled">システムで有効</string>
+    <string name="autofill_troubleshoot_app_enabled">アプリで有効</string>
+    <string name="autofill_troubleshoot_permissions_complete">権限完了</string>
+    <string name="autofill_troubleshoot_status_normal">正常</string>
+    <string name="autofill_troubleshoot_status_abnormal">異常</string>
+    <string name="autofill_troubleshoot_statistics">統計情報</string>
+    <string name="autofill_troubleshoot_stat_total_requests">総リクエスト数</string>
+    <string name="autofill_troubleshoot_stat_successful_requests">成功したリクエスト</string>
+    <string name="autofill_troubleshoot_stat_failed_requests">失敗したリクエスト</string>
+    <string name="autofill_troubleshoot_stat_success_rate">成功率</string>
+    <string name="autofill_troubleshoot_stat_avg_response_time">平均応答時間</string>
+    <string name="autofill_troubleshoot_stat_min_response_time">最小応答時間</string>
+    <string name="autofill_troubleshoot_stat_max_response_time">最大応答時間</string>
+    <string name="autofill_troubleshoot_stat_total_logs">総ログ数</string>
+    <string name="autofill_troubleshoot_stat_error_count">エラー数</string>
+    <string name="autofill_troubleshoot_stat_warning_count">警告数</string>
+    <string name="autofill_troubleshoot_recent_requests">最近のリクエスト</string>
+    <string name="autofill_troubleshoot_request_details">フィールド: %1$d、マッチ: %2$d、データセット: %3$d</string>
+    <string name="autofill_troubleshoot_request_error">エラー: %s</string>
+    <string name="autofill_troubleshoot_detected_issues">検出された問題</string>
+    <string name="autofill_troubleshoot_issue_affected">%d件のリクエストに影響</string>
+    <string name="autofill_troubleshoot_recommendations">推奨事項</string>
+    <string name="autofill_troubleshoot_export_logs">ログをエクスポート</string>
+    <string name="autofill_troubleshoot_close">閉じる</string>
+    <string name="autofill_blacklist_app_wechat">WeChat</string>
+    <string name="autofill_blacklist_app_alipay">Alipay</string>
+    <string name="autofill_blacklist_app_unionpay">UnionPay</string>
+    <string name="autofill_blacklist_app_qq">QQ</string>
+    <string name="autofill_blacklist_app_taobao">Taobao</string>
+    <string name="autofill_blacklist_app_jd">JD</string>
+    <string name="autofill_blacklist_app_wework">WeChat Work</string>
+    <string name="autofill_blacklist_app_weibo">Weibo</string>
+
+    <!-- 開発者設定 -->
+    <string name="developer_settings">開発者設定</string>
+    <string name="developer_settings_back">戻る</string>
+    <string name="developer_log_debugging">ログデバッグ</string>
+    <string name="developer_view_logs">ログを表示</string>
+    <string name="developer_view_logs_desc">アプリケーションのLogcat出力ログを表示</string>
+    <string name="developer_clear_log_buffer">ログバッファをクリア</string>
+    <string name="developer_clear_log_buffer_desc">デバイスのログバッファをクリア</string>
+    <string name="developer_share_logs">ログを共有</string>
+    <string name="developer_share_logs_desc">最近のログをエクスポートして共有</string>
+    <string name="developer_functions">開発者機能</string>
+    <string name="developer_disable_password_verification">パスワード検証を無効化</string>
+    <string name="developer_disable_password_verification_desc">アプリ起動時のパスワード検証をスキップ（開発テスト専用）</string>
+    <string name="developer_warning">⚠️ 開発者機能はテスト専用です。本番環境では有効にしないでください</string>
+    <string name="developer_log_buffer_cleared">ログバッファをクリアしました</string>
+    <string name="developer_clear_failed">クリア失敗: %s</string>
+    <string name="developer_share_failed">共有失敗: %s</string>
+    <string name="developer_share_subject">Monica アプリログ</string>
+    <string name="developer_share_title">ログを共有</string>
+    <string name="developer_system_logs">システムログ</string>
+    <string name="developer_loading_logs">ログを読み込み中...</string>
+    <string name="developer_no_logs">ログがありません\n\nヒント: アプリで何らかの操作を実行してください</string>
+    <string name="developer_load_failed">読み込み失敗: %s\n\nログを読み取るにはデバッグ権限が必要な場合があります</string>
+    <string name="developer_refresh">更新</string>
+    <string name="developer_close">閉じる</string>
+
+    <!-- Password Strength -->
+    <string name="password_strength">パスワード強度:</string>
+    <string name="strength_very_weak">非常に弱い</string>
+    <string name="strength_weak">弱い</string>
+    <string name="strength_fair">普通</string>
+    <string name="strength_strong">強い</string>
+    <string name="strength_very_strong">非常に強い</string>
+    <string name="improvement_suggestions">改善提案:</string>
+    
+    <!-- Password Strength Suggestions -->
+    <string name="suggestion_enter_password">パスワードを入力してください</string>
+    <string name="suggestion_too_short">パスワードが短すぎます。6文字以上を推奨</string>
+    <string name="suggestion_use_8_chars">8文字以上の使用を推奨</string>
+    <string name="suggestion_use_12_chars">セキュリティ向上のため12文字以上を推奨</string>
+    <string name="suggestion_add_lowercase">小文字を追加 (a-z)</string>
+    <string name="suggestion_add_uppercase">大文字を追加 (A-Z)</string>
+    <string name="suggestion_add_digits">数字を追加 (0-9)</string>
+    <string name="suggestion_add_special">特殊文字を追加 (!@#$%^&amp;*)</string>
+    <string name="suggestion_avoid_repeating">繰り返し文字を避ける (例: aaa, 111)</string>
+    <string name="suggestion_avoid_sequential">連続文字を避ける (例: abc, 123)</string>
+    <string name="suggestion_common_password">⚠️ これは一般的なパスワードで、破られやすいです！</string>
+    <string name="suggestion_increase_randomness">パスワードの予測可能性が高いため、ランダム性を高めることを推奨</string>
+
+    <!-- Password Detail Dialog -->
+    <string name="basic_info">📝 基本情報</string>
+    <string name="website">ウェブサイト</string>
+    <string name="email">メール</string>
+    <string name="phone">電話番号</string>
+    <string name="personal_info">個人情報</string>
+    <string name="address_info">住所情報</string>
+    <string name="address_line">住所</string>
+    <string name="state">都道府県</string>
+    <string name="zip_code">郵便番号</string>
+    <string name="payment_info">支払い情報</string>
+    <string name="credit_card_number">クレジットカード番号</string>
+    <string name="card_holder">カード名義人</string>
+    <string name="credit_card_encrypted">クレジットカード情報は暗号化されています</string>
+    <string name="expand">展開</string>
+    <string name="copied">%sをコピーしました</string>
+
+    <!-- Generator Screen -->
+    <string name="generator_symbol">記号</string>
+    <string name="generator_word">単語</string>
+    <string name="generator_passphrase">フレーズ</string>
+    <string name="generator_pin">PIN</string>
+    <string name="generated_password">生成されたパスワード</string>
+    <string name="symbol_password_generator">記号パスワードジェネレーター</string>
+    <string name="history">履歴</string>
+    <string name="no_history">履歴がありません</string>
+    <string name="clear_history">履歴をクリア</string>
+    <string name="copied_to_clipboard">クリップボードにコピーしました</string>
+    <string name="copy_password_desc">パスワードをコピー</string>
+    <string name="saved_from_generator_history">パスワードジェネレーター履歴から保存\n生成日時: %s</string>
+    <string name="word_count">単語数: %d</string>
+    <string name="delimiter">区切り文字</string>
+    <string name="delimiter_placeholder">例: - または _ または . またはスペース</string>
+    <string name="capitalize_first_letter">最初の文字を大文字にする</string>
+    <string name="add_number_at_end">末尾に数字を追加</string>
+    <string name="custom_word_optional">カスタム単語（任意）</string>
+    <string name="custom_word_placeholder">フレーズに含めるカスタム単語</string>
+    <string name="generator_history_description">オートフィルで生成・使用されたパスワードがここに表示されます</string>
+    <string name="character_types">文字タイプ</string>
+    <string name="include_uppercase">大文字を含む (A-Z)</string>
+    <string name="include_lowercase">小文字を含む (a-z)</string>
+    <string name="include_numbers">数字を含む (0-9)</string>
+    <string name="include_symbols">記号を含む (!@#$%)</string>
+    <string name="passphrase_generator">パスフレーズジェネレーター</string>
+    <string name="pin_length">PIN の長さ: %d</string>
+    <string name="length_label">長さ: %d</string>
+    <string name="length_chars">長さ: %d 文字</string>
+    
+    <!-- Generator - Minimum Characters -->
+    <string name="minimum_characters_requirement">最小文字数要件</string>
+    <string name="min_uppercase">最少大文字: %d</string>
+    <string name="min_lowercase">最少小文字: %d</string>
+    <string name="min_numbers">最少数字: %d</string>
+    <string name="min_symbols">最少記号: %d</string>
+    
+    <!-- Generator - Actions -->
+    <string name="regenerate">再生成</string>
+    <string name="save_to_vault">パスワード庫に保存</string>
+    <string name="already_in_vault">パスワード庫に存在</string>
+    <string name="saved_to_vault">パスワード庫に保存済み</string>
+    <string name="username_label">ユーザー名: %s</string>
+    
+    <!-- Generator History Filter -->
+    <string name="filter_history">履歴をフィルター</string>
+    <string name="history_type_symbol">記号パスワード</string>
+    <string name="history_type_password">単語パスワード</string>
+    <string name="history_type_passphrase">パスフレーズ</string>
+    <string name="history_type_pin">PINコード</string>
+    <string name="history_type_autofill">自動入力パスワード</string>
+    <string name="select_history_types">履歴タイプを選択</string>
+    <string name="history_filter_description">履歴に表示するパスワードタイプを選択</string>
+    
+    <!-- Clear All Data -->
+    <string name="select_data_types_to_clear">削除するデータタイプを選択：</string>
+    <string name="clear_passwords">パスワード</string>
+    <string name="clear_authenticators">認証器</string>
+    <string name="clear_documents">証明書</string>
+    <string name="clear_bank_cards">銀行カード</string>
+    <string name="clear_generator_history">生成履歴</string>
+    <string name="enter_master_password_to_confirm">マスターパスワードを入力して確認</string>
+
+    <!-- Permission Management -->
+    <string name="permission_management_title">権限管理</string>
+    <string name="permission_management_subtitle">アプリの権限を管理</string>
+    <string name="permission_management_description">Monicaが使用する権限を表示・管理</string>
+    <string name="help">ヘルプ</string>
+
+    <!-- Permission Categories -->
+    <string name="permission_category_security">セキュリティ権限</string>
+    <string name="permission_category_storage">ストレージ権限</string>
+    <string name="permission_category_network">ネットワーク権限</string>
+    <string name="permission_category_device">デバイス権限</string>
+    <string name="permission_category_location">位置情報権限</string>
+
+    <!-- Permission Importance -->
+    <string name="permission_importance_required">必須</string>
+    <string name="permission_importance_recommended">推奨</string>
+    <string name="permission_importance_optional">オプション</string>
+
+    <!-- Permission Status -->
+    <string name="permission_status_granted">許可済み</string>
+    <string name="permission_status_denied">未許可</string>
+    <string name="permission_status_unavailable">利用不可</string>
+    <string name="permission_status_unknown">不明</string>
+
+    <!-- Permission Names -->
+    <string name="permission_biometric_name">生体認証</string>
+    <string name="permission_camera_name">カメラ</string>
+    <string name="permission_storage_name">ストレージアクセス</string>
+    <string name="permission_internet_name">インターネットアクセス</string>
+    <string name="permission_network_state_name">ネットワーク状態</string>
+    <string name="permission_vibrate_name">バイブレーション</string>
+    <string name="permission_phone_state_name">電話状態</string>
+    <string name="permission_location_name">位置情報</string>
+    <string name="permission_autofill_name">自動入力サービス</string>
+
+    <!-- Permission Descriptions -->
+    <string name="permission_biometric_description">用途：指紋/顔認証によるロック解除</string>
+    <string name="permission_camera_description">用途：TOTP認証用のQRコードスキャン</string>
+    <string name="permission_storage_description">用途：エクスポートデータと画像の保存</string>
+    <string name="permission_internet_description">用途：WebDavバックアップと同期</string>
+    <string name="permission_network_state_description">用途：ネットワーク接続の確認</string>
+    <string name="permission_vibrate_description">用途：認証時の触覚フィードバック</string>
+    <string name="permission_phone_state_description">用途：デバイス識別</string>
+    <string name="permission_location_description">用途：位置情報ベースの機能（オプション）</string>
+    <string name="permission_autofill_description">用途：アプリとブラウザでのパスワード自動入力</string>
+
+    <!-- Permission Stats -->
+    <string name="permission_stats_title">権限の概要</string>
+    <string name="permission_stats_required">必須権限：%1$d / %2$d 許可済み</string>
+    <string name="permission_stats_total">全権限：%1$d / %2$d 許可済み</string>
+
+    <!-- Permission Actions -->
+    <string name="permission_revoke_hint">この権限を取り消すには、設定 > アプリ > Monica > 権限 に移動してください</string>
+    <string name="permission_grant_hint">タップしてシステム設定を開き、この権限を許可してください</string>
+    <string name="cannot_open_settings">システム設定を開けません</string>
+
+    <!-- Permission Help Dialog -->
+    <string name="permission_help_title">権限について</string>
+    <string name="permission_help_content">この画面にはMonicaが使用するすべての権限が表示されます。権限をタップすると、システム設定で管理できます。\n\n• 必須：コア機能に不可欠\n• 推奨：ユーザー体験を向上\n• オプション：追加機能用</string>
+
+    <!-- Permission Info Card -->
+    <string name="permission_info_title">権限管理</string>
+    <string name="permission_info_message">ここでMonicaが使用するすべての権限とその現在の状態を確認できます。任意の権限をタップすると、システム設定で管理できます。</string>
+
+</resources>

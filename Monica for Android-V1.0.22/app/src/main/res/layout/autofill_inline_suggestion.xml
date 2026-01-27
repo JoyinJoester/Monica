@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material 3 风格的横向自动填充卡片 -->
+<com.google.android.material.card.MaterialCardView 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="160dp"
+    android:layout_height="56dp"
+    android:layout_marginEnd="8dp"
+    app:cardElevation="1dp"
+    app:cardCornerRadius="16dp"
+    app:cardBackgroundColor="@color/autofill_card_background"
+    app:strokeWidth="1dp"
+    app:strokeColor="@color/autofill_card_stroke">
+    
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:gravity="center_vertical">
+        
+        <!-- 左侧图标 -->
+        <FrameLayout
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/autofill_inline_icon_background">
+            
+            <ImageView
+                android:id="@+id/icon_app"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_key"
+                android:scaleType="centerInside"
+                android:tint="@color/autofill_icon_tint"
+                android:contentDescription="@null" />
+        </FrameLayout>
+        
+        <!-- 右侧文本 -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:orientation="vertical">
+            
+            <TextView
+                android:id="@+id/text_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="@color/autofill_text_primary"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                tools:text="示例账户" />
+            
+            <TextView
+                android:id="@+id/text_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="11sp"
+                android:textColor="@color/autofill_text_secondary"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                tools:text="user@example.com" />
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

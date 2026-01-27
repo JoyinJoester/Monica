@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间模式下的自动填充颜色 -->
+    <color name="autofill_icon_tint">#D0BCFF</color>
+    <color name="autofill_icon_background">#4A4458</color>
+    <color name="autofill_manual_icon_tint">#A8C7FA</color>
+    <color name="autofill_manual_icon_background">#2D3E50</color>
+    
+    <!-- 背景色 -->
+    <color name="autofill_background">#1C1B1F</color>
+    <color name="autofill_manual_background">#2B2930</color>
+    
+    <!-- 文字颜色 -->
+    <color name="autofill_text_primary">#E6E1E5</color>
+    <color name="autofill_text_secondary">#CAC4D0</color>
+    
+    <!-- 内联卡片颜色 -->
+    <color name="autofill_card_background">#2B2930</color>
+    <color name="autofill_card_stroke">#49454F</color>
+</resources>

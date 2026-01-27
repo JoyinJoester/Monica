@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 缓存目录,用于临时拍照 -->
+    <cache-path name="camera_photos" path="temp_photos/" />
+    
+    <!-- 内部存储,用于加密图片 -->
+    <files-path name="secure_images" path="secure_images/" />
+</paths>

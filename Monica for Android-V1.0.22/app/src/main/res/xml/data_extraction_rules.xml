@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Data extraction rules for Android 12+ (API 31+)
+   Monica 密码管理器数据备份规则
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- 云备份:备份应用设置 -->
+        <include domain="sharedpref" path="."/>
+        
+        <!-- 云备份:备份密码数据库 -->
+        <include domain="database" path="."/>
+        
+        <!-- 云备份:备份应用内部文件 -->
+        <include domain="file" path="."/>
+        
+        <!-- 排除设备特定配置 -->
+        <exclude domain="sharedpref" path="device.xml"/>
+        
+        <!-- 排除缓存 -->
+        <exclude domain="file" path="cache"/>
+    </cloud-backup>
+    
+    <device-transfer>
+        <!-- 设备间传输:包含所有重要数据 -->
+        <include domain="sharedpref" path="."/>
+        <include domain="database" path="."/>
+        <include domain="file" path="."/>
+        
+        <!-- 排除设备特定配置 -->
+        <exclude domain="sharedpref" path="device.xml"/>
+        <exclude domain="file" path="cache"/>
+    </device-transfer>
+</data-extraction-rules>

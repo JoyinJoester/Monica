@@ -1396,8 +1396,14 @@ private fun LoginTypeSelector(
                 }
                 
                 // 提示文字
+                val displayProvider = if (ssoProvider.isNotEmpty()) {
+                    takagi.ru.monica.data.SsoProvider.fromName(ssoProvider).displayName
+                } else {
+                    context.getString(R.string.sso_provider_select)
+                }
+
                 Text(
-                    text = context.getString(R.string.sso_description),
+                    text = context.getString(R.string.sso_description, displayProvider),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
