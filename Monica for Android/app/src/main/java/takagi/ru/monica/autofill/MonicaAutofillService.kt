@@ -2265,7 +2265,6 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
      * 备用解析方法：更宽松的字段识别
      */
     private fun parseWithFallback(collection: AutofillFieldCollection) {
-        // 如果标准方法失败，尝试查找所有文本输入字段
         val textFields = mutableListOf<AssistStructure.ViewNode>()
         
         for (i in 0 until structure.windowNodeCount) {
@@ -2273,8 +2272,26 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
             collectTextFields(windowNode.rootViewNode, textFields)
         }
         
-        // 简单启发式：第一个文本字段可能是用户名，密码类型的字段是密码
+        val hasPasswordLikeField = textFields.any { node ->
+            val isTextPassword = node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD != 0
+            val isNumberPassword = node.inputType and android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD != 0
+            val isPasswordInput = isTextPassword || isNumberPassword ||
+                node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD != 0 ||
+                node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD != 0
+            val combined = listOfNotNull(node.idEntry, node.hint, node.text?.toString(), node.contentDescription?.toString())
+                .joinToString(" ")
+                .lowercase()
+            isPasswordInput || listOf("pass", "password", "pwd", "pin", "密码", "口令").any { combined.contains(it) }
+        }
+        
+        if (!hasPasswordLikeField) {
+            return
+        }
+        
         textFields.forEach { node ->
+            if (isExcludedNode(node)) {
+                return@forEach
+            }
             val isTextPassword = node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD != 0
             val isNumberPassword = node.inputType and android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD != 0
             val isPasswordInput = isTextPassword || isNumberPassword
@@ -2292,6 +2309,13 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
                 }
             }
         }
+    }
+
+    private fun isExcludedNode(node: AssistStructure.ViewNode): Boolean {
+        val combined = listOfNotNull(node.idEntry, node.hint, node.text?.toString(), node.contentDescription?.toString())
+            .joinToString(" ")
+            .lowercase()
+        return EXCLUSION_KEYWORDS.any { combined.contains(it) }
     }
     
     /**
