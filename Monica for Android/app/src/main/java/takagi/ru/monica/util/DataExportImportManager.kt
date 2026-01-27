@@ -106,6 +106,7 @@ class DataExportImportManager(private val context: Context) {
     /**
      * 从CSV文件导入数据
      * @param inputUri 输入文件的URI
+     * @param formatHint 格式提示，如果提供则跳过自动检测
      * @return 导入的数据项列表
      */
     suspend fun importData(

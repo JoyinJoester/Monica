@@ -164,10 +164,17 @@ fun ImportDataScreen(
                 fileHint = "选择 .kdbx 文件"
             ),
             ImportTypeInfo(
+                key = "keepass_csv",
+                icon = Icons.Default.Description,
+                title = "KeePass CSV",
+                description = "导入 KeePass 导出的 CSV 文件",
+                fileHint = "选择 .csv 文件"
+            ),
+            ImportTypeInfo(
                 key = "normal",
                 icon = Icons.Default.TableChart,
                 title = "CSV 数据",
-                description = "导入应用导出的 CSV 文件或支付宝账单",
+                description = "导入应用导出的 CSV 文件",
                 fileHint = "选择 .csv 文件"
             ),
             ImportTypeInfo(
@@ -305,6 +312,10 @@ fun ImportDataScreen(
                                                 isImporting = false
                                                 showKdbxPasswordDialog = true
                                                 kdbxPassword = ""
+                                            }
+                                            "keepass_csv" -> {
+                                                val result = onImportKeePassCsv(uri)
+                                                handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
                                             }
                                             else -> {
                                                 // 普通CSV导入
