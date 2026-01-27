@@ -1,5 +1,13 @@
 ## Monica for Android
-移除侧边栏
- 中的 ModalNavigationDrawer 及其相关逻辑。
-新增返回键处理：在多选模式下，按系统返回键将清理选择并退出多选状态。
-修复 SSO 文本错误
+
+### UI 修复任务
+- [x] 移除侧边栏中的 ModalNavigationDrawer 及其相关逻辑。
+- [x] 新增返回键处理：在多选模式下，按系统返回键将清理选择并退出多选状态。
+- [x] 修复 SSO 文本错误。
+
+### 安全性整改说明 (Security Enhancement)
+1. **数据加密升级**: 采用 MDK (Master Data Key) 双重封装机制。
+   - **Keystore 封装**: 利用 Android Keystore 系统保护密钥，支持生物识别解锁。
+   - **PBKDF2 封装**: 作为灾备方案，使用 PBKDF2 (100,000 次迭代) 从主密码派生密钥，确保在 Keystore 不可用时仍能恢复数据。
+2. **加密算法**: 所有敏感数据使用 AES-256 进行加密。
+3. **平滑迁移**: 实现了 Lazy Migration 策略，旧数据在首次解密时自动升级为新加密格式，无需用户手动干预，保障用户体验。
