@@ -1,0 +1,71 @@
+name: Android Release Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  # ===== 最终构建 =====
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Android"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('Monica for Android/**/*.gradle*', 'Monica for Android/**/gradle-wrapper.properties') }}
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Decode keystore
+        run: echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > $GITHUB_WORKSPACE/release.jks
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+
+      - name: Build Release APK (signed & obfuscated)
+        run: |
+          ./gradlew assembleRelease --stacktrace \
+            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.DEBUG_STORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.DEBUG_KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.DEBUG_KEY_PASSWORD }}
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+
+      - name: Generate checksums
+        run: |
+          cd app/build/outputs/apk/release
+          sha256sum *.apk > checksums.txt
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk-obfuscated
+          path: |
+            ${{ github.workspace }}/Monica for Android/app/build/outputs/apk/release/*.apk
+            ${{ github.workspace }}/Monica for Android/app/build/outputs/apk/release/checksums.txt
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload ProGuard/R8 mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapping-release
+          path: ${{ github.workspace }}/Monica for Android/app/build/outputs/mapping/release/mapping.txt
+          retention-days: 30
+          if-no-files-found: error
