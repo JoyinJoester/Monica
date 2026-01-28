@@ -76,6 +76,7 @@ import takagi.ru.monica.data.SsoProvider
 fun PasswordDetailScreen(
     viewModel: PasswordViewModel,
     passwordId: Long,
+    disablePasswordVerification: Boolean,
     onNavigateBack: () -> Unit,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
@@ -122,6 +123,10 @@ fun PasswordDetailScreen(
     
     // Verification Logic calling Biometric or falling back to Password Dialog
     fun startVerificationForDeletion() {
+        if (disablePasswordVerification) {
+            executeDeletion()
+            return
+        }
         if (biometricHelper.isBiometricAvailable()) {
             (context as? FragmentActivity)?.let { activity ->
                 biometricHelper.authenticate(

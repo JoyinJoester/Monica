@@ -480,16 +480,21 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.developer_settings_subtitle),
                     onClick = {
                         val hasActivity = activity != null
-                        val biometricAvailableNow = hasActivity && biometricHelper.isBiometricAvailable()
+                        val disablePasswordVerification = settings.disablePasswordVerification
+                        val biometricEnabled = settings.biometricEnabled
+                        val biometricAvailableNow = hasActivity && biometricEnabled && biometricHelper.isBiometricAvailable()
                         android.util.Log.d(
                             "SettingsScreen",
-                            "Developer settings tapped. hasActivity=$hasActivity, biometricAvailable=$biometricAvailableNow"
+                            "Developer settings tapped. hasActivity=$hasActivity, biometricEnabled=$biometricEnabled, biometricAvailable=$biometricAvailableNow, disablePasswordVerification=$disablePasswordVerification"
                         )
 
                         developerPasswordInput = ""
                         showDeveloperVerifyDialog = false
 
                         when {
+                            disablePasswordVerification -> {
+                                onNavigateToDeveloperSettings()
+                            }
                             !hasActivity -> {
                                 android.util.Log.w(
                                     "SettingsScreen",
@@ -549,11 +554,13 @@ fun SettingsScreen(
                                     "SettingsScreen",
                                     "Biometric unavailable, showing password dialog for developer settings"
                                 )
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.biometric_not_available),
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                if (biometricEnabled) {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.biometric_not_available),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                                 showDeveloperVerifyDialog = true
                             }
                         }

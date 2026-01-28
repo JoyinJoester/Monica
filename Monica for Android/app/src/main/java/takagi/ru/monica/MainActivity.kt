@@ -767,6 +767,7 @@ fun MonicaContent(
                 takagi.ru.monica.ui.screens.PasswordDetailScreen(
                     viewModel = viewModel,
                     passwordId = passwordId,
+                    disablePasswordVerification = settings.disablePasswordVerification,
                     onNavigateBack = {
                         navController.popBackStack()
                     },

@@ -233,11 +233,13 @@ class MonicaAutofillService : AutofillService() {
         // 🔍 记录填充请求到诊断系统
         val context = request.fillContexts.lastOrNull()
         val packageName = context?.structure?.activityComponent?.packageName ?: "unknown"
+        val hasInlineRequest = request.inlineSuggestionsRequest != null
+
         diagnostics.logFillRequest(
             packageName = packageName,
             flags = request.flags,
             contextCount = request.fillContexts.size,
-            hasInlineRequest = request.inlineSuggestionsRequest != null
+            hasInlineRequest = hasInlineRequest
         )
         
         serviceScope.launch {
@@ -347,7 +349,6 @@ class MonicaAutofillService : AutofillService() {
         }
         
         val structure = context.structure
-        val requestPackageName = context.structure.activityComponent.packageName
         
         // ✨ 使用改进的字段解析器（多层策略）
         // 可选：使用 ImprovedFieldParser 进行多层解析
@@ -359,8 +360,7 @@ class MonicaAutofillService : AutofillService() {
         
         // ✨ 使用增强的字段解析器 V2
         val respectAutofillOff = autofillPreferences.isRespectAutofillDisabledEnabled.first()
-        val effectiveRespectAutofillOff = if (requestPackageName == "com.tencent.mobileqq") false else respectAutofillOff
-        var parsedStructure = enhancedParserV2.parse(structure, effectiveRespectAutofillOff)
+        var parsedStructure = enhancedParserV2.parse(structure, respectAutofillOff)
         
         // 🔧 修复：检查并纠正字段顺序（如果密码框在用户名框之前）
         if (parsedStructure.items.size >= 2) {
@@ -420,8 +420,7 @@ class MonicaAutofillService : AutofillService() {
         val enhancedCollection = enhancedParser.parse()
         
         val parser = AutofillFieldParser(structure)
-        val allowFallback = requestPackageName == "com.tencent.mobileqq"
-        val fieldCollection = parser.parse(allowFallback)
+        val fieldCollection = parser.parse()
         
         // 🔍 记录字段解析结果到诊断系统
         val usernameFieldCount = parsedStructure.items.count { 
@@ -1063,17 +1062,6 @@ class MonicaAutofillService : AutofillService() {
             return true
         }
         
-        // 3. 放宽策略：仅检测到高置信度的密码字段也允许建议
-        // 适配部分 App（如 QQ 登录）只在首屏展示密码框的场景
-        val hasAccuratePasswordOnly = parsedStructure.items.any { 
-            it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD && 
-            (it.isFocused || it.accuracy.score >= 0.6f)
-        }
-        if (!hasUsernameOrEmail && hasAccuratePasswordOnly) {
-            AutofillLogger.i("SUGGESTION", "✓ Only password field (focused/accurate) detected - suggesting password")
-            return true
-        }
-        
         AutofillLogger.d("SUGGESTION", "✗ Conditions not met for password suggestion")
         return false
     }
@@ -1364,27 +1352,10 @@ class MonicaAutofillService : AutofillService() {
             }
             
             // 创建跳转到选择器的 Dataset
-            val manualAutofillIds = if (parsedStructure.items.isNotEmpty()) {
-                parsedStructure.items.map { it.id }
-            } else {
-                listOfNotNull(
-                    enhancedCollection.usernameField,
-                    enhancedCollection.passwordField,
-                    enhancedCollection.emailField,
-                    enhancedCollection.phoneField,
-                    fieldCollection.usernameField,
-                    fieldCollection.passwordField
-                ).distinct()
-            }
-            
-            if (manualAutofillIds.isEmpty()) {
-                android.util.Log.w("MonicaAutofill", "⚠️ No autofill ids for manual selection dataset")
-            }
-            
             val args = AutofillPickerActivityV2.Args(
                 applicationId = packageName,
                 webDomain = parsedStructure.webDomain,
-                autofillIds = ArrayList(manualAutofillIds),
+                autofillIds = ArrayList(parsedStructure.items.map { it.id }),
                 isSaveMode = false
             )
             val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
@@ -1404,8 +1375,8 @@ class MonicaAutofillService : AutofillService() {
             val manualDatasetBuilder = Dataset.Builder(manualSelectionPresentation)
             
             // 为所有字段设置空值以触发 Authentication
-            manualAutofillIds.forEach { autofillId ->
-                manualDatasetBuilder.setValue(autofillId, null, manualSelectionPresentation)
+            parsedStructure.items.forEach { item ->
+                manualDatasetBuilder.setValue(item.id, null, manualSelectionPresentation)
             }
             manualDatasetBuilder.setAuthentication(manualPendingIntent.intentSender)
             
@@ -1428,11 +1399,9 @@ class MonicaAutofillService : AutofillService() {
                 }
             }
             
-            if (manualAutofillIds.isNotEmpty()) {
-                responseBuilder.addDataset(manualDatasetBuilder.build())
-                datasetsCreated++
-                android.util.Log.d("MonicaAutofill", "✅ Manual selection dataset added")
-            }
+            responseBuilder.addDataset(manualDatasetBuilder.build())
+            datasetsCreated++
+            android.util.Log.d("MonicaAutofill", "✅ Manual selection dataset added")
             
         } catch (e: Exception) {
             android.util.Log.e("MonicaAutofill", "❌ Failed to add manual selection dataset", e)
@@ -2129,7 +2098,7 @@ class MonicaAutofillService : AutofillService() {
 private class AutofillFieldParser(private val structure: AssistStructure) {
     private val tag = "AutofillFieldParser"
     
-    fun parse(allowFallback: Boolean = false): AutofillFieldCollection {
+    fun parse(): AutofillFieldCollection {
         val collection = AutofillFieldCollection()
         
         for (i in 0 until structure.windowNodeCount) {
@@ -2137,9 +2106,10 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
             parseNode(windowNode.rootViewNode, collection)
         }
         
-        if (allowFallback && !collection.hasCredentialFields()) {
-            parseWithFallback(collection)
-        }
+        // 如果没有找到字段，不再尝试更宽松的匹配，以避免误触发（如聊天框）
+        // if (!collection.hasCredentialFields()) {
+        //     parseWithFallback(collection)
+        // }
         
         return collection
     }
@@ -2265,6 +2235,7 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
      * 备用解析方法：更宽松的字段识别
      */
     private fun parseWithFallback(collection: AutofillFieldCollection) {
+        // 如果标准方法失败，尝试查找所有文本输入字段
         val textFields = mutableListOf<AssistStructure.ViewNode>()
         
         for (i in 0 until structure.windowNodeCount) {
@@ -2272,29 +2243,9 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
             collectTextFields(windowNode.rootViewNode, textFields)
         }
         
-        val hasPasswordLikeField = textFields.any { node ->
-            val isTextPassword = node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD != 0
-            val isNumberPassword = node.inputType and android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD != 0
-            val isPasswordInput = isTextPassword || isNumberPassword ||
-                node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD != 0 ||
-                node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD != 0
-            val combined = listOfNotNull(node.idEntry, node.hint, node.text?.toString(), node.contentDescription?.toString())
-                .joinToString(" ")
-                .lowercase()
-            isPasswordInput || listOf("pass", "password", "pwd", "pin", "密码", "口令").any { combined.contains(it) }
-        }
-        
-        if (!hasPasswordLikeField) {
-            return
-        }
-        
+        // 简单启发式：第一个文本字段可能是用户名，密码类型的字段是密码
         textFields.forEach { node ->
-            if (isExcludedNode(node)) {
-                return@forEach
-            }
-            val isTextPassword = node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD != 0
-            val isNumberPassword = node.inputType and android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD != 0
-            val isPasswordInput = isTextPassword || isNumberPassword
+            val isPasswordInput = node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD != 0
             
             when {
                 isPasswordInput && collection.passwordField == null -> {
@@ -2309,13 +2260,6 @@ private class AutofillFieldParser(private val structure: AssistStructure) {
                 }
             }
         }
-    }
-
-    private fun isExcludedNode(node: AssistStructure.ViewNode): Boolean {
-        val combined = listOfNotNull(node.idEntry, node.hint, node.text?.toString(), node.contentDescription?.toString())
-            .joinToString(" ")
-            .lowercase()
-        return EXCLUSION_KEYWORDS.any { combined.contains(it) }
     }
     
     /**

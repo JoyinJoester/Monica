@@ -1,0 +1,185 @@
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:kaptGenerateStubsDebugKotlin
+> Task :app:kaptDebugKotlin UP-TO-DATE
+
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:514:76 Elvis operator (?:) always returns the left operand of non-nullable type Boolean
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:804:36 'setValue(AutofillId, AutofillValue?, RemoteViews, InlinePresentation): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:807:38 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:808:44 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:812:36 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:815:38 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:836:44 'setValue(AutofillId, AutofillValue?, RemoteViews, InlinePresentation): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:839:46 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:840:52 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:844:44 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:847:46 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:863:40 'setValue(AutofillId, AutofillValue?, RemoteViews, InlinePresentation): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:866:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:867:48 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:871:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:874:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:887:36 'setValue(AutofillId, AutofillValue?, RemoteViews, InlinePresentation): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:890:38 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:891:44 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:895:36 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:898:38 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:909:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:912:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:922:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:925:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:934:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:937:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:946:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:949:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:958:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:961:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:975:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:978:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:988:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:991:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1000:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1003:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1014:40 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1017:42 No cast needed
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1103:9 Parameter 'inlineRequest' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1169:32 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1208:40 Parameter 'parsedStructure' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1230:46 Parameter 'packageName' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1312:9 Parameter 'passwords' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1417:48 'constructor Builder(RemoteViews)' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1421:38 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:1489:9 Parameter 'index' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/autofill/MonicaAutofillService.kt:2118:21 'setValue(AutofillId, AutofillValue?, RemoteViews): Dataset.Builder' is deprecated. Deprecated in Java
+
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:generateDebugLintReportModel
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:generateDebugAndroidTestLintModel
+> Task :app:generateDebugUnitTestLintModel
+> Task :app:lintAnalyzeDebugAndroidTest
+> Task :app:lintAnalyzeDebugUnitTest
+> Task :app:lintAnalyzeDebug
+
+> Task :app:lintReportDebug
+Wrote HTML report to file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/build/reports/lint-results-debug.html
+
+> Task :app:lintDebug FAILED
+Lint found 469 errors, 632 warnings. First failure:
+
+C:\Users\joyins\Desktop\Monica-all\Monica for Android\app\src\main\java\takagi\ru\monica\autofill\core\SafeResponseBuilder.kt:167: Error: Call requires API level 30 (current min is 29): android.view.inputmethod.InlineSuggestionsRequest#getMaxSuggestionCount [NewApi]
+        val maxInlineSuggestions = inlineRequest?.maxSuggestionCount ?: 0
+                                                  ~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "NewApi":
+   This check scans through all the Android API calls in the application and
+   warns about any calls that are not available on all versions targeted by
+   this application (according to its minimum SDK attribute in the manifest).
+
+   If you really want to use this API and don't need to support older devices
+   just set the minSdkVersion in your build.gradle or AndroidManifest.xml
+   files.
+
+   If your code is deliberately accessing newer APIs, and you have ensured
+   (e.g. with conditional execution) that this code will only ever be called
+   on a supported platform, then you can annotate your class or method with
+   the @TargetApi annotation specifying the local minimum SDK to apply, such
+   as @TargetApi(11), such that this check considers 11 rather than your
+   manifest file's minimum SDK as the required API level.
+
+   If you are deliberately setting android: attributes in style definitions,
+   make sure you place this in a values-vNN folder in order to avoid running
+   into runtime conflicts on certain devices where manufacturers have added
+   custom attributes whose ids conflict with the new ones on later platforms.
+
+   Similarly, you can use tools:targetApi="11" in an XML file to indicate that
+   the element will only be inflated in an adequate context.
+
+
+The full lint text report is located at:
+  C:\Users\joyins\Desktop\Monica-all\Monica for Android\app\build\intermediates\lint_intermediate_text_report\debug\lintReportDebug\lint-results-debug.txt
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:lintDebug'.
+> Lint found errors in the project; aborting build.
+  
+  Fix the issues identified by lint, or create a baseline to see only new errors.
+  To create a baseline, run `gradlew updateLintBaseline` after adding the following to the module's build.gradle file:
+  ```
+  android {
+      lint {
+          baseline = file("lint-baseline.xml")
+      }
+  }
+  ```
+  For more details, see https://developer.android.com/studio/write/lint#snapshot
+  
+  Lint found 469 errors, 632 warnings. First failure:
+  
+  C:\Users\joyins\Desktop\Monica-all\Monica for Android\app\src\main\java\takagi\ru\monica\autofill\core\SafeResponseBuilder.kt:167: Error: Call requires API level 30 (current min is 29): android.view.inputmethod.InlineSuggestionsRequest#getMaxSuggestionCount [NewApi]
+          val maxInlineSuggestions = inlineRequest?.maxSuggestionCount ?: 0
+                                                    ~~~~~~~~~~~~~~~~~~
+  
+     Explanation for issues of type "NewApi":
+     This check scans through all the Android API calls in the application and
+     warns about any calls that are not available on all versions targeted by
+     this application (according to its minimum SDK attribute in the manifest).
+  
+     If you really want to use this API and don't need to support older devices
+     just set the minSdkVersion in your build.gradle or AndroidManifest.xml
+     files.
+  
+     If your code is deliberately accessing newer APIs, and you have ensured
+     (e.g. with conditional execution) that this code will only ever be called
+     on a supported platform, then you can annotate your class or method with
+     the @TargetApi annotation specifying the local minimum SDK to apply, such
+     as @TargetApi(11), such that this check considers 11 rather than your
+     manifest file's minimum SDK as the required API level.
+  
+     If you are deliberately setting android: attributes in style definitions,
+     make sure you place this in a values-vNN folder in order to avoid running
+     into runtime conflicts on certain devices where manufacturers have added
+     custom attributes whose ids conflict with the new ones on later platforms.
+  
+     Similarly, you can use tools:targetApi="11" in an XML file to indicate that
+     the element will only be inflated in an adequate context.
+  
+  
+  The full lint text report is located at:
+    C:\Users\joyins\Desktop\Monica-all\Monica for Android\app\build\intermediates\lint_intermediate_text_report\debug\lintReportDebug\lint-results-debug.txt
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1m 9s
+29 actionable tasks: 11 executed, 18 up-to-date
