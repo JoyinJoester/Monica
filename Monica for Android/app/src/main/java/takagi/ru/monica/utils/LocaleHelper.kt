@@ -21,10 +21,12 @@ object LocaleHelper {
     }
     
     private fun getSystemLocale(): Locale {
+        val systemConfig = android.content.res.Resources.getSystem().configuration
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            Locale.getDefault()
+            systemConfig.locales[0]
         } else {
-            Locale.getDefault()
+            @Suppress("DEPRECATION")
+            systemConfig.locale
         }
     }
     
