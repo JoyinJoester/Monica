@@ -1,54 +1,49 @@
 > Task :app:preBuild UP-TO-DATE
-> Task :app:preReleaseBuild UP-TO-DATE
-> Task :app:checkReleaseAarMetadata UP-TO-DATE
-> Task :app:generateReleaseResValues UP-TO-DATE
-> Task :app:mapReleaseSourceSetPaths UP-TO-DATE
-> Task :app:generateReleaseResources UP-TO-DATE
-> Task :app:mergeReleaseResources UP-TO-DATE
-> Task :app:packageReleaseResources UP-TO-DATE
-> Task :app:parseReleaseLocalResources UP-TO-DATE
-> Task :app:createReleaseCompatibleScreenManifests UP-TO-DATE
-> Task :app:extractDeepLinksRelease UP-TO-DATE
-> Task :app:processReleaseMainManifest UP-TO-DATE
-> Task :app:processReleaseManifest UP-TO-DATE
-> Task :app:processReleaseManifestForPackage UP-TO-DATE
-> Task :app:processReleaseResources UP-TO-DATE
-> Task :app:kaptGenerateStubsReleaseKotlin UP-TO-DATE
-> Task :app:kaptReleaseKotlin UP-TO-DATE
-> Task :app:buildKotlinToolingMetadata UP-TO-DATE
-> Task :app:javaPreCompileRelease UP-TO-DATE
-> Task :app:extractProguardFiles UP-TO-DATE
-> Task :app:mergeReleaseJniLibFolders UP-TO-DATE
-> Task :app:mergeReleaseNativeLibs UP-TO-DATE
-> Task :app:stripReleaseDebugSymbols UP-TO-DATE
-> Task :app:extractReleaseNativeSymbolTables UP-TO-DATE
-> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:checkReleaseDuplicateClasses UP-TO-DATE
-> Task :app:mergeReleaseArtProfile UP-TO-DATE
-> Task :app:mergeReleaseStartupProfile UP-TO-DATE
-> Task :app:mergeReleaseShaders UP-TO-DATE
-> Task :app:compileReleaseShaders NO-SOURCE
-> Task :app:generateReleaseAssets UP-TO-DATE
-> Task :app:mergeReleaseAssets UP-TO-DATE
-> Task :app:compressReleaseAssets UP-TO-DATE
-> Task :app:extractReleaseVersionControlInfo UP-TO-DATE
-> Task :app:processApplicationManifestReleaseForBundle UP-TO-DATE
-> Task :app:bundleReleaseResources UP-TO-DATE
-> Task :app:collectReleaseDependencies UP-TO-DATE
-> Task :app:sdkReleaseDependencyData UP-TO-DATE
-> Task :app:writeReleaseAppMetadata UP-TO-DATE
-> Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:kaptGenerateStubsDebugKotlin
+> Task :app:kaptDebugKotlin
 
-> Task :app:compileReleaseKotlin
-e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2576:35 Unresolved reference: context
-e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2580:13 Unresolved reference: context
+> Task :app:compileDebugKotlin
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/components/SwipeableAddFab.kt:149:26 Unresolved reference: detectDragGestures
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/components/SwipeableAddFab.kt:150:40 Cannot infer a type for this parameter. Please specify it explicitly.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/components/SwipeableAddFab.kt:150:43 Cannot infer a type for this parameter. Please specify it explicitly.
 
-> Task :app:compileReleaseKotlin FAILED
+> Task :app:compileDebugKotlin FAILED
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:compileReleaseKotlin'.
+Execution failed for task ':app:compileDebugKotlin'.
 > A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
    > Compilation error. See log for more details
 
@@ -62,7 +57,7 @@ Deprecated Gradle features were used in this build, making it incompatible with 
 
 You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
 
-For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 20s
-36 actionable tasks: 1 executed, 35 up-to-date
+For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+BUILD FAILED in 24s
+30 actionable tasks: 7 executed, 23 up-to-date

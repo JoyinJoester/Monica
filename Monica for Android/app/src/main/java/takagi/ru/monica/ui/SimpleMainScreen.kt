@@ -86,12 +86,18 @@ import kotlin.math.absoluteValue
 import takagi.ru.monica.ui.components.QrCodeDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.DraggableBottomNavScaffold
+import takagi.ru.monica.ui.components.SwipeableAddFab
 import takagi.ru.monica.ui.components.DraggableNavItem
 import takagi.ru.monica.ui.components.QuickActionItem
 import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.security.SecurityManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import takagi.ru.monica.ui.screens.AddEditPasswordScreen
+import takagi.ru.monica.ui.screens.AddEditTotpScreen
+import takagi.ru.monica.ui.screens.AddEditBankCardScreen
+import takagi.ru.monica.ui.screens.AddEditDocumentScreen
+import takagi.ru.monica.ui.screens.AddEditNoteScreen
 
 @Composable
 private fun SelectionActionBar(
@@ -435,7 +441,8 @@ fun SimpleMainScreen(
     }
     
     // 根据设置选择导航模式
-    if (useDraggableNav) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (useDraggableNav) {
         // 使用可拖拽底部导航栏
         DraggableBottomNavScaffold(
             navItems = draggableNavItems,
@@ -454,38 +461,7 @@ fun SimpleMainScreen(
                     noteViewModel.quickAddNote(title, content)
                 }
             ),
-            floatingActionButton = {
-                when (currentTab) {
-                    BottomNavItem.Passwords -> {
-                        FloatingActionButton(
-                            onClick = { onNavigateToAddPassword(null) }
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                        }
-                    }
-                    BottomNavItem.Authenticator -> {
-                        FloatingActionButton(
-                            onClick = { onNavigateToAddTotp(null) }
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                        }
-                    }
-                    BottomNavItem.CardWallet -> {
-                        FloatingActionButton(
-                            onClick = {
-                                if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-                                    onNavigateToAddBankCard(null)
-                                } else {
-                                    onNavigateToAddDocument(null)
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                        }
-                    }
-                    else -> { /* 其他页面不需要 FAB */ }
-                }
-            },
+            floatingActionButton = {}, // FAB 移至外层 Overlay
             content = { paddingValues ->
                 Box(
                     modifier = Modifier
@@ -694,53 +670,7 @@ fun SimpleMainScreen(
                 }
             }
         },
-        floatingActionButton = {
-            when (currentTab) {
-                BottomNavItem.Passwords -> {
-                    FloatingActionButton(
-                        onClick = { onNavigateToAddPassword(null) }
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                    }
-                }
-
-                BottomNavItem.Authenticator -> {
-                    FloatingActionButton(
-                        onClick = { onNavigateToAddTotp(null) }
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                    }
-                }
-
-                BottomNavItem.CardWallet -> {
-                    FloatingActionButton(
-                        onClick = {
-                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-                                onNavigateToAddBankCard(null)
-                            } else {
-                                onNavigateToAddDocument(null)
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                    }
-                }
-
-                BottomNavItem.Generator -> {
-                    // 生成器页面不需要 FAB
-                }
-
-                BottomNavItem.Notes -> {
-                    // 笔记页面不需要 FAB (由 NoteListScreen 处理)
-                }
-
-                BottomNavItem.Timeline -> {
-                    // 时间线页面不需要 FAB
-                }
-
-                BottomNavItem.Settings -> {}
-            }
-        }
+        floatingActionButton = {} // FAB 移至外层 Overlay
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -932,6 +862,98 @@ fun SimpleMainScreen(
         }
     }
 }
+
+
+    
+    // 全局 FAB Overlay
+    // 放在最外层 Box 中，覆盖在 Scaffold 之上，确保能展开到全屏
+    // 仅在特定 Tab 显示
+    val showFab = currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.Authenticator || currentTab == BottomNavItem.CardWallet
+    
+    if (showFab) {
+        SwipeableAddFab(
+            // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
+            // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
+            fabBottomOffset = 116.dp,
+            modifier = Modifier, 
+        fabContent = { expand ->
+            when (currentTab) {
+                BottomNavItem.Passwords,
+                BottomNavItem.Authenticator,
+                BottomNavItem.CardWallet -> {
+                     Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.add),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                else -> { /* 不显示 */ }
+            }
+        },
+        expandedContent = { collapse ->
+             Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .statusBarsPadding() // FIX: 防止内容被状态栏遮挡
+            ) {
+               when (currentTab) {
+                    BottomNavItem.Passwords -> {
+                        AddEditPasswordScreen(
+                            viewModel = passwordViewModel,
+                            totpViewModel = totpViewModel,
+                            bankCardViewModel = bankCardViewModel,
+                            localKeePassViewModel = localKeePassViewModel,
+                            passwordId = null,
+                            onNavigateBack = collapse
+                        )
+                    }
+                    BottomNavItem.Authenticator -> {
+                        AddEditTotpScreen(
+                            totpId = null,
+                            initialData = null,
+                            initialTitle = "",
+                            initialNotes = "",
+                            passwordViewModel = passwordViewModel,
+                            onSave = { title, notes, totpData ->
+                                totpViewModel.saveTotpItem(
+                                    id = null,
+                                    title = title,
+                                    notes = notes,
+                                    totpData = totpData
+                                )
+                                collapse()
+                            },
+                            onNavigateBack = collapse,
+                            onScanQrCode = {
+                                collapse()
+                                onNavigateToQuickTotpScan()
+                            }
+                        )
+                    }
+                    BottomNavItem.CardWallet -> {
+                        if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+                            AddEditBankCardScreen(
+                                viewModel = bankCardViewModel,
+                                cardId = null,
+                                onNavigateBack = collapse
+                            )
+                        } else {
+                            AddEditDocumentScreen(
+                                viewModel = documentViewModel,
+                                documentId = null,
+                                onNavigateBack = collapse
+                            )
+                        }
+                    }
+                    else -> { /* Should not happen */ }
+                }
+            }
+        }
+    )
+    } // End if (showFab)
+
+} // Close Box
 
     if (showAddCategoryDialog) {
         AlertDialog(

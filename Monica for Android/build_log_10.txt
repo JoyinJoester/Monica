@@ -32,6 +32,7 @@
 > Task :app:writeDebugSigningConfigVersions UP-TO-DATE
 > Task :app:kaptGenerateStubsDebugKotlin
 > Task :app:kaptDebugKotlin UP-TO-DATE
+
 > Task :app:compileDebugKotlin
 w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:158:43 'Label: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Label
 w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:283:9 Variable 'displayMenuExpanded' is never used
@@ -40,26 +41,26 @@ w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/mai
 w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:343:9 Variable 'currentFilter' is never used
 w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:370:9 Variable 'quickActions' is never used
 w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:409:38 'Note: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Note
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1071:5 Parameter 'onPasswordClick' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1072:5 Parameter 'onNavigateToAddPassword' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1098:9 Variable 'showDetailDialog' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1099:9 Variable 'selectedPasswordForDetail' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1281:29 Variable 'favoriteCount' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1282:29 Variable 'totalCount' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1526:121 Elvis operator (?:) always returns the left operand of non-nullable type String
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1685:58 'List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2328:17 Name shadowed: securityManager
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2395:17 Name shadowed: securityManager
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2711:25 Variable 'index' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:3678:5 Parameter 'onToggleGroupFavorite' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:3771:9 Variable 'expandProgress' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:4273:5 Parameter 'hasGroupCover' is never used
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:5166:75 'Note: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Note
-w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/components/SwipeableAddFab.kt:285:37 Named arguments in composable function types are deprecated. This will become an error in Kotlin 2.0
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:877:24 Parameter 'expand' is never used, could be renamed to _
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1033:5 Parameter 'onPasswordClick' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1034:5 Parameter 'onNavigateToAddPassword' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1060:9 Variable 'showDetailDialog' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1061:9 Variable 'selectedPasswordForDetail' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1243:29 Variable 'favoriteCount' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1244:29 Variable 'totalCount' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1488:121 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1647:58 'List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2290:17 Name shadowed: securityManager
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2357:17 Name shadowed: securityManager
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2673:25 Variable 'index' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:3640:5 Parameter 'onToggleGroupFavorite' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:3733:9 Variable 'expandProgress' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:4235:5 Parameter 'hasGroupCover' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:5128:75 'Note: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Note
 
 > Task :app:compileDebugJavaWithJavac UP-TO-DATE
-> Task :app:processDebugJavaRes
-> Task :app:mergeDebugJavaResource
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:mergeDebugJavaResource UP-TO-DATE
 > Task :app:dexBuilderDebug
 > Task :app:mergeProjectDexDebug
 > Task :app:packageDebug
@@ -72,5 +73,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 1m 35s
-37 actionable tasks: 8 executed, 29 up-to-date
+BUILD SUCCESSFUL in 47s
+37 actionable tasks: 6 executed, 31 up-to-date
