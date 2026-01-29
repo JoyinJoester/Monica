@@ -2123,6 +2123,7 @@ private fun PasswordListContent(
                             passwords = passwords,
                             isExpanded = isExpanded,
                             stackCardMode = stackCardMode,
+                            swipedItemId = itemToDelete?.id,
                             onToggleExpand = {
                                 if (stackCardMode == StackCardMode.AUTO) {
                                     expandedGroups = if (expandedGroups.contains(groupKey)) {
@@ -2765,6 +2766,7 @@ private fun TotpListContent(
                                     selectedItems + item.id
                                 }
                             },
+                            isSwiped = itemToDelete?.id == item.id,
                             enabled = !isDragging && !isSelectionMode // 多选模式下禁用滑动，让拖动手势生效
                         ) {
                             // 包装卡片以支持拖动
@@ -3232,6 +3234,7 @@ private fun BankCardListContent(
                             selectedItems + card.id
                         }
                     },
+                    isSwiped = itemToDelete?.id == card.id,
                     enabled = true
                 ) {
                     BankCardItemCard(
@@ -3540,6 +3543,7 @@ private fun DocumentListContent(
                             selectedItems + document.id
                         }
                     },
+                    isSwiped = itemToDelete?.id == document.id,
                     enabled = true // 多选模式下也可以滑动
                 ) {
                     DocumentItemCard(
@@ -3694,6 +3698,7 @@ private fun StackedPasswordGroup(
     onToggleGroupCover: (takagi.ru.monica.data.PasswordEntry) -> Unit,
     isSelectionMode: Boolean,
     selectedPasswords: Set<Long>,
+    swipedItemId: Long? = null,
     onToggleSelection: (Long) -> Unit,
     onOpenMultiPasswordDialog: (List<takagi.ru.monica.data.PasswordEntry>) -> Unit,
     onLongClick: (takagi.ru.monica.data.PasswordEntry) -> Unit, // 新增：长按进入多选模式
@@ -3710,6 +3715,7 @@ private fun StackedPasswordGroup(
             takagi.ru.monica.ui.gestures.SwipeActions(
                 onSwipeLeft = { onSwipeLeft(password) },
                 onSwipeRight = { onSwipeRight(password) },
+                isSwiped = password.id == swipedItemId,
                 enabled = true
             ) {
                 PasswordEntryCard(
@@ -3743,6 +3749,7 @@ private fun StackedPasswordGroup(
         takagi.ru.monica.ui.gestures.SwipeActions(
             onSwipeLeft = { onSwipeLeft(password) },
             onSwipeRight = { onSwipeRight(password) },
+            isSwiped = password.id == swipedItemId,
             enabled = true
         ) {
             PasswordEntryCard(
@@ -3774,6 +3781,7 @@ private fun StackedPasswordGroup(
         takagi.ru.monica.ui.gestures.SwipeActions(
             onSwipeLeft = { onSwipeLeft(passwords.first()) },
             onSwipeRight = { onGroupSwipeRight(passwords) },
+            isSwiped = passwords.first().id == swipedItemId,
             enabled = true
         ) {
             MultiPasswordEntryCard(
@@ -3934,6 +3942,7 @@ private fun StackedPasswordGroup(
                 onSwipeRight = { 
                     if (!effectiveExpanded) onGroupSwipeRight(passwords)
                 },
+                isSwiped = passwords.first().id == swipedItemId,
                 enabled = !effectiveExpanded // Disable swipe actions on the container when expanded
             ) {
                 Card(

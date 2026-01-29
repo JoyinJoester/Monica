@@ -1,4 +1,4 @@
-<resources>
+    <resources>
     <string name="app_name">Monica</string>
     
     <!-- General -->
@@ -1493,4 +1493,9 @@
     
     <!-- Quick Add -->
     <string name="quick_add_not_supported">暂时没想过这里有啥用</string>
+
+
+    <string name="multi_del_batch_delete">批量删除</string>
+    <string name="multi_del_select_all">全选</string>
+    <string name="multi_del_select_items">请选择要删除的项目</string>
 </resources>

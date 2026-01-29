@@ -616,6 +616,10 @@
     <!-- Selection Mode -->
     <string name="batch_delete_title">Batch Delete</string>
     <string name="batch_delete_message">Delete %d items?</string>
+    <string name="multi_del_batch_delete">Batch Delete</string>
+    <string name="multi_del_select_all">Select All</string>
+    <string name="multi_del_select_items">Please select items to delete</string>
+
 
     <!-- Notes -->
     <string name="add_note_title">Add Note</string>

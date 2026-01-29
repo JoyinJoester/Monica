@@ -50,6 +50,7 @@ import kotlin.math.abs
 fun SwipeActions(
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
+    isSwiped: Boolean = false,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
@@ -58,6 +59,19 @@ fun SwipeActions(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     // 仅用于回弹动画的 Animatable
     val animatableOffset = remember { Animatable(0f) }
+    
+    // 监听 isSwiped 状态变化 (主要用于取消删除后的复位)
+    LaunchedEffect(isSwiped) {
+        if (!isSwiped && (dragOffset != 0f || animatableOffset.value != 0f)) {
+            // 如果变为“未滑动”状态且当前有偏移，则复位
+            dragOffset = 0f
+            animatableOffset.animateTo(0f, spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            ))
+        }
+    }
+
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     

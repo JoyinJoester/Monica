@@ -10,6 +10,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,8 +89,11 @@ fun PasswordDetailScreen(
     // 密码条目状态
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
     var groupPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
+
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showMultiDeleteDialog by remember { mutableStateOf(false) } // 新增：多选删除对话框状态
     var itemToDelete by remember { mutableStateOf<PasswordEntry?>(null) } // For specific password deletion
+    var multiDeleteSelectedIds by remember { mutableStateOf(setOf<Long>()) } // 新增：多选删除选中的ID集合
     
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
@@ -99,16 +104,24 @@ fun PasswordDetailScreen(
         if (itemToDelete != null) {
             // Delete specific password
             viewModel.deletePasswordEntry(itemToDelete!!)
-            // If it was the only one, navigate back is handled by Flow collection update or check
-            // logic below will handle UI update via groupPasswords flow
+        } else if (multiDeleteSelectedIds.isNotEmpty()) {
+            // Batch delete
+            val passwordsToDelete = groupPasswords.filter { it.id in multiDeleteSelectedIds }
+            passwordsToDelete.forEach { 
+                viewModel.deletePasswordEntry(it)
+            }
+            
+            if (passwordsToDelete.size == groupPasswords.size) {
+                 // All deleted
+                 onNavigateBack()
+            } else {
+                 // Partial delete - UI will update via Flow
+                 // Reset selection
+                 multiDeleteSelectedIds = setOf()
+            }
+            showMultiDeleteDialog = false
         } else {
-            // Delete ALL (current entry context) - usually from top menu
-            // If top menu delete is clicked, we probably want to delete ALL in group or just this one?
-            // "Delete" usually implies deleting the "Item". 
-            // If we have multiple passwords, maybe we should ask?
-            // User said: "essentially multiple items ... joined". 
-            // If I click delete on the main screen, I probably delete the whole group.
-            // Let's assume delete = delete current entry for now.
+            // Fallback: Delete current main entry
             passwordEntry?.let { entry ->
                 viewModel.deletePasswordEntry(entry)
                 onNavigateBack()
@@ -250,7 +263,16 @@ fun PasswordDetailScreen(
                     ActionStripItem(
                         icon = MonicaIcons.Action.delete,
                         contentDescription = stringResource(R.string.delete),
-                        onClick = { showDeleteDialog = true },
+                        onClick = { 
+                            if (groupPasswords.size > 1) {
+                                // 如果有多个密码，显示多选删除对话框
+                                multiDeleteSelectedIds = setOf() // 重置选择
+                                showMultiDeleteDialog = true
+                            } else {
+                                // 只有一个密码，直接显示确认删除对话框
+                                showDeleteDialog = true 
+                            }
+                        },
                         tint = MaterialTheme.colorScheme.error
                     )
                 ),
@@ -428,6 +450,33 @@ fun PasswordDetailScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
             textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    // 多选删除对话框
+    if (showMultiDeleteDialog) {
+        MultiDeleteConfirmDialog(
+            passwords = groupPasswords,
+            selectedIds = multiDeleteSelectedIds,
+            onSelectionChange = { id, selected ->
+                multiDeleteSelectedIds = if (selected) {
+                    multiDeleteSelectedIds + id
+                } else {
+                    multiDeleteSelectedIds - id
+                }
+            },
+            onSelectAll = { selected ->
+                multiDeleteSelectedIds = if (selected) {
+                    groupPasswords.map { it.id }.toSet()
+                } else {
+                    setOf()
+                }
+            },
+            onDismiss = { showMultiDeleteDialog = false },
+            onConfirm = {
+                showMultiDeleteDialog = false
+                startVerificationForDeletion()
+            }
         )
     }
 
@@ -1235,6 +1284,118 @@ private fun PasswordItemRow(
             color = MaterialTheme.colorScheme.onSurface
         )
     }
+}
+
+// ============================================
+// 🗑️ 多选删除确认对话框
+// ============================================
+@Composable
+private fun MultiDeleteConfirmDialog(
+    passwords: List<PasswordEntry>,
+    selectedIds: Set<Long>,
+    onSelectionChange: (Long, Boolean) -> Unit,
+    onSelectAll: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val allSelected = selectedIds.size == passwords.size && passwords.isNotEmpty()
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.multi_del_batch_delete)) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // 全选控制
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectAll(!allSelected) }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    androidx.compose.material3.Checkbox(
+                        checked = allSelected,
+                        onCheckedChange = { onSelectAll(it) }
+                    )
+                    Text(
+                        text = stringResource(R.string.multi_del_select_all),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                HorizontalDivider()
+                
+                // 密码列表
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp) // 限制最大高度
+                ) {
+                    items(passwords.size) { index ->
+                        val password = passwords[index]
+                        val isSelected = selectedIds.contains(password.id)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectionChange(password.id, !isSelected) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            androidx.compose.material3.Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { onSelectionChange(password.id, it) }
+                            )
+                            Column {
+                                Text(
+                                    text = if (password.username.isNotEmpty()) password.username else password.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "•".repeat(8),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                if (selectedIds.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.multi_del_select_items),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = selectedIds.isNotEmpty(),
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text(stringResource(R.string.delete) + if (selectedIds.isNotEmpty()) " (${selectedIds.size})" else "")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 
