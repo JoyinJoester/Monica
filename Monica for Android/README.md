@@ -119,7 +119,7 @@ Built by developers, for developers (and everyone else).
 
 ### Installation
 1.  Download the latest `.apk` from the [**Releases**](https://github.com/JoyinJoester/Monica/releases) page.
-2.  Install on your Android device (Android 8.0 Oreo or higher required).
+2.  Install on your Android device (Android 11 or higher required).
 3.  Launch and follow the setup wizard to create your Master Password.
 
 ### Build from Source
