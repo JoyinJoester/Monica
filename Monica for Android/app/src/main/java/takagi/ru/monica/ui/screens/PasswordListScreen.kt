@@ -20,6 +20,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -92,6 +94,10 @@ fun PasswordListScreen(
     
     // 记录是否已经震动过，避免重复震动
     var hasVibrated by remember { mutableStateOf(false) }
+
+    // 记录本次交互是否发生过内容滚动（用于 Stop-at-Top 逻辑）
+    // 严格模式：只有手势开始时列表就在顶部，才允许触发下拉
+    var canTriggerPullToSearch by remember { mutableStateOf(false) }
     
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -111,7 +117,8 @@ fun PasswordListScreen(
                 
                 // Allow both UserInput and potentially other sources if needed, but usually UserInput is correct for drag.
                 // We will relax the check slightly or just debug.
-                if (!searchExpanded && available.y > 0) {
+                // 只有在没有滚动过内容的情况下（即一开始就在顶部），才允许触发下拉搜索
+                if (!searchExpanded && available.y > 0 && canTriggerPullToSearch) {
                      // Check if we are really dragging (sometimes fling comes here too, but we only want drag usually)
                      // However, letting fling contribute to 'pull' might feel weird, but let's test.
                      // Strict check: source == NestedScrollSource.UserInput
@@ -432,7 +439,16 @@ fun PasswordListScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) } // 应用下拉偏移
-                        .nestedScroll(nestedScrollConnection),
+                        .nestedScroll(nestedScrollConnection)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                // 只有当列表确实在顶部时（FirstVisibleItemIndex == 0 && Offset == 0），
+                                // 我们才认为这是一个潜在的下拉搜索手势
+                                val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                                canTriggerPullToSearch = isAtTop
+                            }
+                        },
                     state = listState,
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)

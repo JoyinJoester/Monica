@@ -379,6 +379,9 @@ fun SimpleMainScreen(
     val currentTabState = rememberUpdatedState(currentTab)
     // 确保滚动监听器能获取到最新的设置值
     val hideFabOnScrollState = rememberUpdatedState(appSettings.hideFabOnScroll)
+
+    // 检测是否有任何选择模式处于激活状态
+    val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || isDocumentSelectionMode || isBankCardSelectionMode
     
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -682,7 +685,7 @@ fun SimpleMainScreen(
                             SelectionActionBar(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
                                 selectedCount = selectedPasswordCount,
                                 onExit = onExitPasswordSelection,
                                 onSelectAll = onSelectAllPasswords,
@@ -695,7 +698,7 @@ fun SimpleMainScreen(
                             SelectionActionBar(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
                                 selectedCount = selectedTotpCount,
                                 onExit = onExitTotpSelection,
                                 onSelectAll = onSelectAllTotp,
@@ -706,7 +709,7 @@ fun SimpleMainScreen(
                             SelectionActionBar(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
                                 selectedCount = selectedBankCardCount,
                                 onExit = onExitBankCardSelection,
                                 onSelectAll = onSelectAllBankCards,
@@ -718,7 +721,7 @@ fun SimpleMainScreen(
                             SelectionActionBar(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
                                 selectedCount = selectedDocumentCount,
                                 onExit = onExitDocumentSelection,
                                 onSelectAll = onSelectAllDocuments,
@@ -896,8 +899,8 @@ fun SimpleMainScreen(
                 currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
                     SelectionActionBar(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
                         selectedCount = selectedPasswordCount,
                         onExit = onExitPasswordSelection,
                         onSelectAll = onSelectAllPasswords,
@@ -910,8 +913,8 @@ fun SimpleMainScreen(
                 currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
                     SelectionActionBar(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
                         selectedCount = selectedTotpCount,
                         onExit = onExitTotpSelection,
                         onSelectAll = onSelectAllTotp,
@@ -922,8 +925,8 @@ fun SimpleMainScreen(
                 currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.BANK_CARDS && isBankCardSelectionMode -> {
                     SelectionActionBar(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
                         selectedCount = selectedBankCardCount,
                         onExit = onExitBankCardSelection,
                         onSelectAll = onSelectAllBankCards,
@@ -942,8 +945,8 @@ fun SimpleMainScreen(
 
     // 全局 FAB Overlay
     // 放在最外层 Box 中，覆盖在 Scaffold 之上，确保能展开到全屏
-    // 仅在特定 Tab 显示
-    val showFab = currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.Authenticator || currentTab == BottomNavItem.CardWallet
+    // 仅在特定 Tab 显示，并且不在多选模式下显示
+    val showFab = (currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.Authenticator || currentTab == BottomNavItem.CardWallet) && !isAnySelectionMode
     
     AnimatedVisibility(
         visible = showFab && isFabVisible,
@@ -2143,10 +2146,13 @@ private fun PasswordListContent(
                             }
                         },
                         onSwipeLeft = { password ->
-                            // 左滑删除
-                            haptic.performWarning()
-                            itemToDelete = password
-                            deletedItemIds = deletedItemIds + password.id
+                            // 防止连续滑动导致 itemToDelete 被覆盖
+                            if (itemToDelete == null) {
+                                // 左滑删除
+                                haptic.performWarning()
+                                itemToDelete = password
+                                deletedItemIds = deletedItemIds + password.id
+                            }
                         },
                         onSwipeRight = { password ->
                             // 右滑选择
