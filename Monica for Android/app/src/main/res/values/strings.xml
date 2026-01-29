@@ -802,6 +802,8 @@
     <string name="smooth_progress_bar_description">Enable smooth animation for seamless progress display without stuttering</string>
     <string name="validator_settings_section">Validator Settings</string>
     <string name="experimental_features_section">Experimental Features</string>
+    <string name="hide_fab_on_scroll_title">Hide FAB on scroll</string>
+    <string name="hide_fab_on_scroll_description">Hide the floating action button when scrolling down</string>
     
     <!-- Validator Vibration -->
     <string name="validator_vibration">Validator Vibration</string>

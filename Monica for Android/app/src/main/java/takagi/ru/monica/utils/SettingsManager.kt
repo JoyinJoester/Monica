@@ -59,6 +59,7 @@ class SettingsManager(private val context: Context) {
         private val TRASH_AUTO_DELETE_DAYS_KEY = intPreferencesKey("trash_auto_delete_days") // 回收站自动清空天数
         private val ICON_CARDS_ENABLED_KEY = booleanPreferencesKey("icon_cards_enabled") // 带图标卡片开关
         private val PASSWORD_CARD_DISPLAY_MODE_KEY = stringPreferencesKey("password_card_display_mode") // 密码卡片显示模式
+        private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -114,6 +115,7 @@ class SettingsManager(private val context: Context) {
             }.getOrDefault(takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED),
             validatorSmoothProgress = preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] ?: true,
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
+            hideFabOnScroll = preferences[HIDE_FAB_ON_SCROLL_KEY] ?: false,
             copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
             notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
             notificationValidatorAutoMatch = preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] ?: false,
@@ -225,6 +227,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateValidatorVibrationEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateHideFabOnScroll(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[HIDE_FAB_ON_SCROLL_KEY] = enabled
         }
     }
 

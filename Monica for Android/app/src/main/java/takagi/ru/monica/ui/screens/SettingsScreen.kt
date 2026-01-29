@@ -928,6 +928,39 @@ fun SettingsScreen(
                             onCheckedChange = { viewModel.updateUseDraggableBottomNav(it) }
                         )
                     }
+
+                    // 滚动隐藏 FAB 开关
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { viewModel.updateHideFabOnScroll(!settings.hideFabOnScroll) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VisibilityOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.hide_fab_on_scroll_title),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.hide_fab_on_scroll_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.hideFabOnScroll,
+                            onCheckedChange = { viewModel.updateHideFabOnScroll(it) }
+                        )
+                    }
                 }
             },
             confirmButton = {

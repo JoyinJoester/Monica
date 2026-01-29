@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,7 +13,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -253,7 +257,11 @@ fun SimpleMainScreen(
     val scope = rememberCoroutineScope()
     
     // 处理返回键 - 需要按两次才能退出
-    BackHandler {
+    // 只有在没有子页面（如添加页面）打开时才启用
+    // FAB 展开状态由内部 SwipeableAddFab 管理，这里不需要干预，除非我们需要在 FAB 展开时拦截返回键
+    // 目前 SwipeableAddFab 应该自己处理了返回键（如果有 BackHandler）
+    // 为了安全起见，我们只在最外层处理
+    BackHandler(enabled = true) {
         if (backPressedOnce) {
             // 第二次按返回键,退出应用
             (context as? android.app.Activity)?.finish()
@@ -288,6 +296,7 @@ fun SimpleMainScreen(
     // 密码分组模式: smart(备注>网站>应用>标题), note, website, app, title
     // 从设置中读取，如果设置中没有则默认为 "smart"
     val passwordGroupMode = appSettings.passwordGroupMode
+
 
     // 堆叠卡片显示模式: 自动/始终展开（始终展开指逐条显示，不堆叠）
     // 从设置中读取，如果设置中没有则默认为 AUTO
@@ -353,6 +362,63 @@ fun SimpleMainScreen(
 
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
     val currentTabLabel = stringResource(currentTab.fullLabelRes())
+
+    // 监听滚动以隐藏/显示 FAB
+    var isFabVisible by remember { mutableStateOf(true) }
+    
+    // 如果设置中禁用了此功能，强制显示 FAB
+    LaunchedEffect(appSettings.hideFabOnScroll) {
+        if (!appSettings.hideFabOnScroll) {
+            isFabVisible = true
+        }
+    }
+
+    // 监听 FAB 展开状态，展开时禁用隐藏逻辑
+    var isFabExpanded by remember { mutableStateOf(false) }
+    // 使用 rememberUpdatedState 确保 currentTab 始终是最新的
+    val currentTabState = rememberUpdatedState(currentTab)
+    // 确保滚动监听器能获取到最新的设置值
+    val hideFabOnScrollState = rememberUpdatedState(appSettings.hideFabOnScroll)
+    
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            // 使用 onPostScroll 代替 onPreScroll
+            // 只有当子视图实际消费了滚动事件时（即真正滚动了内容），我们才根据方向判断显隐
+            // 这样可以解决：
+            // 1. 在页面顶部无法上滑时，FAB 不会错误隐藏
+            // 2. 内容太少不足以滚动时，FAB 保持显示
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                // 如果功能未开启，直接返回
+                if (!hideFabOnScrollState.value) return Offset.Zero
+
+                // 如果 FAB 已展开，不要隐藏它（防止在添加页面滚动时误触导致页面关闭）
+                if (isFabExpanded) return Offset.Zero
+
+                val tab = currentTabState.value
+                if (tab == BottomNavItem.Passwords || 
+                    tab == BottomNavItem.Authenticator || 
+                    tab == BottomNavItem.CardWallet) {
+                    
+                    // consumed.y < 0 表示内容向上滚动（手指上滑，查看下方内容） -> 隐藏
+                    if (consumed.y < -15f) {
+                        isFabVisible = false
+                    } 
+                    // consumed.y > 0 表示内容向下滚动（手指下滑，回到顶部） -> 显示
+                    // 注意：如果是 available.y > 0 但 consumed.y == 0，说明已经到顶滑不动了，
+                    // 这种情况下我们也不隐藏（保持原状或强制显示），通常保持原状即可，
+                    // 但为了体验，如果在顶部尝试下滑（即使没动），也可以强制显示
+                    else if (consumed.y > 15f || (available.y > 0f && consumed.y == 0f)) {
+                         isFabVisible = true
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
@@ -456,7 +522,11 @@ fun SimpleMainScreen(
     }
     
     // 根据设置选择导航模式
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(nestedScrollConnection)
+    ) {
         if (useDraggableNav) {
         // 使用可拖拽底部导航栏
         DraggableBottomNavScaffold(
@@ -863,35 +933,31 @@ fun SimpleMainScreen(
                 }
 
                 currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
-                    SelectionActionBar(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(start = 16.dp, end = 80.dp, bottom = 20.dp),
-                        selectedCount = selectedDocumentCount,
-                        onExit = onExitDocumentSelection,
-                        onSelectAll = onSelectAllDocuments,
-                        onDelete = onDeleteSelectedDocuments
-                    )
+                    // Document selection bar commented out
                 }
             }
         }
     }
-}
+    }
 
-
-    
     // 全局 FAB Overlay
     // 放在最外层 Box 中，覆盖在 Scaffold 之上，确保能展开到全屏
     // 仅在特定 Tab 显示
     val showFab = currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.Authenticator || currentTab == BottomNavItem.CardWallet
     
-    if (showFab) {
+    AnimatedVisibility(
+        visible = showFab && isFabVisible,
+        enter = slideInHorizontally(initialOffsetX = { it * 2 }) + fadeIn(),
+        exit = slideOutHorizontally(targetOffsetX = { it * 2 }) + fadeOut(),
+        modifier = Modifier.fillMaxSize().zIndex(5f) // 确保 FAB 在最上层且能全屏展开
+    ) {
         SwipeableAddFab(
             // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
             // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
             fabBottomOffset = 116.dp,
-            modifier = Modifier, 
-        fabContent = { expand ->
+            modifier = Modifier,
+            onExpandStateChanged = { expanded -> isFabExpanded = expanded },
+            fabContent = { expand ->
             when (currentTab) {
                 BottomNavItem.Passwords,
                 BottomNavItem.Authenticator,
@@ -967,8 +1033,7 @@ fun SimpleMainScreen(
         }
     )
     } // End if (showFab)
-
-} // Close Box
+    } // End Outer Box
 
     if (showAddCategoryDialog) {
         AlertDialog(

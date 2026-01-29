@@ -143,6 +143,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateHideFabOnScroll(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateHideFabOnScroll(enabled)
+        }
+    }
+
     fun updateCopyNextCodeWhenExpiring(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateCopyNextCodeWhenExpiring(enabled)
