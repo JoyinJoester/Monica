@@ -59,10 +59,29 @@ fun SwipeActions(
     // 仅用于回弹动画的 Animatable
     val animatableOffset = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    
+    // Vibrator
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        }
+    }
+    
+    // 震动状态
+    var hasVibratedLeft by remember { mutableStateOf(false) }
+    var hasVibratedRight by remember { mutableStateOf(false) }
     
     // 卡片宽度
     var cardWidth by remember { mutableFloatStateOf(0f) }
     val maxSwipeDistance = 300f
+    
+    // 统一圆角形状
+    val componentShape = remember { RoundedCornerShape(16.dp) }
     
     // 弹性物理模型
     val springSpec = spring<Float>(
@@ -94,14 +113,14 @@ fun SwipeActions(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(componentShape)
     ) {
         // 左侧背景
         if (totalOffset > 0) {
             Surface(
                 modifier = Modifier.fillMaxWidth().matchParentSize(),
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = backgroundAlpha),
-                shape = RoundedCornerShape(16.dp)
+                shape = componentShape
             ) {
                 Box(contentAlignment = Alignment.CenterStart) {
                     Row(
@@ -125,7 +144,7 @@ fun SwipeActions(
             Surface(
                 modifier = Modifier.fillMaxWidth().matchParentSize(),
                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = backgroundAlpha),
-                shape = RoundedCornerShape(16.dp)
+                shape = componentShape
             ) {
                 Box(contentAlignment = Alignment.CenterEnd) {
                     Row(
@@ -150,7 +169,7 @@ fun SwipeActions(
                 Surface(
                     modifier = Modifier.fillMaxSize().graphicsLayer { translationX = totalOffset; alpha = cardTintAlpha },
                     color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(16.dp)
+                    shape = componentShape
                 ) {}
             }
             
@@ -160,16 +179,24 @@ fun SwipeActions(
                     .graphicsLayer {
                         translationX = totalOffset
                         shadowElevation = (abs(totalOffset) / 100f).coerceIn(0f, 8f)
+                        shape = componentShape
+                        clip = true
                     }
                     .pointerInput(enabled) {
                         if (!enabled) return@pointerInput
                         detectHorizontalDragGestures(
-                            onDragStart = { if (cardWidth == 0f) cardWidth = size.width.toFloat() },
+                            onDragStart = { 
+                                if (cardWidth == 0f) cardWidth = size.width.toFloat()
+                                hasVibratedLeft = false
+                                hasVibratedRight = false
+                            },
                             onDragEnd = {
                                 scope.launch {
                                     // 将实时状态转移到 Animatable 中处理动画
                                     animatableOffset.snapTo(dragOffset)
                                     dragOffset = 0f
+                                    hasVibratedLeft = false
+                                    hasVibratedRight = false
                                     
                                     val dynamicThreshold = cardWidth * 0.2f
                                     if (animatableOffset.value < -dynamicThreshold) {
@@ -187,6 +214,8 @@ fun SwipeActions(
                                 scope.launch {
                                     animatableOffset.snapTo(dragOffset)
                                     dragOffset = 0f
+                                    hasVibratedLeft = false
+                                    hasVibratedRight = false
                                     animatableOffset.animateTo(0f, quickSpringSpec)
                                 }
                             },
@@ -200,10 +229,33 @@ fun SwipeActions(
                                 }
                                 dragOffset = (current + dragAmount * resistance)
                                     .coerceIn(-maxSwipeDistance * 1.2f, maxSwipeDistance * 1.2f)
+                                
+                                // 震动反馈
+                                val dynamicThreshold = cardWidth * 0.2f
+                                if (dragOffset > dynamicThreshold && !hasVibratedRight) {
+                                    hasVibratedRight = true
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                         vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        vibrator?.vibrate(20)
+                                    }
+                                } else if (dragOffset < -dynamicThreshold && !hasVibratedLeft) {
+                                    hasVibratedLeft = true
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                         vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        vibrator?.vibrate(20)
+                                    }
+                                } else if (abs(dragOffset) < dynamicThreshold) {
+                                    hasVibratedRight = false
+                                    hasVibratedLeft = false
+                                }
                             }
                         )
                     },
-                shape = RoundedCornerShape(16.dp)
+                shape = componentShape
             ) {
                 content()
             }
