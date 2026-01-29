@@ -66,6 +66,9 @@ fun CardWalletScreen(
     onBankCardSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit, 
     modifier: Modifier = Modifier
 ) {
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 2 })
+    val coroutineScope = rememberCoroutineScope()
+
     Column(modifier = modifier.fillMaxSize()) {
         // M3E 风格的顶部标题栏 (Header)
         // 包含左侧的大标题和右侧的胶囊形切换器
@@ -84,53 +87,127 @@ fun CardWalletScreen(
                 color = MaterialTheme.colorScheme.onBackground
             )
 
-            // 右侧胶囊形切换器 (Pill Switcher)
-            Surface(
-                shape = RoundedCornerShape(50), // 完全圆角 (胶囊形)
-                color = MaterialTheme.colorScheme.surfaceContainerHigh, // 较深的容器色
-                tonalElevation = 2.dp
+            // 右侧胶囊形切换器 (Pill Switcher) - 滑动动画版
+            val pillWidth = 48.dp // 单个 Tab 的宽度 (icon 24dp + padding 12dp*2)
+            val pillHeight = 48.dp
+            val indicatorWidth = 48.dp
+            
+            Box(
+                modifier = Modifier
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh, 
+                        shape = RoundedCornerShape(50)
+                    )
+                    .padding(4.dp) // 容器内边距
+                    .height(pillHeight)
+                    .width(pillWidth * 2) // 总宽度
             ) {
-                Row(
-                    modifier = Modifier.padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Bank Cards Pill
-                    PillTabItem(
-                        selected = currentTab == CardWalletTab.BANK_CARDS,
-                        onClick = { onTabSelected(CardWalletTab.BANK_CARDS) },
-                        icon = Icons.Default.CreditCard,
-                        contentDescription = stringResource(R.string.nav_bank_cards_short)
-                    )
+                // 1. 滑动的指示器 (背景)
+                // 计算偏移量: currentPage + offsetFraction
+                // 注意: offsetFraction 在 -0.5 到 0.5 之间，或者 0 到 1 取决于版本，PagerState 通常是当前页的偏移
+                // Absolute offset = (page + fraction) * width
+                val indicatorOffset by remember {
+                    derivedStateOf {
+                        val pageOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction
+                        (pillWidth * pageOffset)
+                    }
+                }
 
-                    // Documents Pill
-                    PillTabItem(
-                        selected = currentTab == CardWalletTab.DOCUMENTS,
-                        onClick = { onTabSelected(CardWalletTab.DOCUMENTS) },
-                        icon = Icons.Default.Description,
-                        contentDescription = stringResource(R.string.nav_documents_short)
-                    )
+                Box(
+                    modifier = Modifier
+                        .offset(x = indicatorOffset)
+                        .size(width = pillWidth, height = pillHeight)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+
+                // 2. 图标层 (在上层)
+                Row(modifier = Modifier.fillMaxSize()) {
+                    // Item 0: Bank Cards
+                    Box(
+                        modifier = Modifier
+                            .size(pillWidth)
+                            .clip(CircleShape)
+                            .clickable { 
+                                onTabSelected(CardWalletTab.BANK_CARDS) 
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                         // 颜色动画: 如果指示器覆盖了该项，则反白
+                         // 简单判断: currentPage 近似等于 index
+                         val isSelected = pagerState.currentPage == 0
+                         val targetColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                         // 这里可以用 lerp 实现更丝滑的颜色过渡，为了简单先用状态切换
+                         
+                        Icon(
+                            imageVector = Icons.Default.CreditCard,
+                            contentDescription = stringResource(R.string.nav_bank_cards_short),
+                            tint = targetColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // Item 1: Documents
+                    Box(
+                        modifier = Modifier
+                            .size(pillWidth)
+                            .clip(CircleShape)
+                            .clickable { 
+                                onTabSelected(CardWalletTab.DOCUMENTS) 
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val isSelected = pagerState.currentPage == 1
+                        val targetColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = stringResource(R.string.nav_documents_short),
+                            tint = targetColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // 内容区域，带有切换动画
-        AnimatedContent(
-            targetState = currentTab,
-            label = "CardWalletTabContent",
-            transitionSpec = {
-                (fadeIn(animationSpec = tween(300))).togetherWith(fadeOut(animationSpec = tween(300)))
-            },
-            modifier = Modifier.weight(1f)
-        ) { targetTab ->
-            when (targetTab) {
-                CardWalletTab.BANK_CARDS -> {
+        // Sync: External Tab -> Pager
+        LaunchedEffect(currentTab) {
+            val targetPage = when (currentTab) {
+                CardWalletTab.BANK_CARDS -> 0
+                CardWalletTab.DOCUMENTS -> 1
+            }
+            if (pagerState.currentPage != targetPage) {
+                pagerState.animateScrollToPage(targetPage)
+            }
+        }
+
+        // Sync: Pager -> External Tab
+        LaunchedEffect(pagerState.currentPage) {
+            val targetTab = when (pagerState.currentPage) {
+                0 -> CardWalletTab.BANK_CARDS
+                1 -> CardWalletTab.DOCUMENTS
+                else -> CardWalletTab.BANK_CARDS
+            }
+            if (currentTab != targetTab) {
+                onTabSelected(targetTab)
+            }
+        }
+
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.weight(1f),
+            userScrollEnabled = true
+        ) { page ->
+            when (page) {
+                0 -> {
                     BankCardListContent(
                         viewModel = bankCardViewModel,
                         onCardClick = onCardClick,
                         onSelectionModeChange = onBankCardSelectionModeChange
                     )
                 }
-                CardWalletTab.DOCUMENTS -> {
+                1 -> {
                     DocumentListContent(
                         viewModel = documentViewModel,
                         onDocumentClick = onDocumentClick,

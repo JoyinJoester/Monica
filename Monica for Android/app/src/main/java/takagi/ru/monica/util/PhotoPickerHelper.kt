@@ -19,10 +19,13 @@ import android.content.DialogInterface
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.widget.Toast
+import java.lang.ref.WeakReference
 
 /**
  * 照片选择助手类
  * 使用传统Intent方式处理图片拍照和从相册选择，完全避免requestCode问题
+ * 
+ * Update: 修复Context泄露问题和Bitmap OOM问题
  */
 object PhotoPickerHelper {
     const val REQUEST_CODE_CAMERA = 2001
@@ -40,16 +43,19 @@ object PhotoPickerHelper {
     
     // 当前回调实例
     private var currentCallback: PhotoPickerCallback? = null
-    private var context: Context? = null
-    private var pendingActivity: Activity? = null
+    
+    // Use WeakReference to avoid memory leaks
+    private var weakContext: WeakReference<Context>? = null
+    private var weakPendingActivity: WeakReference<Activity>? = null
+    
     private var pendingAction: (() -> Unit)? = null
     
     /**
      * 设置回调
      */
     fun setCallback(context: Context, callback: PhotoPickerCallback) {
-        this.context = context
-        currentCallback = callback
+        this.weakContext = WeakReference(context)
+        this.currentCallback = callback
     }
     
     /**
@@ -62,7 +68,7 @@ object PhotoPickerHelper {
             onPermissionGranted()
         } else {
             // 请求权限
-            pendingActivity = activity
+            weakPendingActivity = WeakReference(activity)
             pendingAction = onPermissionGranted
             ActivityCompat.requestPermissions(
                 activity,
@@ -80,14 +86,12 @@ object PhotoPickerHelper {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 // 权限被授予，执行待处理的操作
                 pendingAction?.invoke()
-                pendingAction = null
-                pendingActivity = null
             } else {
                 // 权限被拒绝
                 currentCallback?.onError("相机权限被拒绝，无法使用拍照功能")
-                pendingAction = null
-                pendingActivity = null
             }
+            pendingAction = null
+            weakPendingActivity = null
             return true
         }
         return false
@@ -101,7 +105,7 @@ object PhotoPickerHelper {
         checkCameraPermission(activity) {
             try {
                 // 保存context引用
-                this.context = activity
+                this.weakContext = WeakReference(activity)
                 
                 // 创建临时文件
                 val photoFile = createTempPhotoFile(activity)
@@ -143,7 +147,7 @@ object PhotoPickerHelper {
     fun pickFromGallery(activity: Activity) {
         try {
             // 保存context引用
-            this.context = activity
+            this.weakContext = WeakReference(activity)
             
             // 尝试多种Intent方式来启动图库
             val intents = listOf(
@@ -248,7 +252,7 @@ object PhotoPickerHelper {
                         if (file.exists() && file.length() > 0) {
                             currentCallback?.onPhotoSelected(file.absolutePath)
                         } else {
-                            // 尝试从Intent中获取数据（某些相机应用会返回数据在Intent中）
+                            // 尝试从Intent中获取数据
                             val bitmap = data?.extras?.get("data") as? Bitmap
                             if (bitmap != null) {
                                 // 将Bitmap保存到文件
@@ -270,14 +274,16 @@ object PhotoPickerHelper {
                     val bitmap = data?.extras?.get("data") as? Bitmap
                     if (bitmap != null) {
                         // 创建新文件并保存Bitmap
-                        try {
-                            val photoFile = createTempPhotoFile(context!!)
-                            val outputStream = FileOutputStream(photoFile)
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
-                            outputStream.close()
-                            currentCallback?.onPhotoSelected(photoFile.absolutePath)
-                        } catch (e: Exception) {
-                            currentCallback?.onError("从Intent获取图片数据失败: ${e.message}")
+                         weakContext?.get()?.let { ctx ->
+                            try {
+                                val photoFile = createTempPhotoFile(ctx)
+                                val outputStream = FileOutputStream(photoFile)
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                                outputStream.close()
+                                currentCallback?.onPhotoSelected(photoFile.absolutePath)
+                            } catch (e: Exception) {
+                                currentCallback?.onError("从Intent获取图片数据失败: ${e.message}")
+                            }
                         }
                     } else {
                         currentCallback?.onError("临时照片文件不存在")
@@ -303,7 +309,7 @@ object PhotoPickerHelper {
             if (resultCode == Activity.RESULT_OK) {
                 val uri: Uri? = data?.data
                 if (uri != null) {
-                    // 将URI转换为文件路径
+                    // 将URI转换为文件路径 (使用流复制而不是解码Bitmap)
                     val imagePath = copyImageToFile(uri)
                     if (imagePath != null) {
                         currentCallback?.onPhotoSelected(imagePath)
@@ -322,33 +328,24 @@ object PhotoPickerHelper {
     }
     
     /**
-     * 将URI复制到临时文件
+     * 将URI复制到临时文件 (FIX: Don't decode to Bitmap, just copy stream)
      */
     private fun copyImageToFile(uri: Uri): String? {
         return try {
-            context?.let { ctx ->
+            weakContext?.get()?.let { ctx ->
                 // 创建临时文件
                 val tempFile = createTempPhotoFile(ctx)
                 
-                // 从URI读取图片数据
-                val inputStream: InputStream = ctx.contentResolver.openInputStream(uri)
-                    ?: run {
-                        return null
-                    }
-                
-                // 解码图片
-                val bitmap: Bitmap? = BitmapFactory.decodeStream(inputStream)
-                inputStream.close()
-                
-                // 检查bitmap是否成功解码
-                if (bitmap == null) {
-                    return null
-                }
-                
-                // 将图片保存到临时文件
+                // 从URI读取输入流
+                val inputStream: InputStream = ctx.contentResolver.openInputStream(uri) ?: return null
                 val outputStream = FileOutputStream(tempFile)
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
-                outputStream.close()
+                
+                // 直接复制流，避免OOM
+                inputStream.use { input ->
+                    outputStream.use { output ->
+                        input.copyTo(output)
+                    }
+                }
                 
                 // 返回临时文件路径
                 tempFile.absolutePath

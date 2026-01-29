@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui.screens
 
 import android.graphics.Bitmap
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,6 +33,7 @@ import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +46,7 @@ fun DocumentDetailScreen(
 ) {
     val context = LocalContext.current
     val imageManager = remember { ImageManager(context) }
+    val scope = rememberCoroutineScope()
     
     var documentItem by remember { mutableStateOf<SecureItem?>(null) }
     var documentData by remember { mutableStateOf<DocumentData?>(null) }
@@ -315,12 +318,55 @@ fun DocumentDetailScreen(
     }
     
     // Dialogs
+    // Dialogs
     if (showFrontImageDialog && frontBitmap != null) {
-        ImageDialog(bitmap = frontBitmap!!, onDismiss = { showFrontImageDialog = false })
+        ImageDialog(
+            bitmap = frontBitmap!!, 
+            onDismiss = { showFrontImageDialog = false },
+            onDownload = {
+                scope.launch {
+                    val item = documentItem ?: return@launch
+                    try {
+                        val paths = Json.decodeFromString<List<String>>(item.imagePaths)
+                        if (paths.isNotEmpty() && paths[0].isNotBlank()) {
+                            val success = imageManager.saveImageToGallery(paths[0], "Document_${item.title}_Front")
+                            if (success) {
+                                Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
     }
     
     if (showBackImageDialog && backBitmap != null) {
-        ImageDialog(bitmap = backBitmap!!, onDismiss = { showBackImageDialog = false })
+        ImageDialog(
+            bitmap = backBitmap!!, 
+            onDismiss = { showBackImageDialog = false },
+             onDownload = {
+                scope.launch {
+                    val item = documentItem ?: return@launch
+                    try {
+                        val paths = Json.decodeFromString<List<String>>(item.imagePaths)
+                        if (paths.size > 1 && paths[1].isNotBlank()) {
+                            val success = imageManager.saveImageToGallery(paths[1], "Document_${item.title}_Back")
+                            if (success) {
+                                Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
     }
     
     if (showDeleteDialog) {

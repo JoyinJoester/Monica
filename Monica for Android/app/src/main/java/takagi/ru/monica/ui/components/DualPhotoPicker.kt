@@ -346,7 +346,8 @@ private fun PhotoCard(
 @Composable
 fun ImageDialog(
     bitmap: android.graphics.Bitmap,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onDownload: (() -> Unit)? = null
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -407,6 +408,27 @@ fun ImageDialog(
                     contentDescription = "关闭",
                     tint = MaterialTheme.colorScheme.onSurface
                 )
+            }
+
+            // 下载按钮
+            if (onDownload != null) {
+                IconButton(
+                    onClick = onDownload,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp)
+                        .size(48.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                            RoundedCornerShape(24.dp)
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.Download,
+                        contentDescription = "保存到相册",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
             
             // 重置缩放按钮（当缩放时显示）
