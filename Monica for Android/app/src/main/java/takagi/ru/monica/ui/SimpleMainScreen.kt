@@ -22,6 +22,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1787,7 +1792,9 @@ private fun PasswordListContent(
             Column(
                  modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(bottom = 32.dp)
+                    .navigationBarsPadding()
             ) {
                  Text(
                     text = stringResource(R.string.display_options_menu_title),
@@ -1823,28 +1830,15 @@ private fun PasswordListContent(
                         )
                     }
 
-                    NavigationDrawerItem(
-                        label = {
-                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = modeTitle,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = desc,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
+                    takagi.ru.monica.ui.components.SettingsOptionItem(
+                        title = modeTitle,
+                        description = desc,
+                        icon = icon,
                         selected = selected,
                         onClick = {
                             settingsViewModel.updateStackCardMode(mode.name)
                             displayMenuExpanded = false
-                        },
-                        icon = { Icon(icon, null) },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        }
                     )
                 }
 
@@ -1893,28 +1887,15 @@ private fun PasswordListContent(
                     val selected = groupMode == modeKey
                     val (modeTitle, desc, icon) = meta
 
-                    NavigationDrawerItem(
-                        label = {
-                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = modeTitle,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = desc,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
+                    takagi.ru.monica.ui.components.SettingsOptionItem(
+                        title = modeTitle,
+                        description = desc,
+                        icon = icon,
                         selected = selected,
                         onClick = {
                             settingsViewModel.updatePasswordGroupMode(modeKey)
                             displayMenuExpanded = false
-                        },
-                        icon = { Icon(icon, null) },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        }
                     )
                 }
 
@@ -1957,28 +1938,15 @@ private fun PasswordListContent(
                         )
                     }
 
-                    NavigationDrawerItem(
-                        label = {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = modeTitle,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = desc,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
+                    takagi.ru.monica.ui.components.SettingsOptionItem(
+                        title = modeTitle,
+                        description = desc,
+                        icon = icon,
                         selected = selected,
                         onClick = {
                             settingsViewModel.updatePasswordCardDisplayMode(mode)
                             displayMenuExpanded = false
-                        },
-                        icon = { Icon(icon, null) },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        }
                     )
                 }
             }
