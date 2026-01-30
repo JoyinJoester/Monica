@@ -1,0 +1,41 @@
+{
+    "nav": {
+        "docs": "使用文档",
+        "download_app": "下载 App"
+    },
+    "hero": {
+        "title": "安全。<br>本地。<br>开源。",
+        "subtitle": "Monica 是一个开源的本地密码管理器。<br>密码管理、2FA 验证、安全笔记，所有数据完全本地存储。",
+        "download_android": "下载 Android 版",
+        "view_source": "查看源码"
+    },
+    "features": {
+        "title": "功能一览",
+        "password_manager_title": "密码管理器",
+        "password_manager_desc": "支持账号密码自动填充、多字段存储。采用 AES-256 加密，数据仅存储在你的设备本地。",
+        "2fa_title": "2FA 验证器",
+        "2fa_desc": "内置 TOTP 验证器，扫码即用。支持即将过期自动复制下一码。",
+        "cards_notes_title": "卡包 & 笔记",
+        "cards_notes_desc": "安全存储银行卡、证件照片和私密笔记。一切尽在掌握。",
+        "design_title": "Material Design 3",
+        "design_desc": "遵循 Google Material Design 3 设计规范。支持动态取色主题与深色模式，界面整洁无广告。"
+    },
+    "security": {
+        "title": "安全架构",
+        "encryption_title": "军工级加密",
+        "encryption_desc": "数据库采用 AES-256-GCM 加密保护。主密码使用 PBKDF2-HMAC-SHA256 (10万次迭代) 哈希处理。",
+        "keystore_title": "硬件级密钥库",
+        "keystore_desc": "加密密钥由 Android Keystore System (TEE/SE) 硬件保护，即使在 Root 设备上也难以提取。",
+        "network_title": "零知识证明",
+        "network_desc": "应用无需网络权限。你的保险箱默认完全离线运行。"
+    },
+    "community": {
+        "title": "社区动态",
+        "recent_commits": "最近更新",
+        "contributors": "贡献者"
+    },
+    "footer": {
+        "copyright": "© 2026 JoyinJoester. 基于 GNU GPLv3 协议开源。",
+        "credits": "Designed with ❤️ for Android."
+    }
+}

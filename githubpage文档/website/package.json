@@ -1,0 +1,19 @@
+{
+    "name": "monica-website",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "prebuild": "node scripts/fetch-github-data.js",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "devDependencies": {
+        "vite": "^5.0.0"
+    },
+    "dependencies": {
+        "marked": "^11.0.0",
+        "boxicons": "^2.1.4"
+    }
+}
