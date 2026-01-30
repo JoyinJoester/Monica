@@ -29,6 +29,7 @@
     <string name="no_results">No results found</string>
     <string name="note_placeholder">Write something...</string>
     <string name="new_note">New Note</string>
+    <string name="untitled">Untitled</string>
     <string name="edit_note">Edit Note</string>
     <string name="delete_note_confirm">Delete this note?</string>
     

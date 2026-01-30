@@ -651,6 +651,7 @@ fun SimpleMainScreen(
                         BottomNavItem.Notes -> {
                             NoteListScreen(
                                 viewModel = noteViewModel,
+                                settingsViewModel = settingsViewModel,
                                 onNavigateToAddNote = onNavigateToAddNote,
                                 securityManager = securityManager
                             )
@@ -865,6 +866,7 @@ fun SimpleMainScreen(
                     // 笔记页面
                     NoteListScreen(
                         viewModel = noteViewModel,
+                        settingsViewModel = settingsViewModel,
                         onNavigateToAddNote = onNavigateToAddNote,
                         securityManager = securityManager
                     )
@@ -946,7 +948,7 @@ fun SimpleMainScreen(
     // 全局 FAB Overlay
     // 放在最外层 Box 中，覆盖在 Scaffold 之上，确保能展开到全屏
     // 仅在特定 Tab 显示，并且不在多选模式下显示
-    val showFab = (currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.Authenticator || currentTab == BottomNavItem.CardWallet) && !isAnySelectionMode
+    val showFab = (currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.Authenticator || currentTab == BottomNavItem.CardWallet || currentTab == BottomNavItem.Notes) && !isAnySelectionMode
     
     AnimatedVisibility(
         visible = showFab && isFabVisible,
@@ -964,7 +966,8 @@ fun SimpleMainScreen(
             when (currentTab) {
                 BottomNavItem.Passwords,
                 BottomNavItem.Authenticator,
-                BottomNavItem.CardWallet -> {
+                BottomNavItem.CardWallet,
+                BottomNavItem.Notes -> {
                      Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(R.string.add),
@@ -1029,6 +1032,13 @@ fun SimpleMainScreen(
                                 onNavigateBack = collapse
                             )
                         }
+                    }
+                    BottomNavItem.Notes -> {
+                        AddEditNoteScreen(
+                            noteId = -1L,
+                            onNavigateBack = collapse,
+                            viewModel = noteViewModel
+                        )
                     }
                     else -> { /* Should not happen */ }
                 }

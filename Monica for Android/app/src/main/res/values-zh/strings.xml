@@ -29,6 +29,7 @@
     <string name="no_results">未找到结果</string>
     <string name="note_placeholder">记点什么...</string>
     <string name="new_note">新建笔记</string>
+    <string name="untitled">无标题</string>
     <string name="edit_note">编辑笔记</string>
     <string name="delete_note_confirm">确定要删除这条笔记吗？</string>
     

@@ -22,6 +22,14 @@ class NoteViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
+    // 笔记列表布局偏好 (true = 网格, false = 列表)
+    private val _isGridLayout = MutableStateFlow(true)
+    val isGridLayout: StateFlow<Boolean> = _isGridLayout.asStateFlow()
+    
+    fun setGridLayout(isGrid: Boolean) {
+        _isGridLayout.value = isGrid
+    }
+    
     // 获取所有笔记
     val allNotes: Flow<List<SecureItem>> = repository.getItemsByType(ItemType.NOTE)
         .onStart { _isLoading.value = true }
