@@ -8,6 +8,10 @@
 
 完美支持 **Android** (Jetpack Compose) 平台及 **Chrome / Edge / 浏览器插件**。
 
+> **📦 Monica for Windows 已归档**  
+> 由于 Monica for Windows 的功能与浏览器插件版本高度重合，我们已停止 Windows 版本的开发。  
+> 历史代码已迁移至：[Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
+
 ---
 
 ## 🏛️ 架构与安全
