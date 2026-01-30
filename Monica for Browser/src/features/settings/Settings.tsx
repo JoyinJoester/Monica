@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardTitle } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Sun, Moon, Globe, Cloud, ChevronRight, Trash2, AlertTriangle, Lock, Key, Shield } from 'lucide-react';
+import { Sun, Moon, Monitor, Globe, Cloud, ChevronRight, Trash2, AlertTriangle, Lock, Key, Shield } from 'lucide-react';
 import { clearAllData } from '../../utils/storage';
 import { useMasterPassword } from '../../contexts/MasterPasswordContext';
 import { validateEncryptionPassword } from '../../utils/webdav/EncryptionHelper';
@@ -214,7 +214,7 @@ const SuccessIcon = styled(ModalIcon)`
 `;
 
 export const Settings = () => {
-  const { themeMode, toggleTheme } = useTheme();
+  const { themeMode, effectiveThemeMode, setThemeMode } = useTheme();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const isZh = i18n.language.startsWith('zh');
@@ -241,6 +241,10 @@ export const Settings = () => {
   const { changeMasterPassword, setSecurityQuestion, hasSecurityQuestion, securityQuestion, autoLockDuration, setAutoLockDuration } = useMasterPassword();
 
   const currentLang = i18n.language?.startsWith('zh') ? 'zh' : 'en';
+
+  const handleThemeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setThemeMode(e.target.value as 'light' | 'dark' | 'auto');
+  };
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const lang = e.target.value;
@@ -412,10 +416,14 @@ export const Settings = () => {
         <Card>
           <SettingRow>
             <SettingLabel>
-              {themeMode === 'dark' ? <Moon /> : <Sun />}
-              {t('settings.themes.' + themeMode)}
+              {effectiveThemeMode === 'dark' ? <Moon /> : <Sun />}
+              {t('settings.theme')}
             </SettingLabel>
-            <Toggle isOn={themeMode === 'dark'} onClick={toggleTheme} />
+            <Select value={themeMode} onChange={handleThemeChange}>
+              <option value="auto">{t('settings.themes.auto')}</option>
+              <option value="light">{t('settings.themes.light')}</option>
+              <option value="dark">{t('settings.themes.dark')}</option>
+            </Select>
           </SettingRow>
         </Card>
       </div>

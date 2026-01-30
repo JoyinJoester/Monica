@@ -65,7 +65,9 @@
         "language": "Language",
         "about": "About",
         "version": "Version",
+        "theme": "Theme",
         "themes": {
+            "auto": "Auto",
             "light": "Light",
             "dark": "Dark"
         }

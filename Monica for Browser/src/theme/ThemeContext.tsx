@@ -2,41 +2,71 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { type DefaultTheme, ThemeProvider as StyledThemeProvider } from 'styled-components';
 import { themes } from './theme';
 
-type ThemeMode = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'auto';
 
 interface ThemeContextType {
     theme: DefaultTheme;
     themeMode: ThemeMode;
+    effectiveThemeMode: 'light' | 'dark';
     toggleTheme: () => void;
     setThemeMode: (mode: ThemeMode) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const getSystemTheme = (): 'light' | 'dark' => {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+    }
+    return 'light';
+};
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
-    const [theme, setTheme] = useState<DefaultTheme>(themes.light);
+    const [themeMode, setThemeModeState] = useState<ThemeMode>('auto');
+    const [effectiveThemeMode, setEffectiveThemeMode] = useState<'light' | 'dark'>(getSystemTheme());
+    const [theme, setTheme] = useState<DefaultTheme>(themes[effectiveThemeMode]);
 
     useEffect(() => {
         const savedMode = localStorage.getItem('themeMode') as ThemeMode | null;
-        if (savedMode && themes[savedMode]) {
+        if (savedMode) {
             setThemeModeState(savedMode);
-            setTheme(themes[savedMode]);
         }
     }, []);
 
+    useEffect(() => {
+        const applyTheme = (mode: ThemeMode) => {
+            const effectiveMode = mode === 'auto' ? getSystemTheme() : mode;
+            setEffectiveThemeMode(effectiveMode);
+            setTheme(themes[effectiveMode]);
+        };
+
+        applyTheme(themeMode);
+
+        if (themeMode === 'auto') {
+            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            const handleChange = () => {
+                const newEffectiveMode = getSystemTheme();
+                setEffectiveThemeMode(newEffectiveMode);
+                setTheme(themes[newEffectiveMode]);
+            };
+
+            mediaQuery.addEventListener('change', handleChange);
+            return () => mediaQuery.removeEventListener('change', handleChange);
+        }
+    }, [themeMode]);
+
     const setThemeMode = (mode: ThemeMode) => {
         setThemeModeState(mode);
-        setTheme(themes[mode]);
         localStorage.setItem('themeMode', mode);
     };
 
     const toggleTheme = () => {
-        setThemeMode(themeMode === 'light' ? 'dark' : 'light');
+        const newMode = effectiveThemeMode === 'light' ? 'dark' : 'light';
+        setThemeMode(newMode);
     };
 
     return (
-        <ThemeContext.Provider value={{ theme, themeMode, toggleTheme, setThemeMode }}>
+        <ThemeContext.Provider value={{ theme, themeMode, effectiveThemeMode, toggleTheme, setThemeMode }}>
             <StyledThemeProvider theme={theme}>
                 {children}
             </StyledThemeProvider>

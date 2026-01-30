@@ -105,8 +105,8 @@ object SaveInfoBuilder {
                 }
                 
                 else -> {
-                    // 其他设备：保守策略，不使用标志
-                    0
+                    // 其他设备：使用标准标志（包括原生 Android 8+）
+                    SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE
                 }
             }
         }

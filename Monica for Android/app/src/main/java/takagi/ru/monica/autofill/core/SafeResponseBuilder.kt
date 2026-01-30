@@ -377,11 +377,16 @@ class SafeResponseBuilder(
             }
             
             // 创建内联建议 UI
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                android.app.PendingIntent.FLAG_IMMUTABLE
+            } else {
+                0
+            }
             val slice = InlineSuggestionUi.newContentBuilder(android.app.PendingIntent.getActivity(
                 context,
                 0,
                 context.packageManager.getLaunchIntentForPackage(context.packageName),
-                android.app.PendingIntent.FLAG_IMMUTABLE
+                pendingIntentFlags
             ))
                 .setTitle(displayTitle)
                 .setSubtitle(displayUsername)
