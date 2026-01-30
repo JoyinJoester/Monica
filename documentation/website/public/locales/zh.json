@@ -35,7 +35,9 @@
         "contributors": "贡献者",
         "activity_chart": "最近30天活跃度",
         "stats": "项目数据",
-        "support": "支持作者"
+        "tech_stack": "技术栈",
+        "support": "支持作者",
+        "support_desc": "如果 Monica 对您有帮助，欢迎请作者喝杯咖啡！您的支持是我们持续更新的动力。"
     },
     "footer": {
         "copyright": "© 2026 JoyinJoester. 基于 GNU GPLv3 协议开源。",

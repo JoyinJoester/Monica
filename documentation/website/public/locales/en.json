@@ -35,7 +35,9 @@
         "contributors": "Contributors",
         "activity_chart": "30-Day Activity",
         "stats": "Project Stats",
-        "support": "Support Author"
+        "tech_stack": "Tech Stack",
+        "support": "Support Author",
+        "support_desc": "If Monica helps you, consider buying me a coffee to support future updates!"
     },
     "footer": {
         "copyright": "© 2026 JoyinJoester. Open Source under GNU GPLv3.",

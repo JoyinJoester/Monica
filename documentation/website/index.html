@@ -147,67 +147,113 @@
     <h2 style="font-family: var(--font-display); font-size: 2.5rem; margin-bottom: 2rem; text-align: center;"
       data-i18n="community.title">社区动态</h2>
 
-    <div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: start;">
+    <div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: stretch;">
       <!-- Timeline -->
-      <div class="bento-item" style="flex: 1; min-width: 300px; padding: 24px; height: auto;">
-        <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+      <div class="bento-item" style="flex: 1; min-width: 300px; padding: 24px; display: flex; flex-direction: column;">
+        <h3 style="margin-bottom: 24px; display: flex; align-items: center; gap: 8px;">
           <i class='bx bxs-time-five'></i> <span data-i18n="community.recent_commits">最近更新</span>
         </h3>
-        <div id="commit-timeline" style="display: flex; flex-direction: column; gap: 16px;">
+        <div id="commit-timeline" style="display: flex; flex-direction: column; gap: 20px; flex: 1;">
           <div style="text-align: center; color: var(--sys-light-secondary);">Loading commits...</div>
         </div>
       </div>
 
-      <!-- Contributors -->
-      <div class="bento-item" style="flex: 1; min-width: 300px; padding: 24px; height: auto;">
-        <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-          <i class='bx bxs-user-account'></i> <span data-i18n="community.contributors">贡献者</span>
-        </h3>
-        <div id="contributors-list" style="display: flex; gap: 12px; flex-wrap: wrap;">
-          <div style="text-align: center; color: var(--sys-light-secondary);">Loading contributors...</div>
-        </div>
+      <!-- Right Column: Contributors, Stats, Tech, Support -->
+      <div class="bento-item"
+        style="flex: 1; min-width: 300px; padding: 24px; display: flex; flex-direction: column; gap: 32px;">
 
-        <!-- Repo Stats (NEW) -->
-        <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
-          <i class='bx bxs-bar-chart-alt-2'></i> <span data-i18n="community.stats">项目数据</span>
-        </h3>
-        <div id="repo-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
-            <i class='bx bxs-star' style="color: #ffd700;"></i>
-            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-stars">0</div>
-            <div style="font-size: 0.7rem; opacity: 0.7;">Stars</div>
-          </div>
-          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
-            <i class='bx bx-git-repo-forked' style="color: var(--sys-light-primary);"></i>
-            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-forks">0</div>
-            <div style="font-size: 0.7rem; opacity: 0.7;">Forks</div>
-          </div>
-          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
-            <i class='bx bxs-error-circle' style="color: #ff5252;"></i>
-            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-issues">0</div>
-            <div style="font-size: 0.7rem; opacity: 0.7;">Issues</div>
+        <!-- Contributors -->
+        <div>
+          <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <i class='bx bxs-user-account'></i> <span data-i18n="community.contributors">贡献者</span>
+          </h3>
+          <div id="contributors-list" style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="text-align: center; color: var(--sys-light-secondary);">Loading contributors...</div>
           </div>
         </div>
 
-        <!-- Support (NEW) -->
-        <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
-          <i class='bx bxs-heart'></i> <span data-i18n="community.support">支持作者</span>
-        </h3>
-        <div style="display: flex; gap: 16px; align-items: center;">
-          <div style="flex: 1;">
-            <a href="https://afdian.com/a/JoyinJoester" target="_blank" class="btn btn-outlined"
-              style="width: 100%; height: 44px; margin-bottom: 8px; font-size: 0.9rem; border-color: #946ce6; color: #946ce6;">
-              <i class='bx bx-bolt-circle'></i> 爱发电
-            </a>
-            <a href="https://ko-fi.com/joyinjoester" target="_blank" class="btn btn-outlined"
-              style="width: 100%; height: 44px; font-size: 0.9rem; border-color: #29abe0; color: #29abe0;">
-              <i class='bx bx-coffee'></i> Ko-fi
-            </a>
+        <!-- Tech Stack (NEW) -->
+        <div>
+          <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <i class='bx bxs-layer'></i> <span data-i18n="community.tech_stack">技术栈</span>
+          </h3>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+            <div class="glass-card tooltip" data-tooltip="Android Native"
+              style="padding: 16px; text-align: center; border-radius: 16px; transition: transform 0.2s;">
+              <i class='bx bxl-android' style="font-size: 2rem; color: #3DDC84;"></i>
+            </div>
+            <div class="glass-card tooltip" data-tooltip="Windows UI 3"
+              style="padding: 16px; text-align: center; border-radius: 16px; transition: transform 0.2s;">
+              <i class='bx bxl-windows' style="font-size: 2rem; color: #0078D6;"></i>
+            </div>
+            <div class="glass-card tooltip" data-tooltip="AES-256 GCM"
+              style="padding: 16px; text-align: center; border-radius: 16px; transition: transform 0.2s;">
+              <i class='bx bxs-shield-check' style="font-size: 2rem; color: var(--sys-light-primary);"></i>
+            </div>
+            <div class="glass-card tooltip" data-tooltip="Local First"
+              style="padding: 16px; text-align: center; border-radius: 16px; transition: transform 0.2s;">
+              <i class='bx bxs-data' style="font-size: 2rem; color: var(--sys-light-secondary);"></i>
+            </div>
           </div>
-          <img src="images/support_author.jpg" alt="Support" class="glass-card"
-            style="width: 100px; height: 100px; object-fit: cover; border-radius: 12px; cursor: pointer;"
-            id="support-qr">
         </div>
+
+        <!-- Repo Stats -->
+        <div>
+          <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <i class='bx bxs-bar-chart-alt-2'></i> <span data-i18n="community.stats">项目数据</span>
+          </h3>
+          <div id="repo-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+            <div class="glass-card" style="padding: 16px; text-align: center; border-radius: 16px;">
+              <i class='bx bxs-star' style="color: #ffd700; font-size: 1.2rem;"></i>
+              <div style="font-size: 1.4rem; font-weight: 700; margin-top: 8px; font-family: var(--font-display);"
+                id="stat-stars">0</div>
+              <div style="font-size: 0.75rem; opacity: 0.7; margin-top: 4px;">Stars</div>
+            </div>
+            <div class="glass-card" style="padding: 16px; text-align: center; border-radius: 16px;">
+              <i class='bx bx-git-repo-forked' style="color: var(--sys-light-primary); font-size: 1.2rem;"></i>
+              <div style="font-size: 1.4rem; font-weight: 700; margin-top: 8px; font-family: var(--font-display);"
+                id="stat-forks">0</div>
+              <div style="font-size: 0.75rem; opacity: 0.7; margin-top: 4px;">Forks</div>
+            </div>
+            <div class="glass-card" style="padding: 16px; text-align: center; border-radius: 16px;">
+              <i class='bx bxs-error-circle' style="color: #ff5252; font-size: 1.2rem;"></i>
+              <div style="font-size: 1.4rem; font-weight: 700; margin-top: 8px; font-family: var(--font-display);"
+                id="stat-issues">0</div>
+              <div style="font-size: 0.75rem; opacity: 0.7; margin-top: 4px;">Issues</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Support (Redesigned) -->
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <i class='bx bxs-heart'></i> <span data-i18n="community.support">支持作者</span>
+          </h3>
+          <div class="glass-card"
+            style="padding: 24px; border-radius: 20px; display: flex; gap: 24px; align-items: center; flex: 1; background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+              <div style="font-size: 0.9rem; color: var(--sys-light-secondary); line-height: 1.6; margin-bottom: 4px;"
+                data-i18n="community.support_desc">
+                如果 Monica 对您有帮助，欢迎请作者喝杯咖啡！您的支持是我们持续更新的动力。
+              </div>
+              <a href="https://afdian.com/a/JoyinJoester" target="_blank" class="btn btn-filled"
+                style="width: 100%; justify-content: center; background: #946ce6; color: white;">
+                <i class='bx bx-bolt-circle'></i> <span style="margin-left: 8px;">爱发电</span>
+              </a>
+              <a href="https://ko-fi.com/joyinjoester" target="_blank" class="btn btn-filled"
+                style="width: 100%; justify-content: center; background: #29abe0; color: white;">
+                <i class='bx bx-coffee'></i> <span style="margin-left: 8px;">Ko-fi</span>
+              </a>
+            </div>
+            <div
+              style="width: 140px; height: 140px; padding: 8px; background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+              <img src="images/support_author.jpg" alt="Support"
+                style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px; cursor: pointer;"
+                id="support-qr-large">
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
