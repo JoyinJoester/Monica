@@ -1,0 +1,726 @@
+{
+  "generated_at": "2026-01-30T10:31:58.239Z",
+  "stats": {
+    "stars": 157,
+    "forks": 9,
+    "issues": 1
+  },
+  "commits": [
+    {
+      "sha": "0187046",
+      "message": "refactor: rename githubpage文档 to documentation and update workflow",
+      "date": "2026-01-30T10:23:01Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/018704638193c2bc2303b5cfebf18e27bca2cfca"
+    },
+    {
+      "sha": "d884da4",
+      "message": "feat: add contribution activity chart and aurora UI polish",
+      "date": "2026-01-30T10:17:20Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/d884da47fbbceb023fbfd1ab7e21e5fea9ea07c8"
+    },
+    {
+      "sha": "fa688cd",
+      "message": "feat(website): UI redesign to Aurora theme and workflow update",
+      "date": "2026-01-30T10:00:37Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/fa688cd399a3ac0f2d08aec2bf8c743bef95f766"
+    },
+    {
+      "sha": "7c5645a",
+      "message": "Add Android Preview workflow",
+      "date": "2026-01-30T07:12:37Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/7c5645a9c53c8a301c515067ad9d78d689657808"
+    },
+    {
+      "sha": "e47b0ad",
+      "message": "Merge pull request #15 from aiguozhi123456/main\n\n适配Android8，编译改kapt为ksp，extension适配自动深色",
+      "date": "2026-01-30T06:13:47Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e47b0ad1d2c08aafea6a5f590666ef46ea6da95e"
+    },
+    {
+      "sha": "3bf650c",
+      "message": "Update project files",
+      "date": "2026-01-30T05:26:50Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/3bf650ccc5c0ea1a0468e5fe3303e3d2ae72ddd3"
+    },
+    {
+      "sha": "da3b124",
+      "message": "Merge branch 'JoyinJoester:main' into main",
+      "date": "2026-01-30T05:07:31Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/da3b1244d8b6af972e386052292c507fceebd466"
+    },
+    {
+      "sha": "e1557c3",
+      "message": "Update project files",
+      "date": "2026-01-30T04:25:35Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e1557c3eb827a2a2136fdca186c4ff60f225703d"
+    },
+    {
+      "sha": "09dd0cf",
+      "message": "删除 IMPROVEMENTS.md",
+      "date": "2026-01-30T03:35:43Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/09dd0cf9e4c7e72b017312883169a35bb2438710"
+    },
+    {
+      "sha": "227ae90",
+      "message": "删除 monica-browser-extension-v1.0.25.zip",
+      "date": "2026-01-30T03:29:03Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/227ae90d1a7eb23b74f300fe640f1f15dfab3f05"
+    },
+    {
+      "sha": "1b9574c",
+      "message": "Add upload functionality from monica-upload branch",
+      "date": "2026-01-30T03:06:59Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/1b9574cdae51bbb1ce03ab5ad06f6844b83b16c8"
+    },
+    {
+      "sha": "dbffcf5",
+      "message": "Update project files",
+      "date": "2026-01-30T02:57:01Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/dbffcf5d1cd5351f38d0034c6e744ac3de39ae20"
+    },
+    {
+      "sha": "9187cf5",
+      "message": "Update Monica for Android",
+      "date": "2026-01-29T17:04:14Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9187cf5ad4afedfeef191a61456b6e8d3cdec3ff"
+    },
+    {
+      "sha": "e6a610c",
+      "message": "Update README files",
+      "date": "2026-01-29T16:31:17Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e6a610c1d2f19a63f99093ba2ce016ceeba186cb"
+    },
+    {
+      "sha": "905fb9a",
+      "message": "更新 README_ZH.md",
+      "date": "2026-01-29T16:16:46Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/905fb9acab8e3f086a6e93fcc3d85a647cdcb460"
+    },
+    {
+      "sha": "0df8c9b",
+      "message": "更新 README.md",
+      "date": "2026-01-29T16:15:40Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0df8c9b70bac3cac2fe511bba286f60a6d8dc867"
+    },
+    {
+      "sha": "109785f",
+      "message": "Update project files",
+      "date": "2026-01-29T15:38:55Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/109785fdf673d4853f63aea28d88221460d5371d"
+    },
+    {
+      "sha": "7a8ae56",
+      "message": "Update project files",
+      "date": "2026-01-29T14:32:32Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/7a8ae5691a5653283f007cb28311ad1591cb5817"
+    },
+    {
+      "sha": "45cfdb4",
+      "message": "Update project files",
+      "date": "2026-01-29T13:57:52Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/45cfdb482f346c72021dc044ce8c1300a06e9896"
+    },
+    {
+      "sha": "cdf4c49",
+      "message": "Update project files",
+      "date": "2026-01-29T13:29:10Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/cdf4c49e2d7a16377946268722538a6afceeeca7"
+    },
+    {
+      "sha": "9a23545",
+      "message": "Update project files",
+      "date": "2026-01-29T11:21:55Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9a235458edb3c5f43383cbc79f2cfc3e6982ee59"
+    },
+    {
+      "sha": "66394d6",
+      "message": "feat(monica-android): 提交 Monica for Android 的最新修改",
+      "date": "2026-01-29T04:36:23Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/66394d6d2185b0db9c548592228fb6b1f1f8c34f"
+    },
+    {
+      "sha": "453a291",
+      "message": "feat(monica-android): 提交 Monica for Android 的所有修改",
+      "date": "2026-01-29T04:22:28Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/453a291450a646a969d4a91c18d530324174eab1"
+    },
+    {
+      "sha": "b4badb9",
+      "message": "feat(monica-android): 提交 Monica for Android 的所有修改（UI 修复与功能优化）",
+      "date": "2026-01-29T03:48:38Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b4badb94829790e7baee31ece14bd70e179ac154"
+    },
+    {
+      "sha": "d5ad84b",
+      "message": "chore: ignore plan documents (计划文档/)",
+      "date": "2026-01-29T03:45:52Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/d5ad84b1725c138da201a08f30e6a12ec1bed9da"
+    },
+    {
+      "sha": "84623be",
+      "message": "fix: autofill, settings, password detail, build",
+      "date": "2026-01-28T10:07:17Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/84623beefa435f090537bf6529f56997618cb0b7"
+    },
+    {
+      "sha": "a89e08b",
+      "message": "fix: resolve language switching issue when reverting to system default language",
+      "date": "2026-01-28T08:48:04Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/a89e08b717f41d0025e3acc83566fbf40ca74c60"
+    },
+    {
+      "sha": "ea998d1",
+      "message": "Merge pull request #13 from aiguozhi123456/main\n\nrelease Workflow以及codeql Workflow",
+      "date": "2026-01-27T14:59:50Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ea998d11b493dd6519f09f6569516e354109302a"
+    },
+    {
+      "sha": "eb0a2ee",
+      "message": "更新 Android.yml",
+      "date": "2026-01-27T14:42:38Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/eb0a2ee7e54cd5252e5c144c8f21581bdaeae9ee"
+    },
+    {
+      "sha": "14c594a",
+      "message": "更新 Android.yml",
+      "date": "2026-01-27T14:30:23Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/14c594a97387cf4fbc8f4993d794750a4f158b4d"
+    },
+    {
+      "sha": "1b0ccd4",
+      "message": "Merge branch 'JoyinJoester:main' into main",
+      "date": "2026-01-27T14:06:50Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/1b0ccd41fceca4e0dcba656087f706a4943bc059"
+    },
+    {
+      "sha": "bd187c1",
+      "message": "创建 CodeQL.yml",
+      "date": "2026-01-27T13:54:43Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/bd187c139a08c830224bdb50313d326f6b3c979d"
+    },
+    {
+      "sha": "3291458",
+      "message": "删除 codeQL.yaml",
+      "date": "2026-01-27T13:54:02Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/32914581de8e14e678979606f817b87237f58a0f"
+    },
+    {
+      "sha": "3b7ee2a",
+      "message": "创建 codeQL.yaml",
+      "date": "2026-01-27T13:53:38Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/3b7ee2a5138295be7d2ac7b4c73d94e4265a859b"
+    },
+    {
+      "sha": "03c6c04",
+      "message": "更新 Android.yml",
+      "date": "2026-01-27T13:53:02Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/03c6c04155710f13e2626e0be93e09dd6f8408b6"
+    },
+    {
+      "sha": "e3c3450",
+      "message": "i18n: Add missing Chinese translations for WebDAV restore settings",
+      "date": "2026-01-27T13:42:59Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e3c3450739a30c9e4f49e19184f90b8708a0ce13"
+    },
+    {
+      "sha": "25af168",
+      "message": "Update Android build config, Autofill service and Wear resources",
+      "date": "2026-01-27T13:04:06Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/25af168b82c36e46eecaf21ef9fced0a81ec6ef8"
+    },
+    {
+      "sha": "68348f4",
+      "message": "Update DataExportImportManager.kt",
+      "date": "2026-01-27T12:44:49Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/68348f4126bb478ee1c1ee6ae937fb5f4d4f05a1"
+    },
+    {
+      "sha": "860efc2",
+      "message": "fix: resolve importKeePassCsv compile error and optimize DataExportImport logic",
+      "date": "2026-01-27T11:21:15Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/860efc2cca1fb8e423bd88a0d6f3df1a666b590a"
+    },
+    {
+      "sha": "7c0b3f6",
+      "message": "docs: update note.txt with feature improvements and search expansion",
+      "date": "2026-01-27T10:32:30Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/7c0b3f6db9a86ac6ce02a16e3cbd650290aa9603"
+    },
+    {
+      "sha": "5aa46e1",
+      "message": "docs: update note.txt with security enhancement details",
+      "date": "2026-01-27T09:15:39Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/5aa46e11992e1d2c741f21d07a63474fea1d6914"
+    },
+    {
+      "sha": "8891cbb",
+      "message": "chore: add security documentation (ignored) and update tracking",
+      "date": "2026-01-27T08:35:53Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/8891cbb261fa2368dc1c104650b324f5cdb00aac"
+    },
+    {
+      "sha": "9c2f0de",
+      "message": "UI Refactor: Remove side drawer, add back handler for selection mode, and fix SSO description formatting",
+      "date": "2026-01-27T07:00:19Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9c2f0de835fcc7226bb57b07df3d76d43a1ea31e"
+    },
+    {
+      "sha": "c15f468",
+      "message": "Fix: Android crash on update (v1.0.24) and enhance Search UI gestures\n\n- Fixed crash caused by missing Koin ProGuard rules.\n- Hardened database migrations (24->25, 25->26) with column existence checks.\n- Updated versionCode to 10 and versionName to 1.0.24.\n- Implemented swipe gestures for search bar (left to expand, right to collapse).\n- Smoothed search expansion animation in ExpressiveTopBar.\n- Added BackHandler to close search bar on system back press.",
+      "date": "2026-01-27T05:01:10Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c15f46809c1c45c9be29f9aa3c8769e45d167e4b"
+    },
+    {
+      "sha": "3989df5",
+      "message": "Merge pull request #1 from aiguozhi123456/alert-autofix-180\n\nPotential fix for code scanning alert no. 179: Application backup allowed",
+      "date": "2026-01-26T17:34:08Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/3989df5f3db5c88e2e2fe7ea2043eba982bc9f27"
+    },
+    {
+      "sha": "7c5d750",
+      "message": "Potential fix for code scanning alert no. 179: Application backup allowed\n\nCo-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>",
+      "date": "2026-01-26T17:33:08Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/7c5d7504c992348ad489d3b4e7e4f2e19a20e09b"
+    },
+    {
+      "sha": "1540529",
+      "message": "更新 Android.yml",
+      "date": "2026-01-26T17:25:46Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/154052970fc6aedae568022c8e2594123c0289ad"
+    },
+    {
+      "sha": "f417f9f",
+      "message": "更新 Android.yml",
+      "date": "2026-01-26T16:54:40Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/f417f9f6d772ddbffb228f162aa407b1c47b31bf"
+    },
+    {
+      "sha": "92ebaf7",
+      "message": "更新 Android.yml",
+      "date": "2026-01-26T16:32:33Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/92ebaf71b68a3e87b1cc19b6dd57f1ec0ee49284"
+    },
+    {
+      "sha": "ee5a9e0",
+      "message": "更新 Android.yml",
+      "date": "2026-01-26T16:10:23Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ee5a9e0d5a87cb51f1b879252584ca06f6996a4d"
+    },
+    {
+      "sha": "afef073",
+      "message": "更新 Android.yml",
+      "date": "2026-01-26T15:38:03Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/afef073415f22ac4f7c1dbdab02defe91ae7abcc"
+    },
+    {
+      "sha": "e2bb73e",
+      "message": "更新 Android.yml",
+      "date": "2026-01-26T15:22:04Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e2bb73eca6988f56c9f53092cc75b82ddcbe342a"
+    },
+    {
+      "sha": "658749a",
+      "message": "prerelease Workflow",
+      "date": "2026-01-26T15:06:43Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/658749ad03f4ab33e71329dff99f7ef5a641aa74"
+    },
+    {
+      "sha": "4a85df4",
+      "message": "docs: add Implementation Doc",
+      "date": "2026-01-26T12:43:58Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4a85df495ba808ba36ae3686e0086b0cef01ff2a"
+    },
+    {
+      "sha": "b7edeee",
+      "message": "chore: save local changes",
+      "date": "2026-01-26T12:42:48Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b7edeee83b6b7c86e99f9583882d37c79b6b8b80"
+    },
+    {
+      "sha": "7b2ada7",
+      "message": "chore: save local changes",
+      "date": "2026-01-26T11:39:27Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/7b2ada7f618c5418f6911c2bd570323cb16822fe"
+    },
+    {
+      "sha": "cac0bf9",
+      "message": "chore: save local KeePass changes",
+      "date": "2026-01-26T10:49:22Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/cac0bf989b479be649da2ed4c5424dfc9e8188b4"
+    },
+    {
+      "sha": "53950d1",
+      "message": "chore: ignore KeePassDX-master and keyguard-app-master",
+      "date": "2026-01-26T10:47:12Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/53950d1e1418418b0b06daafb8a69f4da8b9dd2e"
+    },
+    {
+      "sha": "c413674",
+      "message": "Update code",
+      "date": "2026-01-26T06:42:13Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c413674fb078f8dc7d80d5652da6469f01847c0f"
+    },
+    {
+      "sha": "1f7822b",
+      "message": "Delete stratumauth directory",
+      "date": "2026-01-25T17:19:23Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/1f7822b56c95c1e2171a354b9807f7b3dea18161"
+    },
+    {
+      "sha": "669bde6",
+      "message": "Delete keyguard-app-master directory",
+      "date": "2026-01-25T17:19:11Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/669bde6dd0a83e4c8218844a89567e951e905591"
+    },
+    {
+      "sha": "0807f8f",
+      "message": "Refine password management and update documentation",
+      "date": "2026-01-25T17:16:52Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0807f8f58caeda82a8d45699fe895e284bd76e06"
+    },
+    {
+      "sha": "458f491",
+      "message": "feat(autofill): refine autofill triggering logic by disabling aggressive fallbacks and expanding exclusion keywords",
+      "date": "2026-01-25T15:40:40Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/458f4919fb8eb6f44a8cacc6c9b1e1bc627001c9"
+    },
+    {
+      "sha": "53299e2",
+      "message": "Fix: progress bar synchronization and localization of Autofill/Permission settings",
+      "date": "2026-01-25T09:20:32Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/53299e28519c4c8a31f0b7022026b2ecfd94d6be"
+    },
+    {
+      "sha": "91d2f10",
+      "message": "Fix Unified TOTP delay, App launch logic, and Autofill improvements\n\n- Unified TOTP: Added timeOffset support to synchronize progress bar with code generation.\n- App Launch: Default tab now respects user's bottom nav order configuration.\n- Autofill:\n  - Added KeePass support in Vault Selector.\n  - Improved suggested password filtering.\n  - Enhanced Picker UI (removed star, added copy actions).\n  - Fixed save dialog username detection with heuristics.\n  - Unified trigger entry point and field swapping fixes.",
+      "date": "2026-01-25T08:11:02Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/91d2f1099ac28d09bf4852cdef25fb0979388eff"
+    },
+    {
+      "sha": "5b81e74",
+      "message": "update",
+      "date": "2026-01-24T11:42:48Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/5b81e7463734bd5c68962009579ec7c3f7e02b81"
+    },
+    {
+      "sha": "f7972d3",
+      "message": "update",
+      "date": "2026-01-24T11:17:57Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/f7972d3ad4d8ea7cf22e5457d634ca5e33e9cb88"
+    },
+    {
+      "sha": "4cb204a",
+      "message": "feat: Implement Unified Progress Bar, add GitHub Funding config, and add Local KeePass management support",
+      "date": "2026-01-24T08:55:30Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4cb204a1f5dc518221aeb1471472dd99366c82d7"
+    },
+    {
+      "sha": "b8b9685",
+      "message": "Create FUNDING.yml",
+      "date": "2026-01-24T04:17:18Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b8b9685962959b4c7c795f8a61e2eb963f64d15f"
+    },
+    {
+      "sha": "a2bb007",
+      "message": "feat: implement unified progress bar mode and long click support in TotpCodeCard",
+      "date": "2026-01-24T02:55:46Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/a2bb007c79edab235ff19072234aeb0a9bf622b4"
+    },
+    {
+      "sha": "001587f",
+      "message": "feat: improve settings layout and validator UI/UX\n\n- Move 'Common Accounts', 'Validator Vibration' and 'Notification Validator' to Extensions sub-page\n- Implement Aegis-style sophisticated vibration patterns\n- Add blink animation for expiring TOTP codes",
+      "date": "2026-01-24T00:54:44Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/001587f47c8d9207fbe4dfa8849d2871fe489af0"
+    },
+    {
+      "sha": "bd9e8fb",
+      "message": "Update code changes",
+      "date": "2026-01-23T13:43:04Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/bd9e8fba4c367b52ff0bf47ea77b3f89a8152c40"
+    },
+    {
+      "sha": "0476570",
+      "message": "Fix Kotlin compilation error in KeePassWebDavViewModel and other improvements",
+      "date": "2026-01-23T12:33:28Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0476570351dbbb6a8dee7b9b962a91137ed842b7"
+    },
+    {
+      "sha": "bde8186",
+      "message": "feat: 添加同步备份中心和扩展功能页面; 优化启动密码跳过逻辑",
+      "date": "2026-01-23T05:04:42Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/bde81868c5863454efb03f6f8a6aa350c1addca6"
+    },
+    {
+      "sha": "eca135e",
+      "message": "Fix: Add missing BorderStroke import in TimelineScreen",
+      "date": "2026-01-18T05:02:46Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/eca135e7cf6d3322292a12dbf627e114df3dd0c6"
+    },
+    {
+      "sha": "bda115d",
+      "message": "更新AddEdit界面和WebDAV同步逻辑",
+      "date": "2026-01-18T04:07:42Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/bda115d17e453e02e516fdd76e5f42c07d1e7894"
+    },
+    {
+      "sha": "9b4c3a9",
+      "message": "fix: 修复WebDAV备份缺少第三方登录(SSO)字段和常用账号信息\n\n## 问题修复\n\n### 1. 第三方登录(SSO)字段未备份\n- 在 PasswordBackupEntry 和 TrashPasswordBackupEntry 中添加 SSO 相关字段:\n  - loginType: 登录类型 (PASSWORD/SSO)\n  - ssoProvider: SSO提供商 (GOOGLE, APPLE, FACEBOOK 等)\n  - ssoRefEntryId: 引用的账号条目ID\n- 备份时导出所有SSO字段\n- 恢复时还原SSO字段并处理ID映射\n\n### 2. 常用账号信息未备份\n- 新增 CommonAccountBackupEntry 数据类\n- 备份时导出常用账号信息到 common_account.json\n- 恢复时以合并模式还原（只在本地为空时恢复，保护用户数据）\n\n### 3. 数据安全性增强\n- SSO引用无效时自动清空，避免悬空引用\n- 完善的ID映射逻辑\n- 详细的错误处理和日志记录\n\n## 兼容性保障\n- ✅ 向后兼容: 旧备份可被新版本正确读取\n- ✅ 向前兼容: 新备份被旧版本读取时会忽略新字段\n- ✅ 数据保护: 恢复时不覆盖用户更新的数据\n\n修改文件:\n- Monica for Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt\n- Monica for Android/app/src/main/java/takagi/ru/monica/viewmodel/DataExportImportViewModel.kt\n- Monica for Android/app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt",
+      "date": "2026-01-15T10:57:46Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9b4c3a9f1377e5ab9041dd1830cac80d70df0bc2"
+    },
+    {
+      "sha": "aeb3a82",
+      "message": "feat: 实现常用账号信息自动填充功能\n\n- 添加自动填充模式：勾选自动填充时，新建条目自动填入常用账号信息\n- 添加手动选择模式：未勾选时，点击填充按钮可手动填入用户名、邮箱、手机号\n- 修改AddEditPasswordScreen支持常用账号信息的读取和自动填充\n- 在用户名、邮箱、电话字段添加快速填充按钮\n- 添加相关字符串资源（中英文）",
+      "date": "2026-01-15T10:08:15Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/aeb3a8228cecb206d82ed1a7af4125a1724fd395"
+    },
+    {
+      "sha": "8b983c5",
+      "message": "chore: 忽略 .trae 文件夹",
+      "date": "2026-01-15T10:06:59Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/8b983c58147ea6a8b2d30e4a98f2e4ebfd23d98b"
+    },
+    {
+      "sha": "01180e2",
+      "message": "refactor: reordered settings page layout for better usability",
+      "date": "2026-01-15T09:58:51Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/01180e2b48279eaf205353213cd7da59b7683d18"
+    },
+    {
+      "sha": "1d69db8",
+      "message": "feat(android): add common account preferences and login type, update settings UI",
+      "date": "2026-01-15T04:29:56Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/1d69db82bba6bbac5034b8cb218f00eeb07099ca"
+    },
+    {
+      "sha": "a2f30b5",
+      "message": "feat: add image compression to WebDAV backup and fix OOM/concurrency issues\n\n- Implemented ImageCompressor utility for smart image reduction.\n- Added manual \"Image Optimization\" button and progress UI in WebDavBackupScreen.\n- Hardened WebDavHelper with AtomicBoolean lock to prevent duplicate backup triggers.\n- Improved memory management in WebDAV upload flow to mitigate OOM errors.",
+      "date": "2026-01-12T08:06:02Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/a2f30b5b4f6f0ca7ca884e3108efec8558c32186"
+    },
+    {
+      "sha": "29133d7",
+      "message": "feat: WebDAV 恢复时同步回收站数据到新设备",
+      "date": "2026-01-09T13:16:17Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/29133d750d11f70d35571ac69635c98e17db503e"
+    },
+    {
+      "sha": "3181082",
+      "message": "fix: 增强 WebDAV 删除功能的日志记录",
+      "date": "2026-01-09T13:10:28Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/31810823f606ea51d0fe5b5e7383c2119520f22c"
+    },
+    {
+      "sha": "c1a26b2",
+      "message": "feat: WebDAV 备份支持回收站数据",
+      "date": "2026-01-09T12:32:33Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c1a26b2cb1a50e7043be71b6d76af5d6fc091668"
+    },
+    {
+      "sha": "8eda3fe",
+      "message": "feat: 实现回收站（Recycle Bin）功能，并修复 Room 数据库迁移中的 Schema 匹配问题",
+      "date": "2026-01-09T11:56:26Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/8eda3feeb321714bc182a0c657718c554936d14d"
+    },
+    {
+      "sha": "823e303",
+      "message": "style(android): implement edge-to-edge scrolling in SettingsScreen",
+      "date": "2026-01-09T04:09:21Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/823e303f387b46c80191ace0ed3755c24370e6bc"
+    },
+    {
+      "sha": "472da7d",
+      "message": "fix(android): fix auto-lock logic to prevent observer reset on theme or auth state change",
+      "date": "2026-01-09T04:04:11Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/472da7d6a28353707060425117e467aff3b50ecd"
+    },
+    {
+      "sha": "d3aac68",
+      "message": "feat(wear): 重写 SearchOverlay，添加删除确认对话框并修复交互问题",
+      "date": "2026-01-07T06:41:11Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/d3aac68b2d7ec00b6b337ed9eaf237745237670f"
+    },
+    {
+      "sha": "309925c",
+      "message": "Fix: Resolve SIGSEGV crash in SwipeActions by optimizing drag gesture handling and fixing TOTP top bar visibility",
+      "date": "2026-01-06T12:37:11Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/309925c6cf84295755577fc4ed50948bc7b88da0"
+    },
+    {
+      "sha": "f7b702f",
+      "message": "UI/UX: Refactor SelectionActionBar style and positioning, keep ExpressiveTopBar visible during selection, and fix security/theme consistency issues",
+      "date": "2026-01-06T12:24:04Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/f7b702fa20a6774b9fd44e05551bc3bcfd16780c"
+    },
+    {
+      "sha": "0f8233d",
+      "message": "feat: redesign top bar into M3E expressive style with morphing search pill and category bottom sheet",
+      "date": "2026-01-06T09:45:46Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0f8233d7341428d6e0ad3bb76bb5725d38a87df5"
+    },
+    {
+      "sha": "b1b5858",
+      "message": "feat: combine Documents and Bank Cards into Card Wallet and enhance detail screens\n\n- Combined Bank Card and Document lists into a single Card Wallet screen.\n- Implemented M3E-compliant BankCardDetailScreen and DocumentDetailScreen.\n- Extracted reusable InfoFields components.\n- Fixed CVV masking alignment and length issues.\n- Updated bottom navigation to reflect Card Wallet.\n- Added full Chinese localization for new detail screens.",
+      "date": "2026-01-06T06:58:39Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b1b585891024fccc18ab3c10b1d8ab3d0c91f4dc"
+    },
+    {
+      "sha": "22668ae",
+      "message": "style(android): unify input field styles and refactor personal info display",
+      "date": "2026-01-06T04:31:31Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/22668ae79b1d07cdc0ce5a7b411c2c3806be583a"
+    },
+    {
+      "sha": "4c50624",
+      "message": "feat(android): redesign Auto Lock settings UI with M3E BottomSheet",
+      "date": "2026-01-06T04:13:49Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4c50624d93c69fce600e75f395c61fa7fe0261c1"
+    },
+    {
+      "sha": "6ec0847",
+      "message": "Update WebDavHelper logic",
+      "date": "2026-01-06T01:57:24Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/6ec08472a710bf3383e3f361cc88a52decfb7175"
+    },
+    {
+      "sha": "77d8439",
+      "message": "Fix: TOTP binding restoration in WebDAV backup and CSV import",
+      "date": "2026-01-05T16:26:19Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/77d8439480e16606b752387170f26cd521ecc8ba"
+    },
+    {
+      "sha": "602f6f0",
+      "message": "fix: restore TOTP linkage via ID mapping and prevent duplicate TOTP entries",
+      "date": "2026-01-05T12:26:39Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/602f6f037fb1d99fe01a17f3da2d24b8b2944790"
+    },
+    {
+      "sha": "c827a03",
+      "message": "ci: move github workflow to root and fix paths",
+      "date": "2026-01-05T11:43:38Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c827a03852a4c30d2c58169fd173d8f98325a873"
+    },
+    {
+      "sha": "6145703",
+      "message": "feat: Support multiple emails/phones in PasswordEntry, WebDAV, and CSV import/export",
+      "date": "2026-01-05T11:37:31Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/61457031a6ea5b9d45658717180dbee8b2117975"
+    }
+  ],
+  "contributors": [
+    {
+      "login": "JoyinJoester",
+      "avatar_url": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "html_url": "https://github.com/JoyinJoester",
+      "contributions": 89,
+      "ratio": "81.7"
+    },
+    {
+      "login": "aiguozhi123456",
+      "avatar_url": "https://avatars.githubusercontent.com/u/126325311?v=4",
+      "html_url": "https://github.com/aiguozhi123456",
+      "contributions": 20,
+      "ratio": "18.3"
+    }
+  ]
+}

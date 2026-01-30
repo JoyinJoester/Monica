@@ -243,6 +243,13 @@ async function renderGithubData() {
             renderChart(data.commits);
         }
 
+        // Render Stats (NEW)
+        if (data.stats) {
+            document.getElementById('stat-stars').textContent = data.stats.stars;
+            document.getElementById('stat-forks').textContent = data.stats.forks;
+            document.getElementById('stat-issues').textContent = data.stats.issues;
+        }
+
         // Render Contributors
         if (data.contributors && data.contributors.length > 0) {
             contribList.innerHTML = data.contributors.map(c => `

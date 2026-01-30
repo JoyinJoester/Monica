@@ -32,7 +32,10 @@
     "community": {
         "title": "社区动态",
         "recent_commits": "最近更新",
-        "contributors": "贡献者"
+        "contributors": "贡献者",
+        "activity_chart": "最近30天活跃度",
+        "stats": "项目数据",
+        "support": "支持作者"
     },
     "footer": {
         "copyright": "© 2026 JoyinJoester. 基于 GNU GPLv3 协议开源。",

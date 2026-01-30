@@ -32,7 +32,10 @@
     "community": {
         "title": "Community & Timeline",
         "recent_commits": "Recent Activity",
-        "contributors": "Contributors"
+        "contributors": "Contributors",
+        "activity_chart": "30-Day Activity",
+        "stats": "Project Stats",
+        "support": "Support Author"
     },
     "footer": {
         "copyright": "© 2026 JoyinJoester. Open Source under GNU GPLv3.",

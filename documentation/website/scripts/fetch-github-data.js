@@ -52,6 +52,17 @@ async function fetchData() {
             ratio: ((c.contributions / totalContributions) * 100).toFixed(1)
         }));
 
+        // 3. Fetch Repo Info (Stars, Forks, Issues)
+        const repoRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`, { headers });
+        if (!repoRes.ok) throw new Error(`Repo info fetch failed: ${repoRes.status}`);
+        const repoRaw = await repoRes.json();
+
+        const stats = {
+            stars: repoRaw.stargazers_count,
+            forks: repoRaw.forks_count,
+            issues: repoRaw.open_issues_count
+        };
+
         // Ensure output dir exists
         if (!fs.existsSync(OUTPUT_DIR)) {
             fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -60,6 +71,7 @@ async function fetchData() {
         // Write File
         const data = {
             generated_at: new Date().toISOString(),
+            stats,
             commits,
             contributors
         };

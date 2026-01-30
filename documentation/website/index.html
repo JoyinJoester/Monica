@@ -166,6 +166,48 @@
         <div id="contributors-list" style="display: flex; gap: 12px; flex-wrap: wrap;">
           <div style="text-align: center; color: var(--sys-light-secondary);">Loading contributors...</div>
         </div>
+
+        <!-- Repo Stats (NEW) -->
+        <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
+          <i class='bx bxs-bar-chart-alt-2'></i> <span data-i18n="community.stats">项目数据</span>
+        </h3>
+        <div id="repo-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
+            <i class='bx bxs-star' style="color: #ffd700;"></i>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-stars">0</div>
+            <div style="font-size: 0.7rem; opacity: 0.7;">Stars</div>
+          </div>
+          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
+            <i class='bx bx-git-repo-forked' style="color: var(--sys-light-primary);"></i>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-forks">0</div>
+            <div style="font-size: 0.7rem; opacity: 0.7;">Forks</div>
+          </div>
+          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
+            <i class='bx bxs-error-circle' style="color: #ff5252;"></i>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-issues">0</div>
+            <div style="font-size: 0.7rem; opacity: 0.7;">Issues</div>
+          </div>
+        </div>
+
+        <!-- Support (NEW) -->
+        <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
+          <i class='bx bxs-heart'></i> <span data-i18n="community.support">支持作者</span>
+        </h3>
+        <div style="display: flex; gap: 16px; align-items: center;">
+          <div style="flex: 1;">
+            <a href="https://afdian.com/a/JoyinJoester" target="_blank" class="btn btn-outlined"
+              style="width: 100%; height: 44px; margin-bottom: 8px; font-size: 0.9rem; border-color: #946ce6; color: #946ce6;">
+              <i class='bx bx-bolt-circle'></i> 爱发电
+            </a>
+            <a href="https://ko-fi.com/joyinjoester" target="_blank" class="btn btn-outlined"
+              style="width: 100%; height: 44px; font-size: 0.9rem; border-color: #29abe0; color: #29abe0;">
+              <i class='bx bx-coffee'></i> Ko-fi
+            </a>
+          </div>
+          <img src="images/support_author.jpg" alt="Support" class="glass-card"
+            style="width: 100px; height: 100px; object-fit: cover; border-radius: 12px; cursor: pointer;"
+            id="support-qr">
+        </div>
       </div>
     </div>
 
