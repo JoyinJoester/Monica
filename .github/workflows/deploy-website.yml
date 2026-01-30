@@ -4,7 +4,7 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "githubpage文档/website/**"
+      - "documentation/website/**"
   workflow_dispatch:
 
 permissions:
@@ -28,11 +28,11 @@ jobs:
         with:
           node-version: "20"
           cache: 'npm'
-          cache-dependency-path: githubpage文档/website/package-lock.json
+          cache-dependency-path: documentation/website/package-lock.json
 
       - name: Install Dependencies
         run: npm install
-        working-directory: githubpage文档/website
+        working-directory: documentation/website
         # Fallback if no package-lock yet
         continue-on-error: true
 
@@ -40,14 +40,14 @@ jobs:
         run: |
           npm install # Ensure install runs if previous step skipped
           npm run build
-        working-directory: githubpage文档/website
+        working-directory: documentation/website
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: githubpage文档/website/dist
+          path: documentation/website/dist
 
   deploy:
     environment:
