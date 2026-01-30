@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardTitle } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Sun, Moon, Monitor, Globe, Cloud, ChevronRight, Trash2, AlertTriangle, Lock, Key, Shield } from 'lucide-react';
+import { Sun, Moon, Globe, Cloud, ChevronRight, Trash2, AlertTriangle, Lock, Key, Shield } from 'lucide-react';
 import { clearAllData } from '../../utils/storage';
 import { useMasterPassword } from '../../contexts/MasterPasswordContext';
 import { validateEncryptionPassword } from '../../utils/webdav/EncryptionHelper';
@@ -48,31 +48,7 @@ const SettingLabel = styled.div`
     color: ${({ theme }) => theme.colors.primary};
   }
 `;
-
-const Toggle = styled.button<{ isOn: boolean }>`
-  width: 52px;
-  height: 28px;
-  border-radius: 14px;
-  border: none;
-  cursor: pointer;
-  position: relative;
-  background-color: ${({ theme, isOn }) => isOn ? theme.colors.primary : theme.colors.outlineVariant};
-  transition: background-color 0.2s ease;
-
-  &::after {
-    content: '';
-    position: absolute;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    background-color: white;
-    top: 3px;
-    left: ${({ isOn }) => isOn ? 'calc(100% - 25px)' : '3px'};
-    transition: left 0.2s ease;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  }
-`;
-
+ 
 const Select = styled.select`
   padding: 8px 12px;
   border-radius: 8px;
