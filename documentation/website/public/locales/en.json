@@ -35,9 +35,10 @@
         "contributors": "Contributors",
         "activity_chart": "30-Day Activity",
         "stats": "Project Stats",
-        "tech_stack": "Tech Stack",
+        "platforms": "Supported Platforms",
         "support": "Support Author",
-        "support_desc": "Your support helps fund server maintenance and new feature development."
+        "support_desc": "Your support helps fund server maintenance and new feature development.",
+        "wechat_alipay": "WeChat & Alipay"
     },
     "footer": {
         "copyright": "© 2026 JoyinJoester. Open Source under GNU GPLv3.",

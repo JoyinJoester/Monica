@@ -189,58 +189,58 @@
           </div>
         </div>
 
-        <!-- Tech Stack (NEW) -->
+        <!-- Platforms (Renamed from Tech Stack) -->
         <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
-          <i class='bx bxs-layer'></i> <span data-i18n="community.tech_stack">技术栈</span>
+          <i class='bx bxs-devices'></i> <span data-i18n="community.platforms">支持平台</span>
         </h3>
         <div class="glass-card"
-          style="padding: 20px; display: flex; justify-content: space-around; align-items: center; border-radius: 16px;">
+          style="padding: 24px; display: flex; justify-content: space-around; align-items: center; border-radius: 16px;">
           <div style="text-align: center;">
-            <i class='bx bxl-android' style="font-size: 2rem; color: #3DDC84;"></i>
-            <div style="font-size: 0.75rem; margin-top: 4px; opacity: 0.8;">Android</div>
+            <i class='bx bxl-android' style="font-size: 2.5rem; color: #3DDC84;"></i>
+            <div style="font-size: 0.85rem; margin-top: 8px; font-weight: 500;">Android</div>
           </div>
+          <div style="width: 1px; height: 40px; background: var(--sys-light-outline-variant);"></div>
           <div style="text-align: center;">
-            <i class='bx bxl-windows' style="font-size: 2rem; color: #0078D6;"></i>
-            <div style="font-size: 0.75rem; margin-top: 4px; opacity: 0.8;">Windows</div>
-          </div>
-          <div style="text-align: center;">
-            <i class='bx bxs-shield-check' style="font-size: 2rem; color: var(--sys-light-primary);"></i>
-            <div style="font-size: 0.75rem; margin-top: 4px; opacity: 0.8;">AES-256</div>
-          </div>
-          <div style="text-align: center;">
-            <i class='bx bx-code-alt' style="font-size: 2rem; color: var(--sys-light-tertiary);"></i>
-            <div style="font-size: 0.75rem; margin-top: 4px; opacity: 0.8;">Open Source</div>
+            <i class='bx bxl-windows' style="font-size: 2.5rem; color: #0078D6;"></i>
+            <div style="font-size: 0.85rem; margin-top: 8px; font-weight: 500;">Windows</div>
           </div>
         </div>
 
-        <!-- Support (Redesigned) -->
+        <!-- Support (Refined) -->
         <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
           <i class='bx bxs-heart'></i> <span data-i18n="community.support">支持作者</span>
         </h3>
         <div class="glass-card"
-          style="padding: 24px; border-radius: 24px; display: flex; gap: 24px; align-items: center; background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);">
-          <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
-            <p style="font-size: 0.85rem; line-height: 1.6; opacity: 0.8; margin-bottom: 4px;"
-              data-i18n="community.support_desc">
-              您的支持将有助于服务器维护和新功能开发。
-            </p>
+          style="padding: 24px; border-radius: 24px; display: flex; flex-direction: column; gap: 20px; background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);">
+
+          <p style="font-size: 0.85rem; line-height: 1.6; opacity: 0.8; text-align: center;"
+            data-i18n="community.support_desc">
+            您的支持将有助于服务器维护和新功能开发。
+          </p>
+
+          <div style="display: flex; gap: 12px; justify-content: center;">
             <a href="https://afdian.com/a/JoyinJoester" target="_blank" class="btn btn-filled"
-              style="justify-content: center; background: #946ce6; color: white; border: none; height: 40px;">
+              style="flex: 1; justify-content: center; background: #946ce6; color: white; border: none; height: 44px; border-radius: 12px;">
               <i class='bx bx-bolt-circle'></i> <span style="margin-left: 8px;">爱发电</span>
             </a>
             <a href="https://ko-fi.com/joyinjoester" target="_blank" class="btn btn-filled"
-              style="justify-content: center; background: #29abe0; color: white; border: none; height: 40px;">
+              style="flex: 1; justify-content: center; background: #29abe0; color: white; border: none; height: 44px; border-radius: 12px;">
               <i class='bx bx-coffee'></i> <span style="margin-left: 8px;">Ko-fi</span>
             </a>
           </div>
-          <div style="position: relative; width: 120px; height: 120px; flex-shrink: 0;">
-            <div
-              style="position: absolute; inset: -4px; border-radius: 16px; background: linear-gradient(45deg, #946ce6, #29abe0); opacity: 0.3; filter: blur(8px);">
-            </div>
-            <img src="images/support_author.jpg" alt="Support QR"
-              style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px; position: relative; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;"
-              onclick="document.getElementById('lightbox-img').src=this.src; document.getElementById('lightbox').classList.add('active');">
+
+          <!-- WeChat & Alipay Text Link -->
+          <div style="text-align: center; margin-top: -4px;">
+            <span
+              style="font-size: 0.9rem; font-weight: 500; cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: background 0.2s;"
+              onclick="document.getElementById('lightbox-img').src='images/support_author.jpg'; document.getElementById('lightbox').classList.add('active');"
+              onmouseover="this.style.background='rgba(255,255,255,0.05)'"
+              onmouseout="this.style.background='transparent'">
+              <span style="color: #07C160;">微信</span> & <span style="color: #1677FF;">支付宝</span>
+            </span>
+            <div style="font-size: 0.75rem; opacity: 0.5; margin-top: 4px;">Click to view QR Code</div>
           </div>
+
         </div>
       </div>
     </div>
