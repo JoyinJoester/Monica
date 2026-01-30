@@ -35,9 +35,9 @@
         "contributors": "贡献者",
         "activity_chart": "最近30天活跃度",
         "stats": "项目数据",
-        "platforms": "支持平台",
+        "Platforms": "支持平台",
         "support": "支持作者",
-        "support_desc": "您的支持将有助于服务器维护和新功能开发。",
+        "support_desc": "您的支持将激励我持续完善项目与开发新功能。",
         "wechat_alipay": "微信 & 支付宝"
     },
     "footer": {
