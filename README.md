@@ -22,9 +22,9 @@
 
 Whether you are on your **Browser (Chrome, Edge, Firefox)** or **Android** phone, Monica provides a seamless, consistent, and secure experience without monthly subscriptions or data tracking.
 
-> **📦 Monica for Windows 已归档**  
-> 由于 Monica for Windows 的功能与浏览器插件版本高度重合，我们已停止 Windows 版本的开发。  
-> 历史代码已迁移至：[Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
+> **📦 Monica for Windows - Archived**  
+> Due to significant feature overlap between Monica for Windows and the browser extension, we have discontinued Windows development.  
+> Historical code has been migrated to: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 
 ---
 
