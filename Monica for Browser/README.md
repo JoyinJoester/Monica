@@ -78,7 +78,24 @@ Monica Browser 扩展使用现代化的前端技术栈：
    - Chrome/Edge: 点击"加载已解压的扩展程序"，选择 `dist` 文件夹
    - Firefox: 选择 `dist/manifest.json` 文件
 
-### 方法 2：从 Chrome Web Store 安装（如已发布）
+### 方法 2：使用已经编译好的压缩包[release](https://github.com/aiguozhi123456/Monica/releases)
+
+1. **下载并解压**
+   - 下载最新的压缩包，解压至合适的位置
+
+2. **加载扩展**
+   - Chrome/Edge: 打开 `chrome://extensions/`
+   - Firefox: 打开 `about:debugging#/runtime/`
+
+3. **启用开发者模式**
+   - Chrome/Edge: 点击右上角"开发者模式"开关
+   - Firefox: 点击"临时载入附加组件"
+
+4. **加载已解压的扩展**
+   - Chrome/Edge: 点击"加载已解压的扩展程序"，选择 `dist` 文件夹
+   - Firefox: 选择 `dist/manifest.json` 文件
+
+### 方法 3：从 Chrome Web Store 安装（尚未发布）
 
 1. 访问 [Chrome Web Store](https://chrome.google.com/webstore)
 2. 搜索 "Monica Password Manager"
@@ -387,10 +404,6 @@ npm run preview
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 开启 Pull Request
-
-## 📞 联系我们
-
-- **GitHub Issues**: [https://github.com/aiguozhi123456/Monica/issues](https://github.com/aiguozhi123456/Monica/issues)
 
 ---
 
