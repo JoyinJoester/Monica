@@ -65,7 +65,9 @@
         "language": "语言",
         "about": "关于",
         "version": "版本",
+        "theme": "主题",
         "themes": {
+            "auto": "自动",
             "light": "浅色模式",
             "dark": "深色模式"
         }

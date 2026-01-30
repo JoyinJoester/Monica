@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
-    id 'kotlin-kapt'
+    alias(libs.plugins.ksp)
     id 'kotlin-parcelize'
 }
 
@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId "takagi.ru.monica"
-        minSdk 29
+        minSdk 26
         targetSdk 34
         versionCode 10
         versionName "1.0.25"
@@ -79,7 +79,7 @@ dependencies {
     // Room Database
     implementation libs.androidx.room.runtime
     implementation libs.androidx.room.ktx
-    kapt libs.androidx.room.compiler
+    ksp libs.androidx.room.compiler
     
     // Biometric
     implementation libs.androidx.biometric

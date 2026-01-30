@@ -9,7 +9,6 @@ import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import android.view.WindowInsetsController
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity

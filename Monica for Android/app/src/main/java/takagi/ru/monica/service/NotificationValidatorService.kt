@@ -196,9 +196,14 @@ class NotificationValidatorService : Service() {
 
     private suspend fun updateNotification(title: String, code: String, remaining: Int) {
         val notificationIntent = Intent(this@NotificationValidatorService, MainActivity::class.java)
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
         val pendingIntent = PendingIntent.getActivity(
             this@NotificationValidatorService, 0, notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            pendingIntentFlags
         )
 
         val copyIntent = Intent(this@NotificationValidatorService, NotificationValidatorService::class.java).apply {
@@ -207,7 +212,7 @@ class NotificationValidatorService : Service() {
         }
         val copyPendingIntent = PendingIntent.getService(
             this@NotificationValidatorService, 1, copyIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            pendingIntentFlags
         )
 
         val formattedCode = if (code.length == 6) {
@@ -225,7 +230,7 @@ class NotificationValidatorService : Service() {
         }
         val switchPendingIntent = PendingIntent.getService(
             this@NotificationValidatorService, 2, switchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            pendingIntentFlags
         )
 
         val notification = NotificationCompat.Builder(this@NotificationValidatorService, CHANNEL_ID)

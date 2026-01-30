@@ -31,8 +31,10 @@
     
     <!-- Foreground Service permissions for Notification Validator -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        android:minSdkVersion="34" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+        android:minSdkVersion="33" />
     
     <!-- 添加电话状态权限 -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
@@ -66,7 +68,7 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.Monica"
             android:windowSoftInputMode="adjustResize"
-            android:enableOnBackInvokedCallback="true">
+            tools:targetApi="33">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -96,10 +98,12 @@
             android:name=".service.NotificationValidatorService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            tools:targetApi="34">
+            <!-- Android 14+ specific attributes -->
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Displaying TOTP codes in notification" />
+                android:value="Displaying TOTP codes in notification"
+                tools:targetApi="34" />
         </service>
 
         <!-- Accessibility Service -->

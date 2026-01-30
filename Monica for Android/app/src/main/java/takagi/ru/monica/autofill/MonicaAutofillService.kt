@@ -630,9 +630,13 @@ class MonicaAutofillService : AutofillService() {
             putExtra(AutofillNotificationReceiver.EXTRA_OTP_CODE, code)
             putExtra("notification_id", 1001)
         }
-        val copyPendingIntent = android.app.PendingIntent.getBroadcast(
-            this, 0, copyIntent, 
+        val copyPendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        } else {
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val copyPendingIntent = android.app.PendingIntent.getBroadcast(
+            this, 0, copyIntent, copyPendingIntentFlags
         )
         
         val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -1579,6 +1583,11 @@ class MonicaAutofillService : AutofillService() {
             
             // 创建唯一的 PendingIntent（使用密码ID作为requestCode）
             val requestCode = password.id.toInt()
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
             val pendingIntent = PendingIntent.getActivity(
                 this,
                 requestCode,
@@ -1587,7 +1596,7 @@ class MonicaAutofillService : AutofillService() {
                     action = "takagi.ru.monica.AUTOFILL_INLINE_CLICK"
                     putExtra("password_id", password.id)
                 },
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                pendingIntentFlags
             )
             
             // 使用 InlineSuggestionUi 构建内联UI - 参考 Keyguard 的完整设置
@@ -1666,11 +1675,16 @@ class MonicaAutofillService : AutofillService() {
             val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
             
             val requestCode = System.currentTimeMillis().toInt() and 0x7FFFFFFF
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
             val pendingIntent = PendingIntent.getActivity(
                 this,
                 requestCode,
                 pickerIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                pendingIntentFlags
             )
             
             // 创建 Monica 图标
