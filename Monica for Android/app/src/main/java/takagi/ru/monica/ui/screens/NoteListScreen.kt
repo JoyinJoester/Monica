@@ -1,28 +1,39 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.viewmodel.NoteViewModel
+import takagi.ru.monica.viewmodel.SettingsViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
 import takagi.ru.monica.security.SecurityManager
@@ -33,16 +44,21 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
+import takagi.ru.monica.ui.components.ExpressiveTopBar
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteListScreen(
     viewModel: NoteViewModel,
+    settingsViewModel: SettingsViewModel,
     onNavigateToAddNote: (Long?) -> Unit,
     securityManager: SecurityManager,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchExpanded by remember { mutableStateOf(false) }
+    val settings by settingsViewModel.settings.collectAsState()
+    val isGridLayout = settings.noteGridLayout
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(setOf<Long>()) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -127,39 +143,36 @@ fun NoteListScreen(
                     )
                 )
             } else {
-                // 搜索栏
-                SearchBar(
-                    query = searchQuery,
-                    onQueryChange = { searchQuery = it },
-                    onSearch = { },
-                    active = false,
-                    onActiveChange = { },
-                    placeholder = { Text(stringResource(R.string.search)) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {}
+                // M3E 风格顶栏
+                ExpressiveTopBar(
+                    title = stringResource(R.string.nav_notes),
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    isSearchExpanded = isSearchExpanded,
+                    onSearchExpandedChange = { isSearchExpanded = it },
+                    searchHint = stringResource(R.string.search),
+                    actions = {
+                        // 布局切换按钮
+                        IconButton(onClick = { settingsViewModel.updateNoteGridLayout(!isGridLayout) }) {
+                            Icon(
+                                imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
+                                contentDescription = if (isGridLayout) "切换到列表" else "切换到网格",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        // 搜索按钮
+                        IconButton(onClick = { isSearchExpanded = true }) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = stringResource(R.string.search),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                )
             }
         },
-        floatingActionButton = {
-            if (!isSelectionMode) {
-                FloatingActionButton(
-                    onClick = { 
-                        if (!isNavigating) {
-                            isNavigating = true
-                            onNavigateToAddNote(null)
-                            // 简单的防抖重置，实际导航后页面会销毁或重组，这里只是为了防止极快点击
-                            // 更好的做法是在 ViewModel 中处理或使用 LaunchedEffect
-                        }
-                    },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.new_note))
-                }
-            }
-        }
+        floatingActionButton = {} // FAB moved to SwipeableAddFab in SimpleMainScreen
     ) { paddingValues ->
         // 重置导航状态
         LaunchedEffect(Unit) {
@@ -261,6 +274,7 @@ fun NoteListScreen(
 
         NoteListContent(
             notes = filteredNotes,
+            isGridLayout = isGridLayout,
             isSelectionMode = isSelectionMode,
             selectedNoteIds = selectedNoteIds,
             onNoteClick = { noteId ->
@@ -292,6 +306,7 @@ fun NoteListScreen(
 @Composable
 fun NoteListContent(
     notes: List<SecureItem>,
+    isGridLayout: Boolean,
     isSelectionMode: Boolean,
     selectedNoteIds: Set<Long>,
     onNoteClick: (Long) -> Unit,
@@ -322,33 +337,79 @@ fun NoteListContent(
             }
         }
     } else {
-        LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(2),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalItemSpacing = 16.dp,
-            modifier = modifier.fillMaxSize()
-        ) {
-            items(notes, key = { it.id }) { note ->
-                NoteCard(
-                    note = note,
-                    isSelected = selectedNoteIds.contains(note.id),
-                    onClick = { onNoteClick(note.id) },
-                    onLongClick = { onNoteLongClick(note.id) }
-                )
+        if (isGridLayout) {
+            // 瀑布流网格布局
+            LazyVerticalStaggeredGrid(
+                columns = StaggeredGridCells.Fixed(2),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalItemSpacing = 12.dp,
+                modifier = modifier.fillMaxSize()
+            ) {
+                items(notes, key = { it.id }) { note ->
+                    ExpressiveNoteCard(
+                        note = note,
+                        isSelected = selectedNoteIds.contains(note.id),
+                        isGridMode = true,
+                        onClick = { onNoteClick(note.id) },
+                        onLongClick = { onNoteLongClick(note.id) }
+                    )
+                }
+            }
+        } else {
+            // 单列列表布局
+            LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = modifier.fillMaxSize()
+            ) {
+                items(notes, key = { it.id }) { note ->
+                    ExpressiveNoteCard(
+                        note = note,
+                        isSelected = selectedNoteIds.contains(note.id),
+                        isGridMode = false,
+                        onClick = { onNoteClick(note.id) },
+                        onLongClick = { onNoteLongClick(note.id) }
+                    )
+                }
+                // 底部留白，防止被FAB遮挡
+                item { Spacer(modifier = Modifier.height(80.dp)) }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+/**
+ * M3E 风格的笔记卡片
+ * 更具表达力的设计，包含图标、更好的排版和视觉层次
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun NoteCard(
+fun ExpressiveNoteCard(
     note: SecureItem,
     isSelected: Boolean,
+    isGridMode: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val containerColor = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    
+    val contentColor = if (isSelected) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    
+    val secondaryContentColor = if (isSelected) {
+        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -356,57 +417,110 @@ fun NoteCard(
                 onClick = onClick,
                 onLongClick = onLongClick
             ),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) 
-                MaterialTheme.colorScheme.primaryContainer 
-            else 
-                MaterialTheme.colorScheme.surfaceVariant,
-        ),
-        border = if (isSelected) 
-            androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) 
-        else null
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp),
+        border = if (isSelected) {
+            androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        } else null
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // 显示标题
-            if (note.title.isNotEmpty()) {
+            // 头部：图标 + 标题
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // 笔记图标背景
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                            } else {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                // 标题
                 Text(
-                    text = note.title,
+                    text = note.title.ifEmpty { stringResource(R.string.untitled) },
                     style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = if (isGridMode) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSurface
+                    color = contentColor,
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
             }
             
-            // 显示内容摘要
+            // 内容预览
             if (note.notes.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = note.notes,
                     style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 8,
+                    maxLines = if (isGridMode) 6 else 3,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    color = secondaryContentColor,
+                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
                 )
-                Spacer(modifier = Modifier.height(8.dp))
             }
             
-            Text(
-                text = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(note.updatedAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isSelected)
-                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                else
-                    MaterialTheme.colorScheme.outline
-            )
+            // 底部：日期 + 安全标识
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(note.updatedAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = secondaryContentColor.copy(alpha = 0.8f)
+                )
+                
+                // 安全标识小图标
+                Icon(
+                    imageVector = Icons.Default.Shield,
+                    contentDescription = "加密存储",
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                )
+            }
         }
     }
+}
+
+// 保留旧的 NoteCard 以防其他地方引用（未来可删除）
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+@Deprecated("Use ExpressiveNoteCard instead", ReplaceWith("ExpressiveNoteCard"))
+fun NoteCard(
+    note: SecureItem,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    ExpressiveNoteCard(
+        note = note,
+        isSelected = isSelected,
+        isGridMode = true,
+        onClick = onClick,
+        onLongClick = onLongClick
+    )
 }

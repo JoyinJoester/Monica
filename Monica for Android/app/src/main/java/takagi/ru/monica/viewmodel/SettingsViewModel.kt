@@ -209,4 +209,10 @@ class SettingsViewModel(
             settingsManager.updatePasswordCardDisplayMode(mode)
         }
     }
+
+    fun updateNoteGridLayout(isGrid: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateNoteGridLayout(isGrid)
+        }
+    }
 }
