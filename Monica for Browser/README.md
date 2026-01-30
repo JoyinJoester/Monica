@@ -1,6 +1,6 @@
 # Monica Browser Extension
 
-一个强大、安全的浏览器密码管理器扩展，支持自动填充、2FA 验证器、加密笔记等功能。
+一个强大、安全的浏览器密码管理器扩展，支持自动填充、2FA 验证器、加密笔记、Quick Actions 等功能。
 
 ## ✨ 功能特性
 
@@ -22,6 +22,29 @@
 - **WebDAV 备份** - 支持云备份到坚果云、Nextcloud 等
 - **密码导入/导出** - 支持从其他密码管理器导入
 - **多语言支持** - 支持中文、英文等语言
+- **Quick Actions（快速操作）** - 提供便捷的密码管理快捷操作，包括快速查看、复制、编辑、删除和搜索功能
+
+## 📋 技术栈
+
+Monica Browser 扩展使用现代化的前端技术栈：
+- **框架**：React + Vite
+- **状态管理**：React Context (MasterPasswordContext)
+- **样式**：Styled Components
+- **图标**：Lucide Icons
+- **构建工具**：Vite + TypeScript
+- **国际化**：i18next (支持中文、英文、日文、越南语)
+
+## 🔒 安全架构
+
+### 加密
+- **AES-256-GCM** - 使用军用级加密算法
+- **PBKDF2** - 密钥派生函数，增加暴力破解难度
+- **零知识架构** - 主密码仅本地存储，不上传服务器
+
+### 隐私保护
+- **本地存储** - 所有数据存储在浏览器本地
+- **开源** - 代码完全开源，可审计
+- **无追踪** - 不收集任何用户数据
 
 ## 📦 安装方法
 
@@ -55,7 +78,24 @@
    - Chrome/Edge: 点击"加载已解压的扩展程序"，选择 `dist` 文件夹
    - Firefox: 选择 `dist/manifest.json` 文件
 
-### 方法 2：从 Chrome Web Store 安装（如已发布）
+### 方法 2：使用已经编译好的压缩包[release](https://github.com/aiguozhi123456/Monica/releases)
+
+1. **下载并解压**
+   - 下载最新的压缩包，解压至合适的位置
+
+2. **加载扩展**
+   - Chrome/Edge: 打开 `chrome://extensions/`
+   - Firefox: 打开 `about:debugging#/runtime/`
+
+3. **启用开发者模式**
+   - Chrome/Edge: 点击右上角"开发者模式"开关
+   - Firefox: 点击"临时载入附加组件"
+
+4. **加载已解压的扩展**
+   - Chrome/Edge: 点击"加载已解压的扩展程序"，选择 `dist` 文件夹
+   - Firefox: 选择 `dist/manifest.json` 文件
+
+### 方法 3：从 Chrome Web Store 安装（尚未发布）
 
 1. 访问 [Chrome Web Store](https://chrome.google.com/webstore)
 2. 搜索 "Monica Password Manager"
@@ -79,31 +119,27 @@
      - **网站**：网站地址（如 `weixin.qq.com`）
    - 点击"保存"
 
-### 2. 使用自动填充
+3. **使用自动填充**
+   - **填充已保存的密码**
+     - 访问需要登录的网站（如 `github.com/login`）
+     - 点击用户名或密码输入框
+     - 你会看到输入框旁边出现 Monica 图标
+     - 点击图标，从弹出的列表中选择密码
+     - 用户名和密码会自动填充
 
-#### 填充已保存的密码
+   **使用 2FA 验证码**
+     - 访问需要 2FA 验证的网站
+     - 在验证码输入框中，点击旁边的 Monica 图标
+     - 输入主密码进行验证（如果之前已验证，会直接显示列表）
+     - 从列表中选择对应的验证器
+     - 验证码会自动填充到输入框
 
-1. 访问需要登录的网站（如 `github.com/login`）
-2. 点击用户名或密码输入框
-3. 你会看到输入框旁边出现 Monica 图标
-4. 点击图标，从弹出的列表中选择密码
-5. 用户名和密码会自动填充
-
-#### 使用 2FA 验证码
-
-1. 访问需要 2FA 验证的网站
-2. 在验证码输入框中，点击旁边的 Monica 图标
-3. 输入主密码进行验证（如果之前已验证，会直接显示列表）
-4. 从列表中选择对应的验证器
-5. 验证码会自动填充到输入框
-
-### 3. 保存新密码
-
-1. 在网站上输入新的用户名和密码
-2. 点击登录按钮
-3. 页面右上角会弹出 Monica 保存提示
-4. 点击"保存"按钮
-5. 密码已保存到 Monica Vault
+4. **保存新密码**
+   - 在网站上输入新的用户名和密码
+   - 点击登录按钮
+   - 页面右上角会弹出 Monica 保存提示
+   - 点击"保存"按钮
+   - 密码已保存到 Monica Vault
 
 ## 📱 使用指南
 
@@ -111,8 +147,9 @@
 
 #### 查看密码列表
 - 扩展主页面默认显示所有密码
-- 点击密码卡片可以查看详细信息
-- 支持按标题、用户名搜索
+- 点击密码项目或卡片进入详情页面
+- 支持按标题、用户名、网站搜索
+- 使用 Quick Actions 可以快速查看、复制和删除密码
 
 #### 编辑密码
 - 点击密码卡片进入详情页
@@ -126,7 +163,6 @@
 ### 2FA 验证器管理
 
 #### 添加验证器
-
 1. 点击导航栏的"验证器"选项卡
 2. 点击"+"按钮
 3. 填写信息：
@@ -134,7 +170,10 @@
    - **发行者**：服务提供商（如"GitHub"）
    - **账号**：账户名/邮箱
    - **密钥**：扫描 QR 码或手动输入 Base32 密钥
-4. 点击"保存"
+   - **算法**：默认 SHA-1，可选 SHA-256
+   - **位数**：默认 6 位，可选 8 位
+   - **周期**：默认 30 秒
+   - 点击"保存"
 
 #### 扫描 QR 码
 - 点击"扫描 QR 码"按钮
@@ -144,7 +183,6 @@
 ### 备份和恢复
 
 #### WebDAV 备份
-
 1. 点击导航栏的"备份"选项卡
 2. 点击"备份设置"
 3. 配置 WebDAV 服务器信息：
@@ -155,14 +193,44 @@
 4. 点击"测试连接"
 5. 连接成功后，返回备份页面点击"立即备份"
 
-#### 导入密码
+### 导入功能
 
-1. 点击导航栏的"备份"选项卡
-2. 点击"导入"
-3. 选择导入格式：
-   - **KeePass (.kdbx)**：从 KeePass 导入
-   - **JSON**：从其他 Monica 实例导入
-4. 选择文件并确认导入
+Monica Browser 扩展支持从其他密码管理器导入数据，确保数据迁移的便利性。
+
+#### 支持的导入格式
+
+**1. Chrome Password CSV**
+- **适用场景**：从 Chrome 浏览器导出的密码文件
+- **数据字段**：name, url, username, password, note
+
+**2. Monica CSV**
+- **适用场景**：Monica 实例之间的数据交换
+- **数据字段**：完整的 Monica 导出格式，包含所有类型（密码、笔记、文档、TOTP 等）
+
+**3. Aegis JSON**
+- **适用场景**：从 Aegis 验证器应用导出的 TOTP 数据
+- **数据字段**：TOTP 相关信息，包含 issuer、account、secret、algorithm、period、digits 等
+
+**4. KeePass (.kdbx)** ⚠️ 暂不支持
+- **适用场景**：从 KeePass 导出的密码数据库
+- **状态**：功能开发中，暂不支持导入
+- **替代方案**：可以使用 KeePass 的 CSV 导出功能，然后使用 Monica 的 CSV 导入
+
+#### 导入流程
+
+1. 选择要导入的文件（支持 .csv 和 .json）
+2. 格式检测：系统自动检测文件格式类型
+3. 数据解析：解析文件内容并转换为 Monica 内部格式
+4. 预览确认：浏览即将导入的内容列表
+5. 开始导入：执行导入操作，显示进度
+6. 结果报告：显示导入统计（总数、成功数、跳过数、错误数）
+
+#### 特性
+
+- **自动格式检测**：根据文件扩展名或内容自动识别格式类型
+- **去重处理**：自动跳过重复的条目
+- **错误处理**：友好的错误提示，帮助用户快速定位和解决问题
+- **进度显示**：实时显示导入进度和结果
 
 ### 设置
 
@@ -185,26 +253,47 @@ Monica for Browser/
 ├── src/                    # 源代码
 │   ├── components/         # React 组件
 │   │   ├── auth/         # 认证相关
+│   │   │   └── UnlockScreen.tsx    # 主密码解锁界面
 │   │   ├── common/       # 通用组件
-│   │   └── layout/       # 布局组件
+│   │   │   ├── Button.tsx           # 按钮组件
+│   │   │   ├── Card.tsx              # 卡片容器
+│   │   │   ├── Input.tsx            # 输入框
+│   │   │   └── layout/       # 布局组件
+│   │   │       └── Layout.tsx            # 主布局
 │   ├── features/          # 功能模块
 │   │   ├── passwords/    # 密码管理
 │   │   ├── notes/        # 笔记管理
 │   │   ├── documents/    # 文档管理
 │   │   ├── authenticator/ # 2FA 验证器
 │   │   ├── backup/      # 备份功能
+│   │   │   ├── BackupPage.tsx         # 备份主页
+│   │   │   ├── WebDavSettings.tsx      # WebDAV 设置
+│   │   │   └── index.ts              # 备份入口文件
 │   │   ├── settings/    # 设置
+│   │   ├── quickAction/  # 快速操作
+│   │   │   └── QuickActionPage.tsx    # 快速操作页面
 │   │   └── import/      # 导入功能
+│   │       ├── ImportPage.tsx         # 导入页面
+│   │       └── index.ts              # 导入入口文件
 │   ├── contexts/         # React Context
-│   │   └── MasterPasswordContext.tsx
+│   │   └── MasterPasswordContext.tsx    # 主密码上下文
 │   ├── theme/            # 主题和样式
 │   ├── utils/            # 工具函数
+│   │   ├── webdav/       # WebDAV 相关
+│   │   │   ├── WebDavClient.tsx          # WebDAV 客户端
+│   │   │   ├── EncryptionHelper.tsx     # 加密助手
+│   │   │   ├── BackupManager.tsx       # 备份管理器
+│   │   │   ├── storage.ts               # 存储抽象层
+│   │   ├── ImportManager.tsx         # 导入管理器
 │   ├── types/            # TypeScript 类型
 │   ├── App.tsx          # 主应用
 │   ├── background.ts     # Background Service Worker
-│   └── content.ts       # Content Script
+│   ├── content.ts       # Content Script
+│   ├── i18n.ts         # 国际化配置
+│   ├── index.css         # 全局样式
+│   ├── index.html        # HTML 入口
 ├── public/              # 静态资源
-│   ├── icons/           # 图标
+│   ├── icons/           # 应用图标
 │   └── manifest.json    # 扩展清单
 ├── package.json         # 依赖配置
 ├── tsconfig.json       # TypeScript 配置
@@ -315,19 +404,6 @@ npm run preview
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 开启 Pull Request
-
-## 📞 联系我们
-
-- **GitHub Issues**: [https://github.com/aiguozhi123456/Monica/issues](https://github.com/aiguozhi123456/Monica/issues)
-- **Email**: [待添加]
-
-## 🙏 致谢
-
-- [React](https://react.dev/) - React 框架
-- [Vite](https://vite.dev/) - 构建工具
-- [Styled Components](https://styled-components.com/) - CSS-in-JS
-- [Lucide Icons](https://lucide.dev/) - 图标库
-- [OTPAuth](https://github.com/hectorm/otpauth) - TOTP 验证器
 
 ---
 
