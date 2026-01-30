@@ -87,7 +87,7 @@ Monica is built with modern, platform-native technologies to ensure performance 
 
 ### Android
 1.  Download the latest `.apk` from the [**Releases**](https://github.com/JoyinJoester/Monica/releases) page.
-2.  Install on **Android 11.0+** devices.
+2.  Install on **Android 8.0+** devices.
 
 ---
 

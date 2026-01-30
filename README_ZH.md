@@ -66,7 +66,7 @@ Monica 基于“隐私设计 (Privacy by Design)”理念构建，采用行业�
 
 ### Android
 1. 前往 [Releases](https://github.com/JoyinJoester/Monica/releases) 页面下载最新的 APK 文件。
-2. 在您的 Android 设备上安装（需 Android 11+）。
+2. 在您的 Android 设备上安装（需 Android 8+）。
 
 ---
 
