@@ -24,8 +24,8 @@ async function fetchData() {
 
         console.log(`Fetching data for ${REPO_OWNER}/${REPO_NAME}...`);
 
-        // 1. Fetch Commits
-        const commitsRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits?per_page=6`, { headers });
+        // 1. Fetch Commits (Fetch more to calculate 30-day trend)
+        const commitsRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits?per_page=100`, { headers });
         if (!commitsRes.ok) throw new Error(`Commits fetch failed: ${commitsRes.status}`);
         const commitsRaw = await commitsRes.json();
 
