@@ -7,6 +7,7 @@
         "title": "Secure.<br>Local.<br>Open Source.",
         "subtitle": "Monica is an open-source, local-first password manager.<br>Credentials, 2FA, and secure notes, all stored strictly on your device.",
         "download_android": "Download for Android",
+        "browser_extension": "Browser Extension",
         "view_source": "View Source Code"
     },
     "features": {

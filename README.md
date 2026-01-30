@@ -75,9 +75,11 @@ Monica is built with modern, platform-native technologies to ensure performance 
 
 ## 🚀 Installation
 
-### Windows
-1.  Download the latest installer (`.exe`) from the [**Releases**](https://github.com/JoyinJoester/Monica/releases) page.
-2.  Install on **Windows 10 (1809+)** or **Windows 11**.
+### Browser (Chrome / Edge)
+1.  Download the latest source or build from the [**Monica for Browser**](Monica%20for%20Browser) directory.
+2.  Enable **Developer Mode** in `chrome://extensions/`.
+3.  Click **Load unpacked** and select the `dist` folder.
+4.  *(Coming Soon: Installation from Chrome Web Store)*
 
 ### Android
 1.  Download the latest `.apk` from the [**Releases**](https://github.com/JoyinJoester/Monica/releases) page.

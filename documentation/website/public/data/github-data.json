@@ -1,11 +1,25 @@
 {
-  "generated_at": "2026-01-30T11:26:39.910Z",
+  "generated_at": "2026-01-30T12:02:58.672Z",
   "stats": {
-    "stars": 158,
+    "stars": 159,
     "forks": 9,
     "issues": 1
   },
   "commits": [
+    {
+      "sha": "bf1055e",
+      "message": "fix: correct support description to remove server reference",
+      "date": "2026-01-30T11:30:34Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/bf1055e9ee6e454b2219ce532c4361b444aec40b"
+    },
+    {
+      "sha": "37828ca",
+      "message": "feat: refine supported platforms and QR code interaction",
+      "date": "2026-01-30T11:27:06Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/37828cab0531d25fb576cdfcd33c4d2efdf4e353"
+    },
     {
       "sha": "66cd0f9",
       "message": "feat: add tech stack icons and redesign support section",
@@ -691,20 +705,6 @@
       "date": "2026-01-06T04:13:49Z",
       "author": "JoyinJoester",
       "url": "https://github.com/JoyinJoester/Monica/commit/4c50624d93c69fce600e75f395c61fa7fe0261c1"
-    },
-    {
-      "sha": "6ec0847",
-      "message": "Update WebDavHelper logic",
-      "date": "2026-01-06T01:57:24Z",
-      "author": "JoyinJoester",
-      "url": "https://github.com/JoyinJoester/Monica/commit/6ec08472a710bf3383e3f361cc88a52decfb7175"
-    },
-    {
-      "sha": "77d8439",
-      "message": "Fix: TOTP binding restoration in WebDAV backup and CSV import",
-      "date": "2026-01-05T16:26:19Z",
-      "author": "JoyinJoester",
-      "url": "https://github.com/JoyinJoester/Monica/commit/77d8439480e16606b752387170f26cd521ecc8ba"
     }
   ],
   "contributors": [

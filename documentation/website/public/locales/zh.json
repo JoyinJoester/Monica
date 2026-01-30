@@ -7,6 +7,7 @@
         "title": "安全。<br>本地。<br>开源。",
         "subtitle": "Monica 是一个开源的本地密码管理器。<br>密码管理、2FA 验证、安全笔记，所有数据完全本地存储。",
         "download_android": "下载 Android 版",
+        "browser_extension": "浏览器插件",
         "view_source": "查看源码"
     },
     "features": {
