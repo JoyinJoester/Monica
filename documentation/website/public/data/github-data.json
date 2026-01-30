@@ -1,11 +1,25 @@
 {
-  "generated_at": "2026-01-30T10:31:58.239Z",
+  "generated_at": "2026-01-30T11:13:01.495Z",
   "stats": {
-    "stars": 157,
+    "stars": 158,
     "forks": 9,
     "issues": 1
   },
   "commits": [
+    {
+      "sha": "c336f8e",
+      "message": "feat: enhance community section layout with tech stack and redesigned support card",
+      "date": "2026-01-30T11:08:50Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c336f8e9f138bf26dbc0f335396d150cdfff970c"
+    },
+    {
+      "sha": "4169fed",
+      "message": "feat: add repository stats and support section to community page",
+      "date": "2026-01-30T10:42:05Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4169fedcc7e95942ff4f2cdfb2f35b27f5957a96"
+    },
     {
       "sha": "0187046",
       "message": "refactor: rename githubpage文档 to documentation and update workflow",
@@ -691,20 +705,6 @@
       "date": "2026-01-05T12:26:39Z",
       "author": "JoyinJoester",
       "url": "https://github.com/JoyinJoester/Monica/commit/602f6f037fb1d99fe01a17f3da2d24b8b2944790"
-    },
-    {
-      "sha": "c827a03",
-      "message": "ci: move github workflow to root and fix paths",
-      "date": "2026-01-05T11:43:38Z",
-      "author": "JoyinJoester",
-      "url": "https://github.com/JoyinJoester/Monica/commit/c827a03852a4c30d2c58169fd173d8f98325a873"
-    },
-    {
-      "sha": "6145703",
-      "message": "feat: Support multiple emails/phones in PasswordEntry, WebDAV, and CSV import/export",
-      "date": "2026-01-05T11:37:31Z",
-      "author": "JoyinJoester",
-      "url": "https://github.com/JoyinJoester/Monica/commit/61457031a6ea5b9d45658717180dbee8b2117975"
     }
   ],
   "contributors": [
@@ -712,15 +712,15 @@
       "login": "JoyinJoester",
       "avatar_url": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "html_url": "https://github.com/JoyinJoester",
-      "contributions": 89,
-      "ratio": "81.7"
+      "contributions": 93,
+      "ratio": "82.3"
     },
     {
       "login": "aiguozhi123456",
       "avatar_url": "https://avatars.githubusercontent.com/u/126325311?v=4",
       "html_url": "https://github.com/aiguozhi123456",
       "contributions": 20,
-      "ratio": "18.3"
+      "ratio": "17.7"
     }
   ]
 }
