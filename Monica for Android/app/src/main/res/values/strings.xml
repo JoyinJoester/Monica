@@ -92,6 +92,20 @@
     <string name="copy">Copy</string>
     <string name="username_copied">Username copied to clipboard</string>
     <string name="password_copied">Password copied to clipboard</string>
+    
+    <!-- Quick Settings Tile & Smart Copy -->
+    <string name="tile_autofill_label">Monica Fill</string>
+    <string name="smart_copy_username_first">Copy username (password next)</string>
+    <string name="smart_copy_password_first">Copy password (username next)</string>
+    <string name="smart_copy_notification_title">Monica</string>
+    <string name="smart_copy_notification_copy_password">Tap to copy password</string>
+    <string name="smart_copy_notification_copy_username">Tap to copy username</string>
+    
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_required">Autofill Verification</string>
+    <string name="autofill_auth_required_desc">Require biometric or password verification before accessing autofill</string>
+    <string name="autofill_auth_waiting">Waiting for verification…</string>
+    
     <string name="notification_validator_ready">Authenticator notification is starting...</string>
     <string name="notification_validator_no_match">No matching authenticator yet</string>
     <string name="notification_validator_switch">切换</string>
@@ -441,16 +455,16 @@
     <string name="delete_password_message">Are you sure you want to delete \"%s\"?</string>
     
     <!-- Error Messages -->
-    <string name="error_password_too_short">Master password must be at least 6 characters long</string>
-    <string name="error_password_must_be_6_digits">Password must be 6 digits</string>
-    <string name="error_password_min_6_digits">Password must be at least 6 digits</string>
+    <string name="error_password_too_short">Master password must be at least 4 characters long</string>
+    <string name="error_password_must_be_6_digits">Password must be 4 digits</string>
+    <string name="error_password_min_6_digits">Password must be at least 4 digits</string>
     <string name="error_password_must_be_numeric">Password must contain only numbers</string>
     <string name="error_passwords_not_match">Passwords do not match</string>
     <string name="error_invalid_password">Invalid master password</string>
     <string name="error_authentication_failed">Authentication failed</string>
     <string name="error_title_required">Title is required</string>
     <string name="error_password_required">Password is required</string>
-    <string name="password_min_6_digits">Minimum 6 digits required</string>
+    <string name="password_min_6_digits">Minimum 4 digits required</string>
     
     <!-- Multi Password Dialog -->
     <string name="common_info">Common Info</string>
@@ -500,12 +514,12 @@
     <string name="reset_password_title">Reset Password</string>
     <string name="reset_password">Reset Password</string>
     <string name="reset_master_password">Reset Master Password</string>
-    <string name="reset_password_description">Please enter your current password and set a new numeric password (minimum 6 digits)</string>
-    <string name="reset_password_verified_description">Please set your new numeric password (minimum 6 digits)</string>
+    <string name="reset_password_description">Please enter your current password and set a new numeric password (minimum 4 digits)</string>
+    <string name="reset_password_verified_description">Please set your new numeric password (minimum 4 digits)</string>
     <string name="current_password">Current Password</string>
     <string name="enter_current_password">Enter your current password</string>
     <string name="new_password">New Password</string>
-    <string name="enter_new_password">Enter new numeric password (min 6 digits)</string>
+    <string name="enter_new_password">Enter new numeric password (min 4 digits)</string>
     <string name="confirm_new_password">Confirm New Password</string>
     <string name="enter_confirm_password">Confirm your new password</string>
     <string name="current_password_required">Current password is required</string>
@@ -514,7 +528,7 @@
     <string name="password_reset_success">Password Reset Successful</string>
     <string name="password_reset_success_message">Your master password has been successfully changed. Please remember your new password.</string>
     <string name="passwords_do_not_match">Passwords do not match</string>
-    <string name="password_too_short">Password must be at least 6 characters</string>
+    <string name="password_too_short">Password must be at least 4 characters</string>
     
     <!-- Forgot Password -->
     <string name="forgot_password">Forgot Password?</string>
@@ -696,13 +710,13 @@
     <string name="change_password_current">Current Password *</string>
     <string name="change_password_new">New Password *</string>
     <string name="change_password_confirm">Confirm New Password *</string>
-    <string name="change_password_hint">Password must be at least 6 digits</string>
+    <string name="change_password_hint">Password must be at least 4 digits</string>
     <string name="change_password_button">Change Password</string>
     <string name="change_password_success_title">Password Changed Successfully</string>
     <string name="change_password_success_message">Your master password has been successfully changed and all data has been re-encrypted with the new password. Please login with the new password.</string>
     <string name="change_password_error_current_empty">Please enter current password</string>
     <string name="change_password_error_new_empty">Please enter new password</string>
-    <string name="change_password_error_new_too_short">New password must be at least 6 digits</string>
+    <string name="change_password_error_new_too_short">New password must be at least 4 digits</string>
     <string name="change_password_error_confirm_empty">Please confirm new password</string>
     <string name="change_password_error_not_match">New passwords do not match</string>
     <string name="change_password_error_same_as_current">New password cannot be the same as current password</string>

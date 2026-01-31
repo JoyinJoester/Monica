@@ -259,6 +259,9 @@ fun ChangePasswordScreen(
                         newPassword != confirmPassword -> {
                             errorMessage = errorNotMatch
                         }
+                        newPassword.length < 4 -> {
+                            errorMessage = errorNewTooShort
+                        }
                         currentPassword == newPassword -> {
                             errorMessage = errorSameAsCurrent
                         }

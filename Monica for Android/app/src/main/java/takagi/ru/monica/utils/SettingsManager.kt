@@ -61,6 +61,7 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_CARD_DISPLAY_MODE_KEY = stringPreferencesKey("password_card_display_mode") // 密码卡片显示模式
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
+        private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -132,7 +133,8 @@ class SettingsManager(private val context: Context) {
                 val modeString = preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] ?: takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name
                 takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(modeString)
             }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL),
-            noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true
+            noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
+            autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true // 默认开启
         )
     }
     
@@ -325,6 +327,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateNoteGridLayout(isGrid: Boolean) {
         dataStore.edit { preferences ->
             preferences[NOTE_GRID_LAYOUT_KEY] = isGrid
+        }
+    }
+
+    suspend fun updateAutofillAuthRequired(required: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[AUTOFILL_AUTH_REQUIRED_KEY] = required
         }
     }
 }

@@ -169,10 +169,10 @@ fun ResetPasswordScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading,
                 singleLine = true,
-                isError = newPassword.isNotEmpty() && newPassword.length < 6
+                isError = newPassword.isNotEmpty() && newPassword.length < 4
             )
             
-            if (newPassword.isNotEmpty() && newPassword.length < 6) {
+            if (newPassword.isNotEmpty() && newPassword.length < 4) {
                 Text(
                     text = context.getString(R.string.password_too_short),
                     color = MaterialTheme.colorScheme.error,
@@ -271,7 +271,7 @@ fun ResetPasswordScreen(
                         newPassword.isEmpty() -> {
                             errorMessage = context.getString(R.string.new_password_required)
                         }
-                        newPassword.length < 6 -> {
+                        newPassword.length < 4 -> {
                             errorMessage = context.getString(R.string.password_too_short)
                         }
                         newPassword != confirmPassword -> {

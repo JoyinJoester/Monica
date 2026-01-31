@@ -93,6 +93,27 @@
         <receiver android:name=".autofill.AutofillNotificationReceiver"
             android:exported="false" />
 
+        <!-- Quick Settings Tile for Manual Autofill -->
+        <service
+            android:name=".autofill.service.AutofillTileService"
+            android:label="@string/tile_autofill_label"
+            android:icon="@drawable/ic_key"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Smart Copy Broadcast Receiver -->
+        <receiver 
+            android:name=".autofill.utils.SmartCopyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="takagi.ru.monica.ACTION_SMART_COPY" />
+            </intent-filter>
+        </receiver>
+
         <!-- Notification Validator Service -->
         <service
             android:name=".service.NotificationValidatorService"

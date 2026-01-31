@@ -132,7 +132,8 @@ data class AppSettings(
     val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
     val iconCardsEnabled: Boolean = false, // 是否启用带图标卡片
     val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL, // 卡片显示模式
-    val noteGridLayout: Boolean = true // 笔记列表使用网格布局 (true = 网格, false = 列表)
+    val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
+    val autofillAuthRequired: Boolean = true // 自动填充验证 - 默认开启
 )
 
 /**

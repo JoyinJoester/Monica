@@ -93,6 +93,20 @@
     <string name="username_copied">用户名已复制到剪贴板</string>
     <string name="password_copied">密码已复制到剪贴板</string>
     
+    <!-- Quick Settings Tile & Smart Copy -->
+    <string name="tile_autofill_label">Monica 填充</string>
+    <string name="smart_copy_username_first">复制账号 (稍后复制密码)</string>
+    <string name="smart_copy_password_first">复制密码 (稍后复制账号)</string>
+    <string name="smart_copy_notification_title">Monica</string>
+    <string name="smart_copy_notification_copy_password">点击复制密码</string>
+    <string name="smart_copy_notification_copy_username">点击复制账号</string>
+    
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_required">自动填充验证</string>
+    <string name="autofill_auth_required_desc">进入自动填充前需要生物识别或密码验证</string>
+    <string name="autofill_auth_waiting">正在等待验证…</string>
+
+    
     <!-- Form Fields -->
     <string name="field_email">邮箱</string>
     <string name="field_phone">手机号</string>
@@ -432,16 +446,16 @@
     <string name="delete_password_message">确定要删除「%s」吗？</string>
     
     <!-- Error Messages -->
-    <string name="error_password_too_short">主密码至少需要6个字符</string>
-    <string name="error_password_must_be_6_digits">密码必须为6位数字</string>
-    <string name="error_password_min_6_digits">密码至少需要6位数字</string>
+    <string name="error_password_too_short">主密码至少需要4个字符</string>
+    <string name="error_password_must_be_6_digits">密码必须为4位数字</string>
+    <string name="error_password_min_6_digits">密码至少需要4位数字</string>
     <string name="error_password_must_be_numeric">密码只能包含数字</string>
     <string name="error_passwords_not_match">密码不匹配</string>
     <string name="error_invalid_password">主密码无效</string>
     <string name="error_authentication_failed">认证失败</string>
     <string name="error_title_required">标题为必填项</string>
     <string name="error_password_required">密码为必填项</string>
-    <string name="password_min_6_digits">最少需要6位数字</string>
+    <string name="password_min_6_digits">最少需要4位数字</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">设置</string>
@@ -482,12 +496,12 @@
     <string name="reset_password_title">重设密码</string>
     <string name="reset_password">重设密码</string>
     <string name="reset_master_password">重设主密码</string>
-    <string name="reset_password_description">请输入当前密码并设置新的纯数字密码（最低6位数字）</string>
-    <string name="reset_password_verified_description">请设置您的新纯数字密码（最低6位数字）</string>
+    <string name="reset_password_description">请输入当前密码并设置新的纯数字密码（最低4位数字）</string>
+    <string name="reset_password_verified_description">请设置您的新纯数字密码（最低4位数字）</string>
     <string name="current_password">当前密码</string>
     <string name="enter_current_password">输入您的当前密码</string>
     <string name="new_password">新密码</string>
-    <string name="enter_new_password">输入新的纯数字密码（最低6位数字）</string>
+    <string name="enter_new_password">输入新的纯数字密码（最低4位数字）</string>
     <string name="confirm_new_password">确认新密码</string>
     <string name="enter_confirm_password">确认您的新密码</string>
     <string name="current_password_required">请输入当前密码</string>
@@ -496,7 +510,7 @@
     <string name="password_reset_success">密码重设成功</string>
     <string name="password_reset_success_message">您的主密码已成功更改。请记住您的新密码。</string>
     <string name="passwords_do_not_match">密码不匹配</string>
-    <string name="password_too_short">密码至少需要6位字符</string>
+    <string name="password_too_short">密码至少需要4位字符</string>
     
     <!-- Forgot Password -->
     
@@ -666,13 +680,13 @@
     <string name="change_password_current">当前密码 *</string>
     <string name="change_password_new">新密码 *</string>
     <string name="change_password_confirm">确认新密码 *</string>
-    <string name="change_password_hint">密码长度至少6位数字</string>
+    <string name="change_password_hint">密码长度至少4位数字</string>
     <string name="change_password_button">修改密码</string>
     <string name="change_password_success_title">密码修改成功</string>
     <string name="change_password_success_message">您的主密码已成功修改，所有数据已使用新密码重新加密。请使用新密码登录。</string>
     <string name="change_password_error_current_empty">请输入当前密码</string>
     <string name="change_password_error_new_empty">请输入新密码</string>
-    <string name="change_password_error_new_too_short">新密码长度至少6位数字</string>
+    <string name="change_password_error_new_too_short">新密码长度至少4位数字</string>
     <string name="change_password_error_confirm_empty">请确认新密码</string>
     <string name="change_password_error_not_match">两次输入的新密码不一致</string>
     <string name="change_password_error_same_as_current">新密码不能与当前密码相同</string>

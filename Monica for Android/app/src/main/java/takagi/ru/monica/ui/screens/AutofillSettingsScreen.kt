@@ -42,6 +42,7 @@ import takagi.ru.monica.autofill.DomainMatchStrategy
 import takagi.ru.monica.autofill.core.AutofillServiceChecker
 import takagi.ru.monica.autofill.core.AutofillDiagnostics
 import takagi.ru.monica.ui.components.AutofillStatusCard
+import takagi.ru.monica.utils.SettingsManager
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,8 +53,11 @@ fun AutofillSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val autofillPreferences = remember { AutofillPreferences(context) }
+    val settingsManager = remember { SettingsManager(context) }
     
-    val autofillEnabled by autofillPreferences.isAutofillEnabled.collectAsState(initial = false)
+    // 自动填充验证设置
+    val appSettings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    val autofillAuthRequired = appSettings.autofillAuthRequired
     val domainMatchStrategy by autofillPreferences.domainMatchStrategy.collectAsState(initial = DomainMatchStrategy.BASE_DOMAIN)
     val fillSuggestionsEnabled by autofillPreferences.isFillSuggestionsEnabled.collectAsState(initial = true)
     val manualSelectionEnabled by autofillPreferences.isManualSelectionEnabled.collectAsState(initial = true)
@@ -251,19 +255,7 @@ fun AutofillSettingsScreen(
                 icon = Icons.Outlined.Input,
                 iconTint = MaterialTheme.colorScheme.tertiary
             ) {
-                SwitchSettingItem(
-                    icon = Icons.Outlined.Fingerprint,
-                    title = stringResource(R.string.autofill_fill_verify_identity),
-                    subtitle = stringResource(R.string.autofill_fill_verify_identity_desc),
-                    checked = biometricQuickFillEnabled,
-                    onCheckedChange = {
-                        scope.launch {
-                            autofillPreferences.setBiometricQuickFillEnabled(it)
-                        }
-                    }
-                )
-                
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
                 SwitchSettingItem(
                     icon = Icons.Outlined.AutoAwesome,
                     title = stringResource(R.string.autofill_fill_suggestions),
