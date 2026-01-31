@@ -263,12 +263,16 @@ fun SecurityQuestionsSetupScreen(
                             isLoading = true
                             errorMessage = ""
                             
-                            securityManager.setSecurityQuestions(
-                                selectedQuestion1!!.id,
-                                answer1.trim(),
-                                selectedQuestion2!!.id,
-                                answer2.trim()
-                            )
+                            val q1 = selectedQuestion1
+                            val q2 = selectedQuestion2
+                            if (q1 != null && q2 != null) {
+                                securityManager.setSecurityQuestions(
+                                    q1.id,
+                                    answer1.trim(),
+                                    q2.id,
+                                    answer2.trim()
+                                )
+                            }
                             
                             isLoading = false
                             onSetupComplete()

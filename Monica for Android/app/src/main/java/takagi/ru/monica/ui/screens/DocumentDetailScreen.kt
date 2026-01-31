@@ -258,9 +258,9 @@ fun DocumentDetailScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
-                             if (frontBitmap != null) {
+                             frontBitmap?.let { bmp ->
                                 Image(
-                                    bitmap = frontBitmap!!.asImageBitmap(),
+                                    bitmap = bmp.asImageBitmap(),
                                     contentDescription = stringResource(R.string.front_image),
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -270,9 +270,9 @@ fun DocumentDetailScreen(
                                     contentScale = ContentScale.Crop
                                 )
                             }
-                            if (backBitmap != null) {
+                            backBitmap?.let { bmp ->
                                 Image(
-                                    bitmap = backBitmap!!.asImageBitmap(),
+                                    bitmap = bmp.asImageBitmap(),
                                     contentDescription = stringResource(R.string.back_image),
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -319,54 +319,58 @@ fun DocumentDetailScreen(
     
     // Dialogs
     // Dialogs
-    if (showFrontImageDialog && frontBitmap != null) {
-        ImageDialog(
-            bitmap = frontBitmap!!, 
-            onDismiss = { showFrontImageDialog = false },
-            onDownload = {
-                scope.launch {
-                    val item = documentItem ?: return@launch
-                    try {
-                        val paths = Json.decodeFromString<List<String>>(item.imagePaths)
-                        if (paths.isNotEmpty() && paths[0].isNotBlank()) {
-                            val success = imageManager.saveImageToGallery(paths[0], "Document_${item.title}_Front")
-                            if (success) {
-                                Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+    if (showFrontImageDialog) {
+        frontBitmap?.let { bmp ->
+            ImageDialog(
+                bitmap = bmp, 
+                onDismiss = { showFrontImageDialog = false },
+                onDownload = {
+                    scope.launch {
+                        val item = documentItem ?: return@launch
+                        try {
+                            val paths = Json.decodeFromString<List<String>>(item.imagePaths)
+                            if (paths.isNotEmpty() && paths[0].isNotBlank()) {
+                                val success = imageManager.saveImageToGallery(paths[0], "Document_${item.title}_Front")
+                                if (success) {
+                                    Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                                }
                             }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
-            }
-        )
+            )
+        }
     }
     
-    if (showBackImageDialog && backBitmap != null) {
-        ImageDialog(
-            bitmap = backBitmap!!, 
-            onDismiss = { showBackImageDialog = false },
-             onDownload = {
-                scope.launch {
-                    val item = documentItem ?: return@launch
-                    try {
-                        val paths = Json.decodeFromString<List<String>>(item.imagePaths)
-                        if (paths.size > 1 && paths[1].isNotBlank()) {
-                            val success = imageManager.saveImageToGallery(paths[1], "Document_${item.title}_Back")
-                            if (success) {
-                                Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+    if (showBackImageDialog) {
+        backBitmap?.let { bmp ->
+            ImageDialog(
+                bitmap = bmp, 
+                onDismiss = { showBackImageDialog = false },
+                 onDownload = {
+                    scope.launch {
+                        val item = documentItem ?: return@launch
+                        try {
+                            val paths = Json.decodeFromString<List<String>>(item.imagePaths)
+                            if (paths.size > 1 && paths[1].isNotBlank()) {
+                                val success = imageManager.saveImageToGallery(paths[1], "Document_${item.title}_Back")
+                                if (success) {
+                                    Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                                }
                             }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
-            }
-        )
+            )
+        }
     }
     
     if (showDeleteDialog) {

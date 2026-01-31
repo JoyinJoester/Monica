@@ -254,7 +254,8 @@ class KeePassWebDavViewModel {
             }
             
             // 列出目录内容
-            val resources = sardine!!.list(folderPath)
+            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+            val resources = currentSardine.list(folderPath)
             
             val kdbxFiles = resources
                 .filter { !it.isDirectory && it.name.endsWith(".kdbx", ignoreCase = true) }
@@ -377,7 +378,8 @@ class KeePassWebDavViewModel {
                 val remotePath = "$serverUrl/$KEEPASS_FOLDER/$fileName"
                 val fileBytes = tempFile.readBytes()
                 
-                sardine!!.put(remotePath, fileBytes, "application/octet-stream")
+                val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+                currentSardine.put(remotePath, fileBytes, "application/octet-stream")
                 
                 Log.d(TAG, "Uploaded successfully: $fileName")
                 Result.success(fileName)
@@ -416,7 +418,8 @@ class KeePassWebDavViewModel {
             val tempFile = File(context.cacheDir, "import_${file.name}")
             
             try {
-                sardine!!.get(remotePath).use { inputStream ->
+                val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+                currentSardine.get(remotePath).use { inputStream ->
                     tempFile.outputStream().use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
@@ -456,7 +459,8 @@ class KeePassWebDavViewModel {
             }
             
             val remotePath = "$serverUrl/$KEEPASS_FOLDER/${file.name}"
-            val inputStream = sardine!!.get(remotePath)
+            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+            val inputStream = currentSardine.get(remotePath)
             
             Log.d(TAG, "Downloaded stream for: ${file.name}")
             Result.success(inputStream)

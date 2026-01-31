@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
@@ -113,8 +115,20 @@ class MainActivity : FragmentActivity() {
     override fun attachBaseContext(newBase: Context?) {
         if (newBase != null) {
             val settingsManager = SettingsManager(newBase)
-            val language = runBlocking {
-                settingsManager.settingsFlow.first().language
+            // 使用超时保护，防止 ANR
+            val language = try {
+                runBlocking {
+                    withTimeout(200) {
+                        try {
+                            settingsManager.settingsFlow.first().language
+                        } catch (e: Exception) {
+                            takagi.ru.monica.data.Language.SYSTEM
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // 超时或出错，回退到默认
+                takagi.ru.monica.data.Language.SYSTEM
             }
             super.attachBaseContext(LocaleHelper.setLocale(newBase, language))
         } else {
@@ -236,9 +250,20 @@ fun MonicaApp(
     val navController = rememberNavController()
     
     // 同步预读取 disablePasswordVerification 设置（避免异步加载时登录页面闪烁）
+    // 使用超时保护，防止 ANR
     val initialDisablePasswordVerification = remember {
-        runBlocking {
-            settingsManager.settingsFlow.first().disablePasswordVerification
+        try {
+            runBlocking {
+                withTimeout(200) {
+                    try {
+                        settingsManager.settingsFlow.first().disablePasswordVerification
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -385,6 +410,11 @@ fun MonicaContent(
     // 使用预读取的值（initialDisablePasswordVerification）来避免闪烁
     val disablePasswordVerification = if (settingsLoaded) settings.disablePasswordVerification else initialDisablePasswordVerification
     val shouldSkipLogin = disablePasswordVerification && !isFirstTime
+    
+    // 使用 rememberUpdatedState 确保生命周期观察者闭包始终访问最新值
+    val currentIsAuthenticated by rememberUpdatedState(isAuthenticated)
+    val currentSettings by rememberUpdatedState(settings)
+    val currentIsFirstTime by rememberUpdatedState(isFirstTime)
 
     // Auto-lock logic: only use lifecycleOwner as key to prevent observer recreation
     // The settings and auth state are captured by closure and always reflect latest values
@@ -393,18 +423,20 @@ fun MonicaContent(
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
                     // Only record timestamp when user is authenticated
-                    if (isAuthenticated) {
+                    // 使用 currentIsAuthenticated 确保访问最新值
+                    if (currentIsAuthenticated) {
                         lastBackgroundTimestamp = System.currentTimeMillis()
                     }
                 }
                 Lifecycle.Event.ON_START -> {
                     // 如果已禁用密码验证，跳过自动锁定
-                    if (settings.disablePasswordVerification && !isFirstTime) {
+                    // 使用 currentSettings 和 currentIsFirstTime 确保访问最新值
+                    if (currentSettings.disablePasswordVerification && !currentIsFirstTime) {
                         lastBackgroundTimestamp = null
                         return@LifecycleEventObserver
                     }
                     
-                    val minutes = settings.autoLockMinutes
+                    val minutes = currentSettings.autoLockMinutes
                     val timeoutMs = when {
                         minutes == -1 -> null // Never auto-lock
                         minutes <= 0 -> 0L // Immediate lock after background
@@ -413,7 +445,7 @@ fun MonicaContent(
 
                     val lastBackground = lastBackgroundTimestamp
                     if (
-                        isAuthenticated &&
+                        currentIsAuthenticated &&
                         timeoutMs != null &&
                         lastBackground != null &&
                         System.currentTimeMillis() - lastBackground >= timeoutMs
@@ -438,17 +470,35 @@ fun MonicaContent(
         }
     }
     
-    // 当 shouldSkipLogin 为 true 时，自动设置认证状态
-    LaunchedEffect(shouldSkipLogin) {
-        if (shouldSkipLogin && !isAuthenticated) {
+    // 当 shouldSkipLogin 为 true 且设置已加载完成时，自动设置认证状态
+    LaunchedEffect(shouldSkipLogin, settingsLoaded) {
+        if (settingsLoaded && shouldSkipLogin && !isAuthenticated) {
             // 自动认证，跳过登录页面
             viewModel.authenticate("")
+        }
+    }
+    
+    // 使用固定的 startDestination 避免竞态条件
+    // 认证状态变化时通过 LaunchedEffect 处理导航
+    val fixedStartDestination = remember {
+        if (initialDisablePasswordVerification && !isFirstTime) Screen.Main.createRoute() else Screen.Login.route
+    }
+    
+    // 当认证状态变化时处理导航
+    LaunchedEffect(isAuthenticated) {
+        if (isAuthenticated) {
+            val currentRoute = navController.currentDestination?.route
+            if (currentRoute == Screen.Login.route) {
+                navController.navigate(Screen.Main.createRoute()) {
+                    popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            }
         }
     }
 
     NavHost(
         navController = navController,
-        startDestination = if (isAuthenticated || shouldSkipLogin) Screen.Main.createRoute() else Screen.Login.route
+        startDestination = fixedStartDestination
     ) {
         composable(Screen.Login.route) {
             LoginScreen(
