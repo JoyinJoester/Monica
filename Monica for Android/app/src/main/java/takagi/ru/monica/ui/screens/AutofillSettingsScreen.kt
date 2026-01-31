@@ -37,6 +37,8 @@ import androidx.compose.runtime.LaunchedEffect
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import takagi.ru.monica.autofill.AutofillPreferences
 import takagi.ru.monica.autofill.DomainMatchStrategy
 import takagi.ru.monica.autofill.core.AutofillServiceChecker
@@ -45,13 +47,30 @@ import takagi.ru.monica.ui.components.AutofillStatusCard
 import takagi.ru.monica.utils.SettingsManager
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun AutofillSettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var scaffoldModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            scaffoldModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "autofill_settings_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+    
+
     val autofillPreferences = remember { AutofillPreferences(context) }
     val settingsManager = remember { SettingsManager(context) }
     
@@ -122,6 +141,7 @@ fun AutofillSettingsScreen(
     }
     
     Scaffold(
+        modifier = scaffoldModifier,
         topBar = {
             TopAppBar(
                 title = { 

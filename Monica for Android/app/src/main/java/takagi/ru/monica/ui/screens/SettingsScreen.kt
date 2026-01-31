@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,7 +56,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import takagi.ru.monica.data.SecureItem
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -106,6 +108,25 @@ fun SettingsScreen(
     // 使用本地状态跟踪生物识别开关,避免验证失败时状态不一致
     var biometricSwitchState by remember(settings.biometricEnabled) { 
         mutableStateOf(settings.biometricEnabled) 
+    }
+
+
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    @Composable
+    fun getSharedModifier(key: String): Modifier {
+        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+            with(sharedTransitionScope) {
+                 return Modifier.sharedBounds(
+                     sharedContentState = rememberSharedContentState(key = key),
+                     animatedVisibilityScope = animatedVisibilityScope,
+                     resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+                 )
+            }
+        }
+        return Modifier
     }
 
     val startBiometricEnable = {
@@ -214,7 +235,8 @@ fun SettingsScreen(
                 onClick = {
                     android.util.Log.d("SettingsScreen", "Monica Plus card clicked")
                     onNavigateToMonicaPlus()
-                }
+                },
+                modifier = getSharedModifier("monica_plus_card")
             )
 
             // 安全分析入口卡片 - 置顶显示
@@ -222,6 +244,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
+                    .then(getSharedModifier("security_analysis_card"))
                     .clickable { onSecurityAnalysis() },
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -324,21 +347,24 @@ fun SettingsScreen(
                     icon = Icons.Default.Security,
                     title = context.getString(R.string.security_questions),
                     subtitle = context.getString(R.string.security_questions_description),
-                    onClick = onSecurityQuestions
+                    onClick = onSecurityQuestions,
+                    modifier = getSharedModifier("security_questions_card")
                 )
                 
                 SettingsItem(
                     icon = Icons.Default.AdminPanelSettings,
                     title = context.getString(R.string.permission_management_title),
                     subtitle = context.getString(R.string.permission_management_subtitle),
-                    onClick = onNavigateToPermissionManagement
+                    onClick = onNavigateToPermissionManagement,
+                    modifier = getSharedModifier("permission_settings_card")
                 )
                 
                 SettingsItem(
                     icon = Icons.Default.VpnKey,
                     title = context.getString(R.string.reset_master_password),
                     subtitle = context.getString(R.string.reset_password_description),
-                    onClick = onResetPassword
+                    onClick = onResetPassword,
+                    modifier = getSharedModifier("reset_password_card")
                 )
             }
             
@@ -351,22 +377,21 @@ fun SettingsScreen(
                     icon = Icons.Default.Sync,
                     title = context.getString(R.string.sync_backup_title),
                     subtitle = context.getString(R.string.sync_backup_description),
-                    onClick = onNavigateToSyncBackup
+                    onClick = onNavigateToSyncBackup,
+                    modifier = getSharedModifier("sync_settings_card")
                 )
                 
+
+
+
+
                 SettingsItem(
                     icon = Icons.Default.VpnKey,
                     title = context.getString(R.string.autofill),
                     subtitle = context.getString(R.string.autofill_subtitle),
-                    onClick = onNavigateToAutofill
-                )
-                
-                // 功能拓展入口
-                SettingsItem(
-                    icon = Icons.Default.Extension,
-                    title = context.getString(R.string.extensions_title),
-                    subtitle = context.getString(R.string.extensions_description),
-                    onClick = onNavigateToExtensions
+                    onClick = onNavigateToAutofill,
+
+                    modifier = getSharedModifier("autofill_settings_card")
                 )
                 
                 // 回收站设置
@@ -405,7 +430,8 @@ fun SettingsScreen(
                     icon = Icons.Default.Colorize,
                     title = context.getString(R.string.color_scheme),
                     subtitle = getColorSchemeDisplayName(settings.colorScheme, context),
-                    onClick = { onNavigateToColorScheme() }
+                    onClick = { onNavigateToColorScheme() },
+                    modifier = getSharedModifier("color_scheme_card")
                 )
                 
                 // 移入的设置项：
@@ -422,7 +448,17 @@ fun SettingsScreen(
                     icon = Icons.Default.ViewWeek,
                     title = context.getString(R.string.bottom_nav_settings),
                     subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
-                    onClick = onNavigateToBottomNavSettings
+                    onClick = onNavigateToBottomNavSettings,
+                    modifier = getSharedModifier("bottom_nav_settings_card")
+                )
+                
+                // 3. 功能扩展入口
+                SettingsItem(
+                    icon = Icons.Default.Extension,
+                    title = context.getString(R.string.extensions_title),
+                    subtitle = context.getString(R.string.extensions_description),
+                    onClick = onNavigateToExtensions,
+                    modifier = getSharedModifier("extensions_settings_card")
                 )
                 
 
@@ -478,6 +514,7 @@ fun SettingsScreen(
                     icon = Icons.Default.Code,
                     title = stringResource(R.string.developer_settings),
                     subtitle = stringResource(R.string.developer_settings_subtitle),
+                    modifier = getSharedModifier("developer_settings_card"),
                     onClick = {
                         val hasActivity = activity != null
                         val disablePasswordVerification = settings.disablePasswordVerification
@@ -1251,11 +1288,12 @@ fun SettingsItem(
     subtitle: String,
     onClick: () -> Unit,
     iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
-    trailingContent: (@Composable () -> Unit)? = null
+    trailingContent: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(
@@ -1732,7 +1770,7 @@ private fun getProgressBarStyleDisplayName(style: takagi.ru.monica.data.Progress
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun BottomNavSettingsScreen(
     viewModel: SettingsViewModel,
@@ -1743,7 +1781,23 @@ fun BottomNavSettingsScreen(
     val bottomNavVisibility = settings.bottomNavVisibility
     val scrollState = rememberScrollState()
 
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "bottom_nav_settings_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { Text(text = context.getString(R.string.bottom_nav_settings)) },

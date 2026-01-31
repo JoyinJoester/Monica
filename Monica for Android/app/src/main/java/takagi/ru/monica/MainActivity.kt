@@ -15,6 +15,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -496,10 +500,15 @@ fun MonicaContent(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = fixedStartDestination
-    ) {
+    @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+    androidx.compose.animation.SharedTransitionLayout {
+        androidx.compose.runtime.CompositionLocalProvider(
+            takagi.ru.monica.ui.LocalSharedTransitionScope provides this
+        ) {
+            NavHost(
+                navController = navController,
+                startDestination = fixedStartDestination
+            ) {
         composable(Screen.Login.route) {
             LoginScreen(
                 viewModel = viewModel,
@@ -526,6 +535,10 @@ fun MonicaContent(
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getInt("tab") ?: 0
             val scope = rememberCoroutineScope()
+
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             SimpleMainScreen(
                 passwordViewModel = viewModel,
                 settingsViewModel = settingsViewModel,
@@ -651,6 +664,7 @@ fun MonicaContent(
                     }
                 }
             )
+            }
         }
 
         composable(Screen.AddEditPassword.route) { backStackEntry ->
@@ -1007,6 +1021,9 @@ fun MonicaContent(
         composable(Screen.Settings.route) {
             val scope = rememberCoroutineScope()
 
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
@@ -1100,15 +1117,26 @@ fun MonicaContent(
                     }
                 }
             )
+            }
         }
 
-        composable(Screen.BottomNavSettings.route) {
+        composable(
+            route = Screen.BottomNavSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             BottomNavSettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+            }
         }
 
         composable(
@@ -1116,9 +1144,16 @@ fun MonicaContent(
             arguments = listOf(navArgument("skipCurrentPassword") {
                 type = NavType.BoolType
                 defaultValue = false
-            })
+            }),
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
         ) { backStackEntry ->
             val skipCurrentPassword = backStackEntry.arguments?.getBoolean("skipCurrentPassword") ?: false
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             ResetPasswordScreen(
                 securityManager = securityManager,
                 skipCurrentPassword = skipCurrentPassword,
@@ -1131,6 +1166,7 @@ fun MonicaContent(
                     }
                 }
             )
+            }
         }
 
         composable(Screen.ForgotPassword.route) {
@@ -1159,7 +1195,16 @@ fun MonicaContent(
             }
         }
 
-        composable(Screen.SecurityQuestionsSetup.route) {
+        composable(
+            route = Screen.SecurityQuestionsSetup.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             SecurityQuestionsSetupScreen(
                 securityManager = securityManager,
                 onNavigateBack = {
@@ -1169,6 +1214,7 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+            }
         }
 
         composable(Screen.SecurityQuestionsVerification.route) {
@@ -1212,20 +1258,39 @@ fun MonicaContent(
             )
         }
 
-        composable(Screen.AutofillSettings.route) {
-            takagi.ru.monica.ui.screens.AutofillSettingsScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
+        composable(
+            route = Screen.AutofillSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                takagi.ru.monica.ui.screens.AutofillSettingsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
 
-        composable(Screen.SecurityAnalysis.route) {
+        composable(
+            route = Screen.SecurityAnalysis.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
             val securityViewModel: takagi.ru.monica.viewmodel.SecurityAnalysisViewModel = viewModel {
                 takagi.ru.monica.viewmodel.SecurityAnalysisViewModel(repository)
             }
             val analysisData by securityViewModel.analysisData.collectAsState()
 
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.SecurityAnalysisScreen(
                 analysisData = analysisData,
                 onStartAnalysis = {
@@ -1238,20 +1303,40 @@ fun MonicaContent(
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
                 }
             )
+            }
         }
         
-        composable(Screen.DeveloperSettings.route) {
+        composable(
+            route = Screen.DeveloperSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.DeveloperSettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+            }
         }
         
-        composable(Screen.Extensions.route) {
+        composable(
+            route = Screen.Extensions.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
             val settings by settingsViewModel.settings.collectAsState()
             val totpItems by totpViewModel.totpItems.collectAsState()
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.ExtensionsScreen(
                 onNavigateBack = {
                     navController.popBackStack()
@@ -1292,9 +1377,19 @@ fun MonicaContent(
                     settingsViewModel.updateNotificationValidatorId(id)
                 }
             )
+            }
         }
         
-        composable(Screen.SyncBackup.route) {
+        composable(
+            route = Screen.SyncBackup.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.SyncBackupScreen(
                 onNavigateBack = {
                     navController.popBackStack()
@@ -1316,6 +1411,7 @@ fun MonicaContent(
                 },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
+            }
         }
         
         composable(Screen.LocalKeePass.route) {
@@ -1327,7 +1423,16 @@ fun MonicaContent(
             )
         }
         
-        composable(Screen.ColorSchemeSelection.route) {
+        composable(
+            route = Screen.ColorSchemeSelection.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.ColorSchemeSelectionScreen(
                 settingsViewModel = settingsViewModel,
                 onNavigateBack = {
@@ -1337,6 +1442,7 @@ fun MonicaContent(
                     navController.navigate(Screen.CustomColorSettings.route)
                 }
             )
+            }
         }
         
         composable(Screen.CustomColorSettings.route) {
@@ -1359,16 +1465,35 @@ fun MonicaContent(
         }
         
         // 权限管理页面
-        composable(Screen.PermissionManagement.route) {
+        composable(
+            route = Screen.PermissionManagement.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             PermissionManagementScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+            }
         }
 
-        composable(Screen.MonicaPlus.route) {
+        composable(
+            route = Screen.MonicaPlus.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
             val settings by settingsViewModel.settings.collectAsState()
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             MonicaPlusScreen(
                 isPlusActivated = settings.isPlusActivated,
                 onNavigateBack = {
@@ -1382,6 +1507,7 @@ fun MonicaContent(
                 }
             )
         }
+        }
 
         composable(Screen.Payment.route) {
             PaymentScreen(
@@ -1393,6 +1519,8 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+        }
+    }
         }
     }
 }

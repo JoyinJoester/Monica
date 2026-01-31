@@ -55,6 +55,24 @@ fun PasswordVerificationContent(
     val biometricHelper = remember { BiometricAuthHelper(context) }
     val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
     
+    // 自动触发生物识别
+    LaunchedEffect(Unit) {
+        if (!isFirstTime && isBiometricAvailable && biometricEnabled && activity != null) {
+            biometricHelper.authenticate(
+                activity = activity,
+                onSuccess = {
+                    onSuccess()
+                },
+                onError = { _, errorMsg ->
+                    errorMessage = context.getString(R.string.biometric_error, errorMsg)
+                },
+                onCancel = {
+                    // 用户主动取消，不显示错误，停留在密码输入界面
+                }
+            )
+        }
+    }
+    
     Column(
         modifier = modifier
             .fillMaxSize()

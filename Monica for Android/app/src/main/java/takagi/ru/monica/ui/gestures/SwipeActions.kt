@@ -60,6 +60,9 @@ fun SwipeActions(
     // 仅用于回弹动画的 Animatable
     val animatableOffset = remember { Animatable(0f) }
     
+    // 追踪最新的 isSwiped 状态供回调使用
+    val currentIsSwiped by rememberUpdatedState(isSwiped)
+    
     // 监听 isSwiped 状态变化 (主要用于取消删除后的复位)
     LaunchedEffect(isSwiped) {
         if (!isSwiped && (dragOffset != 0f || animatableOffset.value != 0f)) {
@@ -214,16 +217,28 @@ fun SwipeActions(
                                     
                                     val dynamicThreshold = cardWidth * 0.2f
                                     if (animatableOffset.value < -dynamicThreshold) {
-                                        animatableOffset.animateTo(-cardWidth, tween(300, easing = FastOutSlowInEasing))
+                                        // 触发左滑（删除）
+                                        // 先触发回调，给父组件响应时间
                                         onSwipeLeft()
+                                        // 执行展开动画
+                                        animatableOffset.animateTo(-cardWidth, tween(300, easing = FastOutSlowInEasing))
+                                        
+                                        // 动画结束后检查状态一致性
+                                        // 如果父组件没有将 isSwiped 置为 true（例如操作被取消或不合法），则回弹复位
+                                        if (!currentIsSwiped) {
+                                            animatableOffset.animateTo(0f, springSpec)
+                                        }
                                     } else if (animatableOffset.value > dynamicThreshold) {
+                                        // 触发右滑（选择）
                                         animatableOffset.animateTo(0f, springSpec)
                                         onSwipeRight()
                                     } else {
+                                        // 未达到阈值，回弹
                                         animatableOffset.animateTo(0f, quickSpringSpec)
                                     }
                                 }
                             },
+
                             onDragCancel = {
                                 scope.launch {
                                     animatableOffset.snapTo(dragOffset)
