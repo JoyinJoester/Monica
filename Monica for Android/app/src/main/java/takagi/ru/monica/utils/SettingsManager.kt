@@ -11,6 +11,7 @@ import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
 
 private val Context.dataStore by preferencesDataStore("settings")
@@ -70,6 +71,9 @@ class SettingsManager(private val context: Context) {
         private val FIELD_PERSONAL_INFO_KEY = booleanPreferencesKey("field_personal_info")
         private val FIELD_ADDRESS_INFO_KEY = booleanPreferencesKey("field_address_info")
         private val FIELD_PAYMENT_INFO_KEY = booleanPreferencesKey("field_payment_info")
+        
+        // 预设自定义字段 (JSON 格式存储)
+        private val PRESET_CUSTOM_FIELDS_KEY = stringPreferencesKey("preset_custom_fields")
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -362,6 +366,84 @@ class SettingsManager(private val context: Context) {
                 "addressInfo" -> preferences[FIELD_ADDRESS_INFO_KEY] = visible
                 "paymentInfo" -> preferences[FIELD_PAYMENT_INFO_KEY] = visible
             }
+        }
+    }
+    
+    // ==================== 预设自定义字段管理 ====================
+    
+    /**
+     * 获取预设自定义字段列表 Flow
+     */
+    val presetCustomFieldsFlow: Flow<List<PresetCustomField>> = dataStore.data.map { preferences ->
+        val json = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+        PresetCustomField.listFromJson(json)
+    }
+    
+    /**
+     * 添加预设自定义字段
+     */
+    suspend fun addPresetCustomField(field: PresetCustomField) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson).toMutableList()
+            // 设置新字段的排序为最后
+            val maxOrder = currentList.maxOfOrNull { it.order } ?: -1
+            val newField = field.copy(order = maxOrder + 1)
+            currentList.add(newField)
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(currentList)
+        }
+    }
+    
+    /**
+     * 更新预设自定义字段
+     */
+    suspend fun updatePresetCustomField(field: PresetCustomField) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson).toMutableList()
+            val index = currentList.indexOfFirst { it.id == field.id }
+            if (index >= 0) {
+                currentList[index] = field
+                preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(currentList)
+            }
+        }
+    }
+    
+    /**
+     * 删除预设自定义字段
+     */
+    suspend fun deletePresetCustomField(fieldId: String) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson).toMutableList()
+            currentList.removeAll { it.id == fieldId }
+            // 重新排序
+            val reordered = currentList.mapIndexed { index, field -> field.copy(order = index) }
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(reordered)
+        }
+    }
+    
+    /**
+     * 重新排序预设自定义字段
+     */
+    suspend fun reorderPresetCustomFields(fieldIds: List<String>) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson)
+            val fieldMap = currentList.associateBy { it.id }
+            val reorderedList = fieldIds.mapIndexedNotNull { index, id ->
+                fieldMap[id]?.copy(order = index)
+            }
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(reorderedList)
+        }
+    }
+    
+    /**
+     * 清空所有预设自定义字段
+     */
+    suspend fun clearAllPresetCustomFields() {
+        dataStore.edit { preferences ->
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = "[]"
         }
     }
 }

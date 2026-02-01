@@ -10,6 +10,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.ItemType
@@ -29,6 +30,14 @@ class SettingsViewModel(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = AppSettings()
+        )
+    
+    // 预设自定义字段列表
+    val presetCustomFields: StateFlow<List<PresetCustomField>> = settingsManager.presetCustomFieldsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
         )
 
     // 获取所有TOTP验证器
@@ -219,6 +228,38 @@ class SettingsViewModel(
     fun updatePasswordFieldVisibility(field: String, visible: Boolean) {
         viewModelScope.launch {
             settingsManager.updatePasswordFieldVisibility(field, visible)
+        }
+    }
+    
+    // ==================== 预设自定义字段管理 ====================
+    
+    fun addPresetCustomField(field: PresetCustomField) {
+        viewModelScope.launch {
+            settingsManager.addPresetCustomField(field)
+        }
+    }
+    
+    fun updatePresetCustomField(field: PresetCustomField) {
+        viewModelScope.launch {
+            settingsManager.updatePresetCustomField(field)
+        }
+    }
+    
+    fun deletePresetCustomField(fieldId: String) {
+        viewModelScope.launch {
+            settingsManager.deletePresetCustomField(fieldId)
+        }
+    }
+    
+    fun reorderPresetCustomFields(fieldIds: List<String>) {
+        viewModelScope.launch {
+            settingsManager.reorderPresetCustomFields(fieldIds)
+        }
+    }
+    
+    fun clearAllPresetCustomFields() {
+        viewModelScope.launch {
+            settingsManager.clearAllPresetCustomFields()
         }
     }
 }

@@ -52,6 +52,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.TotpData
@@ -87,6 +88,9 @@ fun AddEditPasswordScreen(
     // 获取设置以读取进度条样式
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    
+    // 获取预设自定义字段列表
+    val presetCustomFields by settingsManager.presetCustomFieldsFlow.collectAsState(initial = emptyList())
     
     // 常用账号信息
     val commonAccountPreferences = remember { takagi.ru.monica.data.CommonAccountPreferences(context) }
@@ -197,6 +201,24 @@ fun AddEditPasswordScreen(
             }
         }
     }
+    
+    // 新建条目时初始化预设自定义字段（只执行一次）
+    var hasLoadedPresets by rememberSaveable { mutableStateOf(false) }
+    
+    LaunchedEffect(presetCustomFields, isEditing, hasLoadedPresets) {
+        if (!isEditing && !hasLoadedPresets && presetCustomFields.isNotEmpty()) {
+            hasLoadedPresets = true
+            // 将预设字段添加到自定义字段列表（按order排序）
+            val presetDrafts = presetCustomFields
+                .sortedBy { it.order }
+                .map { preset -> CustomFieldDraft.fromPreset(preset) }
+            customFields.addAll(presetDrafts)
+            // 如果有预设字段，默认展开自定义字段区域
+            if (presetDrafts.isNotEmpty()) {
+                customFieldsExpanded = true
+            }
+        }
+    }
 
     // Load existing password data (including siblings)
     LaunchedEffect(passwordId) {
@@ -265,10 +287,43 @@ fun AddEditPasswordScreen(
                         // 加载自定义字段
                         val existingFields = viewModel.getCustomFieldsByEntryIdSync(actualId)
                         customFields.clear()
-                        customFields.addAll(existingFields.map { field ->
+                        
+                        // 将现有字段转换为Draft
+                        val existingDrafts = existingFields.map { field ->
                             CustomFieldDraft.fromCustomField(field)
-                        })
-                        if (existingFields.isNotEmpty()) {
+                        }.toMutableList()
+                        
+                        // 获取预设字段并标记
+                        // 检查现有字段是否匹配预设（按标题匹配）
+                        val currentPresets = presetCustomFields.sortedBy { it.order }
+                        val existingTitles = existingDrafts.map { it.title.lowercase() }.toSet()
+                        
+                        // 为匹配预设的现有字段添加预设标记
+                        existingDrafts.replaceAll { draft ->
+                            val matchingPreset = currentPresets.find { 
+                                it.fieldName.lowercase() == draft.title.lowercase() 
+                            }
+                            if (matchingPreset != null) {
+                                draft.copy(
+                                    isPreset = true,
+                                    isRequired = matchingPreset.isRequired,
+                                    presetId = matchingPreset.id,
+                                    placeholder = matchingPreset.placeholder
+                                )
+                            } else {
+                                draft
+                            }
+                        }
+                        
+                        // 添加未在现有字段中出现的预设字段
+                        currentPresets.forEach { preset ->
+                            if (preset.fieldName.lowercase() !in existingTitles) {
+                                existingDrafts.add(CustomFieldDraft.fromPreset(preset))
+                            }
+                        }
+                        
+                        customFields.addAll(existingDrafts)
+                        if (existingDrafts.isNotEmpty()) {
                             customFieldsExpanded = true
                         }
                         Unit

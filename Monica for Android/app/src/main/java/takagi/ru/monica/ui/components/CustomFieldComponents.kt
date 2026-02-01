@@ -353,16 +353,28 @@ fun CustomFieldEditCard(
                             )
                         }
                         // 删除按钮（需二次确认）
-                        IconButton(
-                            onClick = { showDeleteConfirm = true },
-                            modifier = Modifier.size(40.dp)
-                        ) {
+                        // 预设字段显示锁图标，不可删除
+                        if (field.isPreset) {
                             Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "删除",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(18.dp)
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "预设字段，不可删除",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp)
+                                    .size(18.dp)
                             )
+                        } else {
+                            IconButton(
+                                onClick = { showDeleteConfirm = true },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "删除",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -395,6 +407,52 @@ fun CustomFieldEditCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
                         )
+                    }
+                }
+                
+                // 预设/必填标记行
+                if (field.isPreset || field.isRequired) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = if (field.isProtected) 4.dp else 8.dp)
+                    ) {
+                        if (field.isPreset) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "预设字段",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                        if (field.isRequired) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "必填",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -100,7 +100,11 @@ data class CustomFieldDraft(
     val id: Long = 0,  // 临时ID，仅用于 UI 区分
     val title: String = "",
     val value: String = "",
-    val isProtected: Boolean = false
+    val isProtected: Boolean = false,
+    val isPreset: Boolean = false,      // 是否为预设字段（来自设置中的预设模板）
+    val isRequired: Boolean = false,    // 是否必填
+    val presetId: String? = null,       // 关联的预设字段ID
+    val placeholder: String = ""        // 占位提示
 ) {
     /**
      * 转换为 CustomField 实体
@@ -126,6 +130,11 @@ data class CustomFieldDraft(
      */
     fun isEmpty(): Boolean = title.isBlank() && value.isBlank()
     
+    /**
+     * 检查必填字段是否已填写
+     */
+    fun isFilled(): Boolean = !isRequired || value.isNotBlank()
+    
     companion object {
         private var tempIdCounter = -1L
         
@@ -144,7 +153,27 @@ data class CustomFieldDraft(
                 id = field.id,
                 title = field.title,
                 value = field.value,
-                isProtected = field.isProtected
+                isProtected = field.isProtected,
+                isPreset = false,
+                isRequired = false,
+                presetId = null,
+                placeholder = ""
+            )
+        }
+        
+        /**
+         * 从预设字段创建 Draft
+         */
+        fun fromPreset(preset: PresetCustomField): CustomFieldDraft {
+            return CustomFieldDraft(
+                id = nextTempId(),
+                title = preset.fieldName,
+                value = preset.defaultValue,
+                isProtected = preset.isSensitive,
+                isPreset = true,
+                isRequired = preset.isRequired,
+                presetId = preset.id,
+                placeholder = preset.placeholder
             )
         }
     }
