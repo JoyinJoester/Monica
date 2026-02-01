@@ -52,6 +52,7 @@ import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
 import takagi.ru.monica.ui.components.CustomFieldDisplayCard
+import takagi.ru.monica.ui.components.CustomFieldDetailCard
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
@@ -426,17 +427,16 @@ fun PasswordDetailScreen(
                 }
                 
                 // ==========================================
-                // 📋 自定义字段区块
+                // 📋 自定义字段区块 (独立卡片样式)
                 // ==========================================
-                if (customFields.isNotEmpty()) {
-                    CustomFieldDisplayCard(
-                        fields = customFields,
-                        onCopyField = { fieldName, value ->
-                            val field = customFields.find { it.title == fieldName }
-                            val isProtected = field?.isProtected == true
+                customFields.forEach { field ->
+                    CustomFieldDetailCard(
+                        field = field,
+                        onCopy = { fieldName ->
+                            val isProtected = field.isProtected
                             
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText(fieldName, value)
+                            val clip = ClipData.newPlainText(fieldName, field.value)
                             
                             // 敏感字段标记为敏感剪贴板（Android 13+）
                             if (isProtected && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {

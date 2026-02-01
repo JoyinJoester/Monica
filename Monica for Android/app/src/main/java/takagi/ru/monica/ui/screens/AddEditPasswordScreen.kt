@@ -57,6 +57,8 @@ import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
+import takagi.ru.monica.ui.components.CustomFieldEditCard
+import takagi.ru.monica.ui.components.AddCustomFieldButton
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.PasswordGenerator
@@ -696,16 +698,32 @@ fun AddEditPasswordScreen(
                 }
             }
             
-            // 自定义字段编辑区域
-            item {
-                CustomFieldEditorSection(
-                    fields = customFields,
-                    onFieldsChange = { newFields ->
-                        customFields.clear()
-                        customFields.addAll(newFields)
+            // 自定义字段编辑区域 (独立卡片样式)
+            items(customFields.size) { index ->
+                val field = customFields[index]
+                CustomFieldEditCard(
+                    index = index,
+                    field = field,
+                    onFieldChange = { updated ->
+                        customFields[index] = updated
                     },
-                    expanded = customFieldsExpanded,
-                    onExpandedChange = { customFieldsExpanded = it }
+                    onDelete = {
+                        customFields.removeAt(index)
+                    }
+                )
+            }
+            
+            // 添加自定义字段按钮
+            item {
+                AddCustomFieldButton(
+                    onClick = {
+                        customFields.add(CustomFieldDraft(
+                            id = CustomFieldDraft.nextTempId(),
+                            title = "",
+                            value = "",
+                            isProtected = false
+                        ))
+                    }
                 )
             }
             
