@@ -80,7 +80,37 @@ class PasswordViewModel(
         .distinctUntilChanged()
         .flatMapLatest { (query, filter) ->
             val baseFlow = if (query.isNotBlank()) {
-                repository.searchPasswordEntries(query)
+                // 扩展搜索：同时搜索基础字段和自定义字段
+                repository.searchPasswordEntries(query).map { baseResults ->
+                    // 获取通过自定义字段搜索匹配的条目ID
+                    val customFieldMatchIds = try {
+                        customFieldRepository?.searchEntryIdsByFieldContent(query) ?: emptyList()
+                    } catch (e: Exception) {
+                        Log.w("PasswordViewModel", "Custom field search failed", e)
+                        emptyList()
+                    }
+                    
+                    if (customFieldMatchIds.isEmpty()) {
+                        baseResults
+                    } else {
+                        // 合并结果：基础搜索结果 + 自定义字段匹配的条目
+                        val baseIds = baseResults.map { it.id }.toSet()
+                        val additionalIds = customFieldMatchIds.filter { it !in baseIds }
+                        
+                        if (additionalIds.isEmpty()) {
+                            baseResults
+                        } else {
+                            // 获取额外匹配的条目
+                            val additionalEntries = try {
+                                repository.getPasswordsByIds(additionalIds)
+                            } catch (e: Exception) {
+                                Log.w("PasswordViewModel", "Failed to fetch custom field matched entries", e)
+                                emptyList()
+                            }
+                            baseResults + additionalEntries
+                        }
+                    }
+                }
             } else {
                 when (filter) {
                     is CategoryFilter.All -> repository.getAllPasswordEntries()
@@ -712,9 +742,15 @@ class PasswordViewModel(
     
     /**
      * 保存密码条目的自定义字段
+     * 同时更新密码条目的 updatedAt 以触发同步
      */
     suspend fun saveCustomFieldsForEntry(entryId: Long, fields: List<CustomFieldDraft>) {
         customFieldRepository?.saveFieldsForEntry(entryId, fields)
+        
+        // 更新密码条目的 updatedAt 以确保 WebDAV 同步能检测到自定义字段的变化
+        repository.getPasswordEntryById(entryId)?.let { entry ->
+            repository.updatePasswordEntry(entry.copy(updatedAt = java.util.Date()))
+        }
     }
     
     /**

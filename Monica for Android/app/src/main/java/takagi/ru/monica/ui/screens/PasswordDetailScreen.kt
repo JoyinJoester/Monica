@@ -432,9 +432,22 @@ fun PasswordDetailScreen(
                     CustomFieldDisplayCard(
                         fields = customFields,
                         onCopyField = { fieldName, value ->
+                            val field = customFields.find { it.title == fieldName }
+                            val isProtected = field?.isProtected == true
+                            
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText(fieldName, value))
-                            Toast.makeText(context, "已复制: $fieldName", Toast.LENGTH_SHORT).show()
+                            val clip = ClipData.newPlainText(fieldName, value)
+                            
+                            // 敏感字段标记为敏感剪贴板（Android 13+）
+                            if (isProtected && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                clip.description.extras = android.os.PersistableBundle().apply {
+                                    putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
+                                }
+                            }
+                            
+                            clipboard.setPrimaryClip(clip)
+                            val message = if (isProtected) "已复制敏感字段: $fieldName" else "已复制: $fieldName"
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
                     )
                 }

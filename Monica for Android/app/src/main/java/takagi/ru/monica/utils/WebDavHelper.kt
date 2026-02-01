@@ -690,6 +690,9 @@ class WebDavHelper(
                     val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
                     val categoryMap = allCategories.associateBy { it.id }
                     
+                    // 收集所有自定义字段用于CSV导出
+                    val allCustomFieldsMap = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
+                    
                     filteredPasswords.forEach { password ->
                         try {
                             val categoryName = password.categoryId?.let { id -> categoryMap[id]?.name }
@@ -705,6 +708,11 @@ class WebDavHelper(
                                 }
                             } catch (e: Exception) {
                                 emptyList()
+                            }
+                            
+                            // 保存到映射中供CSV导出使用
+                            if (fields.isNotEmpty()) {
+                                allCustomFieldsMap[password.id] = fields
                             }
                             
                             val backup = PasswordBackupEntry(
@@ -745,7 +753,7 @@ class WebDavHelper(
                     }
                     
                     try {
-                        exportPasswordsToCSV(filteredPasswords, passwordsCsvFile)
+                        exportPasswordsToCSV(filteredPasswords, passwordsCsvFile, allCustomFieldsMap)
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavHelper", "CSV backup failed: ${e.message}")
                     }
@@ -1320,20 +1328,46 @@ class WebDavHelper(
     
     /**
      * 导出密码到CSV文件
+     * @param passwords 密码条目列表
+     * @param file 目标CSV文件
+     * @param customFieldsMap 密码ID到自定义字段列表的映射（可选）
      */
-    private fun exportPasswordsToCSV(passwords: List<PasswordEntry>, file: File) {
+    private fun exportPasswordsToCSV(
+        passwords: List<PasswordEntry>, 
+        file: File,
+        customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap()
+    ) {
         file.outputStream().use { output ->
             BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
                 // 写入BOM标记
                 writer.write("\uFEFF")
                 
-                // 写入列标题
-                writer.write("name,url,username,password,note,email,phone")
+                // 写入列标题（包含自定义字段列）
+                writer.write("name,url,username,password,note,email,phone,custom_fields")
                 writer.newLine()
+                
+                val json = Json { prettyPrint = false }
                 
                 // 写入数据行
                 passwords.forEach { entry ->
                     val displayName = entry.title.ifBlank { entry.website.ifBlank { entry.username } }
+                    
+                    // 序列化自定义字段为JSON
+                    val customFieldsJson = try {
+                        val fields = customFieldsMap[entry.id] ?: emptyList()
+                        if (fields.isEmpty()) {
+                            ""
+                        } else {
+                            json.encodeToString(
+                                kotlinx.serialization.builtins.ListSerializer(CustomFieldBackupEntry.serializer()),
+                                fields
+                            )
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to serialize custom fields for entry ${entry.id}")
+                        ""
+                    }
+                    
                     val row = listOf(
                         escapeCsvField(displayName),
                         escapeCsvField(entry.website),
@@ -1341,7 +1375,8 @@ class WebDavHelper(
                         escapeCsvField(entry.password),
                         escapeCsvField(buildPasswordNoteWithMetadata(entry)),
                         escapeCsvField(entry.email),
-                        escapeCsvField(entry.phone)
+                        escapeCsvField(entry.phone),
+                        escapeCsvField(customFieldsJson)
                     )
                     writer.write(row.joinToString(","))
                     writer.newLine()
