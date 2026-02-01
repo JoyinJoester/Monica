@@ -58,7 +58,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.CustomFieldEditCard
-import takagi.ru.monica.ui.components.AddCustomFieldButton
+import takagi.ru.monica.ui.components.CustomFieldSectionHeader
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.PasswordGenerator
@@ -698,7 +698,21 @@ fun AddEditPasswordScreen(
                 }
             }
             
-            // 自定义字段编辑区域 (独立卡片样式)
+            // 自定义字段区域标题 (带添加按钮)
+            item {
+                CustomFieldSectionHeader(
+                    onAddClick = {
+                        customFields.add(CustomFieldDraft(
+                            id = CustomFieldDraft.nextTempId(),
+                            title = "",
+                            value = "",
+                            isProtected = false
+                        ))
+                    }
+                )
+            }
+            
+            // 自定义字段编辑卡片 (独立卡片样式)
             items(customFields.size) { index ->
                 val field = customFields[index]
                 CustomFieldEditCard(
@@ -709,20 +723,6 @@ fun AddEditPasswordScreen(
                     },
                     onDelete = {
                         customFields.removeAt(index)
-                    }
-                )
-            }
-            
-            // 添加自定义字段按钮
-            item {
-                AddCustomFieldButton(
-                    onClick = {
-                        customFields.add(CustomFieldDraft(
-                            id = CustomFieldDraft.nextTempId(),
-                            title = "",
-                            value = "",
-                            isProtected = false
-                        ))
                     }
                 )
             }

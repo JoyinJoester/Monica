@@ -28,9 +28,56 @@ import takagi.ru.monica.data.CustomFieldDraft
 // =====================================================
 
 /**
+ * 自定义字段区域标题 (带添加按钮)
+ * 
+ * 显示在自定义字段列表上方，右侧带 "+" 按钮
+ */
+@Composable
+fun CustomFieldSectionHeader(
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.EditNote,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Text(
+                text = "自定义字段",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        FilledTonalIconButton(
+            onClick = onAddClick,
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "添加自定义字段",
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+/**
  * 单个自定义字段编辑卡片 (独立卡片样式)
  * 
- * 每个自定义字段独立为一个 ElevatedCard，与"安全验证"、"分类与备注"卡片风格一致
+ * 每个自定义字段独立为一个 ElevatedCard，标题显示用户输入的字段名称
  */
 @Composable
 fun CustomFieldEditCard(
@@ -41,6 +88,9 @@ fun CustomFieldEditCard(
     modifier: Modifier = Modifier
 ) {
     var valueVisible by remember { mutableStateOf(!field.isProtected) }
+    
+    // 动态标题：显示用户输入的字段名，空时显示"新字段"
+    val displayTitle = field.title.ifBlank { "新字段" }
     
     ElevatedCard(
         modifier = modifier
@@ -53,7 +103,7 @@ fun CustomFieldEditCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 顶部：标题和删除按钮
+            // 顶部：动态标题和删除按钮
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -61,19 +111,21 @@ fun CustomFieldEditCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Edit,
+                        imageVector = if (field.isProtected) Icons.Default.Lock else Icons.Default.Label,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "自定义字段 ${index + 1}",
+                        text = displayTitle,
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
                     )
                 }
                 IconButton(
