@@ -396,13 +396,7 @@ fun SettingsScreen(
                 )
                 
                 // Passkey 设置
-                SettingsItem(
-                    icon = Icons.Default.Key,
-                    title = context.getString(R.string.passkey_settings),
-                    subtitle = context.getString(R.string.passkey_settings_subtitle),
-                    onClick = onNavigateToPasskeySettings,
-                    modifier = getSharedModifier("passkey_settings_card")
-                )
+
                 
                 // 回收站设置
                 SettingsItemWithTrashConfig(

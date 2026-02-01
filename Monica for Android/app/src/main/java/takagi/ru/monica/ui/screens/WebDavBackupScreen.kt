@@ -84,6 +84,7 @@ fun WebDavBackupScreen(
     var bankCardCount by remember { mutableStateOf(0) }
     var noteCount by remember { mutableStateOf(0) }
     var trashCount by remember { mutableStateOf(0) }
+    var passkeyCount by remember { mutableStateOf(0) }  // ✅ 新增：验证密钥数量
     var localKeePassCount by remember { mutableStateOf(0) }
     var isKeePassWebDavConfigured by remember { mutableStateOf(false) }
     
@@ -142,6 +143,16 @@ fun WebDavBackupScreen(
         val deletedPasswordCount = database.passwordEntryDao().getDeletedCount()
         val deletedSecureItems = secureItemRepository.getDeletedItems().first()
         trashCount = deletedPasswordCount + deletedSecureItems.size
+        
+        // ✅ 获取验证密钥(Passkey)数量
+        try {
+            passkeyCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                database.passkeyDao().getAllPasskeysSync().size
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("WebDavBackupScreen", "Failed to get passkey count", e)
+            passkeyCount = 0
+        }
         
         // 获取本地 KeePass 数据库数量
         try {
@@ -604,6 +615,7 @@ fun WebDavBackupScreen(
                     bankCardCount = bankCardCount,
                     noteCount = noteCount,
                     trashCount = trashCount,
+                    passkeyCount = passkeyCount,  // ✅ 新增
                     localKeePassCount = localKeePassCount,
                     isWebDavConfigured = isConfigured,
                     isKeePassWebDavConfigured = isKeePassWebDavConfigured
