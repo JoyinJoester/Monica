@@ -75,9 +75,10 @@ fun CustomFieldSectionHeader(
 }
 
 /**
- * 单个自定义字段编辑卡片 (独立卡片样式)
+ * 单个自定义字段编辑卡片 (支持编辑/查看模式切换)
  * 
- * 每个自定义字段独立为一个 ElevatedCard，标题显示用户输入的字段名称
+ * - 编辑模式：显示输入框、敏感开关、保存/删除按钮
+ * - 查看模式：紧凑显示，只有标题和内容，点击可编辑
  */
 @Composable
 fun CustomFieldEditCard(
@@ -87,9 +88,11 @@ fun CustomFieldEditCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 编辑模式：新字段（标题或值为空）默认编辑，已保存字段默认查看
+    var isEditing by remember { mutableStateOf(field.title.isBlank() || field.value.isBlank()) }
     var valueVisible by remember { mutableStateOf(!field.isProtected) }
     
-    // 动态标题：显示用户输入的字段名，空时显示"新字段"
+    // 动态标题
     val displayTitle = field.title.ifBlank { "新字段" }
     
     ElevatedCard(
@@ -99,143 +102,256 @@ fun CustomFieldEditCard(
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // 顶部：动态标题和删除按钮
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        if (isEditing) {
+            // ========== 编辑模式 ==========
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // 顶部：标题和删除按钮
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (field.isProtected) Icons.Default.Lock else Icons.Default.Label,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = displayTitle,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = displayTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "删除自定义字段",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(48.dp)
+                
+                // 字段名称输入
+                OutlinedTextField(
+                    value = field.title,
+                    onValueChange = { onFieldChange(field.copy(title = it)) },
+                    label = { Text("字段名称") },
+                    placeholder = { Text("如：安全问题、备用邮箱") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Label,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                
+                // 字段值输入
+                OutlinedTextField(
+                    value = field.value,
+                    onValueChange = { onFieldChange(field.copy(value = it)) },
+                    label = { Text("字段内容") },
+                    placeholder = { Text("输入内容...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    visualTransformation = if (!valueVisible && field.isProtected) 
+                        PasswordVisualTransformation() 
+                    else 
+                        VisualTransformation.None,
+                    trailingIcon = {
+                        if (field.isProtected) {
+                            IconButton(onClick = { valueVisible = !valueVisible }) {
+                                Icon(
+                                    imageVector = if (valueVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = if (valueVisible) "隐藏内容" else "显示内容"
+                                )
+                            }
+                        }
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Notes,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    minLines = 1,
+                    maxLines = 3
+                )
+                
+                // 敏感数据开关
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { 
+                            onFieldChange(field.copy(isProtected = !field.isProtected))
+                            if (!field.isProtected) valueVisible = false
+                        }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "删除自定义字段",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-            
-            // 字段名称输入
-            OutlinedTextField(
-                value = field.title,
-                onValueChange = { onFieldChange(field.copy(title = it)) },
-                label = { Text("字段名称") },
-                placeholder = { Text("如：安全问题、备用邮箱") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Label,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            )
-            
-            // 字段值输入
-            OutlinedTextField(
-                value = field.value,
-                onValueChange = { onFieldChange(field.copy(value = it)) },
-                label = { Text("字段内容") },
-                placeholder = { Text("输入内容...") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                visualTransformation = if (!valueVisible && field.isProtected) 
-                    PasswordVisualTransformation() 
-                else 
-                    VisualTransformation.None,
-                trailingIcon = {
-                    if (field.isProtected) {
-                        IconButton(onClick = { valueVisible = !valueVisible }) {
-                            Icon(
-                                imageVector = if (valueVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (valueVisible) "隐藏内容" else "显示内容"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (field.isProtected) Icons.Default.Lock else Icons.Default.LockOpen,
+                            contentDescription = null,
+                            tint = if (field.isProtected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "敏感数据",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "开启后内容默认隐藏显示",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Notes,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    Switch(
+                        checked = field.isProtected,
+                        onCheckedChange = { 
+                            onFieldChange(field.copy(isProtected = it))
+                            if (it) valueVisible = false
+                        }
                     )
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                minLines = 1,
-                maxLines = 3
-            )
-            
-            // 敏感数据开关
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { 
-                        onFieldChange(field.copy(isProtected = !field.isProtected))
-                        if (!field.isProtected) valueVisible = false
-                    }
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                }
+                
+                // 保存按钮
+                Button(
+                    onClick = { 
+                        if (field.title.isNotBlank()) {
+                            isEditing = false 
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = field.title.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(
-                        imageVector = if (field.isProtected) Icons.Default.Lock else Icons.Default.LockOpen,
+                        imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        tint = if (field.isProtected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Column {
-                        Text(
-                            text = "敏感数据",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("保存字段")
+                }
+            }
+        } else {
+            // ========== 查看模式（紧凑） ==========
+            Column(
+                modifier = Modifier
+                    .clickable { isEditing = true }
+                    .padding(16.dp)
+            ) {
+                // 标题行
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = if (field.isProtected) Icons.Default.Lock else Icons.Default.Label,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "开启后内容默认隐藏显示",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = displayTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                    // 编辑和删除按钮
+                    Row {
+                        IconButton(
+                            onClick = { isEditing = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "编辑",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "删除",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // 字段值（敏感时隐藏）
+                Text(
+                    text = if (field.isProtected && !valueVisible) "••••••••" else field.value.ifEmpty { "-" },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2
+                )
+                
+                // 敏感标记
+                if (field.isProtected) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "敏感数据",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
                         )
                     }
                 }
-                Switch(
-                    checked = field.isProtected,
-                    onCheckedChange = { 
-                        onFieldChange(field.copy(isProtected = it))
-                        if (it) valueVisible = false
-                    }
-                )
             }
         }
     }
