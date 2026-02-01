@@ -1354,9 +1354,28 @@ fun MonicaContent(
                 },
                 onNotificationValidatorSelected = { id ->
                     settingsViewModel.updateNotificationValidatorId(id)
+                },
+                onNavigateToFieldCustomization = {
+                    navController.navigate(Screen.PasswordFieldCustomization.route)
                 }
             )
             }
+        }
+        
+        // 添加密码页面字段定制页面
+        composable(
+            route = Screen.PasswordFieldCustomization.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.PasswordFieldCustomizationScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
         
         composable(

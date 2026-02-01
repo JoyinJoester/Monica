@@ -215,4 +215,10 @@ class SettingsViewModel(
             settingsManager.updateNoteGridLayout(isGrid)
         }
     }
+
+    fun updatePasswordFieldVisibility(field: String, visible: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordFieldVisibility(field, visible)
+        }
+    }
 }

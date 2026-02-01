@@ -62,6 +62,14 @@ class SettingsManager(private val context: Context) {
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
         private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
+        
+        // 密码页面字段可见性
+        private val FIELD_SECURITY_VERIFICATION_KEY = booleanPreferencesKey("field_security_verification")
+        private val FIELD_CATEGORY_AND_NOTES_KEY = booleanPreferencesKey("field_category_and_notes")
+        private val FIELD_APP_BINDING_KEY = booleanPreferencesKey("field_app_binding")
+        private val FIELD_PERSONAL_INFO_KEY = booleanPreferencesKey("field_personal_info")
+        private val FIELD_ADDRESS_INFO_KEY = booleanPreferencesKey("field_address_info")
+        private val FIELD_PAYMENT_INFO_KEY = booleanPreferencesKey("field_payment_info")
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -134,7 +142,15 @@ class SettingsManager(private val context: Context) {
                 takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(modeString)
             }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL),
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
-            autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true // 默认开启
+            autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true, // 默认开启
+            passwordFieldVisibility = takagi.ru.monica.data.PasswordFieldVisibility(
+                securityVerification = preferences[FIELD_SECURITY_VERIFICATION_KEY] ?: true,
+                categoryAndNotes = preferences[FIELD_CATEGORY_AND_NOTES_KEY] ?: true,
+                appBinding = preferences[FIELD_APP_BINDING_KEY] ?: true,
+                personalInfo = preferences[FIELD_PERSONAL_INFO_KEY] ?: true,
+                addressInfo = preferences[FIELD_ADDRESS_INFO_KEY] ?: true,
+                paymentInfo = preferences[FIELD_PAYMENT_INFO_KEY] ?: true
+            )
         )
     }
     
@@ -333,6 +349,19 @@ class SettingsManager(private val context: Context) {
     suspend fun updateAutofillAuthRequired(required: Boolean) {
         dataStore.edit { preferences ->
             preferences[AUTOFILL_AUTH_REQUIRED_KEY] = required
+        }
+    }
+
+    suspend fun updatePasswordFieldVisibility(field: String, visible: Boolean) {
+        dataStore.edit { preferences ->
+            when (field) {
+                "securityVerification" -> preferences[FIELD_SECURITY_VERIFICATION_KEY] = visible
+                "categoryAndNotes" -> preferences[FIELD_CATEGORY_AND_NOTES_KEY] = visible
+                "appBinding" -> preferences[FIELD_APP_BINDING_KEY] = visible
+                "personalInfo" -> preferences[FIELD_PERSONAL_INFO_KEY] = visible
+                "addressInfo" -> preferences[FIELD_ADDRESS_INFO_KEY] = visible
+                "paymentInfo" -> preferences[FIELD_PAYMENT_INFO_KEY] = visible
+            }
         }
     }
 }

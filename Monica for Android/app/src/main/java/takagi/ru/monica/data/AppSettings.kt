@@ -100,6 +100,20 @@ data class BottomNavVisibility(
     fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, timeline).count { it }
 }
 
+/**
+ * 添加/编辑密码页面字段可见性设置
+ * 控制哪些字段卡片在添加密码页面显示
+ * 注意：如果条目已有该字段数据，即使关闭也会显示
+ */
+data class PasswordFieldVisibility(
+    val securityVerification: Boolean = true,  // 安全验证（TOTP密钥）
+    val categoryAndNotes: Boolean = true,      // 分类与备注
+    val appBinding: Boolean = true,            // 应用关联
+    val personalInfo: Boolean = true,          // 个人信息（邮箱、电话）
+    val addressInfo: Boolean = true,           // 地址信息
+    val paymentInfo: Boolean = true            // 支付信息（信用卡）
+)
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val colorScheme: ColorScheme = ColorScheme.DEFAULT,
@@ -133,7 +147,8 @@ data class AppSettings(
     val iconCardsEnabled: Boolean = false, // 是否启用带图标卡片
     val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL, // 卡片显示模式
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
-    val autofillAuthRequired: Boolean = true // 自动填充验证 - 默认开启
+    val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
+    val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility() // 添加密码页面字段定制
 )
 
 /**

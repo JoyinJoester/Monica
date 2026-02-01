@@ -163,6 +163,22 @@ fun AddEditPasswordScreen(
 
     val isEditing = passwordId != null && passwordId > 0
     
+    // 字段可见性设置
+    val fieldVisibility = settings.passwordFieldVisibility
+    
+    // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
+    fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorKey.isNotEmpty()
+    fun shouldShowCategoryAndNotes() = fieldVisibility.categoryAndNotes || categoryId != null || notes.isNotEmpty()
+    fun shouldShowAppBinding() = fieldVisibility.appBinding || appPackageName.isNotEmpty()
+    fun shouldShowPersonalInfo() = fieldVisibility.personalInfo || 
+        emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() }
+    fun shouldShowAddressInfo() = fieldVisibility.addressInfo || 
+        addressLine.isNotEmpty() || city.isNotEmpty() || state.isNotEmpty() || 
+        zipCode.isNotEmpty() || country.isNotEmpty()
+    fun shouldShowPaymentInfo() = fieldVisibility.paymentInfo || 
+        creditCardNumber.isNotEmpty() || creditCardHolder.isNotEmpty() || 
+        creditCardExpiry.isNotEmpty() || creditCardCVV.isNotEmpty()
+    
     // 新建条目时的自动填充标记（只执行一次）
     var hasAutoFilled by rememberSaveable { mutableStateOf(false) }
     
@@ -568,30 +584,33 @@ fun AddEditPasswordScreen(
                 }
             }
             
-            // Security Card (TOTP)
-            item {
-                InfoCard(title = "安全验证") {
-                    OutlinedTextField(
-                        value = authenticatorKey,
-                        onValueChange = { authenticatorKey = it },
-                        label = { Text("验证码密钥 (可选)") },
-                        placeholder = { Text("输入密钥以自动创建验证器") },
-                        leadingIcon = { Icon(Icons.Default.VpnKey, null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        shape = RoundedCornerShape(12.dp)
-                    )
+            // Security Card (TOTP) - 根据设置和数据决定是否显示
+            if (shouldShowSecurityVerification()) {
+                item {
+                    InfoCard(title = "安全验证") {
+                        OutlinedTextField(
+                            value = authenticatorKey,
+                            onValueChange = { authenticatorKey = it },
+                            label = { Text("验证码密钥 (可选)") },
+                            placeholder = { Text("输入密钥以自动创建验证器") },
+                            leadingIcon = { Icon(Icons.Default.VpnKey, null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
                 }
             }
 
-            // Organization Card
-            item {
-                InfoCard(title = "分类与备注") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Category Selector
-                        var categoryExpanded by remember { mutableStateOf(false) }
-                        var showAddCategoryDialog by remember { mutableStateOf(false) }
+            // Organization Card - 根据设置和数据决定是否显示
+            if (shouldShowCategoryAndNotes()) {
+                item {
+                    InfoCard(title = "分类与备注") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Category Selector
+                            var categoryExpanded by remember { mutableStateOf(false) }
+                            var showAddCategoryDialog by remember { mutableStateOf(false) }
                         var newCategoryName by remember { mutableStateOf("") }
                         
                         ExposedDropdownMenuBox(
@@ -697,6 +716,7 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // 分类与备注 if 结束
             
             // 自定义字段区域标题 (带添加按钮)
             item {
@@ -727,39 +747,41 @@ fun AddEditPasswordScreen(
                 )
             }
             
-            // App Binding Card
-            item {
-                InfoCard(title = "应用关联") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AppSelectorField(
-                            selectedPackageName = appPackageName,
-                            selectedAppName = appName,
-                            onAppSelected = { packageName, name ->
-                                appPackageName = packageName
-                                appName = name
-                            }
-                        )
-                        
-                        AnimatedVisibility(visible = appPackageName.isNotEmpty()) {
-                            Column(modifier = Modifier.padding(top = 8.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth().clickable { bindWebsite = !bindWebsite }
-                                ) {
-                                    Checkbox(checked = bindWebsite, onCheckedChange = { bindWebsite = it })
-                                    Column {
-                                        Text("绑定网址", style = MaterialTheme.typography.bodyMedium)
-                                        Text("将该应用关联到所有相同网址的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+            // App Binding Card - 根据设置和数据决定是否显示
+            if (shouldShowAppBinding()) {
+                item {
+                    InfoCard(title = "应用关联") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AppSelectorField(
+                                selectedPackageName = appPackageName,
+                                selectedAppName = appName,
+                                onAppSelected = { packageName, name ->
+                                    appPackageName = packageName
+                                    appName = name
                                 }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth().clickable { bindTitle = !bindTitle }
-                                ) {
-                                    Checkbox(checked = bindTitle, onCheckedChange = { bindTitle = it })
-                                    Column {
-                                        Text("绑定标题", style = MaterialTheme.typography.bodyMedium)
-                                        Text("将该应用关联到所有相同标题的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            )
+                            
+                            AnimatedVisibility(visible = appPackageName.isNotEmpty()) {
+                                Column(modifier = Modifier.padding(top = 8.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth().clickable { bindWebsite = !bindWebsite }
+                                    ) {
+                                        Checkbox(checked = bindWebsite, onCheckedChange = { bindWebsite = it })
+                                        Column {
+                                            Text("绑定网址", style = MaterialTheme.typography.bodyMedium)
+                                            Text("将该应用关联到所有相同网址的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth().clickable { bindTitle = !bindTitle }
+                                    ) {
+                                        Checkbox(checked = bindTitle, onCheckedChange = { bindTitle = it })
+                                        Column {
+                                            Text("绑定标题", style = MaterialTheme.typography.bodyMedium)
+                                            Text("将该应用关联到所有相同标题的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
                                 }
                             }
@@ -768,46 +790,47 @@ fun AddEditPasswordScreen(
                 }
             }
 
-            // Collapsible: Personal Info
-            item {
-                CollapsibleCard(
-                    title = stringResource(R.string.personal_info),
-                    icon = Icons.Default.Person,
-                    expanded = personalInfoExpanded,
-                    onExpandChange = { personalInfoExpanded = it }
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Multiple Email Fields
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.field_email),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f)
-                            )
-                            // 常用邮箱填充按钮
-                            if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.email.isNotEmpty()) {
-                                TextButton(
-                                    onClick = {
-                                        if (emails.size == 1 && emails[0].isEmpty()) {
-                                            emails[0] = commonAccountInfo.email
-                                        } else {
-                                            emails.add(commonAccountInfo.email)
+            // Collapsible: Personal Info - 根据设置和数据决定是否显示
+            if (shouldShowPersonalInfo()) {
+                item {
+                    CollapsibleCard(
+                        title = stringResource(R.string.personal_info),
+                        icon = Icons.Default.Person,
+                        expanded = personalInfoExpanded,
+                        onExpandChange = { personalInfoExpanded = it }
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Multiple Email Fields
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.field_email),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                // 常用邮箱填充按钮
+                                if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.email.isNotEmpty()) {
+                                    TextButton(
+                                        onClick = {
+                                            if (emails.size == 1 && emails[0].isEmpty()) {
+                                                emails[0] = commonAccountInfo.email
+                                            } else {
+                                                emails.add(commonAccountInfo.email)
+                                            }
                                         }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PersonAdd,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(stringResource(R.string.fill_common_account))
                                     }
-                                ) {
-                                    Icon(
-                                        Icons.Default.PersonAdd,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.fill_common_account))
                                 }
-                            }
                         }
                         emails.forEachIndexed { index, emailValue ->
                             Row(
@@ -920,21 +943,23 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // Personal Info if 结束
 
-            // Collapsible: Address Info
-            item {
-                CollapsibleCard(
-                    title = stringResource(R.string.address_info),
-                    icon = Icons.Default.Home,
-                    expanded = addressInfoExpanded,
-                    onExpandChange = { addressInfoExpanded = it }
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = addressLine,
-                            onValueChange = { addressLine = it },
-                            label = { Text(stringResource(R.string.field_address)) },
-                            leadingIcon = { Icon(Icons.Default.Home, null) },
+            // Collapsible: Address Info - 根据设置和数据决定是否显示
+            if (shouldShowAddressInfo()) {
+                item {
+                    CollapsibleCard(
+                        title = stringResource(R.string.address_info),
+                        icon = Icons.Default.Home,
+                        expanded = addressInfoExpanded,
+                        onExpandChange = { addressInfoExpanded = it }
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = addressLine,
+                                onValueChange = { addressLine = it },
+                                label = { Text(stringResource(R.string.field_address)) },
+                                leadingIcon = { Icon(Icons.Default.Home, null) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -979,8 +1004,10 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // Address Info if 结束
 
             // Collapsible: Payment Info
+            if (shouldShowPaymentInfo()) {
             item {
                 CollapsibleCard(
                     title = stringResource(R.string.payment_info),
@@ -1099,6 +1126,7 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // Payment Info if 结束
         }
     }
 
