@@ -40,6 +40,7 @@ class SettingsManager(private val context: Context) {
         private val SHOW_LEDGER_TAB_KEY = booleanPreferencesKey("show_ledger_tab")
         private val SHOW_GENERATOR_TAB_KEY = booleanPreferencesKey("show_generator_tab")  // 添加生成器标签键
         private val SHOW_TIMELINE_TAB_KEY = booleanPreferencesKey("show_timeline_tab")  // 添加时间线标签键
+        private val SHOW_PASSKEY_TAB_KEY = booleanPreferencesKey("show_passkey_tab")  // 添加 Passkey 标签键
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
         private val USE_DRAGGABLE_BOTTOM_NAV_KEY = booleanPreferencesKey("use_draggable_bottom_nav")
@@ -111,7 +112,8 @@ class SettingsManager(private val context: Context) {
                 cardWallet = preferences[SHOW_CARD_WALLET_TAB_KEY] ?: true,
                 generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false,
                 notes = preferences[SHOW_NOTES_TAB_KEY] ?: false,
-                timeline = preferences[SHOW_TIMELINE_TAB_KEY] ?: false
+                timeline = preferences[SHOW_TIMELINE_TAB_KEY] ?: false,
+                passkey = preferences[SHOW_PASSKEY_TAB_KEY] ?: true
             ),
             bottomNavOrder = sanitizedOrder,
             useDraggableBottomNav = preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] ?: false,
@@ -209,6 +211,7 @@ class SettingsManager(private val context: Context) {
                 BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible  // 添加生成器分支
                 BottomNavContentTab.NOTES -> preferences[SHOW_NOTES_TAB_KEY] = visible
                 BottomNavContentTab.TIMELINE -> preferences[SHOW_TIMELINE_TAB_KEY] = visible
+                BottomNavContentTab.PASSKEY -> preferences[SHOW_PASSKEY_TAB_KEY] = visible
             }
         }
     }

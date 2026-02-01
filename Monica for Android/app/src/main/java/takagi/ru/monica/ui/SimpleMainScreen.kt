@@ -91,6 +91,7 @@ import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
+import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.screens.NoteListScreen
@@ -98,6 +99,7 @@ import takagi.ru.monica.ui.screens.NoteListContent
 import takagi.ru.monica.ui.screens.CardWalletScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
 import takagi.ru.monica.ui.screens.TimelineScreen
+import takagi.ru.monica.ui.screens.PasskeyListScreen
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
@@ -224,6 +226,7 @@ fun SimpleMainScreen(
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
     generatorViewModel: GeneratorViewModel = viewModel(), // 添加GeneratorViewModel
     noteViewModel: NoteViewModel = viewModel(),
+    passkeyViewModel: PasskeyViewModel,  // Passkey ViewModel
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
@@ -239,6 +242,7 @@ fun SimpleMainScreen(
     onNavigateToSecurityQuestion: () -> Unit = {},
     onNavigateToSyncBackup: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
+    onNavigateToPasskeySettings: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
     onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
@@ -659,6 +663,12 @@ fun SimpleMainScreen(
                         BottomNavItem.Timeline -> {
                             TimelineScreen()
                         }
+                        BottomNavItem.Passkey -> {
+                            PasskeyListScreen(
+                                viewModel = passkeyViewModel,
+                                onPasskeyClick = { /* TODO: 导航到详情页 */ }
+                            )
+                        }
                         BottomNavItem.Settings -> {
                             SettingsScreen(
                                 viewModel = settingsViewModel,
@@ -667,6 +677,7 @@ fun SimpleMainScreen(
                                 onSecurityQuestions = onNavigateToSecurityQuestion,
                                 onNavigateToSyncBackup = onNavigateToSyncBackup,
                                 onNavigateToAutofill = onNavigateToAutofill,
+                                onNavigateToPasskeySettings = onNavigateToPasskeySettings,
                                 onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
                                 onNavigateToColorScheme = onNavigateToColorScheme,
                                 onSecurityAnalysis = onSecurityAnalysis,
@@ -874,6 +885,13 @@ fun SimpleMainScreen(
                 BottomNavItem.Timeline -> {
                     // 时间线页面
                     TimelineScreen()
+                }
+                BottomNavItem.Passkey -> {
+                    // 通行密钥页面
+                    PasskeyListScreen(
+                        viewModel = passkeyViewModel,
+                        onPasskeyClick = { /* TODO: 导航到详情页 */ }
+                    )
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -5191,6 +5209,7 @@ sealed class BottomNavItem(
     object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)  // 添加生成器导航项
     object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
     object Timeline : BottomNavItem(BottomNavContentTab.TIMELINE, Icons.Default.AccountTree)  // 时间线导航（Git分支图标）
+    object Passkey : BottomNavItem(BottomNavContentTab.PASSKEY, Icons.Default.Key)  // Passkey 通行密钥导航
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
 
@@ -5201,6 +5220,7 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
     BottomNavContentTab.NOTES -> BottomNavItem.Notes
     BottomNavContentTab.TIMELINE -> BottomNavItem.Timeline
+    BottomNavContentTab.PASSKEY -> BottomNavItem.Passkey
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
@@ -5210,6 +5230,7 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.Generator -> R.string.nav_generator  // 添加生成器标签资源
     BottomNavItem.Notes -> R.string.nav_notes
     BottomNavItem.Timeline -> R.string.nav_timeline
+    BottomNavItem.Passkey -> R.string.nav_passkey
     BottomNavItem.Settings -> R.string.nav_settings
 }
 
@@ -5220,6 +5241,7 @@ private fun BottomNavItem.shortLabelRes(): Int = when (this) {
     BottomNavItem.Generator -> R.string.nav_generator_short  // 添加生成器短标签资源
     BottomNavItem.Notes -> R.string.nav_notes_short
     BottomNavItem.Timeline -> R.string.nav_timeline_short
+    BottomNavItem.Passkey -> R.string.nav_passkey_short
     BottomNavItem.Settings -> R.string.nav_settings_short
 }
 

@@ -51,13 +51,15 @@ enum class BottomNavContentTab {
     CARD_WALLET,
     GENERATOR,
     NOTES,
-    TIMELINE;
+    TIMELINE,
+    PASSKEY;  // 通行密钥
 
     companion object {
         val DEFAULT_ORDER: List<BottomNavContentTab> = listOf(
             PASSWORDS,
             AUTHENTICATOR,
             CARD_WALLET,
+            PASSKEY,
             NOTES,
             TIMELINE
         )
@@ -86,7 +88,8 @@ data class BottomNavVisibility(
     val cardWallet: Boolean = true,
     val generator: Boolean = false,   // 生成器功能默认关闭
     val notes: Boolean = true,        // 笔记功能默认开启
-    val timeline: Boolean = false      // 时间线功能默认关闭
+    val timeline: Boolean = false,    // 时间线功能默认关闭
+    val passkey: Boolean = true       // 通行密钥功能默认开启
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
         BottomNavContentTab.PASSWORDS -> passwords
@@ -95,9 +98,10 @@ data class BottomNavVisibility(
         BottomNavContentTab.GENERATOR -> generator
         BottomNavContentTab.NOTES -> notes
         BottomNavContentTab.TIMELINE -> timeline
+        BottomNavContentTab.PASSKEY -> passkey
     }
 
-    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, timeline).count { it }
+    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, timeline, passkey).count { it }
 }
 
 /**

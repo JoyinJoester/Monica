@@ -65,6 +65,7 @@ fun SettingsScreen(
     onSecurityQuestions: () -> Unit,
     onNavigateToSyncBackup: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
+    onNavigateToPasskeySettings: () -> Unit = {},
     onNavigateToBottomNavSettings: () -> Unit = {},
     onNavigateToColorScheme: () -> Unit = {},
     onSecurityAnalysis: () -> Unit = {},
@@ -392,6 +393,15 @@ fun SettingsScreen(
                     onClick = onNavigateToAutofill,
 
                     modifier = getSharedModifier("autofill_settings_card")
+                )
+                
+                // Passkey 设置
+                SettingsItem(
+                    icon = Icons.Default.Key,
+                    title = context.getString(R.string.passkey_settings),
+                    subtitle = context.getString(R.string.passkey_settings_subtitle),
+                    onClick = onNavigateToPasskeySettings,
+                    modifier = getSharedModifier("passkey_settings_card")
                 )
                 
                 // 回收站设置
@@ -1530,6 +1540,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
+    BottomNavContentTab.PASSKEY -> Icons.Default.Key
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
@@ -1539,6 +1550,7 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.GENERATOR -> R.string.nav_generator
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.TIMELINE -> R.string.nav_timeline
+    BottomNavContentTab.PASSKEY -> R.string.nav_passkey
 }
 
 @Composable

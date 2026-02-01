@@ -582,6 +582,7 @@
     <string name="nav_ledger">Ledger</string>
     <string name="nav_generator">Generator</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_timeline">Timeline</string>
+    <string name="nav_passkey">Passkey</string>
     <string name="nav_settings">Settings</string>
     <string name="trash_bin">回收站</string>
     <string name="trash_settings">回收站设置</string>
@@ -597,6 +598,57 @@
     <string name="nav_ledger_short">Ledger</string>
     <string name="nav_generator_short">Gen</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_timeline_short">History</string>
+    <string name="nav_passkey_short">Pass</string>
+    <string name="nav_settings_short">Set</string>
+    
+    <!-- Passkey Screen -->
+    <string name="passkey_title">Passkey</string>
+    <string name="passkey_count">%1$d passkeys</string>
+    <string name="passkey_view_only_mode">View Only Mode</string>
+    <string name="passkey_search_placeholder">Search passkeys…</string>
+    <string name="passkey_used_count">Used %1$d times</string>
+    <string name="passkey_discoverable">Discoverable</string>
+    <string name="passkey_empty_title">No Passkeys Yet</string>
+    <string name="passkey_empty_message">Passkeys are a more secure and convenient way to sign in. When you create a passkey on a website or app, it will appear here.</string>
+    <string name="passkey_empty_message_unsupported">Your device does not support creating passkeys. You can still view passkeys synced from other devices.</string>
+    <string name="passkey_add_hint">Passkeys must be created by websites or apps. Choose \"Use passkey\" when signing in to a supported website.</string>
+    <string name="passkey_no_search_results">No Results</string>
+    <string name="passkey_no_search_results_hint">Try a different search term</string>
+    <string name="passkey_version_warning_title">Limited Passkey Support</string>
+    <string name="passkey_version_warning_message">Full passkey functionality requires Android 14 or later. Current: %1$s. You can view synced passkeys but cannot create new ones.</string>
+    <string name="passkey_what_is_title">What are Passkeys?</string>
+    <string name="passkey_feature_1">More secure than passwords - resistant to phishing</string>
+    <string name="passkey_feature_2">Easy to use - just use your fingerprint or face</string>
+    <string name="passkey_feature_3">Synced across your devices</string>
+    <string name="passkey_create_title">Create Passkey</string>
+    <string name="passkey_create_message">Create a passkey for %1$s to sign in without a password</string>
+    <string name="passkey_create_confirm">Create Passkey</string>
+    <string name="passkey_auth_title">Sign In with Passkey</string>
+    <string name="passkey_auth_message">Use your passkey to sign in to %1$s</string>
+    <string name="passkey_auth_confirm">Sign In</string>
+    
+    <!-- Passkey Management -->
+    <string name="passkey">Passkey</string>
+    <string name="passkey_search_hint">Search passkeys…</string>
+    <string name="passkey_search_empty">No Matching Passkeys</string>
+    <string name="passkey_search_empty_hint">Try a different search term</string>
+    <string name="passkey_empty_subtitle">Create passkeys on websites and apps to see them here</string>
+    <string name="passkey_delete_title">Delete Passkey</string>
+    <string name="passkey_delete_message">Are you sure you want to delete the passkey for %1$s (%2$s)? You will no longer be able to sign in with this passkey.</string>
+    <string name="passkey_delete_button">Delete Passkey</string>
+    <string name="passkey_detail_user">Display Name</string>
+    <string name="passkey_detail_username">Username</string>
+    <string name="passkey_detail_created">Created</string>
+    <string name="passkey_detail_last_used">Last Used</string>
+    <string name="passkey_detail_use_count">Use Count</string>
+    <string name="passkey_view_details">View Details</string>
+    <string name="passkey_rp_id">Website</string>
+    <string name="passkey_username">Username</string>
+    <string name="passkey_created_at">Created</string>
+    <string name="passkey_last_used">Last Used</string>
+    <string name="passkey_use_count">Use Count</string>
+    
+    <string name="dismiss">Dismiss</string>
     
     <!-- Timeline Screen -->
     <string name="no_history_records">No history records</string>
@@ -605,7 +657,6 @@
     <string name="restore_version">Restore Version</string>
     <string name="save_as_new_entry">Save as New Entry</string>
     <string name="no_changes">No changes</string>
-    <string name="nav_settings_short">Set</string>
 
     <!-- Detail Screens -->
     <string name="bank_card_details">Bank Card Details</string>
@@ -946,6 +997,36 @@
     <!-- Autofill -->
     <string name="autofill">Autofill</string>
     <string name="autofill_subtitle">Auto-fill passwords for apps and websites</string>
+    
+    <!-- Passkey Settings -->
+    <string name="passkey_settings">Passkey Provider</string>
+    <string name="passkey_settings_subtitle">Sign in to apps and websites without passwords</string>
+    <string name="passkey_settings_title">Passkey Settings</string>
+    <string name="passkey_settings_intro_title">Passkey Provider</string>
+    <string name="passkey_settings_intro_subtitle">Monica can create and manage passkeys for websites and apps, providing a more secure and convenient sign-in experience.</string>
+    <string name="passkey_settings_unsupported_title">Not Supported</string>
+    <string name="passkey_settings_unsupported_subtitle">Passkey Provider requires Android 14 or later. Your device is running Android %1$s.</string>
+    <string name="passkey_settings_system_title">Open System Settings</string>
+    <string name="passkey_settings_system_subtitle">Enable Monica as a Passkey provider in system settings</string>
+    <string name="passkey_stats_saved">Passkeys Saved</string>
+    <string name="passkey_settings_features_title">Passkey Features</string>
+    <string name="passkey_feature_security_title">Enhanced Security</string>
+    <string name="passkey_feature_security_desc">Passkeys use public-key cryptography, more secure than passwords</string>
+    <string name="passkey_feature_biometric_title">Biometric Authentication</string>
+    <string name="passkey_feature_biometric_desc">Sign in with fingerprint or face recognition</string>
+    <string name="passkey_feature_sync_title">Cross-Device Sync</string>
+    <string name="passkey_feature_sync_desc">Sync passkeys across devices with WebDAV backup</string>
+    <string name="passkey_feature_phishing_title">Phishing Resistant</string>
+    <string name="passkey_feature_phishing_desc">Passkeys are bound to specific websites, preventing phishing attacks</string>
+    <string name="passkey_settings_requirement_title">System Requirements</string>
+    <string name="passkey_settings_requirement_desc">To use Monica as a Passkey provider, your device must be running Android 14 (API 34) or later. You can still view passkeys synced from other devices.</string>
+    
+    <!-- Passkey Biometric Authentication -->
+    <string name="biometric_title_passkey_auth">Verify to Sign In</string>
+    <string name="biometric_subtitle_passkey_auth">Using passkey for %1$s</string>
+    <string name="biometric_title_passkey_create">Verify to Create Passkey</string>
+    <string name="biometric_subtitle_passkey_create">Creating passkey for %1$s</string>
+    
     <string name="autofill_service_description">Automatically fill passwords and forms in apps and websites</string>
     <string name="autofill_service_summary">Monica Password Manager provides secure autofill for your passwords</string>
     <string name="autofill_save_password">Save Password</string>

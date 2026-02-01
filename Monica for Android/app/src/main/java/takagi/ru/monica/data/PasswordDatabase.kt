@@ -16,9 +16,10 @@ import androidx.room.TypeConverters
         Category::class,
         OperationLog::class,
         LocalKeePassDatabase::class,
-        CustomField::class  // 自定义字段表
+        CustomField::class,  // 自定义字段表
+        PasskeyEntry::class  // Passkey 通行密钥表
     ],
-    version = 27,
+    version = 28,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -30,6 +31,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun operationLogDao(): OperationLogDao
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
+    abstract fun passkeyDao(): PasskeyDao  // Passkey DAO
     
     companion object {
         @Volatile
@@ -508,6 +510,58 @@ abstract class PasswordDatabase : RoomDatabase() {
                 }
             }
         }
+        
+        // Migration 27 → 28 - 添加 Passkey 通行密钥表
+        // 支持 FIDO2/WebAuthn 标准的 Passkey 存储
+        private val MIGRATION_27_28 = object : androidx.room.migration.Migration(27, 28) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 迁移前检查：表是否已存在
+                val cursor = database.query("SELECT name FROM sqlite_master WHERE type='table' AND name='passkeys'")
+                val tableExists = cursor.count > 0
+                cursor.close()
+                
+                if (tableExists) {
+                    android.util.Log.w("PasswordDatabase", "passkeys table already exists, skipping creation")
+                    return
+                }
+                
+                try {
+                    // 创建 Passkey 表
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS passkeys (
+                            credential_id TEXT PRIMARY KEY NOT NULL,
+                            rp_id TEXT NOT NULL,
+                            rp_name TEXT NOT NULL,
+                            user_id TEXT NOT NULL,
+                            user_name TEXT NOT NULL,
+                            user_display_name TEXT NOT NULL,
+                            public_key_algorithm INTEGER NOT NULL DEFAULT -7,
+                            public_key TEXT NOT NULL,
+                            private_key_alias TEXT NOT NULL,
+                            created_at INTEGER NOT NULL,
+                            last_used_at INTEGER NOT NULL,
+                            use_count INTEGER NOT NULL DEFAULT 0,
+                            icon_url TEXT,
+                            is_discoverable INTEGER NOT NULL DEFAULT 1,
+                            is_user_verification_required INTEGER NOT NULL DEFAULT 1,
+                            transports TEXT NOT NULL DEFAULT 'internal',
+                            aaguid TEXT NOT NULL DEFAULT '',
+                            sign_count INTEGER NOT NULL DEFAULT 0,
+                            is_backed_up INTEGER NOT NULL DEFAULT 0,
+                            notes TEXT NOT NULL DEFAULT ''
+                        )
+                    """.trimIndent())
+                    
+                    // 创建索引以提升查询性能
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_passkeys_rp_id ON passkeys(rp_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_passkeys_user_name ON passkeys(user_name)")
+                    
+                    android.util.Log.i("PasswordDatabase", "Successfully created passkeys table")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Failed to create passkeys table: ${e.message}")
+                }
+            }
+        }
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -542,7 +596,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_23_24,  // 为密码条目添加 KeePass 数据库归属字段
                         MIGRATION_24_25,  // 修复 local_keepass_databases 表结构
                         MIGRATION_25_26,  // 添加 KeePass 密钥文件字段
-                        MIGRATION_26_27   // 添加自定义字段表
+                        MIGRATION_26_27,  // 添加自定义字段表
+                        MIGRATION_27_28   // 添加 Passkey 通行密钥表
                     )
                     .build()
                 INSTANCE = instance

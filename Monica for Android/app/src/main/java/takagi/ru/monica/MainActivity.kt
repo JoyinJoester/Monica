@@ -292,6 +292,12 @@ fun MonicaApp(
         takagi.ru.monica.viewmodel.NoteViewModel(secureItemRepository)
     }
     
+    // Passkey 通行密钥
+    val passkeyRepository = remember { takagi.ru.monica.repository.PasskeyRepository(database.passkeyDao()) }
+    val passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel = viewModel {
+        takagi.ru.monica.viewmodel.PasskeyViewModel(passkeyRepository)
+    }
+    
     // KeePass KDBX 导出/导入
     val keePassViewModel = remember { KeePassWebDavViewModel() }
     
@@ -338,6 +344,7 @@ fun MonicaApp(
                 settingsViewModel = settingsViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
+                passkeyViewModel = passkeyViewModel,
                 keePassViewModel = keePassViewModel,
                 localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
@@ -365,6 +372,7 @@ fun MonicaContent(
     settingsViewModel: SettingsViewModel,
     generatorViewModel: GeneratorViewModel,
     noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
+    passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel,
     keePassViewModel: KeePassWebDavViewModel,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
@@ -526,6 +534,7 @@ fun MonicaContent(
                 documentViewModel = documentViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
+                passkeyViewModel = passkeyViewModel,
                 localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
                 onNavigateToAddPassword = { passwordId ->
@@ -566,6 +575,9 @@ fun MonicaContent(
                 },
                 onNavigateToAutofill = {
                     navController.navigate(Screen.AutofillSettings.route)
+                },
+                onNavigateToPasskeySettings = {
+                    navController.navigate(Screen.PasskeySettings.route)
                 },
                 onNavigateToBottomNavSettings = {
                     navController.navigate(Screen.BottomNavSettings.route)
@@ -1020,6 +1032,9 @@ fun MonicaContent(
                 onNavigateToAutofill = {
                     navController.navigate(Screen.AutofillSettings.route)
                 },
+                onNavigateToPasskeySettings = {
+                    navController.navigate(Screen.PasskeySettings.route)
+                },
                 onNavigateToBottomNavSettings = {
                     navController.navigate(Screen.BottomNavSettings.route)
                 },
@@ -1248,6 +1263,24 @@ fun MonicaContent(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
             ) {
                 takagi.ru.monica.ui.screens.AutofillSettingsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Screen.PasskeySettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                takagi.ru.monica.ui.screens.PasskeySettingsScreen(
                     onNavigateBack = {
                         navController.popBackStack()
                     }

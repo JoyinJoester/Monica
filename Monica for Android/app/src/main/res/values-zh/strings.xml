@@ -553,6 +553,7 @@
     <string name="nav_notes">笔记</string>
     <string name="nav_generator">生成器</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_timeline">时间线</string>
+    <string name="nav_passkey">通行密钥</string>
     <string name="nav_settings">设置</string>
     <string name="add">添加</string>
     
@@ -566,6 +567,57 @@
     <string name="nav_notes_short">笔记</string>
     <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_timeline_short">历史</string>
+    <string name="nav_passkey_short">通行</string>
+    <string name="nav_settings_short">设置</string>
+    
+    <!-- Passkey Screen -->
+    <string name="passkey_title">通行密钥</string>
+    <string name="passkey_count">%1$d 个通行密钥</string>
+    <string name="passkey_view_only_mode">仅查看模式</string>
+    <string name="passkey_search_placeholder">搜索通行密钥…</string>
+    <string name="passkey_used_count">已使用 %1$d 次</string>
+    <string name="passkey_discoverable">可发现</string>
+    <string name="passkey_empty_title">暂无通行密钥</string>
+    <string name="passkey_empty_message">通行密钥是一种更安全便捷的登录方式。当您在网站或应用中创建通行密钥时，它将显示在这里。</string>
+    <string name="passkey_empty_message_unsupported">您的设备不支持创建通行密钥。您仍可查看从其他设备同步的通行密钥。</string>
+    <string name="passkey_add_hint">通行密钥需要由网站或应用发起创建。请在支持的网站登录时选择"使用通行密钥"。</string>
+    <string name="passkey_no_search_results">无结果</string>
+    <string name="passkey_no_search_results_hint">请尝试其他搜索词</string>
+    <string name="passkey_version_warning_title">通行密钥支持受限</string>
+    <string name="passkey_version_warning_message">完整的通行密钥功能需要 Android 14 或更高版本。当前：%1$s。您可以查看同步的通行密钥，但无法创建新的。</string>
+    <string name="passkey_what_is_title">什么是通行密钥？</string>
+    <string name="passkey_feature_1">比密码更安全 - 防钓鱼攻击</string>
+    <string name="passkey_feature_2">使用简便 - 只需指纹或面容</string>
+    <string name="passkey_feature_3">跨设备同步</string>
+    <string name="passkey_create_title">创建通行密钥</string>
+    <string name="passkey_create_message">为 %1$s 创建通行密钥，无需密码即可登录</string>
+    <string name="passkey_create_confirm">创建通行密钥</string>
+    <string name="passkey_auth_title">使用通行密钥登录</string>
+    <string name="passkey_auth_message">使用您的通行密钥登录 %1$s</string>
+    <string name="passkey_auth_confirm">登录</string>
+    
+    <!-- Passkey Management -->
+    <string name="passkey">通行密钥</string>
+    <string name="passkey_search_hint">搜索通行密钥…</string>
+    <string name="passkey_search_empty">未找到匹配的通行密钥</string>
+    <string name="passkey_search_empty_hint">尝试其他搜索词</string>
+    <string name="passkey_empty_subtitle">在网站和应用中创建通行密钥后将显示在这里</string>
+    <string name="passkey_delete_title">删除通行密钥</string>
+    <string name="passkey_delete_message">确定要删除 %1$s (%2$s) 的通行密钥吗？删除后将无法使用此通行密钥登录。</string>
+    <string name="passkey_delete_button">删除通行密钥</string>
+    <string name="passkey_detail_user">显示名称</string>
+    <string name="passkey_detail_username">用户名</string>
+    <string name="passkey_detail_created">创建时间</string>
+    <string name="passkey_detail_last_used">最近使用</string>
+    <string name="passkey_detail_use_count">使用次数</string>
+    <string name="passkey_view_details">查看详情</string>
+    <string name="passkey_rp_id">网站</string>
+    <string name="passkey_username">用户名</string>
+    <string name="passkey_created_at">创建时间</string>
+    <string name="passkey_last_used">最近使用</string>
+    <string name="passkey_use_count">使用次数</string>
+    
+    <string name="dismiss">关闭</string>
     
     <!-- Timeline Screen -->
     <string name="no_history_records">暂无历史记录</string>
@@ -574,7 +626,6 @@
     <string name="restore_version">恢复此版本</string>
     <string name="save_as_new_entry">保存为新条目</string>
     <string name="no_changes">无变更</string>
-    <string name="nav_settings_short">设置</string>
     
     <!-- Generator Screen -->  <!-- 添加生成器页面相关字符串 -->
     <string name="generator_title">生成器</string>
@@ -899,6 +950,36 @@
     <!-- Autofill -->
     <string name="autofill">自动填充</string>
     <string name="autofill_subtitle">为应用和网站自动填充密码</string>
+    
+    <!-- Passkey Settings -->
+    <string name="passkey_settings">通行密钥提供者</string>
+    <string name="passkey_settings_subtitle">无需密码即可登录应用和网站</string>
+    <string name="passkey_settings_title">通行密钥设置</string>
+    <string name="passkey_settings_intro_title">通行密钥提供者</string>
+    <string name="passkey_settings_intro_subtitle">Monica 可以为网站和应用创建和管理通行密钥，提供更安全便捷的登录体验。</string>
+    <string name="passkey_settings_unsupported_title">不支持</string>
+    <string name="passkey_settings_unsupported_subtitle">通行密钥提供者需要 Android 14 或更高版本。您的设备运行的是 Android %1$s。</string>
+    <string name="passkey_settings_system_title">打开系统设置</string>
+    <string name="passkey_settings_system_subtitle">在系统设置中启用 Monica 作为通行密钥提供者</string>
+    <string name="passkey_stats_saved">已保存的通行密钥</string>
+    <string name="passkey_settings_features_title">通行密钥特性</string>
+    <string name="passkey_feature_security_title">增强安全性</string>
+    <string name="passkey_feature_security_desc">通行密钥使用公钥密码学，比传统密码更安全</string>
+    <string name="passkey_feature_biometric_title">生物识别认证</string>
+    <string name="passkey_feature_biometric_desc">使用指纹或面容识别登录</string>
+    <string name="passkey_feature_sync_title">跨设备同步</string>
+    <string name="passkey_feature_sync_desc">通过 WebDAV 备份在设备间同步通行密钥</string>
+    <string name="passkey_feature_phishing_title">防钓鱼</string>
+    <string name="passkey_feature_phishing_desc">通行密钥绑定到特定网站，防止钓鱼攻击</string>
+    <string name="passkey_settings_requirement_title">系统要求</string>
+    <string name="passkey_settings_requirement_desc">要使用 Monica 作为通行密钥提供者，您的设备必须运行 Android 14 (API 34) 或更高版本。您仍可查看从其他设备同步的通行密钥。</string>
+    
+    <!-- Passkey 生物识别认证 -->
+    <string name="biometric_title_passkey_auth">验证身份以登录</string>
+    <string name="biometric_subtitle_passkey_auth">使用通行密钥登录 %1$s</string>
+    <string name="biometric_title_passkey_create">验证身份以创建通行密钥</string>
+    <string name="biometric_subtitle_passkey_create">为 %1$s 创建通行密钥</string>
+    
     <string name="autofill_save_password">保存密码</string>
     <string name="autofill_save_to_monica">将此密码保存到Monica</string>
     <string name="autofill_title">标题</string>

@@ -88,6 +88,7 @@ sealed class Screen(val route: String) {
     object ChangePassword : Screen("change_password")
     object SecurityQuestion : Screen("security_question")
     object AutofillSettings : Screen("autofill_settings")
+    object PasskeySettings : Screen("passkey_settings")
     object SecurityAnalysis : Screen("security_analysis")
     object BottomNavSettings : Screen("bottom_nav_settings")
     object ColorSchemeSelection : Screen("color_scheme_selection")

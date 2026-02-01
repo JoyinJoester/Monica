@@ -45,6 +45,14 @@
         <item name="android:backgroundDimEnabled">true</item>
         <item name="android:backgroundDimAmount">0.5</item>
     </style>
+    
+    <!-- Passkey 活动主题 -->
+    <style name="Theme.Monica.Passkey" parent="Theme.Monica">
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 
     <!-- 深色认证对话框配色 -->
     <style name="ThemeOverlay.Monica.AutofillAuth" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
