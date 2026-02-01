@@ -570,6 +570,7 @@
     <string name="verify_identity_to_delete">Verify identity to delete</string>
     <string name="verify_master_password_desc">Please enter your master password to continue</string>
     <string name="wrong_password">Wrong password</string>
+    <string name="notes_delete_selected_confirm">Are you sure you want to delete %d selected notes?</string>
     <string name="back_to_login">Back to Login</string>
     
     <!-- Main Screen Bottom Navigation -->

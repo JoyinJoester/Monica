@@ -818,17 +818,21 @@ fun MonicaContent(
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
 
             if (passwordId > 0) {
-                takagi.ru.monica.ui.screens.PasswordDetailScreen(
-                    viewModel = viewModel,
-                    passwordId = passwordId,
-                    disablePasswordVerification = settings.disablePasswordVerification,
-                    onNavigateBack = {
-                        navController.popBackStack()
-                    },
-                    onEditPassword = { id ->
-                        navController.navigate(Screen.AddEditPassword.createRoute(id))
-                    }
-                )
+                androidx.compose.runtime.CompositionLocalProvider(
+                    takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+                ) {
+                    takagi.ru.monica.ui.screens.PasswordDetailScreen(
+                        viewModel = viewModel,
+                        passwordId = passwordId,
+                        disablePasswordVerification = settings.disablePasswordVerification,
+                        onNavigateBack = {
+                            navController.popBackStack()
+                        },
+                        onEditPassword = { id ->
+                            navController.navigate(Screen.AddEditPassword.createRoute(id))
+                        }
+                    )
+                }
             }
         }
 
@@ -986,27 +990,35 @@ fun MonicaContent(
         }
 
         composable(Screen.ChangePassword.route) {
-            takagi.ru.monica.ui.screens.ChangePasswordScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onPasswordChanged = { currentPassword, newPassword ->
-                    // TODO: 实现修改密码逻辑
-                    viewModel.changePassword(currentPassword, newPassword)
-                }
-            )
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                takagi.ru.monica.ui.screens.ChangePasswordScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onPasswordChanged = { currentPassword, newPassword ->
+                        // TODO: 实现修改密码逻辑
+                        viewModel.changePassword(currentPassword, newPassword)
+                    }
+                )
+            }
         }
 
         composable(Screen.SecurityQuestion.route) {
-            SecurityQuestionsSetupScreen(
-                securityManager = securityManager,
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onSetupComplete = {
-                    navController.popBackStack()
-                }
-            )
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                SecurityQuestionsSetupScreen(
+                    securityManager = securityManager,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onSetupComplete = {
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
 
         composable(Screen.Settings.route) {

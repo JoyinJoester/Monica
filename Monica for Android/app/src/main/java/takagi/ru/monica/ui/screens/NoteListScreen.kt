@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.viewmodel.NoteViewModel
@@ -53,6 +55,7 @@ fun NoteListScreen(
     settingsViewModel: SettingsViewModel,
     onNavigateToAddNote: (Long?) -> Unit,
     securityManager: SecurityManager,
+    onSelectionModeChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -67,6 +70,16 @@ fun NoteListScreen(
     
     // 防止重复点击
     var isNavigating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isSelectionMode) {
+        onSelectionModeChange(isSelectionMode)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            onSelectionModeChange(false)
+        }
+    }
     
     val context = LocalContext.current
     val biometricHelper = remember { BiometricHelper(context) }
@@ -98,78 +111,59 @@ fun NoteListScreen(
 
     Scaffold(
         topBar = {
+            // M3E 风格顶栏（保持与其他页面一致）
+            ExpressiveTopBar(
+                title = stringResource(R.string.nav_notes),
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
+                isSearchExpanded = isSearchExpanded,
+                onSearchExpandedChange = { isSearchExpanded = it },
+                searchHint = stringResource(R.string.search),
+                actions = {
+                    // 布局切换按钮
+                    IconButton(onClick = { settingsViewModel.updateNoteGridLayout(!isGridLayout) }) {
+                        Icon(
+                            imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
+                            contentDescription = if (isGridLayout) "切换到列表" else "切换到网格",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    // 搜索按钮
+                    IconButton(onClick = { isSearchExpanded = true }) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = stringResource(R.string.search),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            )
+        },
+        bottomBar = {
             if (isSelectionMode) {
-                TopAppBar(
-                    title = { 
-                        Text(
-                            text = stringResource(R.string.selected_items, selectedNoteIds.size),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        ) 
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { 
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    NoteSelectionActionBar(
+                        modifier = Modifier.wrapContentWidth(),
+                        selectedCount = selectedNoteIds.size,
+                        onExit = {
                             isSelectionMode = false
                             selectedNoteIds = emptySet()
-                        }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close")
-                        }
-                    },
-                    actions = {
-                        // 全选/取消全选
-                        IconButton(onClick = {
+                        },
+                        onSelectAll = {
                             selectedNoteIds = if (selectedNoteIds.size == notes.size) {
                                 emptySet()
                             } else {
                                 notes.map { it.id }.toSet()
                             }
-                        }) {
-                            Icon(
-                                Icons.Outlined.CheckCircle,
-                                contentDescription = stringResource(R.string.select_all)
-                            )
-                        }
-                        
-                        IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(
-                                Icons.Default.Delete, 
-                                contentDescription = "Delete",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                        },
+                        onDelete = { showDeleteDialog = true }
                     )
-                )
-            } else {
-                // M3E 风格顶栏
-                ExpressiveTopBar(
-                    title = stringResource(R.string.nav_notes),
-                    searchQuery = searchQuery,
-                    onSearchQueryChange = { searchQuery = it },
-                    isSearchExpanded = isSearchExpanded,
-                    onSearchExpandedChange = { isSearchExpanded = it },
-                    searchHint = stringResource(R.string.search),
-                    actions = {
-                        // 布局切换按钮
-                        IconButton(onClick = { settingsViewModel.updateNoteGridLayout(!isGridLayout) }) {
-                            Icon(
-                                imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
-                                contentDescription = if (isGridLayout) "切换到列表" else "切换到网格",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        // 搜索按钮
-                        IconButton(onClick = { isSearchExpanded = true }) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = stringResource(R.string.search),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                )
+                }
             }
         },
         floatingActionButton = {} // FAB moved to SwipeableAddFab in SimpleMainScreen
@@ -183,7 +177,7 @@ fun NoteListScreen(
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
                 title = { Text(stringResource(R.string.delete)) },
-                text = { Text("确定要删除选中的 ${selectedNoteIds.size} 条笔记吗？") },
+                text = { Text(stringResource(R.string.notes_delete_selected_confirm, selectedNoteIds.size)) },
                 confirmButton = {
                     TextButton(onClick = { 
                         showDeleteDialog = false
@@ -209,7 +203,7 @@ fun NoteListScreen(
                 title = { Text(stringResource(R.string.enter_master_password_confirm)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("确定要删除选中的 ${selectedNoteIds.size} 条笔记吗？")
+                        Text(stringResource(R.string.notes_delete_selected_confirm, selectedNoteIds.size))
                         OutlinedTextField(
                             value = masterPassword,
                             onValueChange = { masterPassword = it },
@@ -376,6 +370,78 @@ fun NoteListContent(
                 item { Spacer(modifier = Modifier.height(80.dp)) }
             }
         }
+    }
+}
+
+@Composable
+private fun NoteSelectionActionBar(
+    modifier: Modifier = Modifier,
+    selectedCount: Int,
+    onExit: () -> Unit,
+    onSelectAll: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Text(
+                    text = selectedCount.toString(),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            NoteActionIcon(
+                icon = Icons.Outlined.CheckCircle,
+                contentDescription = stringResource(id = R.string.select_all),
+                onClick = onSelectAll
+            )
+
+            NoteActionIcon(
+                icon = Icons.Default.Delete,
+                contentDescription = stringResource(id = R.string.delete),
+                onClick = onDelete
+            )
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            NoteActionIcon(
+                icon = Icons.Default.Close,
+                contentDescription = stringResource(id = R.string.close),
+                onClick = onExit
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoteActionIcon(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(40.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

@@ -39,6 +39,8 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.repository.PasskeyRepository
+import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.ui.components.MasterPasswordDialog
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
 import java.security.KeyStore
@@ -72,6 +74,9 @@ class PasskeyAuthActivity : FragmentActivity() {
     private val repository: PasskeyRepository by lazy {
         PasskeyRepository(database.passkeyDao())
     }
+
+    private val showMasterPasswordDialog = mutableStateOf(false)
+    private val masterPasswordError = mutableStateOf(false)
     
     private var passkey: PasskeyEntry? = null
     private var pendingRequestJson: String = ""
@@ -182,16 +187,35 @@ class PasskeyAuthActivity : FragmentActivity() {
                     },
                     onCancel = {
                         repository.logAudit("PASSKEY_AUTH_CANCELLED", currentPasskey.credentialId)
-                        // 用户取消，使用 PendingIntentHandler 设置取消异常
-                        val resultIntent = Intent()
-                        PendingIntentHandler.setGetCredentialException(
-                            resultIntent,
-                            GetCredentialCancellationException("User cancelled")
-                        )
-                        setResult(Activity.RESULT_OK, resultIntent)
-                        finish()
+                        // 用户取消生物识别时，提供主密码验证回退
+                        showMasterPasswordDialog.value = true
+                    },
+                    onUseMasterPassword = {
+                        showMasterPasswordDialog.value = true
                     }
                 )
+
+                if (showMasterPasswordDialog.value) {
+                    MasterPasswordDialog(
+                        onDismiss = {
+                            showMasterPasswordDialog.value = false
+                            masterPasswordError.value = false
+                        },
+                        onConfirm = { password ->
+                            val securityManager = SecurityManager(this)
+                            if (securityManager.verifyMasterPassword(password)) {
+                                masterPasswordError.value = false
+                                showMasterPasswordDialog.value = false
+                                repository.logAudit("PASSKEY_AUTH_MASTER_PASSWORD_SUCCESS", currentPasskey.credentialId)
+                                authenticateWithPasskey(pendingRequestJson, currentPasskey)
+                            } else {
+                                masterPasswordError.value = true
+                                repository.logAudit("PASSKEY_AUTH_MASTER_PASSWORD_FAILED", currentPasskey.credentialId)
+                            }
+                        },
+                        isError = masterPasswordError.value
+                    )
+                }
             }
         }
     }
@@ -202,6 +226,12 @@ class PasskeyAuthActivity : FragmentActivity() {
      */
     private fun requestBiometricAuth(passkey: PasskeyEntry) {
         repository.logAudit("PASSKEY_AUTH_BIOMETRIC_REQUESTED", passkey.credentialId)
+
+        if (!biometricHelper.isBiometricAvailable()) {
+            repository.logAudit("PASSKEY_AUTH_BIOMETRIC_UNAVAILABLE", passkey.credentialId)
+            showMasterPasswordDialog.value = true
+            return
+        }
         
         biometricHelper.authenticate(
             activity = this,
@@ -216,26 +246,14 @@ class PasskeyAuthActivity : FragmentActivity() {
                 repository.logAudit("PASSKEY_AUTH_BIOMETRIC_FAILED", 
                     "${passkey.credentialId}|error=$errorCode|$errString")
                 Log.e(TAG, "Biometric auth failed: $errorCode - $errString")
-                // 生物识别失败，必须使用 PendingIntentHandler 设置异常响应
-                val resultIntent = Intent()
-                PendingIntentHandler.setGetCredentialException(
-                    resultIntent,
-                    GetCredentialUnknownException("Biometric authentication failed: $errString")
-                )
-                setResult(Activity.RESULT_OK, resultIntent)
-                finish()
+                // 生物识别失败时，提供主密码验证回退
+                showMasterPasswordDialog.value = true
             },
             onCancel = {
                 repository.logAudit("PASSKEY_AUTH_BIOMETRIC_CANCELLED", passkey.credentialId)
                 Log.d(TAG, "Biometric auth cancelled by user")
-                // 用户取消，使用 UserCanceled 异常
-                val resultIntent = Intent()
-                PendingIntentHandler.setGetCredentialException(
-                    resultIntent,
-                    GetCredentialCancellationException("User cancelled authentication")
-                )
-                setResult(Activity.RESULT_OK, resultIntent)
-                finish()
+                // 用户取消时，提供主密码验证回退
+                showMasterPasswordDialog.value = true
             }
         )
     }
@@ -529,7 +547,8 @@ private suspend fun takagi.ru.monica.data.PasskeyDao.updateSignCount(credentialI
 private fun PasskeyAuthScreen(
     passkey: PasskeyEntry,
     onConfirm: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onUseMasterPassword: () -> Unit
 ) {
     var isAuthenticating by remember { mutableStateOf(false) }
     
@@ -717,6 +736,16 @@ private fun PasskeyAuthScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text(stringResource(R.string.cancel))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TextButton(
+                onClick = onUseMasterPassword,
+                enabled = !isAuthenticating,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.use_master_password))
             }
         }
     }

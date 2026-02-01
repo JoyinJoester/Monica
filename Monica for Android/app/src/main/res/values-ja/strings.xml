@@ -461,6 +461,9 @@
     <!-- Security Questions Verification -->
     <string name="verify_identity">本人確認</string>
     <string name="answer_security_questions">セキュリティ質問に回答</string>
+    <string name="verify_master_password_desc">続行するにはマスターパスワードを入力してください</string>
+    <string name="wrong_password">パスワードが間違っています</string>
+    <string name="notes_delete_selected_confirm">選択した %d 件のメモを削除しますか？</string>
     <string name="security_questions_verify_description">パスワードをリセットするにはセキュリティ質問に回答してください</string>
     <string name="question_1">質問 1：</string>
     <string name="question_2">質問 2：</string>

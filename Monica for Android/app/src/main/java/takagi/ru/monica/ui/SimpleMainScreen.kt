@@ -385,7 +385,8 @@ fun SimpleMainScreen(
     val hideFabOnScrollState = rememberUpdatedState(appSettings.hideFabOnScroll)
 
     // 检测是否有任何选择模式处于激活状态
-    val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || isDocumentSelectionMode || isBankCardSelectionMode
+    var isNoteSelectionMode by remember { mutableStateOf(false) }
+    val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || isDocumentSelectionMode || isBankCardSelectionMode || isNoteSelectionMode
     
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -657,7 +658,10 @@ fun SimpleMainScreen(
                                 viewModel = noteViewModel,
                                 settingsViewModel = settingsViewModel,
                                 onNavigateToAddNote = onNavigateToAddNote,
-                                securityManager = securityManager
+                                securityManager = securityManager,
+                                onSelectionModeChange = { isSelectionMode ->
+                                    isNoteSelectionMode = isSelectionMode
+                                }
                             )
                         }
                         BottomNavItem.Timeline -> {
@@ -879,7 +883,10 @@ fun SimpleMainScreen(
                         viewModel = noteViewModel,
                         settingsViewModel = settingsViewModel,
                         onNavigateToAddNote = onNavigateToAddNote,
-                        securityManager = securityManager
+                        securityManager = securityManager,
+                        onSelectionModeChange = { isSelectionMode ->
+                            isNoteSelectionMode = isSelectionMode
+                        }
                     )
                 }
                 BottomNavItem.Timeline -> {
@@ -956,7 +963,15 @@ fun SimpleMainScreen(
                 }
 
                 currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
-                    // Document selection bar commented out
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
+                        selectedCount = selectedDocumentCount,
+                        onExit = onExitDocumentSelection,
+                        onSelectAll = onSelectAllDocuments,
+                        onDelete = onDeleteSelectedDocuments
+                    )
                 }
             }
         }
@@ -3853,19 +3868,13 @@ private fun StackedPasswordGroup(
 
     val expandProgress by animateFloatAsState(
         targetValue = if (effectiveExpanded && passwords.size > 1) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
+        animationSpec = tween(200),
         label = "expand_animation"
     )
     
     val containerAlpha by animateFloatAsState(
         targetValue = if (effectiveExpanded && passwords.size > 1) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
+        animationSpec = tween(200),
         label = "container_alpha"
     )
     
@@ -3909,7 +3918,7 @@ private fun StackedPasswordGroup(
         // 📚 堆叠背后的层级卡片 (仅在堆叠状态下可见，或动画过程中可见)
         val stackAlpha by animateFloatAsState(
             targetValue = if (effectiveExpanded) 0f else 1f,
-            animationSpec = tween(150),
+            animationSpec = tween(200),
             label = "stack_alpha"
         )
         
@@ -3948,10 +3957,12 @@ private fun StackedPasswordGroup(
             // 🎯 主卡片 (持续存在，内容和属性变化)
             val cardElevation by animateDpAsState(
                 targetValue = if (effectiveExpanded) 4.dp else 6.dp,
+                animationSpec = tween(200),
                 label = "elevation"
             )
             val cardShape by animateDpAsState(
                 targetValue = if (effectiveExpanded) 16.dp else 14.dp,
+                animationSpec = tween(200),
                 label = "shape"
             )
             
@@ -3977,10 +3988,7 @@ private fun StackedPasswordGroup(
                     modifier = Modifier
                         .fillMaxWidth()
                         .animateContentSize(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessHigh
-                            )
+                            animationSpec = tween(200)
                         )
                         .then(
                             // 展开时的下滑手势
@@ -4020,8 +4028,8 @@ private fun StackedPasswordGroup(
                     AnimatedContent(
                         targetState = effectiveExpanded,
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(150)) togetherWith 
-                            fadeOut(animationSpec = tween(150))
+                            fadeIn(animationSpec = tween(200)) togetherWith 
+                            fadeOut(animationSpec = tween(200))
                         },
                         label = "content_switch"
                     ) { expanded ->
@@ -4653,7 +4661,7 @@ private fun MultiPasswordEntryCard(
 /**
  * 密码条目卡片
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun PasswordEntryCard(
     entry: takagi.ru.monica.data.PasswordEntry,
@@ -4669,8 +4677,23 @@ private fun PasswordEntryCard(
     iconCardsEnabled: Boolean = false,
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
 ) {
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "password_card_${entry.id}"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(sharedModifier),
         colors = if (isSelected) {
             androidx.compose.material3.CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer

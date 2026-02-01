@@ -33,7 +33,7 @@ class MonicaApplication : Application() {
         super.onCreate()
         
         initKoin()
-        refreshCredentialProviderService()
+        maybeRefreshCredentialProviderService()
     }
     
     /**
@@ -59,6 +59,31 @@ class MonicaApplication : Application() {
         }
     }
     
+    /**
+     * 仅在首次运行或版本升级时刷新 Credential Provider Service
+     * 避免每次启动都切换组件导致系统缓存抖动
+     */
+    private fun maybeRefreshCredentialProviderService() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        try {
+            val prefs = getSharedPreferences("app_state", MODE_PRIVATE)
+            val lastVersion = prefs.getLong("last_version_code", -1L)
+            val currentVersion = getCurrentVersionCode()
+
+            val isFirstRun = lastVersion == -1L
+            val isUpgrade = lastVersion != -1L && lastVersion != currentVersion
+
+            prefs.edit().putLong("last_version_code", currentVersion).apply()
+
+            if (isFirstRun || isUpgrade) {
+                refreshCredentialProviderService()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to check app version for credential refresh", e)
+            refreshCredentialProviderService()
+        }
+    }
+
     /**
      * 刷新 Credential Provider Service 注册
      * 
@@ -97,6 +122,21 @@ class MonicaApplication : Application() {
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to refresh CredentialProviderService", e)
             }
+        }
+    }
+
+    private fun getCurrentVersionCode(): Long {
+        return try {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode.toLong()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read versionCode", e)
+            -1L
         }
     }
 }

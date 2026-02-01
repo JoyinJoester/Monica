@@ -14,6 +14,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.RestoreReport
 import takagi.ru.monica.data.ItemCounts
@@ -84,6 +85,29 @@ private data class NoteBackupEntry(
     val imagePaths: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
+private data class PasskeyBackupEntry(
+    val credentialId: String = "",
+    val rpId: String = "",
+    val rpName: String = "",
+    val userId: String = "",
+    val userName: String = "",
+    val userDisplayName: String = "",
+    val publicKeyAlgorithm: Int = -7,
+    val publicKey: String = "",
+    val privateKeyAlias: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastUsedAt: Long = System.currentTimeMillis(),
+    val useCount: Int = 0,
+    val iconUrl: String? = null,
+    val isDiscoverable: Boolean = true,
+    val isUserVerificationRequired: Boolean = true,
+    val transports: String = "internal",
+    val aaguid: String = "",
+    val signCount: Long = 0,
+    val notes: String = ""
 )
 
 @Serializable
@@ -232,6 +256,7 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_AUTHENTICATORS = "backup_include_authenticators"
         private const val KEY_BACKUP_INCLUDE_DOCUMENTS = "backup_include_documents"
         private const val KEY_BACKUP_INCLUDE_BANK_CARDS = "backup_include_bank_cards"
+        private const val KEY_BACKUP_INCLUDE_PASSKEYS = "backup_include_passkeys"
         private const val KEY_BACKUP_INCLUDE_GENERATOR_HISTORY = "backup_include_generator_history"
         private const val KEY_BACKUP_INCLUDE_IMAGES = "backup_include_images"
         private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
@@ -473,6 +498,7 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, preferences.includeAuthenticators)
             putBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, preferences.includeDocuments)
             putBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, preferences.includeBankCards)
+            putBoolean(KEY_BACKUP_INCLUDE_PASSKEYS, preferences.includePasskeys)
             putBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, preferences.includeGeneratorHistory)
             putBoolean(KEY_BACKUP_INCLUDE_IMAGES, preferences.includeImages)
             putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
@@ -495,6 +521,7 @@ class WebDavHelper(
             includeAuthenticators = prefs.getBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, true),
             includeDocuments = prefs.getBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, true),
             includeBankCards = prefs.getBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, true),
+            includePasskeys = prefs.getBoolean(KEY_BACKUP_INCLUDE_PASSKEYS, true),
             includeGeneratorHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, true),
             includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true),
             includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true),
@@ -650,6 +677,7 @@ class WebDavHelper(
             val cardsDocsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_cards_docs.csv")
             val notesDir = File(cacheBackupDir, "notes")
             val passwordsDir = File(cacheBackupDir, "passwords")
+            val passkeysDir = File(cacheBackupDir, "passkeys")
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
             val zipFile = File(context.cacheDir, "monica_backup_$timestamp.zip")
@@ -820,6 +848,49 @@ class WebDavHelper(
                 }
 
                 // 7. 创建 ZIP
+                // 6.8 导出 Passkeys
+                if (preferences.includePasskeys) {
+                    try {
+                        val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                        val passkeyDao = database.passkeyDao()
+                        val passkeys = passkeyDao.getAllPasskeysSync()
+                        if (passkeys.isNotEmpty()) {
+                            if (!passkeysDir.exists()) passkeysDir.mkdirs()
+                            val json = Json { prettyPrint = false }
+                            passkeys.forEach { passkey ->
+                                val backup = PasskeyBackupEntry(
+                                    credentialId = passkey.credentialId,
+                                    rpId = passkey.rpId,
+                                    rpName = passkey.rpName,
+                                    userId = passkey.userId,
+                                    userName = passkey.userName,
+                                    userDisplayName = passkey.userDisplayName,
+                                    publicKeyAlgorithm = passkey.publicKeyAlgorithm,
+                                    publicKey = passkey.publicKey,
+                                    privateKeyAlias = passkey.privateKeyAlias,
+                                    createdAt = passkey.createdAt,
+                                    lastUsedAt = passkey.lastUsedAt,
+                                    useCount = passkey.useCount,
+                                    iconUrl = passkey.iconUrl,
+                                    isDiscoverable = passkey.isDiscoverable,
+                                    isUserVerificationRequired = passkey.isUserVerificationRequired,
+                                    transports = passkey.transports,
+                                    aaguid = passkey.aaguid,
+                                    signCount = passkey.signCount,
+                                    notes = passkey.notes
+                                )
+                                val safeId = passkey.credentialId.replace("/", "_")
+                                val fileName = "passkey_${safeId}.json"
+                                val target = File(passkeysDir, fileName)
+                                target.writeText(json.encodeToString(PasskeyBackupEntry.serializer(), backup), Charsets.UTF_8)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to backup passkeys: ${e.message}")
+                        warnings.add("通行密钥备份失败: ${e.message}")
+                    }
+                }
+
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
                     if (passwordsDir.exists()) {
                         passwordsDir.listFiles()?.forEach { addFileToZip(zipOut, it, "passwords/${it.name}") }
@@ -831,6 +902,9 @@ class WebDavHelper(
                     if (cardsDocsCsvFile.exists()) addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
                     if (notesDir.exists()) {
                         notesDir.listFiles()?.forEach { addFileToZip(zipOut, it, "notes/${it.name}") }
+                    }
+                    if (passkeysDir.exists()) {
+                        passkeysDir.listFiles()?.forEach { addFileToZip(zipOut, it, "passkeys/${it.name}") }
                     }
                     if (preferences.includeGeneratorHistory) {
                         try {
@@ -1227,6 +1301,7 @@ class WebDavHelper(
                 historyJsonFile.delete()
                 if (finalFile != zipFile) zipFile.delete()
                 passwordsDir.deleteRecursively()
+                passkeysDir.deleteRecursively()
                 cacheBackupDir.deleteRecursively()
             }
         } catch (e: Exception) {
@@ -1449,6 +1524,7 @@ class WebDavHelper(
                     database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
                     database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
                     database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.NOTE)
+                    database.passkeyDao().deleteAllPasskeys()
                     android.util.Log.d("WebDavHelper", "Local data cleared successfully")
                 } catch (e: Exception) {
                     android.util.Log.e("WebDavHelper", "Failed to clear local data: ${e.message}")
@@ -1465,9 +1541,11 @@ class WebDavHelper(
             var backupCardCount = 0
             var backupDocCount = 0
             var backupImageCount = 0
+            var backupPasskeyCount = 0
             var restoredPasswordCount = 0
             var restoredNoteCount = 0
             var restoredImageCount = 0
+            var restoredPasskeyCount = 0
 
             // 1. 检测是否加密
             val isEncrypted = EncryptionHelper.isEncryptedFile(backupFile)
@@ -1579,6 +1657,31 @@ class WebDavHelper(
                                         failedItems.add(FailedItem(
                                             id = 0,
                                             type = "笔记",
+                                            title = entryName,
+                                            reason = "JSON解析失败"
+                                        ))
+                                    }
+                                }
+                                normalizedEntryName.contains("/passkeys/") || normalizedEntryName.startsWith("passkeys/") -> {
+                                    backupPasskeyCount++
+                                    val passkey = restorePasskeyFromJson(tempFile)
+                                    if (passkey != null) {
+                                        try {
+                                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                                            database.passkeyDao().insert(passkey)
+                                            restoredPasskeyCount++
+                                        } catch (e: Exception) {
+                                            failedItems.add(FailedItem(
+                                                id = 0,
+                                                type = "通行密钥",
+                                                title = entryName,
+                                                reason = "写入数据库失败: ${e.message}"
+                                            ))
+                                        }
+                                    } else {
+                                        failedItems.add(FailedItem(
+                                            id = 0,
+                                            type = "通行密钥",
                                             title = entryName,
                                             reason = "JSON解析失败"
                                         ))
@@ -2108,6 +2211,10 @@ class WebDavHelper(
                     documents = docItems,
                     images = restoredImageCount
                 )
+
+                if (backupPasskeyCount > 0) {
+                    warnings.add("通行密钥恢复: $restoredPasskeyCount/$backupPasskeyCount")
+                }
                 
                 val report = RestoreReport(
                     success = failedItems.isEmpty(),
@@ -2360,6 +2467,39 @@ class WebDavHelper(
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore note from ${file.name}: ${e.message}")
+            null
+        }
+    }
+
+    private fun restorePasskeyFromJson(file: File): PasskeyEntry? {
+        return try {
+            val json = Json { ignoreUnknownKeys = true }
+            val text = file.readText(Charsets.UTF_8)
+            val backup = json.decodeFromString(PasskeyBackupEntry.serializer(), text)
+            PasskeyEntry(
+                credentialId = backup.credentialId,
+                rpId = backup.rpId,
+                rpName = backup.rpName,
+                userId = backup.userId,
+                userName = backup.userName,
+                userDisplayName = backup.userDisplayName,
+                publicKeyAlgorithm = backup.publicKeyAlgorithm,
+                publicKey = backup.publicKey,
+                privateKeyAlias = backup.privateKeyAlias,
+                createdAt = backup.createdAt,
+                lastUsedAt = backup.lastUsedAt,
+                useCount = backup.useCount,
+                iconUrl = backup.iconUrl,
+                isDiscoverable = backup.isDiscoverable,
+                isUserVerificationRequired = backup.isUserVerificationRequired,
+                transports = backup.transports,
+                aaguid = backup.aaguid,
+                signCount = backup.signCount,
+                isBackedUp = true,
+                notes = backup.notes
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("WebDavHelper", "Failed to restore passkey from ${file.name}: ${e.message}")
             null
         }
     }

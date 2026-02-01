@@ -137,6 +137,12 @@ interface PasskeyDao {
      */
     @Delete
     suspend fun delete(passkey: PasskeyEntry)
+
+    /**
+     * 删除所有 Passkey（用于覆盖恢复）
+     */
+    @Query("DELETE FROM passkeys")
+    suspend fun deleteAllPasskeys()
     
     /**
      * 根据凭据 ID 删除 Passkey

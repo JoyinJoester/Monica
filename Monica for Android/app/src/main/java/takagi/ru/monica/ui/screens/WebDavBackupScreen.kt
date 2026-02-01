@@ -85,6 +85,7 @@ fun WebDavBackupScreen(
     var noteCount by remember { mutableStateOf(0) }
     var trashCount by remember { mutableStateOf(0) }
     var localKeePassCount by remember { mutableStateOf(0) }
+    var passkeyCount by remember { mutableStateOf(0) }
     var isKeePassWebDavConfigured by remember { mutableStateOf(false) }
     
     // 恢复设置
@@ -151,6 +152,16 @@ fun WebDavBackupScreen(
             }
         } catch (e: Exception) {
             localKeePassCount = 0
+        }
+
+        // 获取 Passkey 数量
+        try {
+            val passkeyDao = database.passkeyDao()
+            passkeyCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                passkeyDao.getAllPasskeysSync().size
+            }
+        } catch (e: Exception) {
+            passkeyCount = 0
         }
         
         // 检查 KeePass WebDAV 是否已配置
@@ -604,6 +615,7 @@ fun WebDavBackupScreen(
                     bankCardCount = bankCardCount,
                     noteCount = noteCount,
                     trashCount = trashCount,
+                    passkeyCount = passkeyCount,
                     localKeePassCount = localKeePassCount,
                     isWebDavConfigured = isConfigured,
                     isKeePassWebDavConfigured = isKeePassWebDavConfigured

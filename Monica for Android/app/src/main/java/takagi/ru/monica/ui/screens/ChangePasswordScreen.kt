@@ -17,11 +17,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 
 /**
  * 修改主密码页面
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun ChangePasswordScreen(
     onNavigateBack: () -> Unit,
@@ -41,6 +43,20 @@ fun ChangePasswordScreen(
     var showSuccessDialog by remember { mutableStateOf(false) }
     
     val scrollState = rememberScrollState()
+
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "reset_password_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
     
     // 获取所有需要的字符串资源
     val errorCurrentEmpty = stringResource(R.string.change_password_error_current_empty)
@@ -51,6 +67,7 @@ fun ChangePasswordScreen(
     val errorSameAsCurrent = stringResource(R.string.change_password_error_same_as_current)
     
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.change_password_title)) },

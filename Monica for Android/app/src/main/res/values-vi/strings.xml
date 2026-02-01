@@ -463,6 +463,9 @@
     <!-- Security Questions Verification -->
     <string name="verify_identity">Xác minh danh tính</string>
     <string name="answer_security_questions">Trả lời câu hỏi bảo mật</string>
+    <string name="verify_master_password_desc">Vui lòng nhập mật khẩu chính để tiếp tục</string>
+    <string name="wrong_password">Sai mật khẩu</string>
+    <string name="notes_delete_selected_confirm">Bạn có chắc muốn xóa %d ghi chú đã chọn không?</string>
     <string name="security_questions_verify_description">Vui lòng trả lời câu hỏi bảo mật của bạn để đặt lại mật khẩu</string>
     <string name="question_1">Câu hỏi 1:</string>
     <string name="question_2">Câu hỏi 2:</string>
