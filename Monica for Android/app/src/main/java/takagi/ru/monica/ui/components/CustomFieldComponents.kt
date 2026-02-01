@@ -91,9 +91,45 @@ fun CustomFieldEditCard(
     // 编辑模式：新字段（标题或值为空）默认编辑，已保存字段默认查看
     var isEditing by remember { mutableStateOf(field.title.isBlank() || field.value.isBlank()) }
     var valueVisible by remember { mutableStateOf(!field.isProtected) }
+    // 删除确认对话框状态
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     
     // 动态标题
     val displayTitle = field.title.ifBlank { "新字段" }
+    
+    // 删除确认对话框
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("删除自定义字段") },
+            text = { Text("确定要删除「$displayTitle」吗？此操作无法撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
     
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
@@ -106,7 +142,7 @@ fun CustomFieldEditCard(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 顶部：标题和删除按钮
+                // 顶部：标题和关闭按钮
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,14 +167,24 @@ fun CustomFieldEditCard(
                             maxLines = 1
                         )
                     }
+                    // 关闭按钮（收起编辑，不删除）
+                    // 如果是空字段（未保存过）则删除，否则只收起
                     IconButton(
-                        onClick = onDelete,
+                        onClick = {
+                            if (field.title.isBlank() && field.value.isBlank()) {
+                                // 空字段直接删除
+                                onDelete()
+                            } else {
+                                // 已有内容，收起编辑
+                                isEditing = false
+                            }
+                        },
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "删除自定义字段",
-                            tint = MaterialTheme.colorScheme.error
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = "收起编辑",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -306,12 +352,13 @@ fun CustomFieldEditCard(
                                 modifier = Modifier.size(18.dp)
                             )
                         }
+                        // 删除按钮（需二次确认）
                         IconButton(
-                            onClick = onDelete,
+                            onClick = { showDeleteConfirm = true },
                             modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Default.Delete,
                                 contentDescription = "删除",
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(18.dp)
