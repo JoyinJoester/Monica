@@ -195,14 +195,20 @@ class BiometricAuthHelper(
             }
         )
         
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        val allowedAuthenticators = getAllowedAuthenticators()
+        val promptBuilder = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
             .setDescription(description)
-            .setNegativeButtonText(negativeButtonText)
-            .setAllowedAuthenticators(getAllowedAuthenticators())
+            .setAllowedAuthenticators(allowedAuthenticators)
             .setConfirmationRequired(false) // 不需要额外确认,提高用户体验
-            .build()
+
+        // 使用设备凭据时不能设置负按钮
+        if (allowedAuthenticators and BiometricManager.Authenticators.DEVICE_CREDENTIAL == 0) {
+            promptBuilder.setNegativeButtonText(negativeButtonText)
+        }
+
+        val promptInfo = promptBuilder.build()
         
         biometricPrompt.authenticate(promptInfo)
     }
@@ -210,10 +216,11 @@ class BiometricAuthHelper(
     private fun getAllowedAuthenticators(): Int {
         val biometricManager = BiometricManager.from(context)
         val strongResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        return if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
+        val biometric = if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
             BiometricManager.Authenticators.BIOMETRIC_STRONG
         } else {
             BiometricManager.Authenticators.BIOMETRIC_WEAK
         }
+        return biometric or BiometricManager.Authenticators.DEVICE_CREDENTIAL
     }
 }
