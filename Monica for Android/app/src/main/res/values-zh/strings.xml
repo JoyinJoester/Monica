@@ -1409,7 +1409,6 @@
     <string name="selective_backup_description">选择要包含在备份中的数据类型</string>
     <string name="backup_content_passwords">密码</string>
     <string name="backup_content_authenticators">验证器 (TOTP)</string>
-    <string name="backup_content_passkeys">验证密钥 (Passkey)</string>
     <string name="backup_content_documents">证件</string>
     <string name="backup_content_bank_cards">银行卡</string>
     <string name="backup_content_wallet">卡包（证件与银行卡）</string>
@@ -1418,8 +1417,9 @@
     <string name="backup_content_images">图片</string>
     <string name="backup_content_timeline">操作历史</string>
     <string name="backup_content_trash">回收站</string>
+    <string name="backup_content_passkeys">通行密钥</string>
     <string name="backup_content_trash_and_history">回收站与历史</string>
-    <string name="backup_content_trash_and_history_hint">包含密码生成历史、操作历史和回收站</string>
+    <string name="backup_content_trash_and_history_hint">包含回收站、密码生成历史和操作历史</string>
     <string name="backup_content_local_keepass">本地 KeePass 数据库</string>
     <string name="backup_content_local_keepass_hint">包含所有本地 KeePass 数据库（内部和外部存储）。恢复时统一存储到内部存储。</string>
     <string name="backup_content_local_keepass_empty">暂无本地 KeePass 数据库</string>

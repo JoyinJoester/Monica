@@ -46,10 +46,15 @@
         <item name="android:backgroundDimAmount">0.5</item>
     </style>
     
-    <!-- Passkey 活动主题 -->
-    <style name="Theme.Monica.Passkey" parent="Theme.Monica">
-        <item name="android:windowIsTranslucent">false</item>
+    <!-- Passkey 活动主题 - 必须是透明的，这样才能正确地显示在调用方应用之上 -->
+    <style name="Theme.Monica.Passkey" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.6</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

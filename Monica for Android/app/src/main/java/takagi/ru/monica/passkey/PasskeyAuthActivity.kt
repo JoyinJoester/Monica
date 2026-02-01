@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -29,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.provider.CallingAppInfo
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
@@ -80,35 +81,90 @@ class PasskeyAuthActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        val requestJson = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_REQUEST_JSON) ?: ""
-        val credentialId = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_CREDENTIAL_ID) ?: ""
-
-        // 尝试从 PendingIntent 中恢复调用方信息（用于生成正确的 origin）
-        try {
-            val providerRequest = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent)
-            pendingCallingAppInfo = providerRequest?.callingAppInfo
-            
-            // 获取 clientDataHash（如果提供）
-            providerRequest?.credentialOptions?.firstOrNull()?.let { opt ->
-                if (opt is GetPublicKeyCredentialOption) {
-                    pendingClientDataHash = opt.clientDataHash
-                }
-            }
+        Log.d(TAG, "PasskeyAuthActivity onCreate called")
+        Log.d(TAG, "Intent: $intent")
+        Log.d(TAG, "Intent extras: ${intent.extras}")
+        
+        // 首先尝试从 PendingIntentHandler 获取请求（这是正确的方式）
+        val providerRequest = try {
+            PendingIntentHandler.retrieveProviderGetCredentialRequest(intent)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to retrieve ProviderGetCredentialRequest", e)
+            Log.e(TAG, "Failed to retrieve ProviderGetCredentialRequest", e)
+            null
         }
         
-        Log.d(TAG, "Authenticating with passkey: $credentialId")
+        if (providerRequest == null) {
+            Log.e(TAG, "providerRequest is null - this should not happen!")
+            // 如果无法获取 providerRequest，尝试从 intent extras 获取（向后兼容）
+        } else {
+            Log.d(TAG, "providerRequest retrieved successfully")
+            pendingCallingAppInfo = providerRequest.callingAppInfo
+            Log.d(TAG, "CallingAppInfo: $pendingCallingAppInfo")
+            Log.d(TAG, "CallingAppInfo origin: ${pendingCallingAppInfo?.origin}")
+            Log.d(TAG, "CallingAppInfo packageName: ${pendingCallingAppInfo?.packageName}")
+            
+            // 获取 clientDataHash（如果提供）
+            providerRequest.credentialOptions.firstOrNull()?.let { opt ->
+                if (opt is GetPublicKeyCredentialOption) {
+                    pendingClientDataHash = opt.clientDataHash
+                    Log.d(TAG, "clientDataHash: ${pendingClientDataHash?.contentToString()}")
+                }
+            }
+        }
         
-        // 加载 Passkey 信息
+        val requestJson = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_REQUEST_JSON) ?: ""
+        val credentialId = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_CREDENTIAL_ID) ?: ""
+        
+        Log.d(TAG, "requestJson from extras: ${requestJson.take(100)}...")
+        Log.d(TAG, "credentialId from extras: $credentialId")
+        
+        // 检查必要参数
+        if (credentialId.isBlank()) {
+            Log.e(TAG, "credentialId is empty!")
+            val resultIntent = Intent()
+            PendingIntentHandler.setGetCredentialException(
+                resultIntent,
+                GetCredentialUnknownException("Missing credential ID")
+            )
+            setResult(Activity.RESULT_OK, resultIntent)
+            finish()
+            return
+        }
+        
+        if (requestJson.isBlank()) {
+            Log.e(TAG, "requestJson is empty!")
+            val resultIntent = Intent()
+            PendingIntentHandler.setGetCredentialException(
+                resultIntent,
+                GetCredentialUnknownException("Missing request JSON")
+            )
+            setResult(Activity.RESULT_OK, resultIntent)
+            finish()
+            return
+        }
+        
+        // 加载 Passkey 信息（优先按 credentialId，其次尝试规范化匹配）
         runBlocking {
             passkey = database.passkeyDao().getPasskeyById(credentialId)
+            if (passkey == null) {
+                val normalizedId = normalizeCredentialId(credentialId)
+                if (normalizedId != null) {
+                    val all = database.passkeyDao().getAllPasskeysSync()
+                    passkey = all.firstOrNull { normalizeCredentialId(it.credentialId) == normalizedId }
+                }
+            }
         }
         
         val currentPasskey = passkey
         if (currentPasskey == null) {
             Log.e(TAG, "Passkey not found: $credentialId")
-            setResult(Activity.RESULT_CANCELED)
+            // 必须使用 PendingIntentHandler 设置异常，否则系统会显示 Authentication failed
+            val resultIntent = Intent()
+            PendingIntentHandler.setGetCredentialException(
+                resultIntent,
+                GetCredentialUnknownException("Passkey not found")
+            )
+            setResult(Activity.RESULT_OK, resultIntent)
             finish()
             return
         }
@@ -126,7 +182,13 @@ class PasskeyAuthActivity : FragmentActivity() {
                     },
                     onCancel = {
                         repository.logAudit("PASSKEY_AUTH_CANCELLED", currentPasskey.credentialId)
-                        setResult(Activity.RESULT_CANCELED)
+                        // 用户取消，使用 PendingIntentHandler 设置取消异常
+                        val resultIntent = Intent()
+                        PendingIntentHandler.setGetCredentialException(
+                            resultIntent,
+                            GetCredentialCancellationException("User cancelled")
+                        )
+                        setResult(Activity.RESULT_OK, resultIntent)
                         finish()
                     }
                 )
@@ -154,14 +216,25 @@ class PasskeyAuthActivity : FragmentActivity() {
                 repository.logAudit("PASSKEY_AUTH_BIOMETRIC_FAILED", 
                     "${passkey.credentialId}|error=$errorCode|$errString")
                 Log.e(TAG, "Biometric auth failed: $errorCode - $errString")
-                // 生物识别失败，取消操作
-                setResult(Activity.RESULT_CANCELED)
+                // 生物识别失败，必须使用 PendingIntentHandler 设置异常响应
+                val resultIntent = Intent()
+                PendingIntentHandler.setGetCredentialException(
+                    resultIntent,
+                    GetCredentialUnknownException("Biometric authentication failed: $errString")
+                )
+                setResult(Activity.RESULT_OK, resultIntent)
                 finish()
             },
             onCancel = {
                 repository.logAudit("PASSKEY_AUTH_BIOMETRIC_CANCELLED", passkey.credentialId)
                 Log.d(TAG, "Biometric auth cancelled by user")
-                setResult(Activity.RESULT_CANCELED)
+                // 用户取消，使用 UserCanceled 异常
+                val resultIntent = Intent()
+                PendingIntentHandler.setGetCredentialException(
+                    resultIntent,
+                    GetCredentialCancellationException("User cancelled authentication")
+                )
+                setResult(Activity.RESULT_OK, resultIntent)
                 finish()
             }
         )
@@ -186,21 +259,32 @@ class PasskeyAuthActivity : FragmentActivity() {
             // 创建 authenticator data
             val authenticatorData = createAuthenticatorData(rpId, newSignCount.toInt())
             
-            // 创建 client data JSON
-            val origin = resolveOrigin(requestJson, pendingCallingAppInfo)
-            val androidPackageName = pendingCallingAppInfo?.packageName
-            val clientDataJson = createClientDataJson(
-                type = "webauthn.get",
-                challenge = challengeB64,
-                origin = origin,
-                androidPackageName = androidPackageName
-            )
-            val clientDataJsonBytes = clientDataJson.toByteArray()
-            
             // 计算签名
-            // 如果提供了 clientDataHash，直接使用它；否则计算 SHA-256
-            val clientDataHash = pendingClientDataHash 
-                ?: MessageDigest.getInstance("SHA-256").digest(clientDataJsonBytes)
+            // 如果调用方提供了 clientDataHash，直接使用它（调用方自己构建了 clientDataJSON）
+            // 否则需要自己构建 clientDataJSON 并计算哈希
+            val clientDataJsonBytes: ByteArray?
+            val clientDataHash: ByteArray
+            
+            if (pendingClientDataHash != null) {
+                // 调用方已提供 clientDataHash，不需要构建 clientDataJSON
+                clientDataJsonBytes = null
+                clientDataHash = pendingClientDataHash!!
+                Log.d(TAG, "Using provided clientDataHash")
+            } else {
+                // 需要自己构建 clientDataJSON
+                val origin = resolveOrigin(requestJson, pendingCallingAppInfo)
+                val androidPackageName = pendingCallingAppInfo?.packageName
+                val clientDataJson = createClientDataJson(
+                    type = "webauthn.get",
+                    challenge = challengeB64,
+                    origin = origin,
+                    androidPackageName = androidPackageName
+                )
+                clientDataJsonBytes = clientDataJson.toByteArray()
+                clientDataHash = MessageDigest.getInstance("SHA-256").digest(clientDataJsonBytes)
+                Log.d(TAG, "Built clientDataJSON with origin: $origin")
+            }
+            
             val signedData = authenticatorData + clientDataHash
             val signature = signWithPrivateKey(passkey.privateKeyAlias, signedData)
             
@@ -213,17 +297,25 @@ class PasskeyAuthActivity : FragmentActivity() {
                 )
             }
             
-            // 构建响应 JSON
+            // 构建响应 JSON - 参照 KeePassDX 实现
+            // 当调用方提供 clientDataHash 时，返回 placeholder 而不是省略 clientDataJSON
+            val clientDataJsonB64 = if (clientDataJsonBytes != null) {
+                Base64.encodeToString(
+                    clientDataJsonBytes,
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                )
+            } else {
+                // 参照 KeePassDX ClientDataDefinedResponse: 使用 placeholder
+                "<placeholder>"
+            }
+            
             val responseJson = JSONObject().apply {
                 put("id", passkey.credentialId)
                 put("rawId", passkey.credentialId)
                 put("type", "public-key")
-                put("authenticatorAttachment", "cross-platform")
+                put("authenticatorAttachment", "platform")
                 put("response", JSONObject().apply {
-                    put("clientDataJSON", Base64.encodeToString(
-                        clientDataJsonBytes,
-                        Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-                    ))
+                    put("clientDataJSON", clientDataJsonB64)
                     put("authenticatorData", Base64.encodeToString(
                         authenticatorData,
                         Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
@@ -233,14 +325,6 @@ class PasskeyAuthActivity : FragmentActivity() {
                         Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
                     ))
                     put("userHandle", passkey.userId)
-                    put("publicKeyAlgorithm", passkey.publicKeyAlgorithm)
-                    if (!passkey.publicKey.isNullOrBlank()) {
-                        val publicKeyBytes = Base64.decode(passkey.publicKey, Base64.NO_WRAP)
-                        put("publicKey", Base64.encodeToString(
-                            publicKeyBytes,
-                            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-                        ))
-                    }
                 })
                 put("clientExtensionResults", JSONObject())
             }
@@ -266,7 +350,7 @@ class PasskeyAuthActivity : FragmentActivity() {
             val resultIntent = Intent()
             PendingIntentHandler.setGetCredentialException(
                 resultIntent,
-                androidx.credentials.exceptions.GetCredentialUnknownException(e.message)
+                GetCredentialUnknownException(e.message)
             )
             setResult(Activity.RESULT_OK, resultIntent)
             finish()
@@ -276,8 +360,16 @@ class PasskeyAuthActivity : FragmentActivity() {
     private fun createAuthenticatorData(rpId: String, signCount: Int): ByteArray {
         val rpIdHash = MessageDigest.getInstance("SHA-256").digest(rpId.toByteArray())
         
-        // Flags: UP (0x01) | UV (0x04) = 0x05
-        val flags: Byte = 0x05
+        // 参照 KeePassDX AuthenticatorData.buildAuthenticatorData
+        // Flags: UP (0x01) | UV (0x04) | BE (0x08) | BS (0x10) = 0x1D
+        // UP = User Present
+        // UV = User Verified  
+        // BE = Backup Eligibility
+        // BS = Backup State
+        var flags = 0x01 // UP
+        flags = flags or 0x04 // UV
+        flags = flags or 0x08 // BE - Backup Eligibility
+        flags = flags or 0x10 // BS - Backup State
         
         val signCountBytes = ByteArray(4)
         signCountBytes[0] = ((signCount shr 24) and 0xFF).toByte()
@@ -285,7 +377,30 @@ class PasskeyAuthActivity : FragmentActivity() {
         signCountBytes[2] = ((signCount shr 8) and 0xFF).toByte()
         signCountBytes[3] = (signCount and 0xFF).toByte()
         
-        return rpIdHash + flags + signCountBytes
+        return rpIdHash + byteArrayOf(flags.toByte()) + signCountBytes
+    }
+
+    private fun normalizeCredentialId(credentialId: String): String? {
+        return try {
+            val decoded = Base64.decode(
+                credentialId,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+            Base64.encodeToString(
+                decoded,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+        } catch (e: Exception) {
+            try {
+                val decoded = Base64.decode(credentialId, Base64.DEFAULT)
+                Base64.encodeToString(
+                    decoded,
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                )
+            } catch (ignored: Exception) {
+                null
+            }
+        }
     }
     
     /**
@@ -444,10 +559,11 @@ private fun PasskeyAuthScreen(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.foundation.Image(
-                    painter = painterResource(id = R.mipmap.ic_launcher_round),
+                Icon(
+                    imageVector = Icons.Default.Fingerprint,
                     contentDescription = null,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(40.dp),
+                    tint = Color.White
                 )
             }
             

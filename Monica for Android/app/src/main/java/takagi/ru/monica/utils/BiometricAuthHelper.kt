@@ -196,31 +196,55 @@ class BiometricAuthHelper(
         )
         
         val allowedAuthenticators = getAllowedAuthenticators()
-        val promptBuilder = BiometricPrompt.PromptInfo.Builder()
+        val useDeviceCredential = (allowedAuthenticators and BiometricManager.Authenticators.DEVICE_CREDENTIAL) != 0
+        
+        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
             .setDescription(description)
             .setAllowedAuthenticators(allowedAuthenticators)
-            .setConfirmationRequired(false) // 不需要额外确认,提高用户体验
-
-        // 使用设备凭据时不能设置负按钮
-        if (allowedAuthenticators and BiometricManager.Authenticators.DEVICE_CREDENTIAL == 0) {
-            promptBuilder.setNegativeButtonText(negativeButtonText)
+            .setConfirmationRequired(false)
+        
+        // 当使用 DEVICE_CREDENTIAL 时，不能设置 negativeButtonText
+        if (!useDeviceCredential) {
+            promptInfoBuilder.setNegativeButtonText(negativeButtonText)
         }
-
-        val promptInfo = promptBuilder.build()
+        
+        val promptInfo = promptInfoBuilder.build()
         
         biometricPrompt.authenticate(promptInfo)
     }
 
     private fun getAllowedAuthenticators(): Int {
         val biometricManager = BiometricManager.from(context)
+        
+        // 优先使用强生物识别
         val strongResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        val biometric = if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
-            BiometricManager.Authenticators.BIOMETRIC_STRONG
-        } else {
-            BiometricManager.Authenticators.BIOMETRIC_WEAK
+        if (strongResult == BiometricManager.BIOMETRIC_SUCCESS) {
+            return BiometricManager.Authenticators.BIOMETRIC_STRONG or 
+                   BiometricManager.Authenticators.DEVICE_CREDENTIAL
         }
-        return biometric or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        
+        // 其次使用弱生物识别
+        val weakResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        if (weakResult == BiometricManager.BIOMETRIC_SUCCESS) {
+            return BiometricManager.Authenticators.BIOMETRIC_WEAK or 
+                   BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        }
+        
+        // 最后回退到仅设备凭据（PIN/图案/密码）
+        return BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    }
+    
+    /**
+     * 检查是否需要使用设备凭据模式（不显示取消按钮）
+     */
+    private fun shouldUseDeviceCredential(): Boolean {
+        val biometricManager = BiometricManager.from(context)
+        val strongResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        val weakResult = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        
+        return strongResult != BiometricManager.BIOMETRIC_SUCCESS && 
+               weakResult != BiometricManager.BIOMETRIC_SUCCESS
     }
 }

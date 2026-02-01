@@ -1,12 +1,17 @@
 package takagi.ru.monica
 
 import android.app.Application
+import android.content.ComponentName
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import takagi.ru.monica.autofill.di.autofillModule
 import takagi.ru.monica.autofill.di.autofillSessionModule
+import takagi.ru.monica.passkey.MonicaCredentialProviderService
 
 /**
  * Monica 应用程序入口
@@ -20,10 +25,15 @@ import takagi.ru.monica.autofill.di.autofillSessionModule
  */
 class MonicaApplication : Application() {
     
+    companion object {
+        private const val TAG = "MonicaApplication"
+    }
+    
     override fun onCreate() {
         super.onCreate()
         
         initKoin()
+        refreshCredentialProviderService()
     }
     
     /**
@@ -46,6 +56,47 @@ class MonicaApplication : Application() {
                 autofillModule,
                 autofillSessionModule
             )
+        }
+    }
+    
+    /**
+     * 刷新 Credential Provider Service 注册
+     * 
+     * 通过禁用再启用组件的方式，强制系统刷新对 CredentialProviderService 的识别
+     * 这解决了安装新版本后需要手动切换通行密钥提供者的问题
+     */
+    private fun refreshCredentialProviderService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            try {
+                val componentName = ComponentName(this, MonicaCredentialProviderService::class.java)
+                val pm = packageManager
+                
+                // 检查当前状态
+                val currentState = pm.getComponentEnabledSetting(componentName)
+                
+                // 如果组件已启用，执行刷新
+                if (currentState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
+                    currentState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                    
+                    // 先禁用
+                    pm.setComponentEnabledSetting(
+                        componentName,
+                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        PackageManager.DONT_KILL_APP
+                    )
+                    
+                    // 再启用 - 这会触发系统重新识别服务
+                    pm.setComponentEnabledSetting(
+                        componentName,
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        PackageManager.DONT_KILL_APP
+                    )
+                    
+                    Log.d(TAG, "CredentialProviderService refreshed")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to refresh CredentialProviderService", e)
+            }
         }
     }
 }

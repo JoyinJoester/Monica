@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.CancellationSignal
 import android.os.OutcomeReceiver
+import android.os.SystemClock
+import android.util.Base64
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.credentials.exceptions.ClearCredentialException
@@ -69,6 +71,24 @@ class MonicaCredentialProviderService : CredentialProviderService() {
     override fun onDestroy() {
         serviceJob.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * 构建 PendingIntent 用于启动 Passkey Activity
+     * 
+     * 重要：不要使用 FLAG_ACTIVITY_NEW_TASK！
+     * Credential Provider API 会自动处理任务栈，
+     * 使用 NEW_TASK 会导致 Activity 在错误的任务栈中启动，
+     * 从而无法正确返回到调用方应用。
+     */
+    private fun buildPendingIntent(intent: Intent, requestCode: Int): PendingIntent {
+        // 注意：不设置任何 Activity flags，让系统自动处理
+        return PendingIntent.getActivity(
+            this,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
     
     /**
@@ -180,11 +200,9 @@ class MonicaCredentialProviderService : CredentialProviderService() {
                 putExtra(EXTRA_USER_DISPLAY_NAME, userDisplayName)
             }
             
-            val pendingIntent = PendingIntent.getActivity(
-                this,
-                System.currentTimeMillis().toInt(),
+            val pendingIntent = buildPendingIntent(
                 intent,
-                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                SystemClock.uptimeMillis().toInt()
             )
             
             // 创建账户条目
@@ -227,36 +245,41 @@ class MonicaCredentialProviderService : CredentialProviderService() {
             val rpId = json.optString("rpId", "")
             Log.d(TAG, "Get passkeys for RP: $rpId")
             
-            // 解析 allowCredentials 列表
+            // 解析 allowCredentials 列表，并进行规范化
             val allowCredentials = json.optJSONArray("allowCredentials")
             val allowedCredentialIds = mutableSetOf<String>()
-            
             if (allowCredentials != null && allowCredentials.length() > 0) {
                 for (i in 0 until allowCredentials.length()) {
                     val cred = allowCredentials.optJSONObject(i)
                     val credId = cred?.optString("id") ?: continue
                     if (credId.isNotBlank()) {
-                        allowedCredentialIds.add(credId)
+                        normalizeCredentialId(credId)?.let { normalized ->
+                            allowedCredentialIds.add(normalized)
+                        }
                     }
                 }
                 Log.d(TAG, "allowCredentials specified: ${allowedCredentialIds.size} credentials")
             }
             
             // 查询数据库中匹配的 Passkey
-            val passkeys = if (rpId.isNotBlank()) {
+            val passkeys = if (allowedCredentialIds.isNotEmpty()) {
+                // allowCredentials 存在时，优先按凭据 ID 过滤（必要时再按 rpId 限制）
+                val candidates = if (rpId.isNotBlank()) {
+                    database.passkeyDao().getPasskeysByRpIdSync(rpId)
+                } else {
+                    database.passkeyDao().getAllPasskeysSync()
+                }
+                candidates.filter { passkey ->
+                    val normalizedId = normalizeCredentialId(passkey.credentialId)
+                    normalizedId != null && normalizedId in allowedCredentialIds
+                }
+            } else if (rpId.isNotBlank()) {
                 database.passkeyDao().getPasskeysByRpIdSync(rpId)
             } else {
                 database.passkeyDao().getDiscoverablePasskeysSync()
             }
             
-            // 应用严格筛选
-            val filteredPasskeys = if (allowedCredentialIds.isNotEmpty()) {
-                // 如果有 allowCredentials，只返回匹配的凭据
-                passkeys.filter { it.credentialId in allowedCredentialIds }
-            } else {
-                // 否则返回所有匹配 rpId 的凭据
-                passkeys
-            }
+            val filteredPasskeys = passkeys
             
             Log.d(TAG, "Found ${passkeys.size} passkeys, filtered to ${filteredPasskeys.size}")
             
@@ -267,11 +290,9 @@ class MonicaCredentialProviderService : CredentialProviderService() {
                     putExtra(EXTRA_CREDENTIAL_ID, passkey.credentialId)
                 }
                 
-                val pendingIntent = PendingIntent.getActivity(
-                    this,
-                    passkey.credentialId.hashCode(),
+                val pendingIntent = buildPendingIntent(
                     intent,
-                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    SystemClock.uptimeMillis().toInt()
                 )
                 
                 val entry = PublicKeyCredentialEntry.Builder(
@@ -292,5 +313,28 @@ class MonicaCredentialProviderService : CredentialProviderService() {
         }
         
         return entries
+    }
+
+    private fun normalizeCredentialId(credentialId: String): String? {
+        return try {
+            val decoded = Base64.decode(
+                credentialId,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+            Base64.encodeToString(
+                decoded,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+        } catch (e: Exception) {
+            try {
+                val decoded = Base64.decode(credentialId, Base64.DEFAULT)
+                Base64.encodeToString(
+                    decoded,
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                )
+            } catch (ignored: Exception) {
+                null
+            }
+        }
     }
 }

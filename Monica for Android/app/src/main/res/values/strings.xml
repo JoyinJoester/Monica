@@ -1560,7 +1560,6 @@
     <string name="selective_backup_description">Choose which types of data to include in your backup</string>
     <string name="backup_content_passwords">Passwords</string>
     <string name="backup_content_authenticators">Authenticators (TOTP)</string>
-    <string name="backup_content_passkeys">Passkeys</string>
     <string name="backup_content_documents">Documents</string>
     <string name="backup_content_bank_cards">Bank Cards</string>
     <string name="backup_content_wallet">Wallet (Cards &amp; Documents)</string>
@@ -1569,8 +1568,9 @@
     <string name="backup_content_images">Images</string>
     <string name="backup_content_timeline">Operation History</string>
     <string name="backup_content_trash">Recycle Bin</string>
+    <string name="backup_content_passkeys">Passkeys</string>
     <string name="backup_content_trash_and_history">Recycle Bin &amp; History</string>
-    <string name="backup_content_trash_and_history_hint">Includes password history, operation log and recycle bin</string>
+    <string name="backup_content_trash_and_history_hint">Include recycle bin, password generator history, and operation history</string>
     <string name="backup_content_local_keepass">Local KeePass Databases</string>
     <string name="backup_content_local_keepass_hint">Include all local KeePass databases (both internal and external). Restored as internal storage databases.</string>
     <string name="backup_content_local_keepass_empty">No local KeePass databases</string>

@@ -157,34 +157,6 @@ private data class CommonAccountBackupEntry(
 )
 
 /**
- * ✅ Passkey 验证密钥备份数据类
- * 用于备份 Passkey/FIDO2 通行密钥
- * 注意：私钥以 Base64 编码存储
- */
-@Serializable
-private data class PasskeyBackupEntry(
-    val credentialId: String = "",
-    val rpId: String = "",
-    val rpName: String = "",
-    val userId: String = "",
-    val userName: String = "",
-    val userDisplayName: String = "",
-    val publicKeyAlgorithm: Int = -7,
-    val publicKey: String = "",
-    val privateKeyAlias: String = "",  // 保留私钥别名用于恢复
-    val createdAt: Long = 0,
-    val lastUsedAt: Long = 0,
-    val useCount: Int = 0,
-    val iconUrl: String? = null,
-    val isDiscoverable: Boolean = true,
-    val isUserVerificationRequired: Boolean = true,
-    val transports: String = "internal",
-    val aaguid: String = "",
-    val signCount: Long = 0,
-    val notes: String = ""
-)
-
-/**
  * ✅ WebDAV 配置备份数据类
  * 用于备份 WebDAV 连接信息，便于新设备快速配置
  * 注意：密码会被加密存储
@@ -260,13 +232,11 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_AUTHENTICATORS = "backup_include_authenticators"
         private const val KEY_BACKUP_INCLUDE_DOCUMENTS = "backup_include_documents"
         private const val KEY_BACKUP_INCLUDE_BANK_CARDS = "backup_include_bank_cards"
-        private const val KEY_BACKUP_INCLUDE_PASSKEYS = "backup_include_passkeys"  // ✅ 新增
         private const val KEY_BACKUP_INCLUDE_GENERATOR_HISTORY = "backup_include_generator_history"
         private const val KEY_BACKUP_INCLUDE_IMAGES = "backup_include_images"
         private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
         private const val KEY_BACKUP_INCLUDE_TIMELINE = "backup_include_timeline"
         private const val KEY_BACKUP_INCLUDE_TRASH = "backup_include_trash"
-        private const val KEY_BACKUP_INCLUDE_TRASH_AND_HISTORY = "backup_include_trash_and_history"  // ✅ 新增
         private const val KEY_BACKUP_INCLUDE_WEBDAV_CONFIG = "backup_include_webdav_config"
         private const val KEEPASS_WEBDAV_PREFS_NAME = "keepass_webdav_config"
         private const val KEY_KEEPASS_SERVER_URL = "server_url"
@@ -503,13 +473,11 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, preferences.includeAuthenticators)
             putBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, preferences.includeDocuments)
             putBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, preferences.includeBankCards)
-            putBoolean(KEY_BACKUP_INCLUDE_PASSKEYS, preferences.includePasskeys)  // ✅ 新增
             putBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, preferences.includeGeneratorHistory)
             putBoolean(KEY_BACKUP_INCLUDE_IMAGES, preferences.includeImages)
             putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
             putBoolean(KEY_BACKUP_INCLUDE_TIMELINE, preferences.includeTimeline)
             putBoolean(KEY_BACKUP_INCLUDE_TRASH, preferences.includeTrash)
-            putBoolean(KEY_BACKUP_INCLUDE_TRASH_AND_HISTORY, preferences.includeTrashAndHistory)  // ✅ 新增
             putBoolean(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG, preferences.includeWebDavConfig)
             apply()
         }
@@ -527,13 +495,11 @@ class WebDavHelper(
             includeAuthenticators = prefs.getBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, true),
             includeDocuments = prefs.getBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, true),
             includeBankCards = prefs.getBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, true),
-            includePasskeys = prefs.getBoolean(KEY_BACKUP_INCLUDE_PASSKEYS, true),  // ✅ 新增
             includeGeneratorHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, true),
             includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true),
             includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true),
             includeTimeline = prefs.getBoolean(KEY_BACKUP_INCLUDE_TIMELINE, true),
             includeTrash = prefs.getBoolean(KEY_BACKUP_INCLUDE_TRASH, true),
-            includeTrashAndHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_TRASH_AND_HISTORY, true),  // ✅ 新增
             includeWebDavConfig = prefs.getBoolean(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG, false)
         )
     }
@@ -866,7 +832,7 @@ class WebDavHelper(
                     if (notesDir.exists()) {
                         notesDir.listFiles()?.forEach { addFileToZip(zipOut, it, "notes/${it.name}") }
                     }
-                    if (preferences.shouldIncludeGeneratorHistory()) {
+                    if (preferences.includeGeneratorHistory) {
                         try {
                             val historyManager = PasswordHistoryManager(context)
                             val historyJson = historyManager.exportHistoryJson()
@@ -895,7 +861,7 @@ class WebDavHelper(
                     }
                     
                     // 7.5 备份操作历史记录 (时间线)
-                    if (preferences.shouldIncludeTimeline()) {
+                    if (preferences.includeTimeline) {
                         try {
                             val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                             val operationLogDao = database.operationLogDao()
@@ -934,7 +900,7 @@ class WebDavHelper(
                     }
                     
                     // 7.6 备份回收站数据
-                    if (preferences.shouldIncludeTrash()) {
+                    if (preferences.includeTrash) {
                         try {
                             val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                             val passwordEntryDao = database.passwordEntryDao()
@@ -1026,57 +992,7 @@ class WebDavHelper(
                         }
                     }
                     
-                    // 7.7 ✅ 备份验证密钥 (Passkey)
-                    if (preferences.includePasskeys) {
-                        try {
-                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                            val passkeyDao = database.passkeyDao()
-                            val allPasskeys = passkeyDao.getAllPasskeysSync()
-                            
-                            if (allPasskeys.isNotEmpty()) {
-                                val passkeyBackups = allPasskeys.map { passkey ->
-                                    PasskeyBackupEntry(
-                                        credentialId = passkey.credentialId,
-                                        rpId = passkey.rpId,
-                                        rpName = passkey.rpName,
-                                        userId = passkey.userId,
-                                        userName = passkey.userName,
-                                        userDisplayName = passkey.userDisplayName,
-                                        publicKeyAlgorithm = passkey.publicKeyAlgorithm,
-                                        publicKey = passkey.publicKey,
-                                        privateKeyAlias = passkey.privateKeyAlias,
-                                        createdAt = passkey.createdAt,
-                                        lastUsedAt = passkey.lastUsedAt,
-                                        useCount = passkey.useCount,
-                                        iconUrl = passkey.iconUrl,
-                                        isDiscoverable = passkey.isDiscoverable,
-                                        isUserVerificationRequired = passkey.isUserVerificationRequired,
-                                        transports = passkey.transports,
-                                        aaguid = passkey.aaguid,
-                                        signCount = passkey.signCount,
-                                        notes = passkey.notes
-                                    )
-                                }
-                                val json = Json { prettyPrint = false }
-                                val passkeysFile = File(cacheBackupDir, "passkeys.json")
-                                passkeysFile.writeText(
-                                    json.encodeToString(
-                                        kotlinx.serialization.builtins.ListSerializer(PasskeyBackupEntry.serializer()),
-                                        passkeyBackups
-                                    ),
-                                    Charsets.UTF_8
-                                )
-                                addFileToZip(zipOut, passkeysFile, passkeysFile.name)
-                                passkeysFile.delete()
-                                android.util.Log.d("WebDavHelper", "Backup ${allPasskeys.size} passkeys")
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.w("WebDavHelper", "Failed to backup passkeys: ${e.message}")
-                            warnings.add("验证密钥备份失败: ${e.message}")
-                        }
-                    }
-                    
-                    // 7.8 ✅ 备份常用账号信息
+                    // 7.7 ✅ 备份常用账号信息
                     try {
                         val commonAccountPreferences = takagi.ru.monica.data.CommonAccountPreferences(context)
                         val commonInfo = commonAccountPreferences.commonAccountInfo.first()
