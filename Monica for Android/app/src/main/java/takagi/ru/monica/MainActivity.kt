@@ -106,6 +106,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.utils.ScreenshotProtection
+import takagi.ru.monica.ui.base.BaseMonicaActivity
+import takagi.ru.monica.security.SessionManager
 import androidx.compose.runtime.collectAsState
 import takagi.ru.monica.util.FileOperationHelper
 import takagi.ru.monica.util.PhotoPickerHelper
@@ -113,38 +115,15 @@ import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.utils.AutoBackupManager
 
-class MainActivity : FragmentActivity() {
+class MainActivity : BaseMonicaActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
 
-    override fun attachBaseContext(newBase: Context?) {
-        if (newBase != null) {
-            val settingsManager = SettingsManager(newBase)
-            // 使用超时保护，防止 ANR
-            val language = try {
-                runBlocking {
-                    withTimeout(200) {
-                        try {
-                            settingsManager.settingsFlow.first().language
-                        } catch (e: Exception) {
-                            takagi.ru.monica.data.Language.SYSTEM
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // 超时或出错，回退到默认
-                takagi.ru.monica.data.Language.SYSTEM
-            }
-            super.attachBaseContext(LocaleHelper.setLocale(newBase, language))
-        } else {
-            super.attachBaseContext(newBase)
-        }
-    }
+    // attachBaseContext 已由 BaseMonicaActivity 统一处理（语言、超时保护）
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        super.onCreate(savedInstanceState) // BaseMonicaActivity 已调用 enableEdgeToEdge()
 
-        // 启用沉浸式状态栏
-        enableEdgeToEdge()
+        // 注意：enableEdgeToEdge() 已在基类调用，这里不再重复
 
         installSplashScreen()
 
@@ -218,9 +197,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun enableEdgeToEdge() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-    }
+    // enableEdgeToEdge() 已由 BaseMonicaActivity 统一处理
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -281,10 +258,12 @@ fun MonicaApp(
     }
 
     val viewModel: PasswordViewModel = viewModel {
+        val customFieldRepository = takagi.ru.monica.repository.CustomFieldRepository(database.customFieldDao())
         PasswordViewModel(
             repository,
             securityManager,
             secureItemRepository,
+            customFieldRepository,
             navController.context,
             database.localKeePassDatabaseDao()
         )

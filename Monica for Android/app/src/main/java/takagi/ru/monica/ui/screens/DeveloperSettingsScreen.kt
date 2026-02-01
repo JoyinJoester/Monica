@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.viewmodel.SettingsViewModel
+import takagi.ru.monica.autofill.AutofillPickerActivityV2
+import takagi.ru.monica.security.SessionManager
 
 /**
  * 开发者设置页面
@@ -165,6 +167,52 @@ fun DeveloperSettingsScreen(
                         scope.launch {
                             viewModel.updateDisablePasswordVerification(enabled)
                             android.util.Log.d("DeveloperSettings", "Password verification setting updated to: $enabled")
+                        }
+                    }
+                )
+            }
+            
+            // 自动填充调试区域
+            SettingsSection(
+                title = "自动填充调试"
+            ) {
+                SettingsItem(
+                    icon = Icons.Default.AutoAwesome,
+                    title = "启动自动填充 V2 (测试)",
+                    subtitle = "使用模拟数据打开自动填充界面，方便调试 UI 和逻辑",
+                    onClick = {
+                        try {
+                            val testIntent = AutofillPickerActivityV2.getTestIntent(context)
+                            context.startActivity(testIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                context,
+                                "启动失败: ${e.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                )
+                
+                // 显示会话状态
+                val sessionUnlocked by SessionManager.isUnlocked.collectAsState()
+                val remainingMinutes = SessionManager.getRemainingMinutes()
+                
+                SettingsItem(
+                    icon = if (sessionUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
+                    title = "会话状态",
+                    subtitle = if (sessionUnlocked) 
+                        "已解锁 (剩余 $remainingMinutes 分钟)" 
+                    else 
+                        "已锁定",
+                    onClick = {
+                        // 手动锁定/解锁会话（用于测试）
+                        if (sessionUnlocked) {
+                            SessionManager.markLocked()
+                            Toast.makeText(context, "会话已锁定", Toast.LENGTH_SHORT).show()
+                        } else {
+                            SessionManager.markUnlocked()
+                            Toast.makeText(context, "会话已解锁", Toast.LENGTH_SHORT).show()
                         }
                     }
                 )

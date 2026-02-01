@@ -15,9 +15,10 @@ import androidx.room.TypeConverters
         SecureItem::class,
         Category::class,
         OperationLog::class,
-        LocalKeePassDatabase::class
+        LocalKeePassDatabase::class,
+        CustomField::class  // 自定义字段表
     ],
-    version = 26,
+    version = 27,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,6 +29,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun operationLogDao(): OperationLogDao
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
+    abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
     
     companion object {
         @Volatile
@@ -466,6 +468,46 @@ abstract class PasswordDatabase : RoomDatabase() {
                 }
             }
         }
+        
+        // Migration 26 → 27 - 添加自定义字段表 (custom_fields)
+        // 支持每个密码条目拥有无限个自定义键值对
+        private val MIGRATION_26_27 = object : androidx.room.migration.Migration(26, 27) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 迁移前检查：表是否已存在
+                val cursor = database.query("SELECT name FROM sqlite_master WHERE type='table' AND name='custom_fields'")
+                val tableExists = cursor.count > 0
+                cursor.close()
+                
+                if (tableExists) {
+                    android.util.Log.w("PasswordDatabase", "custom_fields table already exists, skipping creation")
+                    return
+                }
+                
+                try {
+                    // 创建自定义字段表
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS custom_fields (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            entry_id INTEGER NOT NULL,
+                            title TEXT NOT NULL,
+                            value TEXT NOT NULL,
+                            is_protected INTEGER NOT NULL DEFAULT 0,
+                            sort_order INTEGER NOT NULL DEFAULT 0,
+                            FOREIGN KEY(entry_id) REFERENCES password_entries(id) ON DELETE CASCADE
+                        )
+                    """.trimIndent())
+                    
+                    // 创建索引以提升查询性能
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_custom_fields_entry_id ON custom_fields(entry_id)")
+                    
+                    android.util.Log.i("PasswordDatabase", "Successfully created custom_fields table")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Failed to create custom_fields table: ${e.message}")
+                    // 不抛出异常，让迁移继续，避免应用崩溃
+                    // Room 会在后续操作中处理不一致性
+                }
+            }
+        }
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -499,7 +541,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_22_23,  // 添加本地 KeePass 数据库管理表
                         MIGRATION_23_24,  // 为密码条目添加 KeePass 数据库归属字段
                         MIGRATION_24_25,  // 修复 local_keepass_databases 表结构
-                        MIGRATION_25_26   // 添加 KeePass 密钥文件字段
+                        MIGRATION_25_26,  // 添加 KeePass 密钥文件字段
+                        MIGRATION_26_27   // 添加自定义字段表
                     )
                     .build()
                 INSTANCE = instance

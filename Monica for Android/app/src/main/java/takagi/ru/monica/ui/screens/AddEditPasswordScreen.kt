@@ -49,12 +49,14 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
+import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.PasswordGenerator
@@ -147,6 +149,10 @@ fun AddEditPasswordScreen(
     
     // 获取所有密码条目用于SSO关联选择
     val allPasswordsForRef by viewModel.allPasswords.collectAsState(initial = emptyList())
+    
+    // 自定义字段状态
+    val customFields = remember { mutableStateListOf<CustomFieldDraft>() }
+    var customFieldsExpanded by remember { mutableStateOf(false) }
 
     // 折叠面板状态
     var personalInfoExpanded by remember { mutableStateOf(false) }
@@ -237,8 +243,20 @@ fun AddEditPasswordScreen(
                             passwords.add(entry.password)
                             originalIds = listOf(entry.id)
                         }
+                        
+                        // 加载自定义字段
+                        val existingFields = viewModel.getCustomFieldsByEntryIdSync(actualId)
+                        customFields.clear()
+                        customFields.addAll(existingFields.map { field ->
+                            CustomFieldDraft.fromCustomField(field)
+                        })
+                        if (existingFields.isNotEmpty()) {
+                            customFieldsExpanded = true
+                        }
+                        Unit
                     } else {
                         passwords.add("")
+                        Unit
                     }
                 } ?: run {
                      // Fallback if entry not found or new
@@ -316,10 +334,14 @@ fun AddEditPasswordScreen(
                                     ssoRefEntryId = ssoRefEntryId
                                 )
                                 
+                                // 快照自定义字段
+                                val currentCustomFields = customFields.toList()
+                                
                                 viewModel.saveGroupedPasswords(
                                     originalIds = originalIds,
                                     commonEntry = commonEntry,
                                     passwords = passwords.toList(), // Snapshot
+                                    customFields = currentCustomFields, // 保存自定义字段
                                     onComplete = { firstPasswordId ->
                                         // Save TOTP if authenticatorKey is provided
                                         if (currentAuthKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
@@ -672,6 +694,19 @@ fun AddEditPasswordScreen(
                         )
                     }
                 }
+            }
+            
+            // 自定义字段编辑区域
+            item {
+                CustomFieldEditorSection(
+                    fields = customFields,
+                    onFieldsChange = { newFields ->
+                        customFields.clear()
+                        customFields.addAll(newFields)
+                    },
+                    expanded = customFieldsExpanded,
+                    onExpandedChange = { customFieldsExpanded = it }
+                )
             }
             
             // App Binding Card

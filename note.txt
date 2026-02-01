@@ -3,3 +3,15 @@ api29 to 30
 卡包左右滑动切换
 卡包详情支持下载证件照片
 添加页面开关动效
+添加按钮自定义开启下滑隐藏
+
+---
+
+## Custom Fields 功能已实现（发布摘要）
+- 数据库：新增 `custom_fields` 表，并添加迁移 (v26 → v27)，含存在性检查以防重复迁移
+- 数据层/仓库：新增 `CustomField` 实体、`CustomFieldDao` 与 `CustomFieldRepository`
+- 视图层：新增编辑组件 `CustomFieldEditorSection` / `CustomFieldEditorItem`，详情展示 `CustomFieldDisplayCard` / `CustomFieldDisplayItem`
+- 同步/备份：WebDAV 导出已包含自定义字段，恢复流程会插入恢复的字段；KeePass (.kdbx) 导入会把非标准 String 字段映射为自定义字段，受保护字段将被加密保存
+- 注意事项：发布前请执行迁移回归测试（备份→清空→恢复）、KeePass 导入样例验证以及 UI 功能验证（新增/编辑/删除/复制/隐藏）
+
+---

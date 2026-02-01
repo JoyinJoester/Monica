@@ -31,7 +31,9 @@ import takagi.ru.monica.utils.BackupContent
 import takagi.ru.monica.utils.RestoreResult
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.utils.AutoBackupManager
+import takagi.ru.monica.utils.CustomFieldBackupEntry
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.util.DataExportImportManager
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -1103,6 +1105,40 @@ private fun BackupItem(
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavBackup", "Failed to update ssoRefEntryId for ${password.title}: ${e.message}")
                     }
+                }
+            }
+            
+            // ✅ 恢复自定义字段
+            val customFieldsMap = content.customFieldsMap
+            if (customFieldsMap.isNotEmpty()) {
+                val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                val customFieldDao = database.customFieldDao()
+                var customFieldCount = 0
+                
+                customFieldsMap.forEach { (originalId, fields) ->
+                    val newId = passwordIdMap[originalId]
+                    if (newId != null && fields.isNotEmpty()) {
+                        try {
+                            fields.forEachIndexed { index, fieldBackup ->
+                                val customField = CustomField(
+                                    id = 0,
+                                    entryId = newId,
+                                    title = fieldBackup.title,
+                                    value = fieldBackup.value,
+                                    isProtected = fieldBackup.isProtected,
+                                    sortOrder = index
+                                )
+                                customFieldDao.insert(customField)
+                                customFieldCount++
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("WebDavBackup", "Failed to restore custom fields for password $originalId -> $newId: ${e.message}")
+                        }
+                    }
+                }
+                
+                if (customFieldCount > 0) {
+                    android.util.Log.d("WebDavBackup", "Restored $customFieldCount custom fields")
                 }
             }
             

@@ -5,13 +5,17 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.utils.KeePassEntryData
@@ -36,6 +40,7 @@ class PasswordViewModel(
     private val repository: PasswordRepository,
     private val securityManager: SecurityManager,
     private val secureItemRepository: SecureItemRepository? = null,
+    private val customFieldRepository: CustomFieldRepository? = null,
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
@@ -236,12 +241,16 @@ class PasswordViewModel(
     fun authenticate(password: String): Boolean {
         val isValid = securityManager.verifyMasterPassword(password)
         _isAuthenticated.value = isValid
+        if (isValid) {
+            SessionManager.markUnlocked()
+        }
         return isValid
     }
     
     fun setMasterPassword(password: String) {
         securityManager.setMasterPassword(password)
         _isAuthenticated.value = true
+        SessionManager.markUnlocked()
     }
     
     fun isMasterPasswordSet(): Boolean {
@@ -250,6 +259,7 @@ class PasswordViewModel(
     
     fun logout() {
         _isAuthenticated.value = false
+        SessionManager.markLocked()
     }
     
     fun addPasswordEntry(entry: PasswordEntry, onResult: (Long) -> Unit = {}) {
@@ -628,6 +638,7 @@ class PasswordViewModel(
         originalIds: List<Long>,
         commonEntry: PasswordEntry, // Contains common info and ONE password (ignored)
         passwords: List<String>,
+        customFields: List<CustomFieldDraft> = emptyList(), // 自定义字段
         onComplete: (firstPasswordId: Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -674,7 +685,49 @@ class PasswordViewModel(
                 }
             }
             
+            // 3. 保存自定义字段（只针对第一个密码条目）
+            firstId?.let { entryId ->
+                saveCustomFieldsForEntry(entryId, customFields)
+            }
+            
             onComplete(firstId)
         }
+    }
+    
+    // =============== 自定义字段相关方法 ===============
+    
+    /**
+     * 获取指定密码条目的自定义字段（Flow）
+     */
+    fun getCustomFieldsByEntryId(entryId: Long): Flow<List<CustomField>> {
+        return customFieldRepository?.getFieldsByEntryId(entryId) ?: flowOf(emptyList())
+    }
+    
+    /**
+     * 获取指定密码条目的自定义字段（同步版本）
+     */
+    suspend fun getCustomFieldsByEntryIdSync(entryId: Long): List<CustomField> {
+        return customFieldRepository?.getFieldsByEntryIdSync(entryId) ?: emptyList()
+    }
+    
+    /**
+     * 保存密码条目的自定义字段
+     */
+    suspend fun saveCustomFieldsForEntry(entryId: Long, fields: List<CustomFieldDraft>) {
+        customFieldRepository?.saveFieldsForEntry(entryId, fields)
+    }
+    
+    /**
+     * 批量获取多个条目的自定义字段（用于列表显示优化）
+     */
+    suspend fun getCustomFieldsByEntryIds(entryIds: List<Long>): Map<Long, List<CustomField>> {
+        return customFieldRepository?.getFieldsByEntryIds(entryIds) ?: emptyMap()
+    }
+    
+    /**
+     * 搜索包含指定关键词的条目ID（通过自定义字段搜索）
+     */
+    suspend fun searchEntryIdsByCustomFieldContent(query: String): List<Long> {
+        return customFieldRepository?.searchEntryIdsByFieldContent(query) ?: emptyList()
     }
 }

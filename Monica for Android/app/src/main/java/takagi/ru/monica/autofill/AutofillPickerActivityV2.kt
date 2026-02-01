@@ -8,46 +8,25 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
 import android.service.autofill.Dataset
-import android.view.WindowManager
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
@@ -61,14 +40,12 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
-import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.utils.SettingsManager
 import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.ThemeMode
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.ui.components.PasswordVerificationContent
+import takagi.ru.monica.ui.base.BaseMonicaActivity
+import takagi.ru.monica.security.SessionManager
 
 /**
  * Keyguard 风格的全屏自动填充选择器
@@ -80,15 +57,32 @@ import takagi.ru.monica.ui.components.PasswordVerificationContent
  * - 支持新建密码
  * - Dropdown 菜单选择操作
  */
-class AutofillPickerActivityV2 : FragmentActivity() {
+class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     companion object {
         private const val EXTRA_ARGS = "extra_args"
         
+        /**
+         * 创建启动 Intent（契约保持不变，确保 Service 兼容）
+         */
         fun getIntent(context: Context, args: Args): Intent {
             return Intent(context, AutofillPickerActivityV2::class.java).apply {
                 putExtra(EXTRA_ARGS, args)
             }
+        }
+        
+        /**
+         * 创建测试 Intent（用于开发者调试入口）
+         */
+        fun getTestIntent(context: Context): Intent {
+            val testArgs = Args(
+                applicationId = "com.test.autofill",
+                webDomain = "example.com",
+                capturedUsername = "test_user",
+                capturedPassword = null,
+                isSaveMode = false
+            )
+            return getIntent(context, testArgs)
         }
     }
     
@@ -128,50 +122,33 @@ class AutofillPickerActivityV2 : FragmentActivity() {
         } ?: Args()
     }
     
-
-    
-    override fun attachBaseContext(newBase: Context?) {
-        if (newBase != null) {
-            val settingsManager = SettingsManager(newBase)
-            // 使用超时保护，防止 ANR
-            val language = try {
-                runBlocking {
-                    withTimeout(200) {
-                        try {
-                            settingsManager.settingsFlow.first().language
-                        } catch (e: Exception) {
-                            takagi.ru.monica.data.Language.SYSTEM
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // 超时或出错，回退到默认
-                takagi.ru.monica.data.Language.SYSTEM
-            }
-            super.attachBaseContext(LocaleHelper.setLocale(newBase, language))
-        } else {
-            super.attachBaseContext(newBase)
-        }
+    // 手动模式：从磁贴启动，没有 AutofillId，选择密码后复制而不是回填
+    private val isManualMode by lazy {
+        intent.getBooleanExtra("extra_manual_mode", false) || args.autofillIds.isNullOrEmpty()
     }
     
+
+    
+    // attachBaseContext 已由 BaseMonicaActivity 统一处理
+    
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
+        super.onCreate(savedInstanceState) // BaseMonicaActivity 已调用 enableEdgeToEdge()
         
         val database = PasswordDatabase.getDatabase(applicationContext)
         val repository = PasswordRepository(database.passwordEntryDao())
         val localKeePassDao = database.localKeePassDatabaseDao()
         val securityManager = SecurityManager(applicationContext)
-        val settingsManager = takagi.ru.monica.utils.SettingsManager(applicationContext)
+        // settingsManager 已由 BaseMonicaActivity 初始化
+        val localSettingsManager = settingsManager
+        
+        // 检查是否可以跳过验证（基于会话管理器的安全窗规则）
+        val canSkipAuth = canSkipVerification()
         
         setContent {
-            // 读取截图保护设置
-            val settings by settingsManager.settingsFlow.collectAsState(
+            // 读取截图保护设置（截图保护已由 BaseMonicaActivity 统一处理）
+            val settings by localSettingsManager.settingsFlow.collectAsState(
                 initial = takagi.ru.monica.data.AppSettings()
             )
-            
-            // 根据用户设置应用截图保护
-            takagi.ru.monica.utils.ScreenshotProtection(enabled = settings.screenshotProtectionEnabled)
             
             // 获取 KeePass 数据库列表
             val keepassDatabases by localKeePassDao.getAllDatabases().collectAsState(initial = emptyList())
@@ -195,8 +172,11 @@ class AutofillPickerActivityV2 : FragmentActivity() {
                     args = args,
                     repository = repository,
                     securityManager = securityManager,
-                    settingsManager = settingsManager,
+                    settingsManager = localSettingsManager,
                     keepassDatabases = keepassDatabases,
+                    canSkipVerification = canSkipAuth,
+                    isManualMode = isManualMode,
+                    onAuthenticationSuccess = { markAuthenticationSuccess() },
                     onAutofill = { password, forceAddUri ->
                         handleAutofill(password, forceAddUri)
                     },
@@ -284,7 +264,22 @@ class AutofillPickerActivityV2 : FragmentActivity() {
             ""
         }
         
-        // 构建 Dataset
+        // 手动模式：复制密码到剪贴板
+        if (isManualMode) {
+            // 使用智能复制：先复制密码，通知栏提供用户名
+            SmartCopyNotificationHelper.copyAndQueueNext(
+                context = this,
+                firstValue = decryptedPassword,
+                firstLabel = "Password",
+                secondValue = decryptedUsername,
+                secondLabel = "Username"
+            )
+            android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        
+        // 正常自动填充模式：构建 Dataset
         val autofillIds = args.autofillIds
         if (autofillIds.isNullOrEmpty()) {
             setResult(Activity.RESULT_CANCELED)
@@ -379,6 +374,9 @@ private fun AutofillPickerContent(
     securityManager: SecurityManager,
     settingsManager: SettingsManager,
     keepassDatabases: List<LocalKeePassDatabase>,
+    canSkipVerification: Boolean = false,
+    isManualMode: Boolean = false,
+    onAuthenticationSuccess: () -> Unit = {},
     onAutofill: (PasswordEntry, Boolean) -> Unit,
     onSaveNewPassword: suspend (PasswordEntry) -> Long,
     onCopy: (String, String, Boolean) -> Unit,
@@ -402,7 +400,6 @@ private fun AutofillPickerContent(
     }
     
     // 读取自动填充验证设置
-    // 读取自动填充验证设置
     val appSettingsState = settingsManager.settingsFlow.collectAsState(initial = null)
     val appSettings = appSettingsState.value
     
@@ -412,125 +409,34 @@ private fun AutofillPickerContent(
         }
         return
     }
-    // 彻底强制开启自动填充验证，无视开发者选项
-    val autofillAuthRequired = true
     
-    // 验证状态
-    var isAuthenticated by remember { mutableStateOf(false) }
-    var showPasswordAuth by remember { mutableStateOf(false) }
-    var authenticationAttempted by remember { mutableStateOf(false) }
+    // 验证状态：如果可以跳过验证（会话有效），直接标记为已认证
+    var isAuthenticated by remember { mutableStateOf(canSkipVerification) }
     
-    // 生物识别和安全管理
-    val biometricAuthHelper = remember { BiometricAuthHelper(context) }
-    val activity = context as? FragmentActivity
-    
-    // 处理验证逻辑
-    LaunchedEffect(autofillAuthRequired, authenticationAttempted) {
-        if (!autofillAuthRequired) {
-            // 无需验证
-            isAuthenticated = true
-        } else if (!authenticationAttempted && activity != null) {
-            authenticationAttempted = true
-            
-            if (biometricAuthHelper.isBiometricAvailable()) {
-                // 显示生物识别提示
-                val executor = ContextCompat.getMainExecutor(context)
-                
-                val biometricPrompt = BiometricPrompt(
-                    activity,
-                    executor,
-                    object : BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            super.onAuthenticationSucceeded(result)
-                            isAuthenticated = true
-                        }
-                        
-                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                            super.onAuthenticationError(errorCode, errString)
-                            when (errorCode) {
-                                BiometricPrompt.ERROR_NEGATIVE_BUTTON -> {
-                                    // 用户点击"使用密码" -> 显示密码验证界面
-                                    showPasswordAuth = true
-                                }
-                                BiometricPrompt.ERROR_USER_CANCELED -> {
-                                    // 用户取消 -> 关闭
-                                    onClose()
-                                }
-                                else -> {
-                                    // 其他错误 -> 降级到密码验证
-                                    showPasswordAuth = true
-                                }
-                            }
-                        }
-                        
-                        override fun onAuthenticationFailed() {
-                            super.onAuthenticationFailed()
-                            // 用户可以继续尝试，不做处理
-                        }
-                    }
-                )
-                
-                // 根据设备支持情况选择认证器类型
-                val biometricManager = BiometricManager.from(context)
-                val allowedAuthenticators = if (
-                    biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
-                    BiometricManager.BIOMETRIC_SUCCESS
-                ) {
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG
-                } else {
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK
-                }
-                
-                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle(context.getString(R.string.autofill_auth_title))
-                    .setSubtitle(context.getString(R.string.autofill_auth_subtitle))
-                    .setNegativeButtonText(context.getString(R.string.use_password))
-                    .setAllowedAuthenticators(allowedAuthenticators)
-                    .setConfirmationRequired(false)
-                    .build()
-                
-                biometricPrompt.authenticate(promptInfo)
-            } else {
-                // 生物识别不可用 -> 直接显示密码验证
-                showPasswordAuth = true
-            }
+    // 如果会话有效，通知外部
+    LaunchedEffect(canSkipVerification) {
+        if (canSkipVerification) {
+            onAuthenticationSuccess()
         }
     }
     
-    // 显示密码验证界面
-    if (autofillAuthRequired && !isAuthenticated && showPasswordAuth) {
+    // 显示验证界面（完全复用 PasswordVerificationContent，与主程序一致）
+    if (!isAuthenticated) {
         Surface(modifier = Modifier.fillMaxSize()) {
             PasswordVerificationContent(
                 isFirstTime = false,
                 disablePasswordVerification = false, // 自动填充始终需要验证
                 biometricEnabled = appSettings.biometricEnabled,
                 onVerifyPassword = { input -> securityManager.verifyMasterPassword(input) },
-                onSuccess = { isAuthenticated = true }
+                onSuccess = { 
+                    isAuthenticated = true
+                    onAuthenticationSuccess()
+                }
             )
         }
         return
     }
     
-    // 如果需要验证且还未验证（正在等待生物识别），显示加载界面
-    if (autofillAuthRequired && !isAuthenticated && !showPasswordAuth) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                CircularProgressIndicator()
-                Text(
-                    text = context.getString(R.string.autofill_auth_waiting),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        return
-    }
     val (appIcon, appName) = remember(args.applicationId) {
         args.applicationId?.let { packageName ->
             try {
@@ -595,18 +501,23 @@ private fun AutofillPickerContent(
     ) { screen ->
         when (screen) {
         "list" -> {
-            val title = if (args.isSaveMode) "Save form data" else "Autofill with Monica"
+            // 根据模式显示不同标题
+            val title = when {
+                args.isSaveMode -> "Save form data"
+                isManualMode -> "Monica 快速复制"
+                else -> "Autofill with Monica"
+            }
             
             AutofillScaffold(
                 topBar = {
                     AutofillHeader(
                         title = title,
-                        username = args.capturedUsername,
-                        password = args.capturedPassword,
-                        applicationId = args.applicationId,
-                        webDomain = args.webDomain,
-                        appIcon = appIcon,
-                        appName = appName,
+                        username = if (isManualMode) null else args.capturedUsername,
+                        password = if (isManualMode) null else args.capturedPassword,
+                        applicationId = if (isManualMode) null else args.applicationId,
+                        webDomain = if (isManualMode) null else args.webDomain,
+                        appIcon = if (isManualMode) null else appIcon,
+                        appName = if (isManualMode) "选择密码后复制到剪贴板" else appName,
                         onClose = onClose
                     )
                 }

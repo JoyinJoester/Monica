@@ -23,6 +23,7 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.PasswordRepository
 import java.io.File
@@ -786,8 +787,41 @@ class KeePassWebDavViewModel {
                             updatedAt = Date()
                         )
                         
-                        passwordDao.insertPasswordEntry(passwordEntry)
+                        val newPasswordId = passwordDao.insertPasswordEntry(passwordEntry)
                         passwordImportedCount++
+                        
+                        // 导入自定义字段（KeePass 中的非标准字段）
+                        if (newPasswordId > 0) {
+                            val customFieldDao = database.customFieldDao()
+                            val standardFields = setOf(
+                                "Title", "UserName", "Password", "URL", "Notes",
+                                "otp", "TOTP Seed", "TOTP Settings"
+                            )
+                            
+                            var sortOrder = 0
+                            entry.fields.forEach { (fieldKey, fieldValue) ->
+                                if (fieldKey !in standardFields) {
+                                    try {
+                                        val fieldContent = fieldValue.content
+                                        if (fieldContent.isNotEmpty()) {
+                                            val isProtected = fieldValue is EntryValue.Encrypted
+                                            val customField = CustomField(
+                                                id = 0,
+                                                entryId = newPasswordId,
+                                                title = fieldKey,
+                                                value = if (isProtected) securityManager.encryptData(fieldContent) else fieldContent,
+                                                isProtected = isProtected,
+                                                sortOrder = sortOrder++
+                                            )
+                                            customFieldDao.insert(customField)
+                                            Log.d(TAG, "Imported custom field '$fieldKey' for password: $title")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to import custom field '$fieldKey': ${e.message}")
+                                    }
+                                }
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to import entry: ${e.message}")

@@ -51,6 +51,8 @@ import kotlinx.coroutines.isActive
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
+import takagi.ru.monica.ui.components.CustomFieldDisplayCard
+import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
 
@@ -98,6 +100,9 @@ fun PasswordDetailScreen(
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var passwordVerificationError by remember { mutableStateOf(false) }
+    
+    // 自定义字段状态
+    var customFields by remember { mutableStateOf<List<CustomField>>(emptyList()) }
     
     // Helper function for deletion
     fun executeDeletion() {
@@ -207,6 +212,9 @@ fun PasswordDetailScreen(
                     val itKey = "${it.title}|${it.website}|${it.username}|${it.notes}|${it.appPackageName}|${it.appName}"
                     itKey == key
                 }
+                
+                // 加载自定义字段
+                customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
                 
                 // 根据数据内容设置折叠状态
                 personalInfoExpanded = hasPersonalInfo(entry)
@@ -415,6 +423,20 @@ fun PasswordDetailScreen(
                 // ==========================================
                 if (entry.notes.isNotEmpty()) {
                     NotesCard(notes = entry.notes)
+                }
+                
+                // ==========================================
+                // 📋 自定义字段区块
+                // ==========================================
+                if (customFields.isNotEmpty()) {
+                    CustomFieldDisplayCard(
+                        fields = customFields,
+                        onCopyField = { fieldName, value ->
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText(fieldName, value))
+                            Toast.makeText(context, "已复制: $fieldName", Toast.LENGTH_SHORT).show()
+                        }
+                    )
                 }
                 
                 // 底部间距 (避免 ActionStrip 遮挡)

@@ -40,6 +40,16 @@ import java.util.zip.ZipOutputStream
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 
+/**
+ * 自定义字段备份数据结构
+ */
+@Serializable
+data class CustomFieldBackupEntry(
+    val title: String = "",
+    val value: String = "",
+    val isProtected: Boolean = false
+)
+
 @Serializable
 private data class PasswordBackupEntry(
     val id: Long = 0,
@@ -59,7 +69,9 @@ private data class PasswordBackupEntry(
     // ✅ 第三方登录(SSO)字段
     val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
     val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
-    val ssoRefEntryId: Long? = null      // 引用的账号条目ID
+    val ssoRefEntryId: Long? = null,     // 引用的账号条目ID
+    // ✅ 自定义字段
+    val customFields: List<CustomFieldBackupEntry> = emptyList()
 )
 
 @Serializable
@@ -674,12 +686,26 @@ class WebDavHelper(
                     
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                     val categoryDao = database.categoryDao()
+                    val customFieldDao = database.customFieldDao()
                     val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
                     val categoryMap = allCategories.associateBy { it.id }
                     
                     filteredPasswords.forEach { password ->
                         try {
                             val categoryName = password.categoryId?.let { id -> categoryMap[id]?.name }
+                            
+                            // 获取自定义字段
+                            val fields = try {
+                                customFieldDao.getFieldsByEntryIdSync(password.id).map { field ->
+                                    CustomFieldBackupEntry(
+                                        title = field.title,
+                                        value = field.value,
+                                        isProtected = field.isProtected
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                emptyList()
+                            }
                             
                             val backup = PasswordBackupEntry(
                                 id = password.id,
@@ -699,7 +725,9 @@ class WebDavHelper(
                                 // ✅ 第三方登录(SSO)字段
                                 loginType = password.loginType,
                                 ssoProvider = password.ssoProvider,
-                                ssoRefEntryId = password.ssoRefEntryId
+                                ssoRefEntryId = password.ssoRefEntryId,
+                                // ✅ 自定义字段
+                                customFields = fields
                             )
                             val fileName = "password_${password.id}_${password.createdAt.time}.json"
                             val target = File(passwordsDir, fileName)
@@ -2057,11 +2085,14 @@ class WebDavHelper(
                 Result.success(RestoreResult(
                     content = BackupContent(
                         passwords = passwords,
-                        secureItems = secureItems
+                        secureItems = secureItems,
+                        customFieldsMap = pendingCustomFields.toMap()
                     ),
                     report = report
                 ))
             } finally {
+                // 清除临时存储的自定义字段，避免内存泄漏
+                pendingCustomFields.clear()
                 if (zipFile != backupFile) {
                     zipFile.delete()
                 }
@@ -2235,7 +2266,7 @@ class WebDavHelper(
      * @return Pair of (PasswordEntry, categoryName) - categoryName用于创建/查找分类
      */
     /**
-     * 从JSON文件恢复密码条目
+     * 从JSON文件恢复密码条目（包含自定义字段）
      * @return Pair<PasswordEntry, categoryName>
      */
     private fun restorePasswordFromJson(file: File): Pair<PasswordEntry, String?>? {
@@ -2262,12 +2293,19 @@ class WebDavHelper(
                 ssoProvider = backup.ssoProvider,
                 ssoRefEntryId = backup.ssoRefEntryId
             )
+            // 临时存储自定义字段到全局 map（将在恢复时使用）
+            if (backup.customFields.isNotEmpty()) {
+                pendingCustomFields[backup.id] = backup.customFields
+            }
             Pair(entry, backup.categoryName)
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to parse password JSON from ${file.name}: ${e.message}")
             null
         }
     }
+    
+    // 临时存储待恢复的自定义字段（原始ID -> 字段列表）
+    private val pendingCustomFields = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
 
     private fun restoreNoteFromJson(file: File): DataExportImportManager.ExportItem? {
         return try {
@@ -2783,7 +2821,8 @@ data class BackupFile(
 
 data class BackupContent(
     val passwords: List<PasswordEntry>,
-    val secureItems: List<DataExportImportManager.ExportItem>
+    val secureItems: List<DataExportImportManager.ExportItem>,
+    val customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap()
 )
 
 /**
