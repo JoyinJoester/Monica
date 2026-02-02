@@ -216,8 +216,13 @@ fun PasswordDetailScreen(
                     itKey == key
                 }
                 
-                // 加载自定义字段
-                customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
+                // 加载自定义字段 (添加错误处理)
+                try {
+                    customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDetailScreen", "Error loading custom fields", e)
+                    customFields = emptyList()
+                }
                 
                 // 根据数据内容设置折叠状态
                 personalInfoExpanded = hasPersonalInfo(entry)

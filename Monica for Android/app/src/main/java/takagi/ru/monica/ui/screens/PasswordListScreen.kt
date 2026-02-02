@@ -879,6 +879,10 @@ fun rememberAppIcon(context: Context, packageName: String?): Drawable? {
                 // 应用未安装
                 android.util.Log.w("PasswordListScreen", "rememberAppIcon: App not found: $packageName", e)
                 null
+            } catch (e: OutOfMemoryError) {
+                // 内存不足
+                android.util.Log.e("PasswordListScreen", "rememberAppIcon: OOM for $packageName", e)
+                null
             } catch (e: Exception) {
                 // 其他错误
                 android.util.Log.e("PasswordListScreen", "rememberAppIcon: Error loading icon for $packageName", e)
