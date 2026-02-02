@@ -19,7 +19,7 @@ import androidx.room.TypeConverters
         CustomField::class,  // 自定义字段表
         PasskeyEntry::class  // Passkey 通行密钥表
     ],
-    version = 28,
+    version = 29,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -562,6 +562,35 @@ abstract class PasswordDatabase : RoomDatabase() {
                 }
             }
         }
+        
+        // Migration 28 → 29 - 为 secure_items 添加 categoryId 字段（验证器分类功能）
+        private val MIGRATION_28_29 = object : androidx.room.migration.Migration(28, 29) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 检查字段是否已存在
+                val cursor = database.query("PRAGMA table_info(secure_items)")
+                var hasColumn = false
+                try {
+                    val nameIndex = cursor.getColumnIndex("name")
+                    while (cursor.moveToNext()) {
+                        if (nameIndex != -1 && cursor.getString(nameIndex) == "categoryId") {
+                            hasColumn = true
+                            break
+                        }
+                    }
+                } finally {
+                    cursor.close()
+                }
+                
+                if (!hasColumn) {
+                    try {
+                        database.execSQL("ALTER TABLE secure_items ADD COLUMN categoryId INTEGER DEFAULT NULL")
+                        android.util.Log.i("PasswordDatabase", "Successfully added categoryId column to secure_items")
+                    } catch (e: Exception) {
+                        android.util.Log.e("PasswordDatabase", "Failed to add categoryId column: ${e.message}")
+                    }
+                }
+            }
+        }
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -597,7 +626,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_24_25,  // 修复 local_keepass_databases 表结构
                         MIGRATION_25_26,  // 添加 KeePass 密钥文件字段
                         MIGRATION_26_27,  // 添加自定义字段表
-                        MIGRATION_27_28   // 添加 Passkey 通行密钥表
+                        MIGRATION_27_28,  // 添加 Passkey 通行密钥表
+                        MIGRATION_28_29   // 为 secure_items 添加 categoryId 字段
                     )
                     .build()
                 INSTANCE = instance

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.TotpData
@@ -17,6 +18,16 @@ import kotlinx.serialization.encodeToString
 import java.util.Date
 
 /**
+ * 验证器分类过滤器
+ */
+sealed class TotpCategoryFilter {
+    object All : TotpCategoryFilter()
+    object Starred : TotpCategoryFilter()
+    object Uncategorized : TotpCategoryFilter()
+    data class Custom(val categoryId: Long) : TotpCategoryFilter()
+}
+
+/**
  * TOTP验证器ViewModel
  */
 class TotpViewModel(
@@ -28,12 +39,21 @@ class TotpViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
     
+    // 分类过滤器
+    private val _categoryFilter = MutableStateFlow<TotpCategoryFilter>(TotpCategoryFilter.All)
+    val categoryFilter: StateFlow<TotpCategoryFilter> = _categoryFilter.asStateFlow()
+    
+    // 分类列表（使用 PasswordRepository 获取）
+    val categories: StateFlow<List<Category>> = passwordRepository.getAllCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
     // TOTP项目列表 - 合并实际存储的TOTP和从密码authenticatorKey生成的虚拟TOTP
     val totpItems: StateFlow<List<SecureItem>> = combine(
         _searchQuery,
+        _categoryFilter,
         repository.getItemsByType(ItemType.TOTP),
         passwordRepository.getAllPasswordEntries()
-    ) { query, storedTotps, allPasswords ->
+    ) { query, filter, storedTotps, allPasswords ->
         // 收集所有已存储的TOTP密钥（用于去重）
         val existingSecrets = storedTotps.mapNotNull { item ->
             try {
@@ -53,7 +73,8 @@ class TotpViewModel(
                     secret = password.authenticatorKey,
                     issuer = password.website.takeIf { it.isNotBlank() } ?: password.title,
                     accountName = password.username.takeIf { it.isNotBlank() } ?: password.title,
-                    boundPasswordId = password.id
+                    boundPasswordId = password.id,
+                    categoryId = password.categoryId  // 继承密码的分类
                 )
                 SecureItem(
                     id = -password.id, // 使用负ID标识这是虚拟项目
@@ -64,18 +85,35 @@ class TotpViewModel(
                     isFavorite = false,
                     createdAt = password.createdAt,
                     updatedAt = password.updatedAt,
-                    imagePaths = ""
+                    imagePaths = "",
+                    categoryId = password.categoryId  // 继承密码的分类
                 )
             }
         
         // 合并实际TOTP和虚拟TOTP
         val allTotps = storedTotps + virtualTotps
         
-        // 应用搜索过滤
+        // 首先应用分类过滤
+        val categoryFiltered = when (filter) {
+            is TotpCategoryFilter.All -> allTotps
+            is TotpCategoryFilter.Starred -> allTotps.filter { it.isFavorite }
+            is TotpCategoryFilter.Uncategorized -> allTotps.filter { 
+                it.categoryId == null && try {
+                    Json.decodeFromString<TotpData>(it.itemData).categoryId == null
+                } catch (e: Exception) { true }
+            }
+            is TotpCategoryFilter.Custom -> allTotps.filter { item ->
+                item.categoryId == filter.categoryId || try {
+                    Json.decodeFromString<TotpData>(item.itemData).categoryId == filter.categoryId
+                } catch (e: Exception) { false }
+            }
+        }
+        
+        // 然后应用搜索过滤
         if (query.isBlank()) {
-            allTotps
+            categoryFiltered
         } else {
-            allTotps.filter { item ->
+            categoryFiltered.filter { item ->
                 item.title.contains(query, ignoreCase = true) ||
                 item.notes.contains(query, ignoreCase = true) ||
                 try {
@@ -98,6 +136,13 @@ class TotpViewModel(
      */
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+    
+    /**
+     * 设置分类过滤器
+     */
+    fun setCategoryFilter(filter: TotpCategoryFilter) {
+        _categoryFilter.value = filter
     }
     
     /**
@@ -147,11 +192,18 @@ class TotpViewModel(
         title: String,
         notes: String,
         totpData: TotpData,
-        isFavorite: Boolean = false
+        isFavorite: Boolean = false,
+        categoryId: Long? = null,
+        keepassDatabaseId: Long? = null
     ) {
         viewModelScope.launch {
             try {
-                val itemDataJson = Json.encodeToString(totpData)
+                // 将categoryId和keepassDatabaseId保存到TotpData中
+                val updatedTotpData = totpData.copy(
+                    categoryId = categoryId,
+                    keepassDatabaseId = keepassDatabaseId
+                )
+                val itemDataJson = Json.encodeToString(updatedTotpData)
                 
                 val item = if (id != null && id > 0) {
                     // 更新现有项目
@@ -160,6 +212,7 @@ class TotpViewModel(
                         title = title,
                         notes = notes,
                         itemData = itemDataJson,
+                        categoryId = categoryId,
                         updatedAt = Date()
                     ) ?: return@launch
                 } else {
@@ -170,6 +223,7 @@ class TotpViewModel(
                         notes = notes,
                         itemData = itemDataJson,
                         isFavorite = isFavorite,
+                        categoryId = categoryId,
                         createdAt = Date(),
                         updatedAt = Date(),
                         imagePaths = ""
@@ -290,6 +344,72 @@ class TotpViewModel(
                 repository.updateItem(updatedItem)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+    
+    /**
+     * 移动TOTP到指定分类
+     */
+    fun moveToCategory(ids: List<Long>, categoryId: Long?) {
+        viewModelScope.launch {
+            ids.forEach { id ->
+                try {
+                    val item = repository.getItemById(id) ?: return@forEach
+                    
+                    // 更新TotpData中的categoryId
+                    val totpData = try {
+                        Json.decodeFromString<TotpData>(item.itemData)
+                    } catch (e: Exception) {
+                        return@forEach
+                    }
+                    val updatedTotpData = totpData.copy(categoryId = categoryId)
+                    val updatedItemData = Json.encodeToString(updatedTotpData)
+                    
+                    // 更新数据库
+                    val updatedItem = item.copy(
+                        itemData = updatedItemData,
+                        categoryId = categoryId,
+                        updatedAt = Date()
+                    )
+                    repository.updateItem(updatedItem)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+    
+    /**
+     * 添加新分类
+     */
+    fun addCategory(name: String, onResult: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val category = Category(name = name)
+            val id = passwordRepository.insertCategory(category)
+            onResult(id)
+        }
+    }
+    
+    /**
+     * 更新分类
+     */
+    fun updateCategory(category: Category) {
+        viewModelScope.launch {
+            passwordRepository.updateCategory(category)
+        }
+    }
+    
+    /**
+     * 删除分类
+     */
+    fun deleteCategory(category: Category) {
+        viewModelScope.launch {
+            passwordRepository.deleteCategory(category)
+            // 如果当前过滤器是这个分类，重置为全部
+            if (_categoryFilter.value is TotpCategoryFilter.Custom &&
+                (_categoryFilter.value as TotpCategoryFilter.Custom).categoryId == category.id) {
+                _categoryFilter.value = TotpCategoryFilter.All
             }
         }
     }

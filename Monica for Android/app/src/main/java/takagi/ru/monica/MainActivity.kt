@@ -719,18 +719,25 @@ fun MonicaContent(
             }
 
             if (!isLoading) {
+                val totpCategories by totpViewModel.categories.collectAsState()
+                val initialCategoryId = initialData?.categoryId
                 takagi.ru.monica.ui.screens.AddEditTotpScreen(
                     totpId = if (totpId > 0) totpId else null,
                     initialData = initialData,
                     initialTitle = initialTitle,
                     initialNotes = initialNotes,
+                    initialCategoryId = initialCategoryId,
+                    categories = totpCategories,
                     passwordViewModel = viewModel,
-                    onSave = { title, notes, totpData ->
+                    localKeePassViewModel = localKeePassViewModel,
+                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId ->
                         totpViewModel.saveTotpItem(
                             id = if (totpId > 0) totpId else null,
                             title = title,
                             notes = notes,
-                            totpData = totpData
+                            totpData = totpData,
+                            categoryId = categoryId,
+                            keepassDatabaseId = keepassDatabaseId
                         )
                         navController.popBackStack()
                     },

@@ -165,7 +165,8 @@ private data class TrashSecureItemBackupEntry(
     val imagePaths: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val categoryId: Long? = null
 )
 
 /**
@@ -1043,7 +1044,8 @@ class WebDavHelper(
                                         imagePaths = item.imagePaths,
                                         createdAt = item.createdAt.time,
                                         updatedAt = item.updatedAt.time,
-                                        deletedAt = item.deletedAt?.time
+                                        deletedAt = item.deletedAt?.time,
+                                        categoryId = item.categoryId
                                     )
                                 }
                                 val trashSecureItemsFile = File(trashDir, "trash_secure_items.json")
@@ -1870,7 +1872,8 @@ class WebDavHelper(
                                                             createdAt = java.util.Date(backup.createdAt),
                                                             updatedAt = java.util.Date(backup.updatedAt),
                                                             isDeleted = true,
-                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) }
+                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) },
+                                                            categoryId = backup.categoryId
                                                         )
                                                         secureItemDao.insertItem(item)
                                                         importedCount++

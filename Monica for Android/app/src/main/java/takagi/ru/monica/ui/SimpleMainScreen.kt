@@ -1029,18 +1029,23 @@ fun SimpleMainScreen(
                         )
                     }
                     BottomNavItem.Authenticator -> {
+                        val totpCategories by totpViewModel.categories.collectAsState()
                         AddEditTotpScreen(
                             totpId = null,
                             initialData = null,
                             initialTitle = "",
                             initialNotes = "",
+                            categories = totpCategories,
                             passwordViewModel = passwordViewModel,
-                            onSave = { title, notes, totpData ->
+                            localKeePassViewModel = localKeePassViewModel,
+                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId ->
                                 totpViewModel.saveTotpItem(
                                     id = null,
                                     title = title,
                                     notes = notes,
-                                    totpData = totpData
+                                    totpData = totpData,
+                                    categoryId = categoryId,
+                                    keepassDatabaseId = keepassDatabaseId
                                 )
                                 collapse()
                             },
@@ -2508,6 +2513,11 @@ private fun TotpListContent(
     val haptic = rememberHapticFeedback()
     val focusManager = LocalFocusManager.current
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    
+    // 分类选择状态
+    var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
+    val categories by viewModel.categories.collectAsState()
+    val currentFilter by viewModel.categoryFilter.collectAsState()
 
     // 如果搜索框展开，按返回键关闭搜索框
     BackHandler(enabled = isSearchExpanded) {
@@ -2645,15 +2655,30 @@ private fun TotpListContent(
 
     Column {
         // M3E Top Bar with integrated search - 始终显示
+        // 根据当前分类过滤器动态显示标题
+        val title = when(currentFilter) {
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> "验证器"
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Starred -> "标星"
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Uncategorized -> "未分类"
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom -> categories.find { it.id == (currentFilter as takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+        }
 
         ExpressiveTopBar(
-            title = "验证器", // Or stringResource(R.string.authenticator)
+            title = title,
             searchQuery = searchQuery,
             onSearchQueryChange = viewModel::updateSearchQuery,
             isSearchExpanded = isSearchExpanded,
             onSearchExpandedChange = { isSearchExpanded = it },
             searchHint = stringResource(R.string.search_authenticator),
             actions = {
+                // 分类选择按钮
+                IconButton(onClick = { isCategorySheetVisible = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = "分类",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 // 快速扫码按钮
                 IconButton(onClick = onQuickScanTotp) {
                     Icon(
@@ -2672,6 +2697,85 @@ private fun TotpListContent(
                 }
             }
         )
+        
+        // 分类选择底部弹窗
+        if (isCategorySheetVisible) {
+            @OptIn(ExperimentalMaterial3Api::class)
+            ModalBottomSheet(
+                onDismissRequest = { isCategorySheetVisible = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    Text(
+                        text = "选择分类",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 10.dp)
+                    ) {
+                        item {
+                            val selected = currentFilter is takagi.ru.monica.viewmodel.TotpCategoryFilter.All
+                            CategoryListItem(
+                                title = stringResource(R.string.category_all),
+                                icon = Icons.Default.List,
+                                selected = selected,
+                                onClick = {
+                                    viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.All)
+                                    isCategorySheetVisible = false
+                                }
+                            )
+                        }
+                        item {
+                            val selected = currentFilter is takagi.ru.monica.viewmodel.TotpCategoryFilter.Starred
+                            CategoryListItem(
+                                title = "标星",
+                                icon = Icons.Outlined.CheckCircle,
+                                selected = selected,
+                                onClick = {
+                                    viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.Starred)
+                                    isCategorySheetVisible = false
+                                }
+                            )
+                        }
+                        item {
+                            val selected = currentFilter is takagi.ru.monica.viewmodel.TotpCategoryFilter.Uncategorized
+                            CategoryListItem(
+                                title = "未分类",
+                                icon = Icons.Default.FolderOff,
+                                selected = selected,
+                                onClick = {
+                                    viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.Uncategorized)
+                                    isCategorySheetVisible = false
+                                }
+                            )
+                        }
+                        
+                        items(categories, key = { it.id }) { category ->
+                            val selected = currentFilter is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom && 
+                                (currentFilter as takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom).categoryId == category.id
+                            CategoryListItem(
+                                title = category.name,
+                                icon = Icons.Default.Folder,
+                                selected = selected,
+                                onClick = {
+                                    viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom(category.id))
+                                    isCategorySheetVisible = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
         
         // 统一进度条 - 在顶栏下方显示
         if (appSettings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED && 

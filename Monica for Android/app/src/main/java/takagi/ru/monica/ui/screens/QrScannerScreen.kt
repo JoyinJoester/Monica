@@ -147,9 +147,9 @@ private fun QrCodeScanner(
     val context = LocalContext.current
     var hasScanned by remember { mutableStateOf(false) }
     
-    // 图片选择器
+    // 图片选择器 - 使用 GetContent 以兼容所有设备
     val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
+        contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
             processImage(context, uri) { result ->
@@ -225,9 +225,7 @@ private fun QrCodeScanner(
         // 相册选择按钮
         FloatingActionButton(
             onClick = {
-                photoPickerLauncher.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                )
+                photoPickerLauncher.launch("image/*")
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)

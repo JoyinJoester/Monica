@@ -1,0 +1,121 @@
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:387:26 'LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:523:17 Variable 'tab' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:1366:17 Name shadowed: settings
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:1543:17 Name shadowed: settings
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:179:43 'Label: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Label
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:311:9 Variable 'displayMenuExpanded' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:368:9 Variable 'currentTabLabel' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:431:9 Variable 'categories' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:432:9 Variable 'currentFilter' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:459:9 Variable 'quickActions' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:498:38 'Note: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Note
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:998:28 Parameter 'expand' is never used, could be renamed to _
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1168:5 Parameter 'onPasswordClick' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1169:5 Parameter 'onNavigateToAddPassword' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1195:9 Variable 'showDetailDialog' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1196:9 Variable 'selectedPasswordForDetail' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1378:29 Variable 'favoriteCount' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1379:29 Variable 'totalCount' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1623:121 Elvis operator (?:) always returns the left operand of non-nullable type String
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:1782:58 'List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2392:17 Name shadowed: securityManager
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2459:17 Name shadowed: securityManager
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2729:54 'List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:2874:25 Variable 'index' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:3844:5 Parameter 'onToggleGroupFavorite' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:3973:9 Variable 'expandProgress' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:3979:9 Variable 'containerAlpha' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:4429:5 Parameter 'hasGroupCover' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt:5337:75 'Note: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Note
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditTotpScreen.kt:194:64 'Label: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Label
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditTotpScreen.kt:288:53 'menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditTotpScreen.kt:325:64 'Notes: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Notes
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditTotpScreen.kt:362:53 'menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/components/TotpCodeCard.kt:460:29 Name shadowed: nextCode
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:86:9 Variable 'passwordGenerator' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:102:9 Variable 'showCommonAccountSelector' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:103:9 Variable 'commonAccountSelectorField' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:494:64 'Label: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Label
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:685:38 'menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:1469:30 'menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:1576:35 'Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:1577:31 'Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt:1579:31 'Login: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Login
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/KeePassWebDavViewModel.kt:165:32 Variable 'connectionOk' initializer is redundant
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/KeePassWebDavViewModel.kt:238:31 Parameter 'context' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/PasswordDetailScreen.kt:199:9 Variable 'passwordVisible' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/PasswordDetailScreen.kt:623:5 Parameter 'context' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/PasswordDetailScreen.kt:779:46 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/PasswordDetailScreen.kt:780:45 'Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt:92:9 Variable 'restoreOverwriteMode' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt:181:44 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt:1570:9 Variable 'context' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt:1609:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/util/TotpGenerator.kt:305:9 Parameter 'pin' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/util/TotpUriParser.kt:206:9 Parameter 'accountName' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:6:20 'NetworkInfo' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:571:17 The value 'e1' assigned to 'var lastError: kotlin.Exception? /* = java.lang.Exception? */ defined in takagi.ru.monica.utils.WebDavHelper.testConnection.`<anonymous>`' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:581:21 The value 'e2' assigned to 'var lastError: kotlin.Exception? /* = java.lang.Exception? */ defined in takagi.ru.monica.utils.WebDavHelper.testConnection.`<anonymous>`' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:1542:17 Variable 'backupTotpCount' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:1543:17 Variable 'backupCardCount' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:1544:17 Variable 'backupDocCount' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:1804:61 Name shadowed: entry
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:2379:28 Variable 'isHeader' initializer is redundant
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:3022:53 'getter for activeNetworkInfo: NetworkInfo?' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt:3024:61 'getter for isConnected: Boolean' is deprecated. Deprecated in Java
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt:79:10 This declaration is in a preview state and can be changed in a backwards-incompatible manner with a best-effort migration. Its usage should be marked with '@kotlinx.coroutines.FlowPreview' or '@OptIn(kotlinx.coroutines.FlowPreview::class)' if you accept the drawback of relying on preview API
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt:81:10 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt:630:34 Destructured parameter 'question' is never used
+w: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt:631:21 Variable 'encryptedAnswer' is never used
+
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :app:dexBuilderDebug
+> Task :app:mergeProjectDexDebug
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+> Task :app:assembleDebug
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 2m 33s
+36 actionable tasks: 6 executed, 30 up-to-date
