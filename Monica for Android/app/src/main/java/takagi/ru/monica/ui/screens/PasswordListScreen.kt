@@ -221,6 +221,7 @@ fun PasswordListScreen(
                                     is CategoryFilter.Uncategorized -> "未分类"
                                     is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
                                     is CategoryFilter.KeePassDatabase -> "KeePass"
+                                    is CategoryFilter.BitwardenVault -> "Bitwarden"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface

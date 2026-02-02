@@ -102,4 +102,8 @@ sealed class Screen(val route: String) {
     object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面
     object MonicaPlus : Screen("monica_plus") // Monica Plus 页面
     object Payment : Screen("payment") // 付款页面
+    
+    // Bitwarden 集成相关路由
+    object BitwardenLogin : Screen("bitwarden_login")  // Bitwarden 登录页面
+    object BitwardenSettings : Screen("bitwarden_settings")  // Bitwarden 设置/管理页面
 }

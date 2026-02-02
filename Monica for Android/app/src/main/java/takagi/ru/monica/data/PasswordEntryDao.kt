@@ -45,6 +45,12 @@ interface PasswordEntryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long
     
+    /**
+     * 插入密码条目（别名方法，供 Bitwarden 同步服务使用）
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entry: PasswordEntry): Long
+    
     @Update
     suspend fun updatePasswordEntry(entry: PasswordEntry)
     
@@ -217,4 +223,106 @@ interface PasswordEntryDao {
      */
     @Delete
     suspend fun delete(entry: PasswordEntry)
+    
+    // ==================== Bitwarden 集成相关方法 ====================
+    
+    /**
+     * 根据 Bitwarden Cipher ID 获取条目
+     * 用于同步时查找本地是否已存在对应条目
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
+    suspend fun getByBitwardenCipherId(cipherId: String): PasswordEntry?
+    
+    /**
+     * 根据 Bitwarden Vault ID 获取所有条目
+     * 用于获取某个 Vault 的所有密码
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY title ASC")
+    suspend fun getByBitwardenVaultId(vaultId: Long): List<PasswordEntry>
+    
+    /**
+     * 根据 Bitwarden Vault ID 获取所有条目 (Flow 版本)
+     * 用于实时观察 Vault 的密码列表变化
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY title ASC")
+    fun getByBitwardenVaultIdFlow(vaultId: Long): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
+    
+    /**
+     * 获取所有 Bitwarden 条目
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NOT NULL AND isDeleted = 0 ORDER BY title ASC")
+    suspend fun getAllBitwardenEntries(): List<PasswordEntry>
+    
+    /**
+     * 获取待同步到 Bitwarden 的条目（本地有修改）
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_local_modified = 1 AND isDeleted = 0")
+    suspend fun getEntriesWithPendingBitwardenSync(vaultId: Long): List<PasswordEntry>
+    
+    /**
+     * 获取所有待同步的 Bitwarden 条目（跨所有 Vault）
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NOT NULL AND bitwarden_local_modified = 1 AND isDeleted = 0")
+    suspend fun getAllEntriesWithPendingBitwardenSync(): List<PasswordEntry>
+    
+    /**
+     * 清除指定 Vault 的所有条目的本地修改标记
+     */
+    @Query("UPDATE password_entries SET bitwarden_local_modified = 0 WHERE bitwarden_vault_id = :vaultId")
+    suspend fun clearBitwardenLocalModifiedFlag(vaultId: Long)
+    
+    /**
+     * 更新条目的 Bitwarden 同步信息
+     */
+    @Query("""
+        UPDATE password_entries 
+        SET bitwarden_revision_date = :revisionDate, 
+            bitwarden_local_modified = 0 
+        WHERE id = :entryId
+    """)
+    suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: Long)
+    
+    /**
+     * 根据 Bitwarden Folder ID 获取条目
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
+    suspend fun getByBitwardenFolderId(folderId: String): List<PasswordEntry>
+    
+    /**
+     * 获取 Bitwarden 条目按类型分组
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_type = :cipherType AND isDeleted = 0 ORDER BY title ASC")
+    suspend fun getBitwardenEntriesByCipherType(vaultId: Long, cipherType: Int): List<PasswordEntry>
+    
+    /**
+     * 搜索 Bitwarden 条目
+     */
+    @Query("""
+        SELECT * FROM password_entries 
+        WHERE bitwarden_vault_id = :vaultId 
+        AND isDeleted = 0 
+        AND (title LIKE '%' || :query || '%' 
+             OR username LIKE '%' || :query || '%' 
+             OR notes LIKE '%' || :query || '%')
+        ORDER BY title ASC
+    """)
+    suspend fun searchBitwardenEntries(vaultId: Long, query: String): List<PasswordEntry>
+    
+    /**
+     * 删除指定 Vault 的所有条目（用于注销时清理）
+     */
+    @Query("DELETE FROM password_entries WHERE bitwarden_vault_id = :vaultId")
+    suspend fun deleteAllByBitwardenVaultId(vaultId: Long)
+    
+    /**
+     * 获取 Bitwarden 条目数量
+     */
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
+    suspend fun getBitwardenEntryCount(vaultId: Long): Int
+    
+    /**
+     * 获取指定 Vault 的最后修改时间
+     */
+    @Query("SELECT MAX(bitwarden_revision_date) FROM password_entries WHERE bitwarden_vault_id = :vaultId")
+    suspend fun getLastBitwardenRevisionDate(vaultId: Long): Long?
 }

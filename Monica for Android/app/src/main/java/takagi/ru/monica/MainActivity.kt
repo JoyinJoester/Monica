@@ -1459,6 +1459,9 @@ fun MonicaContent(
                 onNavigateToLocalKeePass = {
                     navController.navigate(Screen.LocalKeePass.route)
                 },
+                onNavigateToBitwarden = {
+                    navController.navigate(Screen.BitwardenSettings.route)
+                },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
             }
@@ -1567,6 +1570,54 @@ fun MonicaContent(
                 onActivatePlus = {
                     settingsViewModel.updatePlusActivated(true)
                     navController.popBackStack()
+                }
+            )
+        }
+        
+        // Bitwarden 登录页面
+        composable(
+            route = Screen.BitwardenLogin.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = 
+                androidx.lifecycle.viewmodel.compose.viewModel()
+            takagi.ru.monica.bitwarden.ui.BitwardenLoginScreen(
+                viewModel = bitwardenViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onLoginSuccess = {
+                    navController.navigate(Screen.BitwardenSettings.route) {
+                        popUpTo(Screen.BitwardenLogin.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        // Bitwarden 设置/管理页面
+        composable(
+            route = Screen.BitwardenSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = 
+                androidx.lifecycle.viewmodel.compose.viewModel()
+            takagi.ru.monica.bitwarden.ui.BitwardenSettingsScreen(
+                viewModel = bitwardenViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToLogin = {
+                    navController.navigate(Screen.BitwardenLogin.route)
+                },
+                onNavigateToVault = { vaultId ->
+                    // 未来可以添加 Vault 详情页面
+                    // 目前保持空实现
                 }
             )
         }

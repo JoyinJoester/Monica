@@ -32,6 +32,7 @@ fun SyncBackupScreen(
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToKeePass: () -> Unit = {},  // KeePass 兼容性配置入口
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
+    onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
     isPlusActivated: Boolean = false
 ) {
     val context = LocalContext.current
@@ -167,6 +168,20 @@ fun SyncBackupScreen(
                     title = "KeePass WebDAV",
                     description = "通过 WebDAV 与 KeePass (.kdbx) 同步数据",
                     onClick = onNavigateToKeePass,
+                    enabled = isPlusActivated,
+                    badge = if (!isPlusActivated) "Plus" else null
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Bitwarden 集成区块
+            SyncBackupSection(title = "Bitwarden") {
+                SyncBackupItem(
+                    icon = Icons.Default.CloudSync,
+                    title = "Bitwarden 同步",
+                    description = "连接 Bitwarden 服务器，同步您的密码数据",
+                    onClick = onNavigateToBitwarden,
                     enabled = isPlusActivated,
                     badge = if (!isPlusActivated) "Plus" else null
                 )

@@ -1451,8 +1451,15 @@ class MonicaAutofillService : AutofillService() {
     ): RemoteViews {
         val presentation = RemoteViews(this.packageName, R.layout.autofill_dataset_card)
         
-        // 设置标题
-        val displayTitle = if (password.title.isNotBlank()) {
+        // 数据来源前缀
+        val sourcePrefix = when {
+            password.isBitwardenEntry() -> "☁️ "  // Bitwarden 云同步
+            password.isKeePassEntry() -> "🔐 "     // KeePass 本地
+            else -> ""                              // Monica 本地
+        }
+        
+        // 设置标题（带来源标识）
+        val displayTitle = sourcePrefix + if (password.title.isNotBlank()) {
             password.title
         } else {
             getAppName(packageName)
@@ -1577,8 +1584,15 @@ class MonicaAutofillService : AutofillService() {
             // 创建应用图标 - 参考 Keyguard 的 createAppIcon
             val appIcon = createAppIcon(password.appPackageName.ifBlank { callingPackage })
             
-            // 构建显示文本
-            val displayTitle = password.title.ifBlank { password.username.ifBlank { "密码" } }
+            // 数据来源前缀
+            val sourcePrefix = when {
+                password.isBitwardenEntry() -> "☁️ "  // Bitwarden 云同步
+                password.isKeePassEntry() -> "🔐 "     // KeePass 本地
+                else -> ""                              // Monica 本地
+            }
+            
+            // 构建显示文本（带来源标识）
+            val displayTitle = sourcePrefix + password.title.ifBlank { password.username.ifBlank { "密码" } }
             val displayUsername = password.username.ifBlank { "（无用户名）" }
             
             // 创建唯一的 PendingIntent（使用密码ID作为requestCode）

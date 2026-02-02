@@ -254,6 +254,8 @@ fun SimpleMainScreen(
     initialTab: Int = 0
 ) {
 
+    // Bitwarden ViewModel
+    val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     
     // 双击返回退出相关状态
     var backPressedOnce by remember { mutableStateOf(false) }
@@ -431,6 +433,7 @@ fun SimpleMainScreen(
     val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
     val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
+    val bitwardenVaults by bitwardenViewModel.vaults.collectAsState()
     
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
@@ -568,6 +571,7 @@ fun SimpleMainScreen(
                                 settingsViewModel = settingsViewModel,
                                 securityManager = securityManager,
                                 keepassDatabases = keepassDatabases,
+                                bitwardenVaults = bitwardenVaults,
                                 localKeePassViewModel = localKeePassViewModel,
                                 groupMode = passwordGroupMode,
                                 stackCardMode = stackCardMode,
@@ -789,6 +793,7 @@ fun SimpleMainScreen(
                         settingsViewModel = settingsViewModel, // Pass SettingsViewModel
                         securityManager = securityManager,
                         keepassDatabases = keepassDatabases,
+                        bitwardenVaults = bitwardenVaults,
                         localKeePassViewModel = localKeePassViewModel,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
@@ -1159,6 +1164,7 @@ private fun PasswordListContent(
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
@@ -1710,6 +1716,7 @@ private fun PasswordListContent(
             is CategoryFilter.Uncategorized -> "未分类"
             is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
             is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == (currentFilter as CategoryFilter.KeePassDatabase).databaseId }?.name ?: "KeePass"
+            is CategoryFilter.BitwardenVault -> "Bitwarden"
         }
 
             ExpressiveTopBar(
@@ -1840,6 +1847,45 @@ private fun PasswordListContent(
                                                style = MaterialTheme.typography.labelSmall,
                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                            )
+                                       }
+                                   )
+                               }
+                               
+                               item {
+                                   Spacer(modifier = Modifier.height(8.dp))
+                               }
+                           }
+                           
+                           // Bitwarden 保险库部分
+                           if (bitwardenVaults.isNotEmpty()) {
+                               item {
+                                   Spacer(modifier = Modifier.height(8.dp))
+                                   Text(
+                                       text = "Bitwarden",
+                                       style = MaterialTheme.typography.labelLarge,
+                                       color = MaterialTheme.colorScheme.primary,
+                                       modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                   )
+                               }
+                               
+                               items(bitwardenVaults, key = { "bitwarden_${it.id}" }) { vault ->
+                                   val selected = currentFilter is CategoryFilter.BitwardenVault && 
+                                       (currentFilter as CategoryFilter.BitwardenVault).vaultId == vault.id
+                                   CategoryListItem(
+                                       title = vault.email,
+                                       icon = Icons.Default.CloudSync,
+                                       selected = selected,
+                                       onClick = {
+                                           viewModel.setCategoryFilter(CategoryFilter.BitwardenVault(vault.id))
+                                       },
+                                       badge = {
+                                           if (vault.isDefault) {
+                                               Text(
+                                                   text = "默认",
+                                                   style = MaterialTheme.typography.labelSmall,
+                                                   color = MaterialTheme.colorScheme.primary
+                                               )
+                                           }
                                        }
                                    )
                                }
@@ -4579,6 +4625,23 @@ private fun MultiPasswordEntryCard(
                             modifier = Modifier.size(20.dp)
                         )
                     }
+                    
+                    // 数据来源标识 - Bitwarden / KeePass
+                    if (firstEntry.isBitwardenEntry()) {
+                        Icon(
+                            Icons.Default.CloudSync,
+                            contentDescription = "Bitwarden",
+                            tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else if (firstEntry.isKeePassEntry()) {
+                        Icon(
+                            Icons.Default.VpnKey,
+                            contentDescription = "KeePass",
+                            tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
             
@@ -4972,6 +5035,25 @@ private fun PasswordEntryCard(
                                 contentDescription = stringResource(R.string.favorite),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        // 数据来源标识 - Bitwarden / KeePass
+                        if (entry.isBitwardenEntry()) {
+                            // Bitwarden 云同步标识
+                            Icon(
+                                Icons.Default.CloudSync,
+                                contentDescription = "Bitwarden",
+                                tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else if (entry.isKeePassEntry()) {
+                            // KeePass 密钥标识
+                            Icon(
+                                Icons.Default.VpnKey,
+                                contentDescription = "KeePass",
+                                tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }

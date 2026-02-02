@@ -29,6 +29,10 @@ class PasswordRepository(
     fun getPasswordEntriesByKeePassDatabase(databaseId: Long): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getPasswordEntriesByKeePassDatabase(databaseId)
     }
+    
+    fun getPasswordEntriesByBitwardenVault(vaultId: Long): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getByBitwardenVaultIdFlow(vaultId)
+    }
 
     fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getFavoritePasswordEntries()

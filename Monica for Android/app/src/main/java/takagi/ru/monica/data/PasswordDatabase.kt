@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import takagi.ru.monica.data.bitwarden.*
 
 /**
  * Room database for storing password entries and secure items
@@ -17,9 +18,14 @@ import androidx.room.TypeConverters
         OperationLog::class,
         LocalKeePassDatabase::class,
         CustomField::class,  // 自定义字段表
-        PasskeyEntry::class  // Passkey 通行密钥表
+        PasskeyEntry::class,  // Passkey 通行密钥表
+        // Bitwarden 集成表
+        BitwardenVault::class,
+        BitwardenFolder::class,
+        BitwardenConflictBackup::class,
+        BitwardenPendingOperation::class
     ],
-    version = 29,
+    version = 30,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,6 +38,12 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
     abstract fun passkeyDao(): PasskeyDao  // Passkey DAO
+    
+    // Bitwarden DAOs
+    abstract fun bitwardenVaultDao(): BitwardenVaultDao
+    abstract fun bitwardenFolderDao(): BitwardenFolderDao
+    abstract fun bitwardenConflictBackupDao(): BitwardenConflictBackupDao
+    abstract fun bitwardenPendingOperationDao(): BitwardenPendingOperationDao
     
     companion object {
         @Volatile
@@ -591,6 +603,134 @@ abstract class PasswordDatabase : RoomDatabase() {
                 }
             }
         }
+        
+        // Migration 29 → 30 - Bitwarden 集成
+        // 添加 Bitwarden 相关的表和字段
+        private val MIGRATION_29_30 = object : androidx.room.migration.Migration(29, 30) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                android.util.Log.i("PasswordDatabase", "Starting Migration 29→30: Bitwarden Integration")
+                
+                try {
+                    // 1. 创建 bitwarden_vaults 表
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS bitwarden_vaults (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            email TEXT NOT NULL,
+                            user_id TEXT,
+                            display_name TEXT,
+                            server_url TEXT NOT NULL DEFAULT 'https://vault.bitwarden.com',
+                            identity_url TEXT NOT NULL DEFAULT 'https://identity.bitwarden.com',
+                            api_url TEXT NOT NULL DEFAULT 'https://api.bitwarden.com',
+                            events_url TEXT,
+                            encrypted_access_token TEXT,
+                            encrypted_refresh_token TEXT,
+                            access_token_expires_at INTEGER,
+                            encrypted_master_key TEXT,
+                            encrypted_enc_key TEXT,
+                            encrypted_mac_key TEXT,
+                            kdf_type INTEGER NOT NULL DEFAULT 0,
+                            kdf_iterations INTEGER NOT NULL DEFAULT 600000,
+                            kdf_memory INTEGER,
+                            kdf_parallelism INTEGER,
+                            last_sync_at INTEGER,
+                            last_full_sync_at INTEGER,
+                            revision_date TEXT,
+                            is_default INTEGER NOT NULL DEFAULT 0,
+                            is_locked INTEGER NOT NULL DEFAULT 1,
+                            is_connected INTEGER NOT NULL DEFAULT 0,
+                            sync_enabled INTEGER NOT NULL DEFAULT 1,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_bitwarden_vaults_email ON bitwarden_vaults(email)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_vaults_isDefault ON bitwarden_vaults(is_default)")
+                    
+                    // 2. 创建 bitwarden_folders 表
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS bitwarden_folders (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            vault_id INTEGER NOT NULL,
+                            bitwarden_folder_id TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            encrypted_name TEXT,
+                            revision_date TEXT NOT NULL,
+                            last_synced_at INTEGER NOT NULL,
+                            is_local_modified INTEGER NOT NULL DEFAULT 0,
+                            local_monica_category_id INTEGER,
+                            sort_order INTEGER NOT NULL DEFAULT 0,
+                            FOREIGN KEY(vault_id) REFERENCES bitwarden_vaults(id) ON DELETE NO ACTION ON UPDATE NO ACTION
+                        )
+                    """.trimIndent())
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_folders_vault_id ON bitwarden_folders(vault_id)")
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_bitwarden_folders_bitwarden_folder_id ON bitwarden_folders(bitwarden_folder_id)")
+                    
+                    // 3. 创建 bitwarden_conflict_backups 表
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS bitwarden_conflict_backups (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            vault_id INTEGER NOT NULL,
+                            entry_id INTEGER,
+                            bitwarden_cipher_id TEXT,
+                            conflict_type TEXT NOT NULL,
+                            local_data_json TEXT NOT NULL,
+                            server_data_json TEXT,
+                            local_revision_date TEXT,
+                            server_revision_date TEXT,
+                            entry_title TEXT NOT NULL,
+                            description TEXT,
+                            is_resolved INTEGER NOT NULL DEFAULT 0,
+                            resolution TEXT,
+                            resolved_at INTEGER,
+                            created_at INTEGER NOT NULL,
+                            FOREIGN KEY(vault_id) REFERENCES bitwarden_vaults(id) ON DELETE NO ACTION ON UPDATE NO ACTION
+                        )
+                    """.trimIndent())
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_conflict_backups_vault_id ON bitwarden_conflict_backups(vault_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_conflict_backups_entry_id ON bitwarden_conflict_backups(entry_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_conflict_backups_conflict_type ON bitwarden_conflict_backups(conflict_type)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_conflict_backups_created_at ON bitwarden_conflict_backups(created_at)")
+                    
+                    // 4. 创建 bitwarden_pending_operations 表
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS bitwarden_pending_operations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            vault_id INTEGER NOT NULL,
+                            entry_id INTEGER,
+                            bitwarden_cipher_id TEXT,
+                            operation_type TEXT NOT NULL,
+                            target_type TEXT NOT NULL,
+                            payload_json TEXT NOT NULL,
+                            status TEXT NOT NULL DEFAULT 'PENDING',
+                            retry_count INTEGER NOT NULL DEFAULT 0,
+                            max_retries INTEGER NOT NULL DEFAULT 3,
+                            last_error TEXT,
+                            last_attempt_at INTEGER,
+                            created_at INTEGER NOT NULL,
+                            completed_at INTEGER,
+                            FOREIGN KEY(vault_id) REFERENCES bitwarden_vaults(id) ON DELETE NO ACTION ON UPDATE NO ACTION
+                        )
+                    """.trimIndent())
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_pending_operations_vault_id ON bitwarden_pending_operations(vault_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_pending_operations_status ON bitwarden_pending_operations(status)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_pending_operations_created_at ON bitwarden_pending_operations(created_at)")
+                    
+                    // 5. 为 password_entries 添加 Bitwarden 字段
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN bitwarden_vault_id INTEGER DEFAULT NULL")
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN bitwarden_cipher_id TEXT DEFAULT NULL")
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN bitwarden_folder_id TEXT DEFAULT NULL")
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN bitwarden_revision_date TEXT DEFAULT NULL")
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN bitwarden_cipher_type INTEGER NOT NULL DEFAULT 1")
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN bitwarden_local_modified INTEGER NOT NULL DEFAULT 0")
+                    
+                    android.util.Log.i("PasswordDatabase", "Migration 29→30 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 29→30 failed: ${e.message}")
+                    // 不抛出异常，让应用继续运行
+                    // Room 会在后续操作中处理不一致性
+                }
+            }
+        }
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -627,7 +767,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_25_26,  // 添加 KeePass 密钥文件字段
                         MIGRATION_26_27,  // 添加自定义字段表
                         MIGRATION_27_28,  // 添加 Passkey 通行密钥表
-                        MIGRATION_28_29   // 为 secure_items 添加 categoryId 字段
+                        MIGRATION_28_29,  // 为 secure_items 添加 categoryId 字段
+                        MIGRATION_29_30   // Bitwarden 集成
                     )
                     .build()
                 INSTANCE = instance

@@ -31,6 +31,7 @@ sealed class CategoryFilter {
     object Uncategorized : CategoryFilter()
     data class Custom(val categoryId: Long) : CategoryFilter()
     data class KeePassDatabase(val databaseId: Long) : CategoryFilter()
+    data class BitwardenVault(val vaultId: Long) : CategoryFilter()
 }
 
 /**
@@ -118,10 +119,13 @@ class PasswordViewModel(
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
                     is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
+                    is CategoryFilter.BitwardenVault -> repository.getPasswordEntriesByBitwardenVault(filter.vaultId)
                 }
             }
             baseFlow.map { entries ->
-                val filtered = if (filter is CategoryFilter.All) {
+                // 在搜索模式或"全部"视图时进行去重
+                // 搜索结果可能包含来自多个来源的重复条目
+                val filtered = if (query.isNotBlank() || filter is CategoryFilter.All) {
                     dedupeForAll(entries)
                 } else {
                     entries
@@ -152,12 +156,16 @@ class PasswordViewModel(
         )
 
     private fun dedupeForAll(entries: List<PasswordEntry>): List<PasswordEntry> {
+        // 本地条目 (既不是 KeePass 也不是 Bitwarden)
         val localKeys = entries
-            .filter { it.keepassDatabaseId == null }
+            .filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
             .map { buildDedupeKey(it) }
             .toSet()
         return entries.filter { entry ->
-            entry.keepassDatabaseId == null || buildDedupeKey(entry) !in localKeys
+            // 本地条目始终保留
+            // KeePass/Bitwarden 条目如果与本地重复则跳过
+            val isLocal = entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+            isLocal || buildDedupeKey(entry) !in localKeys
         }
     }
 
