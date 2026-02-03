@@ -2,7 +2,23 @@ name: Android Preview Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, develop ]
+    paths:
+      - 'Monica for Android/**.kt'
+      - 'Monica for Android/**.java'
+      - 'Monica for Android/**.xml'
+      - 'Monica for Android/**.gradle'
+      - 'Monica for Android/**.kts'
+      - 'Monica for Android/gradle/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'Monica for Android/**.kt'
+      - 'Monica for Android/**.java'
+      - 'Monica for Android/**.xml'
+      - 'Monica for Android/**.gradle'
+      - 'Monica for Android/**.kts'
+      - 'Monica for Android/gradle/**'
   workflow_dispatch:
 
 permissions:

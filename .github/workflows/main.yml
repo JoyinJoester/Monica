@@ -3,13 +3,60 @@ name: Android CI debug
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'Monica for Android/**.kt'
+      - 'Monica for Android/**.java'
+      - 'Monica for Android/**.xml'
+      - 'Monica for Android/**.gradle'
+      - 'Monica for Android/**.kts'
+      - 'Monica for Android/gradle/**'
   pull_request:
     branches: [ main, develop ]
-  workflow_dispatch: # 允许手动触发
+    paths:
+      - 'Monica for Android/**.kt'
+      - 'Monica for Android/**.java'
+      - 'Monica for Android/**.xml'
+      - 'Monica for Android/**.gradle'
+      - 'Monica for Android/**.kts'
+      - 'Monica for Android/gradle/**'
+  workflow_dispatch:
 
 jobs:
+  lint:
+    name: Run Lint Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Android"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('Monica for Android/**/*.gradle*', 'Monica for Android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Run lint
+        run: ./gradlew lint --stacktrace
+
   test:
     name: Run Unit Tests
+    needs: lint
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,3 +125,5 @@ jobs:
         with:
           name: debug-apk
           path: "Monica for Android/app/build/outputs/apk/debug/*.apk"
+          retention-days: 7
+          if-no-files-found: error
