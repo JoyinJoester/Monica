@@ -573,6 +573,30 @@
     <string name="nav_passkey_short">通行</string>
     <string name="nav_settings_short">设置</string>
     
+    <!-- V2 多源密码库导航 -->
+    <string name="nav_v2_vault">密码库</string>
+    <string name="nav_v2_vault_short">库</string>
+    <string name="nav_v2_send">发送</string>
+    <string name="nav_v2_send_short">发送</string>
+    <string name="nav_v2_sync">同步</string>
+    <string name="nav_v2_sync_short">同步</string>
+    <string name="v2_vault_title">多源密码库</string>
+    <string name="v2_vault_subtitle">查看和管理多个来源的密码</string>
+    <string name="v2_send_title">安全发送</string>
+    <string name="v2_send_subtitle">安全分享敏感信息</string>
+    <string name="v2_sync_title">同步中心</string>
+    <string name="v2_sync_subtitle">管理 Bitwarden 等服务的同步</string>
+    <string name="v2_source_local">本地</string>
+    <string name="v2_source_bitwarden">Bitwarden</string>
+    <string name="v2_source_keepass">KeePass</string>
+    <string name="v2_filter_all">全部</string>
+    <string name="v2_filter_login">登录</string>
+    <string name="v2_filter_card">支付卡</string>
+    <string name="v2_filter_identity">身份</string>
+    <string name="v2_filter_note">笔记</string>
+    <string name="v2_no_items">密码库为空</string>
+    <string name="v2_connect_bitwarden">连接 Bitwarden</string>
+    
     <!-- Passkey Screen -->
     <string name="passkey_title">通行密钥</string>
     <string name="passkey_count">%1$d 个通行密钥</string>

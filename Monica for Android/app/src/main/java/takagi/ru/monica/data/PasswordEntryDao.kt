@@ -325,4 +325,61 @@ interface PasswordEntryDao {
      */
     @Query("SELECT MAX(bitwarden_revision_date) FROM password_entries WHERE bitwarden_vault_id = :vaultId")
     suspend fun getLastBitwardenRevisionDate(vaultId: Long): Long?
+    
+    // ==================== V2 多源密码库相关方法 ====================
+    
+    /**
+     * 获取纯本地条目数量（非 Bitwarden、非 KeePass）
+     * 用于 V2 多源密码库统计
+     */
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0")
+    suspend fun getLocalEntriesCount(): Int
+
+    /**
+     * 获取指定 Bitwarden Vault 的条目数量
+     * 用于 V2 多源密码库统计
+     */
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
+    suspend fun getBitwardenEntriesCount(vaultId: Long): Int
+    
+    /**
+     * 获取 KeePass 条目数量
+     * 用于 V2 多源密码库统计
+     */
+    @Query("SELECT COUNT(*) FROM password_entries WHERE keepassDatabaseId IS NOT NULL AND isDeleted = 0")
+    suspend fun getKeePassEntriesCount(): Int
+
+    /**
+     * 获取所有纯本地条目（非 Bitwarden、非 KeePass）
+     * 用于 V2 多源密码库显示
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0 ORDER BY isFavorite DESC, updatedAt DESC")
+    suspend fun getAllLocalEntries(): List<PasswordEntry>
+    
+    /**
+     * 获取所有 KeePass 条目
+     * 用于 V2 多源密码库显示
+     */
+    @Query("SELECT * FROM password_entries WHERE keepassDatabaseId IS NOT NULL AND isDeleted = 0 ORDER BY isFavorite DESC, updatedAt DESC")
+    suspend fun getAllKeePassEntries(): List<PasswordEntry>
+    /**
+     * 获取指定 Bitwarden Vault 的所有条目
+     * 用于 V2 多源密码库显示
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY isFavorite DESC, updatedAt DESC")
+    suspend fun getEntriesByVaultId(vaultId: Long): List<PasswordEntry>
+    
+    /**
+     * 获取待上传到 Bitwarden 的本地条目
+     * 这些条目有 bitwardenVaultId（表示属于某个 Bitwarden vault）
+     * 但没有 bitwardenCipherId（表示尚未上传到服务器）
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL AND isDeleted = 0")
+    suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<PasswordEntry>
+    
+    /**
+     * 获取本地已修改但未同步的 Bitwarden 条目
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_local_modified = 1 AND isDeleted = 0")
+    suspend fun getLocalModifiedBitwardenEntries(vaultId: Long): List<PasswordEntry>
 }

@@ -451,6 +451,11 @@ class BitwardenRepository(private val context: Context) {
     
     /**
      * 执行完整同步
+     * 
+     * 同步流程：
+     * 1. 从服务器拉取最新数据
+     * 2. 上传本地创建的条目到服务器
+     * 3. 上传本地修改的条目到服务器
      */
     suspend fun sync(vaultId: Long): SyncResult = withContext(Dispatchers.IO) {
         try {
@@ -475,7 +480,14 @@ class BitwardenRepository(private val context: Context) {
                 }
             }
             
-            // 执行同步
+            // 1. 先上传本地创建的条目到服务器
+            val uploadResult = syncService.uploadLocalEntries(vault, accessToken, symmetricKey)
+            val uploadedCount = when (uploadResult) {
+                is takagi.ru.monica.bitwarden.service.UploadResult.Success -> uploadResult.uploaded
+                else -> 0
+            }
+            
+            // 2. 执行同步（从服务器拉取）
             val result = syncService.fullSync(vault, accessToken, symmetricKey)
             
             // 更新最后同步时间
@@ -484,12 +496,20 @@ class BitwardenRepository(private val context: Context) {
             when (result) {
                 is ServiceSyncResult.Success -> {
                     SyncResult.Success(
-                        syncedCount = result.ciphersAdded + result.ciphersUpdated,
+                        syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount,
                         conflictCount = result.conflictsDetected
                     )
                 }
                 is ServiceSyncResult.Error -> {
                     SyncResult.Error(result.message)
+                }
+                is ServiceSyncResult.EmptyVaultBlocked -> {
+                    SyncResult.EmptyVaultBlocked(
+                        vaultId = vaultId,
+                        localCount = result.localCount,
+                        serverCount = result.serverCount,
+                        reason = result.reason
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -661,5 +681,15 @@ class BitwardenRepository(private val context: Context) {
     sealed class SyncResult {
         data class Success(val syncedCount: Int, val conflictCount: Int) : SyncResult()
         data class Error(val message: String) : SyncResult()
+        
+        /**
+         * 空 Vault 保护阻止了同步
+         */
+        data class EmptyVaultBlocked(
+            val vaultId: Long,
+            val localCount: Int,
+            val serverCount: Int,
+            val reason: String
+        ) : SyncResult()
     }
 }

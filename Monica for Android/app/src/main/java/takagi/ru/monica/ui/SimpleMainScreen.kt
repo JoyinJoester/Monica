@@ -81,6 +81,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
+import takagi.ru.monica.data.V2BottomNavTab
+import takagi.ru.monica.data.VaultViewMode
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -96,6 +98,8 @@ import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.screens.NoteListScreen
 import takagi.ru.monica.ui.screens.NoteListContent
+import takagi.ru.monica.ui.v2.VaultHomeScreen
+import takagi.ru.monica.ui.v2.V2SendScreen
 import takagi.ru.monica.ui.screens.CardWalletScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
 import takagi.ru.monica.ui.screens.TimelineScreen
@@ -111,6 +115,9 @@ import takagi.ru.monica.ui.components.SwipeableAddFab
 import takagi.ru.monica.ui.components.DraggableNavItem
 import takagi.ru.monica.ui.components.QuickActionItem
 import takagi.ru.monica.ui.components.QuickAddCallback
+import takagi.ru.monica.ui.components.V2NavigationBar
+import takagi.ru.monica.ui.components.V2NavItem
+import takagi.ru.monica.ui.components.RecentSubPage
 import takagi.ru.monica.security.SecurityManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -250,6 +257,7 @@ fun SimpleMainScreen(
     onNavigateToPermissionManagement: () -> Unit = {},
     onNavigateToMonicaPlus: () -> Unit = {},
     onNavigateToExtensions: () -> Unit = {},
+    onNavigateToBitwardenLogin: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
@@ -441,6 +449,27 @@ fun SimpleMainScreen(
     // 可拖拽导航栏模式开关 (将来可从设置中读取)
     val useDraggableNav = appSettings.useDraggableBottomNav
     
+    // V2 导航栏版本
+    val useV2Nav = appSettings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V2
+    
+    // V2 导航栏状态 - 子页面持久化（只记住上次访问的页面，但不自动显示）
+    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
+    val v2LastSubPageKey by settingsManager.v2LastSubPageFlow.collectAsState(initial = "")
+    val coroutineScope = rememberCoroutineScope()
+    
+    var v2SelectedItem by remember { mutableStateOf(takagi.ru.monica.ui.components.V2NavItem.VAULT) }
+    // 子页面为null时显示密码库首页，有值时显示对应子页面
+    var v2SelectedSubPage by remember { mutableStateOf<takagi.ru.monica.ui.components.RecentSubPage?>(null) }
+    // 上次访问的子页面（用于底栏显示快捷入口）
+    val v2LastSubPage = remember(v2LastSubPageKey) {
+        if (v2LastSubPageKey.isNotEmpty()) {
+            takagi.ru.monica.ui.components.RecentSubPage.entries.find { it.key == v2LastSubPageKey }
+        } else {
+            null
+        }
+    }
+    var v2RecentSubPages by remember { mutableStateOf(listOf<takagi.ru.monica.ui.components.RecentSubPage>()) }
+    
     // 构建导航项列表 (用于可拖拽导航栏)
     val draggableNavItems = remember(tabs, currentTab) {
         tabs.map { item ->
@@ -538,7 +567,70 @@ fun SimpleMainScreen(
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
     ) {
-        if (useDraggableNav) {
+        if (useV2Nav) {
+            // V2 简洁动态导航栏
+            V2NavScaffold(
+                selectedItem = v2SelectedItem,
+                selectedSubPage = v2SelectedSubPage,
+                lastSubPage = v2LastSubPage,
+                recentSubPages = v2RecentSubPages,
+                onItemSelected = { item ->
+                    v2SelectedItem = item
+                    // 点击"库"时清除子页面，回到密码库首页
+                    if (item == takagi.ru.monica.ui.components.V2NavItem.VAULT) {
+                        v2SelectedSubPage = null
+                    }
+                },
+                onSubPageSelected = { subPage ->
+                    v2SelectedSubPage = subPage
+                    v2SelectedItem = takagi.ru.monica.ui.components.V2NavItem.VAULT
+                    // 保存到持久化
+                    coroutineScope.launch {
+                        settingsManager.updateV2LastSubPage(subPage.key)
+                    }
+                },
+                onNavigateToSubPage = { subPage ->
+                    v2SelectedSubPage = subPage
+                    v2SelectedItem = takagi.ru.monica.ui.components.V2NavItem.VAULT
+                    // 保存到持久化
+                    coroutineScope.launch {
+                        settingsManager.updateV2LastSubPage(subPage.key)
+                    }
+                },
+                passwordViewModel = passwordViewModel,
+                settingsViewModel = settingsViewModel,
+                totpViewModel = totpViewModel,
+                bankCardViewModel = bankCardViewModel,
+                documentViewModel = documentViewModel,
+                generatorViewModel = generatorViewModel,
+                noteViewModel = noteViewModel,
+                passkeyViewModel = passkeyViewModel,
+                localKeePassViewModel = localKeePassViewModel,
+                securityManager = securityManager,
+                onNavigateToAddPassword = onNavigateToAddPassword,
+                onNavigateToAddTotp = onNavigateToAddTotp,
+                onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                onNavigateToAddBankCard = onNavigateToAddBankCard,
+                onNavigateToAddDocument = onNavigateToAddDocument,
+                onNavigateToAddNote = onNavigateToAddNote,
+                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                onNavigateToChangePassword = onNavigateToChangePassword,
+                onNavigateToSecurityQuestion = onNavigateToSecurityQuestion,
+                onNavigateToSyncBackup = onNavigateToSyncBackup,
+                onNavigateToAutofill = onNavigateToAutofill,
+                onNavigateToPasskeySettings = onNavigateToPasskeySettings,
+                onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
+                onNavigateToColorScheme = onNavigateToColorScheme,
+                onSecurityAnalysis = onSecurityAnalysis,
+                onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
+                onNavigateToPermissionManagement = onNavigateToPermissionManagement,
+                onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                onNavigateToExtensions = onNavigateToExtensions,
+                onClearAllData = onClearAllData
+            )
+        } else if (useDraggableNav) {
         // 使用可拖拽底部导航栏
         DraggableBottomNavScaffold(
             navItems = draggableNavItems,
@@ -676,6 +768,25 @@ fun SimpleMainScreen(
                                 viewModel = passkeyViewModel,
                                 onPasskeyClick = { /* TODO: 导航到详情页 */ }
                             )
+                        }
+                        BottomNavItem.Vault -> {
+                            VaultHomeScreen(
+                                passwordViewModel = passwordViewModel,
+                                bankCardViewModel = bankCardViewModel,
+                                documentViewModel = documentViewModel,
+                                noteViewModel = noteViewModel,
+                                onNavigateToPasswords = { selectedTabKey = BottomNavItem.Passwords.key },
+                                onNavigateToCardWallet = { selectedTabKey = BottomNavItem.CardWallet.key },
+                                onNavigateToNotes = { selectedTabKey = BottomNavItem.Notes.key },
+                                onNavigateToPasskey = { selectedTabKey = BottomNavItem.Passkey.key },
+                                onNavigateToTimeline = { selectedTabKey = BottomNavItem.Timeline.key },
+                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                                onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                                onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
+                            )
+                        }
+                        BottomNavItem.Send -> {
+                            V2SendScreen()
                         }
                         BottomNavItem.Settings -> {
                             SettingsScreen(
@@ -904,6 +1015,27 @@ fun SimpleMainScreen(
                         viewModel = passkeyViewModel,
                         onPasskeyClick = { /* TODO: 导航到详情页 */ }
                     )
+                }
+                BottomNavItem.Vault -> {
+                    // 库主页
+                    VaultHomeScreen(
+                        passwordViewModel = passwordViewModel,
+                        bankCardViewModel = bankCardViewModel,
+                        documentViewModel = documentViewModel,
+                        noteViewModel = noteViewModel,
+                        onNavigateToPasswords = { selectedTabKey = BottomNavItem.Passwords.key },
+                        onNavigateToCardWallet = { selectedTabKey = BottomNavItem.CardWallet.key },
+                        onNavigateToNotes = { selectedTabKey = BottomNavItem.Notes.key },
+                        onNavigateToPasskey = { selectedTabKey = BottomNavItem.Passkey.key },
+                        onNavigateToTimeline = { selectedTabKey = BottomNavItem.Timeline.key },
+                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                        onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                        onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
+                    )
+                }
+                BottomNavItem.Send -> {
+                    // V2 发送页面
+                    V2SendScreen()
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -5414,43 +5546,86 @@ sealed class BottomNavItem(
 ) {
     val key: String = contentTab?.name ?: SETTINGS_TAB_KEY
 
+    object Vault : BottomNavItem(BottomNavContentTab.VAULT, Icons.Default.Shield)  // V2 密码库
     object Passwords : BottomNavItem(BottomNavContentTab.PASSWORDS, Icons.Default.Lock)
     object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
     object CardWallet : BottomNavItem(BottomNavContentTab.CARD_WALLET, Icons.Default.Wallet)
-    object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)  // 添加生成器导航项
+    object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)
     object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
-    object Timeline : BottomNavItem(BottomNavContentTab.TIMELINE, Icons.Default.AccountTree)  // 时间线导航（Git分支图标）
-    object Passkey : BottomNavItem(BottomNavContentTab.PASSKEY, Icons.Default.Key)  // Passkey 通行密钥导航
+    object Send : BottomNavItem(BottomNavContentTab.SEND, Icons.Default.Send)  // V2 发送
+    object Timeline : BottomNavItem(BottomNavContentTab.TIMELINE, Icons.Default.AccountTree)
+    object Passkey : BottomNavItem(BottomNavContentTab.PASSKEY, Icons.Default.Key)
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
 
+/**
+ * V2 底部导航项（多源密码库模式）
+ * 采用 Bitwarden 风格的导航结构
+ */
+sealed class V2BottomNavItem(
+    val v2Tab: takagi.ru.monica.data.V2BottomNavTab?,
+    val icon: ImageVector
+) {
+    val key: String = v2Tab?.name ?: V2_SETTINGS_TAB_KEY
+    
+    object Vault : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.VAULT, Icons.Default.Shield)
+    object Send : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SEND, Icons.Default.Send)
+    object Sync : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SYNC, Icons.Default.Sync)
+    object Generator : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.GENERATOR, Icons.Default.AutoAwesome)
+    object Settings : V2BottomNavItem(null, Icons.Default.Settings)
+}
+
+private const val V2_SETTINGS_TAB_KEY = "V2_SETTINGS"
+
+private fun V2BottomNavItem.fullLabelRes(): Int = when (this) {
+    V2BottomNavItem.Vault -> R.string.nav_v2_vault
+    V2BottomNavItem.Send -> R.string.nav_v2_send
+    V2BottomNavItem.Sync -> R.string.nav_v2_sync
+    V2BottomNavItem.Generator -> R.string.nav_generator
+    V2BottomNavItem.Settings -> R.string.nav_settings
+}
+
+private fun V2BottomNavItem.shortLabelRes(): Int = when (this) {
+    V2BottomNavItem.Vault -> R.string.nav_v2_vault_short
+    V2BottomNavItem.Send -> R.string.nav_v2_send_short
+    V2BottomNavItem.Sync -> R.string.nav_v2_sync_short
+    V2BottomNavItem.Generator -> R.string.nav_generator_short
+    V2BottomNavItem.Settings -> R.string.nav_settings_short
+}
+
 private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
+    BottomNavContentTab.VAULT -> BottomNavItem.Vault
     BottomNavContentTab.PASSWORDS -> BottomNavItem.Passwords
     BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
     BottomNavContentTab.CARD_WALLET -> BottomNavItem.CardWallet
-    BottomNavContentTab.GENERATOR -> BottomNavItem.Generator  // 添加生成器映射
+    BottomNavContentTab.GENERATOR -> BottomNavItem.Generator
     BottomNavContentTab.NOTES -> BottomNavItem.Notes
+    BottomNavContentTab.SEND -> BottomNavItem.Send
     BottomNavContentTab.TIMELINE -> BottomNavItem.Timeline
     BottomNavContentTab.PASSKEY -> BottomNavItem.Passkey
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
+    BottomNavItem.Vault -> R.string.nav_v2_vault
     BottomNavItem.Passwords -> R.string.nav_passwords
     BottomNavItem.Authenticator -> R.string.nav_authenticator
     BottomNavItem.CardWallet -> R.string.nav_card_wallet
-    BottomNavItem.Generator -> R.string.nav_generator  // 添加生成器标签资源
+    BottomNavItem.Generator -> R.string.nav_generator
     BottomNavItem.Notes -> R.string.nav_notes
+    BottomNavItem.Send -> R.string.nav_v2_send
     BottomNavItem.Timeline -> R.string.nav_timeline
     BottomNavItem.Passkey -> R.string.nav_passkey
     BottomNavItem.Settings -> R.string.nav_settings
 }
 
 private fun BottomNavItem.shortLabelRes(): Int = when (this) {
+    BottomNavItem.Vault -> R.string.nav_v2_vault_short
     BottomNavItem.Passwords -> R.string.nav_passwords_short
     BottomNavItem.Authenticator -> R.string.nav_authenticator_short
     BottomNavItem.CardWallet -> R.string.nav_card_wallet_short
-    BottomNavItem.Generator -> R.string.nav_generator_short  // 添加生成器短标签资源
+    BottomNavItem.Generator -> R.string.nav_generator_short
     BottomNavItem.Notes -> R.string.nav_notes_short
+    BottomNavItem.Send -> R.string.nav_v2_send_short
     BottomNavItem.Timeline -> R.string.nav_timeline_short
     BottomNavItem.Passkey -> R.string.nav_passkey_short
     BottomNavItem.Settings -> R.string.nav_settings_short
@@ -5645,6 +5820,348 @@ private fun getGroupKeyForMode(entry: takagi.ru.monica.data.PasswordEntry, mode:
 
 private fun getPasswordGroupTitle(entry: takagi.ru.monica.data.PasswordEntry): String =
     getGroupKeyForMode(entry, "smart")
+
+/**
+ * V2 导航栏 Scaffold
+ * 固定4项导航 + 最近页面动态显示
+ * 与V1逻辑完全一致，只是第二项动态显示上次访问的子页面
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun V2NavScaffold(
+    selectedItem: V2NavItem,
+    selectedSubPage: RecentSubPage?,
+    lastSubPage: RecentSubPage?,
+    recentSubPages: List<RecentSubPage>,
+    onItemSelected: (V2NavItem) -> Unit,
+    onSubPageSelected: (RecentSubPage) -> Unit,
+    onNavigateToSubPage: (RecentSubPage) -> Unit,
+    passwordViewModel: PasswordViewModel,
+    settingsViewModel: SettingsViewModel,
+    totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
+    documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
+    generatorViewModel: GeneratorViewModel,
+    noteViewModel: NoteViewModel,
+    passkeyViewModel: PasskeyViewModel,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    securityManager: SecurityManager,
+    onNavigateToAddPassword: (Long?) -> Unit,
+    onNavigateToAddTotp: (Long?) -> Unit,
+    onNavigateToQuickTotpScan: () -> Unit,
+    onNavigateToAddBankCard: (Long?) -> Unit,
+    onNavigateToAddDocument: (Long?) -> Unit,
+    onNavigateToAddNote: (Long?) -> Unit,
+    onNavigateToPasswordDetail: (Long) -> Unit,
+    onNavigateToBankCardDetail: (Long) -> Unit,
+    onNavigateToDocumentDetail: (Long) -> Unit,
+    onNavigateToChangePassword: () -> Unit,
+    onNavigateToSecurityQuestion: () -> Unit,
+    onNavigateToSyncBackup: () -> Unit,
+    onNavigateToAutofill: () -> Unit,
+    onNavigateToPasskeySettings: () -> Unit,
+    onNavigateToBottomNavSettings: () -> Unit,
+    onNavigateToColorScheme: () -> Unit,
+    onSecurityAnalysis: () -> Unit,
+    onNavigateToDeveloperSettings: () -> Unit,
+    onNavigateToPermissionManagement: () -> Unit,
+    onNavigateToMonicaPlus: () -> Unit,
+    onNavigateToExtensions: () -> Unit,
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit
+) {
+    // ========== 选择模式状态（与V1完全一致）==========
+    // 密码选择模式
+    var isPasswordSelectionMode by remember { mutableStateOf(false) }
+    var selectedPasswordCount by remember { mutableIntStateOf(0) }
+    var onExitPasswordSelection by remember { mutableStateOf({}) }
+    var onSelectAllPasswords by remember { mutableStateOf({}) }
+    var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
+    var onMoveToCategoryPasswords by remember { mutableStateOf({}) }
+    var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
+    
+    // TOTP选择模式
+    var isTotpSelectionMode by remember { mutableStateOf(false) }
+    var selectedTotpCount by remember { mutableIntStateOf(0) }
+    var onExitTotpSelection by remember { mutableStateOf({}) }
+    var onSelectAllTotp by remember { mutableStateOf({}) }
+    var onDeleteSelectedTotp by remember { mutableStateOf({}) }
+    
+    // 银行卡选择模式
+    var isBankCardSelectionMode by remember { mutableStateOf(false) }
+    var selectedBankCardCount by remember { mutableIntStateOf(0) }
+    var onExitBankCardSelection by remember { mutableStateOf({}) }
+    var onSelectAllBankCards by remember { mutableStateOf({}) }
+    var onDeleteSelectedBankCards by remember { mutableStateOf({}) }
+    var onFavoriteBankCards by remember { mutableStateOf({}) }
+    
+    // 证件选择模式
+    var isDocumentSelectionMode by remember { mutableStateOf(false) }
+    var selectedDocumentCount by remember { mutableIntStateOf(0) }
+    var onExitDocumentSelection by remember { mutableStateOf({}) }
+    var onSelectAllDocuments by remember { mutableStateOf({}) }
+    var onDeleteSelectedDocuments by remember { mutableStateOf({}) }
+    
+    // 笔记选择模式
+    var isNoteSelectionMode by remember { mutableStateOf(false) }
+    
+    // 卡包子标签
+    var cardWalletSubTab by remember { mutableStateOf(CardWalletTab.BANK_CARDS) }
+    
+    // 是否有任何选择模式激活
+    val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || 
+        isBankCardSelectionMode || isDocumentSelectionMode || isNoteSelectionMode
+    
+    // 是否显示FAB（选择模式时隐藏）
+    val showFab = selectedItem == V2NavItem.VAULT && selectedSubPage != null && !isAnySelectionMode
+    
+    Scaffold(
+        bottomBar = {
+            // 底栏始终显示，不因选择模式隐藏
+            V2NavigationBar(
+                selectedItem = selectedItem,
+                selectedSubPage = selectedSubPage,
+                lastSubPage = lastSubPage,
+                recentSubPages = recentSubPages,
+                onItemSelected = onItemSelected,
+                onSubPageSelected = onSubPageSelected
+            )
+        },
+        floatingActionButton = {
+            if (showFab) {
+                when (selectedSubPage) {
+                    RecentSubPage.PASSWORDS -> {
+                        FloatingActionButton(onClick = { onNavigateToAddPassword(null) }) {
+                            Icon(Icons.Default.Add, contentDescription = "添加密码")
+                        }
+                    }
+                    RecentSubPage.AUTHENTICATOR -> {
+                        FloatingActionButton(onClick = onNavigateToQuickTotpScan) {
+                            Icon(Icons.Default.Add, contentDescription = "添加验证器")
+                        }
+                    }
+                    RecentSubPage.CARD_WALLET -> {
+                        if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+                            FloatingActionButton(onClick = { onNavigateToAddBankCard(null) }) {
+                                Icon(Icons.Default.Add, contentDescription = "添加卡片")
+                            }
+                        } else {
+                            FloatingActionButton(onClick = { onNavigateToAddDocument(null) }) {
+                                Icon(Icons.Default.Add, contentDescription = "添加证件")
+                            }
+                        }
+                    }
+                    RecentSubPage.NOTES -> {
+                        FloatingActionButton(onClick = { onNavigateToAddNote(null) }) {
+                            Icon(Icons.Default.Add, contentDescription = "添加笔记")
+                        }
+                    }
+                    else -> {}
+                }
+            }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // 根据选中项显示内容
+            when (selectedItem) {
+                V2NavItem.VAULT -> {
+                    // 库页面 - 显示子页面内容
+                    when (selectedSubPage) {
+                        RecentSubPage.PASSWORDS -> {
+                            PasswordListContent(
+                                viewModel = passwordViewModel,
+                                settingsViewModel = settingsViewModel,
+                                securityManager = securityManager,
+                                keepassDatabases = emptyList(),
+                                bitwardenVaults = emptyList(),
+                                localKeePassViewModel = localKeePassViewModel,
+                                groupMode = "none",
+                                stackCardMode = StackCardMode.AUTO,
+                                onCreateCategory = {},
+                                onRenameCategory = {},
+                                onDeleteCategory = {},
+                                onPasswordClick = { password -> onNavigateToAddPassword(password.id) },
+                                onNavigateToAddPassword = onNavigateToAddPassword,
+                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
+                                    isPasswordSelectionMode = isSelectionMode
+                                    selectedPasswordCount = count
+                                    onExitPasswordSelection = onExit
+                                    onSelectAllPasswords = onSelectAll
+                                    onFavoriteSelectedPasswords = onFavorite
+                                    onMoveToCategoryPasswords = onMoveToCategory
+                                    onDeleteSelectedPasswords = onDelete
+                                }
+                            )
+                        }
+                        RecentSubPage.AUTHENTICATOR -> {
+                            TotpListContent(
+                                viewModel = totpViewModel,
+                                onTotpClick = { totpId -> onNavigateToAddTotp(totpId) },
+                                onDeleteTotp = { totp -> totpViewModel.deleteTotpItem(totp) },
+                                onQuickScanTotp = onNavigateToQuickTotpScan,
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                    isTotpSelectionMode = isSelectionMode
+                                    selectedTotpCount = count
+                                    onExitTotpSelection = onExit
+                                    onSelectAllTotp = onSelectAll
+                                    onDeleteSelectedTotp = onDelete
+                                }
+                            )
+                        }
+                        RecentSubPage.CARD_WALLET -> {
+                            CardWalletScreen(
+                                bankCardViewModel = bankCardViewModel,
+                                documentViewModel = documentViewModel,
+                                onCardClick = onNavigateToBankCardDetail,
+                                onDocumentClick = onNavigateToDocumentDetail,
+                                currentTab = cardWalletSubTab,
+                                onTabSelected = { cardWalletSubTab = it },
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                    isDocumentSelectionMode = isSelectionMode
+                                    selectedDocumentCount = count
+                                    onExitDocumentSelection = onExit
+                                    onSelectAllDocuments = onSelectAll
+                                    onDeleteSelectedDocuments = onDelete
+                                },
+                                onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onDelete ->
+                                    isBankCardSelectionMode = isSelectionMode
+                                    selectedBankCardCount = count
+                                    onExitBankCardSelection = onExit
+                                    onSelectAllBankCards = onSelectAll
+                                    onFavoriteBankCards = onFavorite
+                                    onDeleteSelectedBankCards = onDelete
+                                }
+                            )
+                        }
+                        RecentSubPage.NOTES -> {
+                            NoteListScreen(
+                                viewModel = noteViewModel,
+                                settingsViewModel = settingsViewModel,
+                                onNavigateToAddNote = onNavigateToAddNote,
+                                securityManager = securityManager,
+                                onSelectionModeChange = {}
+                            )
+                        }
+                        RecentSubPage.PASSKEY -> {
+                            PasskeyListScreen(
+                                viewModel = passkeyViewModel,
+                                onPasskeyClick = {}
+                            )
+                        }
+                        RecentSubPage.TIMELINE -> {
+                            TimelineScreen()
+                        }
+                        null -> {
+                            // 如果没有选中子页面，显示密码库首页
+                            VaultHomeScreen(
+                                passwordViewModel = passwordViewModel,
+                                bankCardViewModel = bankCardViewModel,
+                                documentViewModel = documentViewModel,
+                                noteViewModel = noteViewModel,
+                                onNavigateToPasswords = { onNavigateToSubPage(RecentSubPage.PASSWORDS) },
+                                onNavigateToCardWallet = { onNavigateToSubPage(RecentSubPage.CARD_WALLET) },
+                                onNavigateToNotes = { onNavigateToSubPage(RecentSubPage.NOTES) },
+                                onNavigateToPasskey = { onNavigateToSubPage(RecentSubPage.PASSKEY) },
+                                onNavigateToTimeline = { onNavigateToSubPage(RecentSubPage.TIMELINE) },
+                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                                onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                                onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
+                            )
+                        }
+                    }
+                }
+                V2NavItem.SEND -> {
+                    V2SendScreen()
+                }
+                V2NavItem.GENERATOR -> {
+                    GeneratorScreen(
+                        onNavigateBack = {},
+                        viewModel = generatorViewModel,
+                        passwordViewModel = passwordViewModel
+                    )
+                }
+                V2NavItem.SETTINGS -> {
+                    SettingsScreen(
+                        viewModel = settingsViewModel,
+                        onNavigateBack = {},
+                        onResetPassword = onNavigateToChangePassword,
+                        onSecurityQuestions = onNavigateToSecurityQuestion,
+                        onNavigateToSyncBackup = onNavigateToSyncBackup,
+                        onNavigateToAutofill = onNavigateToAutofill,
+                        onNavigateToPasskeySettings = onNavigateToPasskeySettings,
+                        onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
+                        onNavigateToColorScheme = onNavigateToColorScheme,
+                        onSecurityAnalysis = onSecurityAnalysis,
+                        onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
+                        onNavigateToPermissionManagement = onNavigateToPermissionManagement,
+                        onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                        onNavigateToExtensions = onNavigateToExtensions,
+                        onClearAllData = onClearAllData,
+                        showTopBar = false
+                    )
+                }
+            }
+            
+            // ========== 多选工具栏（与V1完全一致）==========
+            when {
+                selectedSubPage == RecentSubPage.PASSWORDS && isPasswordSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
+                        selectedCount = selectedPasswordCount,
+                        onExit = onExitPasswordSelection,
+                        onSelectAll = onSelectAllPasswords,
+                        onFavorite = onFavoriteSelectedPasswords,
+                        onMoveToCategory = onMoveToCategoryPasswords,
+                        onDelete = onDeleteSelectedPasswords
+                    )
+                }
+                
+                selectedSubPage == RecentSubPage.AUTHENTICATOR && isTotpSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
+                        selectedCount = selectedTotpCount,
+                        onExit = onExitTotpSelection,
+                        onSelectAll = onSelectAllTotp,
+                        onDelete = onDeleteSelectedTotp
+                    )
+                }
+                
+                selectedSubPage == RecentSubPage.CARD_WALLET && cardWalletSubTab == CardWalletTab.BANK_CARDS && isBankCardSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
+                        selectedCount = selectedBankCardCount,
+                        onExit = onExitBankCardSelection,
+                        onSelectAll = onSelectAllBankCards,
+                        onFavorite = onFavoriteBankCards,
+                        onDelete = onDeleteSelectedBankCards
+                    )
+                }
+                
+                selectedSubPage == RecentSubPage.CARD_WALLET && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
+                    SelectionActionBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 20.dp),
+                        selectedCount = selectedDocumentCount,
+                        onExit = onExitDocumentSelection,
+                        onSelectAll = onSelectAllDocuments,
+                        onDelete = onDeleteSelectedDocuments
+                    )
+                }
+            }
+        }
+    }
+}
 
 private enum class StackCardMode {
     AUTO,            // 根据卡片类型自动决定堆叠/展开

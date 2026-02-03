@@ -70,6 +70,8 @@ import takagi.ru.monica.viewmodel.TotpViewModel
 
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -147,6 +149,16 @@ fun AddEditPasswordScreen(
     // KeePass 数据库选择
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
+    
+    // Bitwarden Vault 选择
+    var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    
+    // 加载 Bitwarden vaults
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
     
     // SSO 登录方式字段
     var loginType by rememberSaveable { mutableStateOf("PASSWORD") }
@@ -401,6 +413,7 @@ fun AddEditPasswordScreen(
                                     creditCardCVV = creditCardCVV,
                                     categoryId = categoryId,
                                     keepassDatabaseId = keepassDatabaseId,
+                                    bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
                                     authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
                                     loginType = loginType,
                                     ssoProvider = ssoProvider,
@@ -477,8 +490,19 @@ fun AddEditPasswordScreen(
             item {
                 VaultSelector(
                     keepassDatabases = keepassDatabases,
-                    selectedDatabaseId = keepassDatabaseId,
-                    onDatabaseSelected = { keepassDatabaseId = it }
+                    selectedKeePassDatabaseId = keepassDatabaseId,
+                    onKeePassDatabaseSelected = { 
+                        keepassDatabaseId = it
+                        // 选择 KeePass 时清除 Bitwarden 选择
+                        if (it != null) bitwardenVaultId = null
+                    },
+                    bitwardenVaults = bitwardenVaults,
+                    selectedBitwardenVaultId = bitwardenVaultId,
+                    onBitwardenVaultSelected = {
+                        bitwardenVaultId = it
+                        // 选择 Bitwarden 时清除 KeePass 选择
+                        if (it != null) keepassDatabaseId = null
+                    }
                 )
             }
             
@@ -1699,34 +1723,74 @@ private fun SsoRefEntryPickerDialog(
 
 /**
  * 保管库选择器 - M3E 风格设计
- * 选择存储位置：仅 Monica 本地 或 同步到 KeePass 数据库
+ * 选择存储位置：仅 Monica 本地、KeePass 数据库 或 Bitwarden Vault
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VaultSelector(
     keepassDatabases: List<LocalKeePassDatabase>,
-    selectedDatabaseId: Long?,
-    onDatabaseSelected: (Long?) -> Unit
+    selectedKeePassDatabaseId: Long?,
+    onKeePassDatabaseSelected: (Long?) -> Unit,
+    bitwardenVaults: List<BitwardenVault>,
+    selectedBitwardenVaultId: Long?,
+    onBitwardenVaultSelected: (Long?) -> Unit
 ) {
-    // 如果没有 KeePass 数据库，不显示选择器
-    if (keepassDatabases.isEmpty()) return
+    // 如果没有任何外部数据库，不显示选择器
+    if (keepassDatabases.isEmpty() && bitwardenVaults.isEmpty()) return
     
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
-    val selectedDatabase = keepassDatabases.find { it.id == selectedDatabaseId }
-    val displayName = selectedDatabase?.name ?: stringResource(R.string.vault_monica_only)
-    val isKeePass = selectedDatabase != null
+    val selectedKeePassDatabase = keepassDatabases.find { it.id == selectedKeePassDatabaseId }
+    val selectedBitwardenVault = bitwardenVaults.find { it.id == selectedBitwardenVaultId }
+    
+    // 判断当前选择的类型
+    val isKeePass = selectedKeePassDatabase != null
+    val isBitwarden = selectedBitwardenVault != null
+    val isLocal = !isKeePass && !isBitwarden
+    
+    val displayName = when {
+        isKeePass -> selectedKeePassDatabase!!.name
+        isBitwarden -> "Bitwarden (${selectedBitwardenVault!!.email})"
+        else -> stringResource(R.string.vault_monica_only)
+    }
+    
+    val displaySubtitle = when {
+        isKeePass -> stringResource(R.string.vault_sync_hint)
+        isBitwarden -> "将同步保存到 Bitwarden"
+        else -> stringResource(R.string.vault_monica_only_desc)
+    }
+    
+    val containerColor = when {
+        isBitwarden -> MaterialTheme.colorScheme.tertiaryContainer
+        isKeePass -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    
+    val contentColor = when {
+        isBitwarden -> MaterialTheme.colorScheme.onTertiaryContainer
+        isKeePass -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    
+    val iconColor = when {
+        isBitwarden -> MaterialTheme.colorScheme.tertiary
+        isKeePass -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.secondary
+    }
+    
+    val icon = when {
+        isBitwarden -> Icons.Default.Cloud
+        isKeePass -> Icons.Default.Key
+        else -> Icons.Default.Shield
+    }
     
     // M3E 风格的卡片选择器
     Surface(
         onClick = { showBottomSheet = true },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        color = if (isKeePass) 
-            MaterialTheme.colorScheme.primaryContainer 
-        else 
-            MaterialTheme.colorScheme.secondaryContainer,
+        color = containerColor,
         tonalElevation = 2.dp
     ) {
         Row(
@@ -1739,10 +1803,7 @@ private fun VaultSelector(
             // M3E 风格图标容器
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = if (isKeePass) 
-                    MaterialTheme.colorScheme.primary 
-                else 
-                    MaterialTheme.colorScheme.secondary,
+                color = iconColor,
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(
@@ -1750,12 +1811,13 @@ private fun VaultSelector(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Icon(
-                        imageVector = if (isKeePass) Icons.Default.Key else Icons.Default.Shield,
+                        imageVector = icon,
                         contentDescription = null,
-                        tint = if (isKeePass)
-                            MaterialTheme.colorScheme.onPrimary
-                        else
-                            MaterialTheme.colorScheme.onSecondary,
+                        tint = when {
+                            isBitwarden -> MaterialTheme.colorScheme.onTertiary
+                            isKeePass -> MaterialTheme.colorScheme.onPrimary
+                            else -> MaterialTheme.colorScheme.onSecondary
+                        },
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -1767,21 +1829,12 @@ private fun VaultSelector(
                     text = displayName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isKeePass)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSecondaryContainer
+                    color = contentColor
                 )
                 Text(
-                    text = if (isKeePass) 
-                        stringResource(R.string.vault_sync_hint)
-                    else 
-                        stringResource(R.string.vault_monica_only_desc),
+                    text = displaySubtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isKeePass)
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    else
-                        MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                    color = contentColor.copy(alpha = 0.7f)
                 )
             }
             
@@ -1789,10 +1842,7 @@ private fun VaultSelector(
             Icon(
                 imageVector = Icons.Default.UnfoldMore,
                 contentDescription = null,
-                tint = if (isKeePass)
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                else
-                    MaterialTheme.colorScheme.onSecondaryContainer
+                tint = contentColor
             )
         }
     }
@@ -1826,37 +1876,75 @@ private fun VaultSelector(
                     title = stringResource(R.string.vault_monica_only),
                     subtitle = stringResource(R.string.vault_monica_only_desc),
                     icon = Icons.Default.Shield,
-                    isSelected = selectedDatabaseId == null,
+                    isSelected = isLocal,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     iconColor = MaterialTheme.colorScheme.secondary,
                     onClick = {
-                        onDatabaseSelected(null)
+                        onKeePassDatabaseSelected(null)
+                        onBitwardenVaultSelected(null)
                         showBottomSheet = false
                     }
                 )
                 
-                // KeePass 数据库选项
-                keepassDatabases.forEach { database ->
-                    val isSelected = selectedDatabaseId == database.id
-                    val storageText = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL)
-                        stringResource(R.string.external_storage)
-                    else
-                        stringResource(R.string.internal_storage)
-                    
-                    VaultOptionItem(
-                        title = database.name,
-                        subtitle = "$storageText · ${stringResource(R.string.vault_sync_hint)}",
-                        icon = Icons.Default.Key,
-                        isSelected = isSelected,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        onClick = {
-                            onDatabaseSelected(database.id)
-                            showBottomSheet = false
-                        }
+                // Bitwarden Vault 选项
+                if (bitwardenVaults.isNotEmpty()) {
+                    Text(
+                        text = "Bitwarden",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                     )
+                    
+                    bitwardenVaults.forEach { vault ->
+                        val isSelected = selectedBitwardenVaultId == vault.id
+                        
+                        VaultOptionItem(
+                            title = vault.displayName ?: vault.email,
+                            subtitle = "${vault.serverUrl} · 将同步保存到 Bitwarden",
+                            icon = Icons.Default.Cloud,
+                            isSelected = isSelected,
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
+                            onClick = {
+                                onBitwardenVaultSelected(vault.id)
+                                showBottomSheet = false
+                            }
+                        )
+                    }
+                }
+                
+                // KeePass 数据库选项
+                if (keepassDatabases.isNotEmpty()) {
+                    Text(
+                        text = "KeePass",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    )
+                    
+                    keepassDatabases.forEach { database ->
+                        val isSelected = selectedKeePassDatabaseId == database.id
+                        val storageText = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL)
+                            stringResource(R.string.external_storage)
+                        else
+                            stringResource(R.string.internal_storage)
+                        
+                        VaultOptionItem(
+                            title = database.name,
+                            subtitle = "$storageText · ${stringResource(R.string.vault_sync_hint)}",
+                            icon = Icons.Default.Key,
+                            isSelected = isSelected,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            onClick = {
+                                onKeePassDatabaseSelected(database.id)
+                                showBottomSheet = false
+                            }
+                        )
+                    }
                 }
             }
         }

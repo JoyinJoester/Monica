@@ -7,6 +7,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
+import takagi.ru.monica.bitwarden.sync.EmptyVaultProtection
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.*
@@ -76,6 +77,48 @@ class BitwardenSyncService(
             val syncResponse = response.body() ?: return@withContext SyncResult.Error(
                 "Empty sync response"
             )
+            
+            // ===== 空 Vault 保护检查 =====
+            val serverCipherCount = syncResponse.ciphers.size
+            val localCipherCount = passwordEntryDao.getBitwardenEntriesCount(vault.id)
+            val isFirstSync = vault.lastSyncAt == null
+            
+            val protectionResult = EmptyVaultProtection.checkSyncAllowed(
+                vaultId = vault.id,
+                localCipherCount = localCipherCount,
+                serverCipherCount = serverCipherCount,
+                isFirstSync = isFirstSync
+            )
+            
+            when (protectionResult) {
+                is EmptyVaultProtection.CheckResult.Blocked -> {
+                    android.util.Log.w(TAG, "⚠️ 空 Vault 保护触发: ${protectionResult.reason}")
+                    // 发送警告事件
+                    EmptyVaultProtection.emitEmptyVaultDetected(
+                        vaultId = vault.id,
+                        localCount = protectionResult.localCount,
+                        serverCount = protectionResult.serverCount
+                    )
+                    return@withContext SyncResult.EmptyVaultBlocked(
+                        localCount = protectionResult.localCount,
+                        serverCount = protectionResult.serverCount,
+                        reason = protectionResult.reason
+                    )
+                }
+                is EmptyVaultProtection.CheckResult.FirstSyncAllowed -> {
+                    android.util.Log.i(TAG, "首次同步，允许空 Vault")
+                }
+                is EmptyVaultProtection.CheckResult.Allowed -> {
+                    android.util.Log.d(TAG, "同步检查通过")
+                }
+            }
+            
+            // 额外检查：是否有显著数据丢失风险
+            if (EmptyVaultProtection.checkSignificantDataLoss(localCipherCount, serverCipherCount)) {
+                android.util.Log.w(TAG, "⚠️ 检测到潜在数据丢失: 本地 $localCipherCount 条 → 服务器 $serverCipherCount 条")
+                // 这里不阻止同步，但记录警告
+            }
+            // ===== 空 Vault 保护检查结束 =====
             
             // 处理同步数据
             val result = processSyncResponse(vault, syncResponse, symmetricKey)
@@ -435,8 +478,9 @@ class BitwardenSyncService(
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
     ): Boolean {
-        // TODO: 实现创建操作
-        return false
+        val entryId = op.entryId ?: return false
+        val entry = passwordEntryDao.getPasswordEntryById(entryId) ?: return false
+        return uploadLocalEntry(vault, entry, accessToken, symmetricKey)
     }
     
     private suspend fun processUpdateOperation(
@@ -445,8 +489,10 @@ class BitwardenSyncService(
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
     ): Boolean {
-        // TODO: 实现更新操作
-        return false
+        val entryId = op.entryId ?: return false
+        val entry = passwordEntryDao.getPasswordEntryById(entryId) ?: return false
+        val cipherId = entry.bitwardenCipherId ?: return false
+        return updateRemoteCipher(vault, entry, cipherId, accessToken, symmetricKey)
     }
     
     private suspend fun processDeleteOperation(
@@ -454,8 +500,249 @@ class BitwardenSyncService(
         op: BitwardenPendingOperation,
         accessToken: String
     ): Boolean {
-        // TODO: 实现删除操作
-        return false
+        val cipherId = op.bitwardenCipherId ?: return false
+        return deleteRemoteCipher(vault, cipherId, accessToken)
+    }
+    
+    // ========== 上传本地条目到 Bitwarden ==========
+    
+    /**
+     * 上传本地创建的条目到 Bitwarden 服务器
+     * 用于处理在 Monica 本地创建但标记为 Bitwarden 存储的条目
+     */
+    suspend fun uploadLocalEntries(
+        vault: BitwardenVault,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): UploadResult = withContext(Dispatchers.IO) {
+        android.util.Log.i(TAG, "Checking for local entries to upload for vault ${vault.id}")
+        
+        // 查找所有需要上传的条目：有 bitwardenVaultId 但没有 bitwardenCipherId
+        val entriesToUpload = passwordEntryDao.getLocalEntriesPendingUpload(vault.id)
+        
+        if (entriesToUpload.isEmpty()) {
+            android.util.Log.d(TAG, "No local entries pending upload")
+            return@withContext UploadResult.Success(uploaded = 0, failed = 0)
+        }
+        
+        android.util.Log.i(TAG, "Found ${entriesToUpload.size} entries to upload")
+        
+        var uploaded = 0
+        var failed = 0
+        
+        for (entry in entriesToUpload) {
+            try {
+                val success = uploadLocalEntry(vault, entry, accessToken, symmetricKey)
+                if (success) {
+                    uploaded++
+                } else {
+                    failed++
+                }
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Failed to upload entry ${entry.id}: ${e.message}")
+                failed++
+            }
+        }
+        
+        android.util.Log.i(TAG, "Upload complete: $uploaded uploaded, $failed failed")
+        UploadResult.Success(uploaded = uploaded, failed = failed)
+    }
+    
+    /**
+     * 上传单个本地条目到 Bitwarden
+     */
+    private suspend fun uploadLocalEntry(
+        vault: BitwardenVault,
+        entry: PasswordEntry,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): Boolean {
+        try {
+            // 构建加密的 Cipher 请求
+            val createRequest = passwordEntryToCipherRequest(entry, symmetricKey)
+            
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.createCipher(
+                authorization = "Bearer $accessToken",
+                cipher = createRequest
+            )
+            
+            if (!response.isSuccessful) {
+                android.util.Log.e(TAG, "Create cipher failed: ${response.code()} ${response.message()}")
+                return false
+            }
+            
+            val createdCipher = response.body() ?: return false
+            
+            // 更新本地条目，添加服务器返回的 cipherId 和 revisionDate
+            val updatedEntry = entry.copy(
+                bitwardenCipherId = createdCipher.id,
+                bitwardenRevisionDate = createdCipher.revisionDate,
+                bitwardenLocalModified = false,
+                updatedAt = Date()
+            )
+            passwordEntryDao.update(updatedEntry)
+            
+            android.util.Log.d(TAG, "Successfully uploaded entry ${entry.id} as cipher ${createdCipher.id}")
+            return true
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Upload entry failed: ${e.message}", e)
+            return false
+        }
+    }
+    
+    /**
+     * 更新远程 Cipher
+     */
+    private suspend fun updateRemoteCipher(
+        vault: BitwardenVault,
+        entry: PasswordEntry,
+        cipherId: String,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): Boolean {
+        try {
+            val updateRequest = passwordEntryToCipherUpdateRequest(entry, symmetricKey)
+            
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.updateCipher(
+                authorization = "Bearer $accessToken",
+                cipherId = cipherId,
+                cipher = updateRequest
+            )
+            
+            if (!response.isSuccessful) {
+                android.util.Log.e(TAG, "Update cipher failed: ${response.code()}")
+                return false
+            }
+            
+            val updatedCipher = response.body() ?: return false
+            
+            // 更新本地条目
+            val updatedEntry = entry.copy(
+                bitwardenRevisionDate = updatedCipher.revisionDate,
+                bitwardenLocalModified = false,
+                updatedAt = Date()
+            )
+            passwordEntryDao.update(updatedEntry)
+            
+            return true
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Update remote cipher failed: ${e.message}", e)
+            return false
+        }
+    }
+    
+    /**
+     * 删除远程 Cipher
+     */
+    private suspend fun deleteRemoteCipher(
+        vault: BitwardenVault,
+        cipherId: String,
+        accessToken: String
+    ): Boolean {
+        try {
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.deleteCipher(
+                authorization = "Bearer $accessToken",
+                cipherId = cipherId
+            )
+            
+            return response.isSuccessful
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Delete remote cipher failed: ${e.message}", e)
+            return false
+        }
+    }
+    
+    /**
+     * 将 PasswordEntry 转换为加密的 CipherCreateRequest
+     */
+    private fun passwordEntryToCipherRequest(
+        entry: PasswordEntry,
+        symmetricKey: SymmetricCryptoKey
+    ): CipherCreateRequest {
+        val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        
+        // 加密各个字段
+        val encryptedName = crypto.encryptString(entry.title, symmetricKey)
+        val encryptedNotes = if (entry.notes.isNotBlank()) {
+            crypto.encryptString(entry.notes, symmetricKey)
+        } else null
+        
+        // 构建 Login 数据
+        val loginData = CipherLoginApiData(
+            username = if (entry.username.isNotBlank()) {
+                crypto.encryptString(entry.username, symmetricKey)
+            } else null,
+            password = if (entry.password.isNotBlank()) {
+                crypto.encryptString(entry.password, symmetricKey)
+            } else null,
+            totp = if (entry.authenticatorKey.isNotBlank()) {
+                crypto.encryptString(entry.authenticatorKey, symmetricKey)
+            } else null,
+            uris = if (entry.website.isNotBlank()) {
+                listOf(
+                    CipherUriApiData(
+                        uri = crypto.encryptString(entry.website, symmetricKey),
+                        match = null
+                    )
+                )
+            } else null
+        )
+        
+        return CipherCreateRequest(
+            type = 1, // Login type
+            folderId = entry.bitwardenFolderId,
+            name = encryptedName,
+            notes = encryptedNotes,
+            login = loginData,
+            favorite = entry.isFavorite
+        )
+    }
+    
+    /**
+     * 将 PasswordEntry 转换为加密的 CipherUpdateRequest
+     */
+    private fun passwordEntryToCipherUpdateRequest(
+        entry: PasswordEntry,
+        symmetricKey: SymmetricCryptoKey
+    ): CipherUpdateRequest {
+        val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        
+        val encryptedName = crypto.encryptString(entry.title, symmetricKey)
+        val encryptedNotes = if (entry.notes.isNotBlank()) {
+            crypto.encryptString(entry.notes, symmetricKey)
+        } else null
+        
+        val loginData = CipherLoginApiData(
+            username = if (entry.username.isNotBlank()) {
+                crypto.encryptString(entry.username, symmetricKey)
+            } else null,
+            password = if (entry.password.isNotBlank()) {
+                crypto.encryptString(entry.password, symmetricKey)
+            } else null,
+            totp = if (entry.authenticatorKey.isNotBlank()) {
+                crypto.encryptString(entry.authenticatorKey, symmetricKey)
+            } else null,
+            uris = if (entry.website.isNotBlank()) {
+                listOf(
+                    CipherUriApiData(
+                        uri = crypto.encryptString(entry.website, symmetricKey),
+                        match = null
+                    )
+                )
+            } else null
+        )
+        
+        return CipherUpdateRequest(
+            type = 1,
+            folderId = entry.bitwardenFolderId,
+            name = encryptedName,
+            notes = encryptedNotes,
+            login = loginData,
+            favorite = entry.isFavorite
+        )
     }
 }
 
@@ -470,6 +757,15 @@ sealed class SyncResult {
     ) : SyncResult()
     
     data class Error(val message: String) : SyncResult()
+    
+    /**
+     * 空 Vault 保护阻止了同步
+     */
+    data class EmptyVaultBlocked(
+        val localCount: Int,
+        val serverCount: Int,
+        val reason: String
+    ) : SyncResult()
 }
 
 sealed class CipherSyncResult {
@@ -478,4 +774,9 @@ sealed class CipherSyncResult {
     object Conflict : CipherSyncResult()
     data class Skipped(val reason: String) : CipherSyncResult()
     data class Error(val message: String) : CipherSyncResult()
+}
+
+sealed class UploadResult {
+    data class Success(val uploaded: Int, val failed: Int) : UploadResult()
+    data class Error(val message: String) : UploadResult()
 }

@@ -602,6 +602,35 @@
     <string name="nav_passkey_short">Pass</string>
     <string name="nav_settings_short">Set</string>
     
+    <!-- V2 Multi-Source Vault Navigation -->
+    <string name="nav_v2_vault">Vault</string>
+    <string name="nav_v2_vault_short">Vault</string>
+    <string name="nav_v2_send">Send</string>
+    <string name="nav_v2_send_short">Send</string>
+    <string name="nav_v2_sync">Sync</string>
+    <string name="nav_v2_sync_short">Sync</string>
+    <string name="v2_vault_title">Multi-Source Vault</string>
+    <string name="v2_vault_subtitle">View and manage passwords from multiple sources</string>
+    <string name="v2_send_title">Secure Send</string>
+    <string name="v2_send_subtitle">Share secrets securely</string>
+    <string name="v2_sync_title">Sync Center</string>
+    <string name="v2_sync_subtitle">Manage sync with Bitwarden and other services</string>
+    <string name="v2_source_local">Local</string>
+    <string name="v2_source_bitwarden">Bitwarden</string>
+    <string name="v2_source_keepass">KeePass</string>
+    <string name="v2_filter_all">All</string>
+    <string name="v2_filter_login">Login</string>
+    <string name="v2_filter_card">Card</string>
+    <string name="v2_filter_identity">Identity</string>
+    <string name="v2_filter_note">Note</string>
+    <string name="v2_no_items">No items in vault</string>
+    <string name="v2_connect_bitwarden">Connect Bitwarden</string>
+    <string name="v2_search_placeholder">Search vault…</string>
+    <string name="v2_create_login">Login</string>
+    <string name="v2_create_card">Card</string>
+    <string name="v2_create_identity">Identity</string>
+    <string name="v2_create_note">Note</string>
+    
     <!-- Passkey Screen -->
     <string name="passkey_title">Passkey</string>
     <string name="passkey_count">%1$d passkeys</string>

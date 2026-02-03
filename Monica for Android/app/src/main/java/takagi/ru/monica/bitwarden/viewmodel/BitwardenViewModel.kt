@@ -152,10 +152,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     _loginState.value = LoginState.Success(result.vault)
                     _activeVault.value = result.vault
                     _unlockState.value = UnlockState.Unlocked
-                    loadVaults()
-                    loadVaultData(result.vault.id)
                     _events.emit(BitwardenEvent.ShowSuccess("登录成功"))
                     _events.emit(BitwardenEvent.NavigateToVault(result.vault.id))
+                    // 延迟加载以避免并发问题
+                    kotlinx.coroutines.delay(100)
+                    loadVaults()
+                    loadVaultData(result.vault.id)
                 }
                 
                 is BitwardenRepository.RepositoryLoginResult.TwoFactorRequired -> {
@@ -349,6 +351,14 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 is BitwardenRepository.SyncResult.Error -> {
                     _syncState.value = SyncState.Error(result.message)
                     _events.emit(BitwardenEvent.ShowError("同步失败: ${result.message}"))
+                }
+                
+                is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                    _syncState.value = SyncState.Error("空 Vault 保护已触发")
+                    _events.emit(BitwardenEvent.ShowWarning(
+                        "服务器返回空数据，本地有 ${result.localCount} 条记录。" +
+                        "请使用 V2 界面处理此情况。"
+                    ))
                 }
             }
         }

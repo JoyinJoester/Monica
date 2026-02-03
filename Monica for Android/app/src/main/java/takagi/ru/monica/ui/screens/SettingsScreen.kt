@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -447,14 +448,33 @@ fun SettingsScreen(
                     onClick = { showLanguageDialog = true }
                 )
                 
-                // 2. 底部导航栏设置
+                // 导航栏版本切换
                 SettingsItem(
-                    icon = Icons.Default.ViewWeek,
-                    title = context.getString(R.string.bottom_nav_settings),
-                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
-                    onClick = onNavigateToBottomNavSettings,
-                    modifier = getSharedModifier("bottom_nav_settings_card")
+                    icon = Icons.Default.Dashboard,
+                    title = "导航栏版本",
+                    subtitle = if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) 
+                        "V1 经典导航栏（可自定义）" 
+                    else 
+                        "V2 简洁导航栏（固定4项 + 最近页面）",
+                    onClick = {
+                        val newVersion = if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) 
+                            takagi.ru.monica.data.NavBarVersion.V2 
+                        else 
+                            takagi.ru.monica.data.NavBarVersion.V1
+                        viewModel.updateNavBarVersion(newVersion)
+                    }
                 )
+                
+                // 2. 底部导航栏设置（仅V1模式可用）
+                if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) {
+                    SettingsItem(
+                        icon = Icons.Default.ViewWeek,
+                        title = context.getString(R.string.bottom_nav_settings),
+                        subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
+                        onClick = onNavigateToBottomNavSettings,
+                        modifier = getSharedModifier("bottom_nav_settings_card")
+                    )
+                }
                 
                 // 3. 功能扩展入口
                 SettingsItem(
@@ -1546,6 +1566,8 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
+    BottomNavContentTab.VAULT -> Icons.Default.Dataset
+    BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
@@ -1556,6 +1578,8 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.TIMELINE -> R.string.nav_timeline
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
+    BottomNavContentTab.VAULT -> R.string.nav_v2_vault
+    BottomNavContentTab.SEND -> R.string.nav_v2_send
 }
 
 @Composable
