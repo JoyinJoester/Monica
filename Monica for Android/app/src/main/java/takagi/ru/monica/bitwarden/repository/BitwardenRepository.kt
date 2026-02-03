@@ -45,6 +45,68 @@ class BitwardenRepository(private val context: Context) {
                 instance ?: BitwardenRepository(context.applicationContext).also { instance = it }
             }
         }
+        
+        /**
+         * 将技术性错误消息转换为用户友好的中文提示
+         */
+        fun parseErrorMessage(rawError: String?): String {
+            if (rawError.isNullOrBlank()) return "未知错误"
+            
+            return when {
+                // 账号密码错误
+                rawError.contains("invalid_username_or_password", ignoreCase = true) ||
+                rawError.contains("Username or password is incorrect", ignoreCase = true) ->
+                    "邮箱或主密码错误，请检查后重试"
+                
+                // 验证码错误
+                rawError.contains("Invalid New Device OTP", ignoreCase = true) ||
+                rawError.contains("invalid new device otp", ignoreCase = true) ->
+                    "验证码错误或已过期，请重新获取"
+                
+                rawError.contains("Two-step token is invalid", ignoreCase = true) ||
+                rawError.contains("invalid two-step", ignoreCase = true) ->
+                    "两步验证码错误，请检查后重试"
+                
+                // 需要新设备验证
+                rawError.contains("New device verification required", ignoreCase = true) ||
+                rawError.contains("new device verification", ignoreCase = true) ->
+                    "需要验证新设备，请检查邮箱获取验证码"
+                
+                // Captcha 验证
+                rawError.contains("captcha", ignoreCase = true) ->
+                    "需要 Captcha 验证，请稍后重试或使用官方客户端登录"
+                
+                // 账户锁定
+                rawError.contains("locked", ignoreCase = true) ||
+                rawError.contains("too many attempts", ignoreCase = true) ->
+                    "登录尝试次数过多，账户已暂时锁定，请稍后重试"
+                
+                // 网络错误
+                rawError.contains("timeout", ignoreCase = true) ||
+                rawError.contains("connect", ignoreCase = true) ||
+                rawError.contains("network", ignoreCase = true) ->
+                    "网络连接失败，请检查网络后重试"
+                
+                // 服务器错误
+                rawError.contains("500") || rawError.contains("502") || 
+                rawError.contains("503") || rawError.contains("504") ->
+                    "服务器暂时不可用，请稍后重试"
+                
+                // 其他 400 错误
+                rawError.contains("400") && rawError.contains("invalid_grant") ->
+                    "认证失败，请检查邮箱和密码是否正确"
+                
+                // 默认返回原始错误（截断过长内容）
+                else -> {
+                    val shortError = if (rawError.length > 100) {
+                        rawError.take(100) + "..."
+                    } else {
+                        rawError
+                    }
+                    "登录失败: $shortError"
+                }
+            }
+        }
     }
     
     // Database DAOs
@@ -145,12 +207,12 @@ class BitwardenRepository(private val context: Context) {
                 },
                 onFailure = { error ->
                     Log.e(TAG, "登录失败", error)
-                    RepositoryLoginResult.Error(error.message ?: "未知错误")
+                    RepositoryLoginResult.Error(parseErrorMessage(error.message))
                 }
             )
         } catch (e: Exception) {
             Log.e(TAG, "登录异常", e)
-            RepositoryLoginResult.Error(e.message ?: "未知错误")
+            RepositoryLoginResult.Error(parseErrorMessage(e.message))
         }
     }
     
@@ -189,12 +251,12 @@ class BitwardenRepository(private val context: Context) {
                 },
                 onFailure = { error ->
                     Log.e(TAG, "两步验证登录失败", error)
-                    RepositoryLoginResult.Error(error.message ?: "验证失败")
+                    RepositoryLoginResult.Error(parseErrorMessage(error.message))
                 }
             )
         } catch (e: Exception) {
             Log.e(TAG, "两步验证异常", e)
-            RepositoryLoginResult.Error(e.message ?: "未知错误")
+            RepositoryLoginResult.Error(parseErrorMessage(e.message))
         }
     }
     
