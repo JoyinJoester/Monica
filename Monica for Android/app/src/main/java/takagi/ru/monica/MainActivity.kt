@@ -490,7 +490,8 @@ fun MonicaContent(
     @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
     androidx.compose.animation.SharedTransitionLayout {
         androidx.compose.runtime.CompositionLocalProvider(
-            takagi.ru.monica.ui.LocalSharedTransitionScope provides this
+            takagi.ru.monica.ui.LocalSharedTransitionScope provides this,
+            takagi.ru.monica.ui.LocalReduceAnimations provides settings.reduceAnimations
         ) {
             NavHost(
                 navController = navController,

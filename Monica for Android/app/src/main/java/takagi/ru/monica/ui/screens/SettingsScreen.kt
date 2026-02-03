@@ -476,6 +476,17 @@ fun SettingsScreen(
                         viewModel.updateDynamicColorEnabled(!enabled)
                     }
                 )
+                
+                // 4. 减少动画设置 - 解决 HyperOS 2/Android 15 等设备的动画卡顿问题
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.Speed,
+                    title = context.getString(R.string.reduce_animations),
+                    subtitle = context.getString(R.string.reduce_animations_description),
+                    checked = settings.reduceAnimations,
+                    onCheckedChange = { enabled ->
+                        viewModel.updateReduceAnimations(enabled)
+                    }
+                )
             }
 
             // About Settings

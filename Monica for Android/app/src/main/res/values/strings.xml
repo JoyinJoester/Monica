@@ -831,6 +831,10 @@
     <string name="disable_wallpaper_color_extraction">Disable Wallpaper Color Extraction</string>
     <string name="disable_wallpaper_color_extraction_description">Use system default color scheme instead of extracting colors from wallpaper</string>
     
+    <!-- Reduce Animations -->
+    <string name="reduce_animations">Reduce Animations</string>
+    <string name="reduce_animations_description">Disable shared element animations to fix lag on some devices (HyperOS 2/Android 15)</string>
+    
     <!-- Color Scheme -->
     <string name="color_scheme">Color Scheme</string>
     <string name="color_scheme_description">Select a color scheme for the app</string>

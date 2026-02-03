@@ -660,6 +660,10 @@
     <string name="disable_wallpaper_color_extraction">壁紙の色抽出を無効化</string>
     <string name="disable_wallpaper_color_extraction_description">壁紙から色を抽出せず、システムのデフォルト配色を使用</string>
     
+    <!-- Reduce Animations -->
+    <string name="reduce_animations">アニメーションを減らす</string>
+    <string name="reduce_animations_description">一部のデバイス（HyperOS 2/Android 15）でのラグを解消するため、共有要素アニメーションを無効化</string>
+    
     <!-- Color Scheme -->
     <string name="color_scheme">配色方案</string>
     <string name="color_scheme_description">アプリの配色を選択</string>

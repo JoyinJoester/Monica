@@ -634,6 +634,10 @@
     <string name="disable_wallpaper_color_extraction">Tắt trích xuất màu từ hình nền</string>
     <string name="disable_wallpaper_color_extraction_description">Sử dụng bảng màu mặc định thay vì trích xuất màu từ hình nền</string>
     
+    <!-- Reduce Animations -->
+    <string name="reduce_animations">Giảm hiệu ứng động</string>
+    <string name="reduce_animations_description">Tắt hiệu ứng chuyển đổi phần tử để khắc phục lag trên một số thiết bị (HyperOS 2/Android 15)</string>
+    
     <!-- Color Scheme -->
     <string name="color_scheme">Bảng màu</string>
     <string name="color_scheme_description">Chọn bảng màu cho ứng dụng</string>

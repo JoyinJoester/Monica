@@ -803,6 +803,10 @@
     <string name="disable_wallpaper_color_extraction">关闭壁纸取色</string>
     <string name="disable_wallpaper_color_extraction_description">使用系统默认配色方案而非从壁纸提取颜色</string>
     
+    <!-- Reduce Animations -->
+    <string name="reduce_animations">减少动画</string>
+    <string name="reduce_animations_description">禁用共享元素动画以解决部分设备（HyperOS 2/Android 15）的卡顿问题</string>
+    
     <!-- Color Scheme -->
     <string name="color_scheme">配色方案</string>
     <string name="color_scheme_description">为应用选择一个配色方案</string>

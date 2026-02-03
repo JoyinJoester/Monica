@@ -240,8 +240,10 @@ fun PasswordDetailScreen(
     // 准备共享元素 Modifier
     val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
     val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    val reduceAnimations = takagi.ru.monica.ui.LocalReduceAnimations.current
     var sharedModifier: Modifier = Modifier
-    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+    // 当减少动画模式开启时，不使用 sharedBounds 以解决部分设备上的动画卡顿问题
+    if (!reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "password_card_${passwordId}"),

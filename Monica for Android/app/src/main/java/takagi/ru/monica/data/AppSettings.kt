@@ -307,7 +307,8 @@ data class AppSettings(
     val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL, // 卡片显示模式
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
-    val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility() // 添加密码页面字段定制
+    val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
+    val reduceAnimations: Boolean = false // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题
 )
 
 /**
