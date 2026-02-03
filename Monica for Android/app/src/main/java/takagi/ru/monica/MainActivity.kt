@@ -1732,6 +1732,44 @@ fun MonicaContent(
                 onNavigateToVault = { vaultId ->
                     // 未来可以添加 Vault 详情页面
                     // 目前保持空实现
+                },
+                onNavigateToSyncQueue = {
+                    navController.navigate(Screen.SyncQueue.route)
+                }
+            )
+        }
+        
+        // 同步队列管理页面
+        composable(
+            route = Screen.SyncQueue.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            // 临时使用空列表，待集成 SyncQueueManager
+            var queueItems by remember { mutableStateOf(emptyList<takagi.ru.monica.bitwarden.ui.SyncQueueItem>()) }
+            
+            takagi.ru.monica.bitwarden.ui.SyncQueueScreen(
+                queueItems = queueItems,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onRetryItem = { item ->
+                    // TODO: 实现重试逻辑
+                },
+                onDeleteItem = { item ->
+                    // TODO: 实现删除逻辑
+                    queueItems = queueItems.filter { it.id != item.id }
+                },
+                onRetryAll = {
+                    // TODO: 实现全部重试逻辑
+                },
+                onClearCompleted = {
+                    // TODO: 实现清除已完成逻辑
+                    queueItems = queueItems.filter { 
+                        it.status != takagi.ru.monica.bitwarden.sync.SyncStatus.SYNCED 
+                    }
                 }
             )
         }

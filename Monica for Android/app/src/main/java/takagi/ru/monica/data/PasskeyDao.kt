@@ -161,4 +161,30 @@ interface PasskeyDao {
      */
     @Query("DELETE FROM passkeys")
     suspend fun deleteAll()
+    
+    // =============== Bitwarden 同步相关方法 ===============
+    
+    /**
+     * 根据 Bitwarden Cipher ID 获取 Passkey
+     */
+    @Query("SELECT * FROM passkeys WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
+    suspend fun getByBitwardenCipherId(cipherId: String): PasskeyEntry?
+    
+    /**
+     * 获取指定 Vault 的所有 Passkeys
+     */
+    @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId")
+    suspend fun getByBitwardenVaultId(vaultId: Long): List<PasskeyEntry>
+    
+    /**
+     * 获取待上传到 Bitwarden 的 Passkeys
+     */
+    @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL")
+    suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<PasskeyEntry>
+    
+    /**
+     * 标记 Passkey 为已同步
+     */
+    @Query("UPDATE passkeys SET sync_status = 'SYNCED', bitwarden_cipher_id = :cipherId WHERE credential_id = :credentialId")
+    suspend fun markSynced(credentialId: String, cipherId: String)
 }

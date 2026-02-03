@@ -453,6 +453,13 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     val lastSyncTime: Long
         get() = repository.lastSyncTime
     
+    // 同步队列计数 (TODO: 连接到实际的 SyncQueueManager)
+    val pendingSyncCount: Int
+        get() = 0  // 待实现：从 SyncQueueManager 获取待同步数量
+    
+    val failedSyncCount: Int
+        get() = 0  // 待实现：从 SyncQueueManager 获取失败数量
+    
     // ==================== 私有方法 ====================
     
     private suspend fun loadVaultData(vaultId: Long) {

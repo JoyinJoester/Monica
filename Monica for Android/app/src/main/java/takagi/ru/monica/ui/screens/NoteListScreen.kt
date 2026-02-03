@@ -47,6 +47,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.bitwarden.sync.SyncStatus
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -547,7 +549,7 @@ fun ExpressiveNoteCard(
                 )
             }
             
-            // 底部：日期 + 安全标识
+            // 底部：日期 + 同步状态 + 安全标识
             Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -560,13 +562,32 @@ fun ExpressiveNoteCard(
                     color = secondaryContentColor.copy(alpha = 0.8f)
                 )
                 
-                // 安全标识小图标
-                Icon(
-                    imageVector = Icons.Default.Shield,
-                    contentDescription = "加密存储",
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Bitwarden 同步状态指示器
+                    if (note.bitwardenVaultId != null) {
+                        val syncStatus = when (note.syncStatus) {
+                            "PENDING" -> SyncStatus.PENDING
+                            "SYNCING" -> SyncStatus.SYNCING
+                            "SYNCED" -> SyncStatus.SYNCED
+                            "FAILED" -> SyncStatus.FAILED
+                            "CONFLICT" -> SyncStatus.CONFLICT
+                            else -> if (note.bitwardenLocalModified) SyncStatus.PENDING else SyncStatus.SYNCED
+                        }
+                        SyncStatusIcon(
+                            status = syncStatus,
+                            size = 14.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    
+                    // 安全标识小图标
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = "加密存储",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    )
+                }
             }
         }
     }

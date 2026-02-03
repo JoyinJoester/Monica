@@ -99,7 +99,17 @@ data class PasskeyEntry(
     val isBackedUp: Boolean = false,
     
     @ColumnInfo(name = "notes")
-    val notes: String = ""
+    val notes: String = "",
+    
+    // Bitwarden 同步字段（仅同步元数据，私钥无法导出）
+    @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")
+    val bitwardenVaultId: Long? = null,           // 关联的 Bitwarden Vault
+    
+    @ColumnInfo(name = "bitwarden_cipher_id", defaultValue = "NULL")
+    val bitwardenCipherId: String? = null,        // Bitwarden Cipher UUID
+    
+    @ColumnInfo(name = "sync_status", defaultValue = "NONE")
+    val syncStatus: String = "NONE"               // 同步状态: NONE, PENDING, SYNCING, SYNCED, FAILED
 ) {
     /**
      * 获取传输方式列表

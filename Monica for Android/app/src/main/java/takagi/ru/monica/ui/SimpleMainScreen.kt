@@ -119,6 +119,8 @@ import takagi.ru.monica.ui.components.V2NavigationBar
 import takagi.ru.monica.ui.components.V2NavItem
 import takagi.ru.monica.ui.components.V2NavPosition
 import takagi.ru.monica.ui.components.RecentSubPage
+import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -5158,12 +5160,14 @@ private fun PasswordEntryCard(
                         
                         // 数据来源标识 - Bitwarden / KeePass
                         if (entry.isBitwardenEntry()) {
-                            // Bitwarden 云同步标识
-                            Icon(
-                                Icons.Default.CloudSync,
-                                contentDescription = "Bitwarden",
-                                tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
-                                modifier = Modifier.size(16.dp)
+                            // Bitwarden 同步状态标识
+                            val syncStatus = when {
+                                entry.hasPendingBitwardenSync() -> SyncStatus.PENDING
+                                else -> SyncStatus.SYNCED
+                            }
+                            SyncStatusIcon(
+                                status = syncStatus,
+                                size = 16.dp
                             )
                         } else if (entry.isKeePassEntry()) {
                             // KeePass 密钥标识

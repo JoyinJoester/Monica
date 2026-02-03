@@ -49,6 +49,7 @@ import takagi.ru.monica.utils.SettingsManager
 import kotlin.math.PI
 import kotlin.math.sin
 import takagi.ru.monica.util.VibrationPatterns
+import takagi.ru.monica.bitwarden.sync.SyncStatus
 
 /**
  * TOTP验证码卡片
@@ -267,6 +268,23 @@ fun TotpCodeCard(
                 }
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Bitwarden 同步状态指示器
+                    if (item.bitwardenVaultId != null) {
+                        val syncStatus = when (item.syncStatus) {
+                            "PENDING" -> SyncStatus.PENDING
+                            "SYNCING" -> SyncStatus.SYNCING
+                            "SYNCED" -> SyncStatus.SYNCED
+                            "FAILED" -> SyncStatus.FAILED
+                            "CONFLICT" -> SyncStatus.CONFLICT
+                            else -> if (item.bitwardenLocalModified) SyncStatus.PENDING else SyncStatus.SYNCED
+                        }
+                        SyncStatusIcon(
+                            status = syncStatus,
+                            size = 16.dp
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    
                     if (item.isFavorite) {
                         Icon(
                             Icons.Default.Favorite,

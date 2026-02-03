@@ -39,7 +39,8 @@ fun BitwardenSettingsScreen(
     viewModel: BitwardenViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    onNavigateToVault: (Long) -> Unit
+    onNavigateToVault: (Long) -> Unit,
+    onNavigateToSyncQueue: () -> Unit = {}
 ) {
     val vaults by viewModel.vaults.collectAsState()
     val activeVault by viewModel.activeVault.collectAsState()
@@ -164,6 +165,15 @@ fun BitwardenSettingsScreen(
                     onAutoSyncChanged = { viewModel.isAutoSyncEnabled = it },
                     isSyncOnWifiOnly = viewModel.isSyncOnWifiOnly,
                     onSyncOnWifiOnlyChanged = { viewModel.isSyncOnWifiOnly = it }
+                )
+            }
+            
+            // 同步队列入口
+            item {
+                SyncQueueEntryCard(
+                    pendingCount = viewModel.pendingSyncCount,
+                    failedCount = viewModel.failedSyncCount,
+                    onClick = onNavigateToSyncQueue
                 )
             }
             
@@ -668,6 +678,76 @@ private fun formatTime(timestamp: Long): String {
         else -> {
             val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
             sdf.format(Date(timestamp))
+        }
+    }
+}
+
+/**
+ * 同步队列入口卡片
+ */
+@Composable
+private fun SyncQueueEntryCard(
+    pendingCount: Int,
+    failedCount: Int,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Outlined.Sync,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Column {
+                    Text(
+                        text = "同步队列",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    if (pendingCount > 0 || failedCount > 0) {
+                        Text(
+                            text = buildString {
+                                if (pendingCount > 0) append("${pendingCount} 待同步")
+                                if (pendingCount > 0 && failedCount > 0) append(" · ")
+                                if (failedCount > 0) append("${failedCount} 失败")
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (failedCount > 0) 
+                                MaterialTheme.colorScheme.error 
+                            else 
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "所有数据已同步",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

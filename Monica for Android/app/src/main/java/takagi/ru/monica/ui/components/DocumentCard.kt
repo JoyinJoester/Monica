@@ -21,6 +21,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.bitwarden.sync.SyncStatus
 import kotlinx.serialization.json.Json
 
 /**
@@ -117,6 +118,23 @@ fun DocumentCard(
                 }
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Bitwarden 同步状态指示器
+                    if (item.bitwardenVaultId != null) {
+                        val syncStatus = when (item.syncStatus) {
+                            "PENDING" -> SyncStatus.PENDING
+                            "SYNCING" -> SyncStatus.SYNCING
+                            "SYNCED" -> SyncStatus.SYNCED
+                            "FAILED" -> SyncStatus.FAILED
+                            "CONFLICT" -> SyncStatus.CONFLICT
+                            else -> if (item.bitwardenLocalModified) SyncStatus.PENDING else SyncStatus.SYNCED
+                        }
+                        SyncStatusIcon(
+                            status = syncStatus,
+                            size = 16.dp
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    
                     // 证件类型图标
                     Icon(
                         when (documentData.documentType) {
