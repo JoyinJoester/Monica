@@ -5953,10 +5953,14 @@ private fun V2NavScaffold(
                     )
                 }
                 V2NavPosition.DYNAMIC -> {
-                    // 位置1：动态内容
+                    // 位置1：动态内容 - 使用 Crossfade 平滑切换，避免 key() 导致的崩溃
                     if (dynamicContent != null) {
-                        key(dynamicContent) {
-                            when (dynamicContent) {
+                        androidx.compose.animation.Crossfade(
+                            targetState = dynamicContent,
+                            animationSpec = tween(200),
+                            label = "DynamicContentCrossfade"
+                        ) { currentContent ->
+                            when (currentContent) {
                                 RecentSubPage.PASSWORDS -> {
                                     PasswordListContent(
                                         viewModel = passwordViewModel,
