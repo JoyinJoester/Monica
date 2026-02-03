@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 
 /**
- * V2 导航栏固定项
+ * V2 导航栏固定项（位置0、2、3、4）
  */
 enum class V2NavItem(
     val key: String,
@@ -34,7 +34,7 @@ enum class V2NavItem(
 }
 
 /**
- * 库的子页面类型
+ * 底栏第2项的动态内容类型
  */
 enum class RecentSubPage(
     val key: String,
@@ -50,50 +50,51 @@ enum class RecentSubPage(
 }
 
 /**
+ * V2 导航栏选中位置（0-4）
+ */
+enum class V2NavPosition {
+    VAULT,      // 位置0：库首页
+    DYNAMIC,    // 位置1：动态内容（密码/验证器/卡包等）
+    SEND,       // 位置2：发送
+    GENERATOR,  // 位置3：生成
+    SETTINGS    // 位置4：设置
+}
+
+/**
  * V2 导航栏 - 使用Material 3标准NavigationBar
  * 
- * @param selectedItem 当前选中的主导航项
- * @param selectedSubPage 当前正在查看的子页面（用于高亮）
- * @param lastSubPage 上次访问的子页面（用于显示快捷入口）
- * @param onItemSelected 主导航项点击回调
- * @param onSubPageSelected 子页面点击回调
+ * @param selectedPosition 当前选中的位置（0-4）
+ * @param dynamicContent 第2项显示的动态内容
+ * @param onPositionSelected 位置选中回调
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
 fun V2NavigationBar(
     modifier: Modifier = Modifier,
-    selectedItem: V2NavItem,
-    selectedSubPage: RecentSubPage? = null,
-    lastSubPage: RecentSubPage? = null,
-    recentSubPages: List<RecentSubPage> = emptyList(),
-    onItemSelected: (V2NavItem) -> Unit,
-    onSubPageSelected: (RecentSubPage) -> Unit = {}
+    selectedPosition: V2NavPosition,
+    dynamicContent: RecentSubPage?,
+    onPositionSelected: (V2NavPosition) -> Unit
 ) {
-    // 底栏显示的子页面：优先用当前选中的，否则用上次访问的
-    val displaySubPage = selectedSubPage ?: lastSubPage
-    val hasSubPage = displaySubPage != null
-    // 子页面是否被选中（正在查看子页面内容）
-    val isSubPageSelected = selectedItem == V2NavItem.VAULT && selectedSubPage != null
-    
     NavigationBar(
         modifier = modifier,
         tonalElevation = 0.dp,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        // 库
+        // 位置0：库
         NavigationBarItem(
             icon = { Icon(V2NavItem.VAULT.icon, contentDescription = null) },
             label = { Text(stringResource(V2NavItem.VAULT.labelRes)) },
-            selected = selectedItem == V2NavItem.VAULT && selectedSubPage == null,
-            onClick = { onItemSelected(V2NavItem.VAULT) }
+            selected = selectedPosition == V2NavPosition.VAULT,
+            onClick = { onPositionSelected(V2NavPosition.VAULT) }
         )
         
-        // 子页面快捷入口（显示上次访问的子页面）
-        if (hasSubPage && displaySubPage != null) {
+        // 位置1：动态内容（如果有）
+        if (dynamicContent != null) {
             NavigationBarItem(
                 icon = { 
                     Box {
-                        Icon(displaySubPage.icon, contentDescription = null)
+                        Icon(dynamicContent.icon, contentDescription = null)
+                        // 小圆点标记表示这是动态项
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -106,9 +107,9 @@ fun V2NavigationBar(
                         )
                     }
                 },
-                label = { Text(stringResource(displaySubPage.labelRes)) },
-                selected = isSubPageSelected,
-                onClick = { onSubPageSelected(displaySubPage) },
+                label = { Text(stringResource(dynamicContent.labelRes)) },
+                selected = selectedPosition == V2NavPosition.DYNAMIC,
+                onClick = { onPositionSelected(V2NavPosition.DYNAMIC) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -117,28 +118,28 @@ fun V2NavigationBar(
             )
         }
         
-        // 发送
+        // 位置2：发送
         NavigationBarItem(
             icon = { Icon(V2NavItem.SEND.icon, contentDescription = null) },
             label = { Text(stringResource(V2NavItem.SEND.labelRes)) },
-            selected = selectedItem == V2NavItem.SEND,
-            onClick = { onItemSelected(V2NavItem.SEND) }
+            selected = selectedPosition == V2NavPosition.SEND,
+            onClick = { onPositionSelected(V2NavPosition.SEND) }
         )
         
-        // 生成
+        // 位置3：生成
         NavigationBarItem(
             icon = { Icon(V2NavItem.GENERATOR.icon, contentDescription = null) },
             label = { Text(stringResource(V2NavItem.GENERATOR.labelRes)) },
-            selected = selectedItem == V2NavItem.GENERATOR,
-            onClick = { onItemSelected(V2NavItem.GENERATOR) }
+            selected = selectedPosition == V2NavPosition.GENERATOR,
+            onClick = { onPositionSelected(V2NavPosition.GENERATOR) }
         )
         
-        // 设置
+        // 位置4：设置
         NavigationBarItem(
             icon = { Icon(V2NavItem.SETTINGS.icon, contentDescription = null) },
             label = { Text(stringResource(V2NavItem.SETTINGS.labelRes)) },
-            selected = selectedItem == V2NavItem.SETTINGS,
-            onClick = { onItemSelected(V2NavItem.SETTINGS) }
+            selected = selectedPosition == V2NavPosition.SETTINGS,
+            onClick = { onPositionSelected(V2NavPosition.SETTINGS) }
         )
     }
 }
