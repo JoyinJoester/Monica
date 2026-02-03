@@ -63,12 +63,12 @@ fun VaultHomeScreen(
     val noteCount = notes.size
     val totalCount = loginCount + cardCount + documentCount + noteCount
     
-    // 提取文件夹（分类）和数量
+    // 提取文件夹（分类）和数量 - 显示所有分类
     val foldersWithCounts: List<Pair<String, Int>> = remember(passwords, categories) {
         categories.map { category: takagi.ru.monica.data.Category ->
             val count = passwords.count { pw -> pw.categoryId == category.id }
             category.name to count
-        }.filter { pair -> pair.second > 0 } // 只显示有密码的分类
+        }
     }
 
     var searchQuery by remember { mutableStateOf("") }
@@ -197,8 +197,8 @@ fun VaultHomeScreen(
             }
             
             // ========== 文件夹区域 ==========
-            // 文件夹标题
-            if (foldersWithCounts.isNotEmpty()) {
+            // 文件夹标题 - 有分类就显示
+            if (categories.isNotEmpty()) {
                 item(key = "section_folders") {
                     Spacer(modifier = Modifier.height(16.dp))
                     SectionHeader(
