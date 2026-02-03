@@ -77,12 +77,8 @@ fun TotpCodeCard(
 ) {
     val context = LocalContext.current
     
-    // 共享设置，避免每张卡片单独读取 DataStore
-    val settings = appSettings ?: run {
-        val settingsManager = remember { SettingsManager(context) }
-        val state by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
-        state
-    }
+    // 使用传入的设置或默认值，避免创建多个 SettingsManager 实例
+    val settings = appSettings ?: AppSettings()
     
     // 解析TOTP数据
     val totpData = try {
