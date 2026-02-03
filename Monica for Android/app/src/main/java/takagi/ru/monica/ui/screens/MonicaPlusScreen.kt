@@ -1,5 +1,7 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +18,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.PlusFeatures
 import takagi.ru.monica.ui.components.PlusFeatureCard
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun MonicaPlusScreen(
     isPlusActivated: Boolean,
@@ -26,7 +28,23 @@ fun MonicaPlusScreen(
 ) {
     val features = PlusFeatures.getPlaceholderFeatures()
 
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "monica_plus_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.monica_plus_title)) },

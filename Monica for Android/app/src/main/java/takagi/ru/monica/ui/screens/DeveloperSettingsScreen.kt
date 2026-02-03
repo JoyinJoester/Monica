@@ -3,6 +3,8 @@ package takagi.ru.monica.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,12 +28,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.viewmodel.SettingsViewModel
+import takagi.ru.monica.autofill.AutofillPickerActivityV2
+import takagi.ru.monica.security.SessionManager
 
 /**
  * 开发者设置页面
  * 包含日志查看、清除以及开发者专用功能
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun DeveloperSettingsScreen(
     viewModel: SettingsViewModel,
@@ -45,7 +49,23 @@ fun DeveloperSettingsScreen(
     var showDebugLogsDialog by remember { mutableStateOf(false) }
     var disablePasswordVerification by remember { mutableStateOf(settings.disablePasswordVerification) }
 
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "developer_settings_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.developer_settings)) },
@@ -147,6 +167,52 @@ fun DeveloperSettingsScreen(
                         scope.launch {
                             viewModel.updateDisablePasswordVerification(enabled)
                             android.util.Log.d("DeveloperSettings", "Password verification setting updated to: $enabled")
+                        }
+                    }
+                )
+            }
+            
+            // 自动填充调试区域
+            SettingsSection(
+                title = "自动填充调试"
+            ) {
+                SettingsItem(
+                    icon = Icons.Default.AutoAwesome,
+                    title = "启动自动填充 V2 (测试)",
+                    subtitle = "使用模拟数据打开自动填充界面，方便调试 UI 和逻辑",
+                    onClick = {
+                        try {
+                            val testIntent = AutofillPickerActivityV2.getTestIntent(context)
+                            context.startActivity(testIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                context,
+                                "启动失败: ${e.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                )
+                
+                // 显示会话状态
+                val sessionUnlocked by SessionManager.isUnlocked.collectAsState()
+                val remainingMinutes = SessionManager.getRemainingMinutes()
+                
+                SettingsItem(
+                    icon = if (sessionUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
+                    title = "会话状态",
+                    subtitle = if (sessionUnlocked) 
+                        "已解锁 (剩余 $remainingMinutes 分钟)" 
+                    else 
+                        "已锁定",
+                    onClick = {
+                        // 手动锁定/解锁会话（用于测试）
+                        if (sessionUnlocked) {
+                            SessionManager.markLocked()
+                            Toast.makeText(context, "会话已锁定", Toast.LENGTH_SHORT).show()
+                        } else {
+                            SessionManager.markUnlocked()
+                            Toast.makeText(context, "会话已解锁", Toast.LENGTH_SHORT).show()
                         }
                     }
                 )

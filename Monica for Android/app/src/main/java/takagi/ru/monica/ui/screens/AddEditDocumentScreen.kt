@@ -3,6 +3,7 @@ package takagi.ru.monica.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -185,196 +186,261 @@ fun AddEditDocumentScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 标题
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text(stringResource(R.string.document_name)) },
-                placeholder = { Text(stringResource(R.string.document_name_example)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            // Basic Info
+            InfoCard(title = "基本信息") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Title
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text(stringResource(R.string.document_name)) },
+                        placeholder = { Text(stringResource(R.string.document_name_example)) },
+                        leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // Document Type
+                    ExposedDropdownMenuBox(
+                        expanded = showDocumentTypeMenu,
+                        onExpandedChange = { showDocumentTypeMenu = it }
+                    ) {
+                        OutlinedTextField(
+                            value = when (documentType) {
+                                DocumentType.ID_CARD -> stringResource(R.string.id_card)
+                                DocumentType.PASSPORT -> stringResource(R.string.passport)
+                                DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+                                DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
+                                DocumentType.OTHER -> stringResource(R.string.other_document)
+                            },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text(stringResource(R.string.document_type)) },
+                            leadingIcon = { Icon(Icons.Default.Category, contentDescription = null) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showDocumentTypeMenu) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                        )
+                        
+                        ExposedDropdownMenu(
+                            expanded = showDocumentTypeMenu,
+                            onDismissRequest = { showDocumentTypeMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.id_card)) },
+                                onClick = {
+                                    documentType = DocumentType.ID_CARD
+                                    showDocumentTypeMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.passport)) },
+                                onClick = {
+                                    documentType = DocumentType.PASSPORT
+                                    showDocumentTypeMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.FlightTakeoff, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.drivers_license)) },
+                                onClick = {
+                                    documentType = DocumentType.DRIVER_LICENSE
+                                    showDocumentTypeMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.DirectionsCar, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.social_security_card)) },
+                                onClick = {
+                                    documentType = DocumentType.SOCIAL_SECURITY
+                                    showDocumentTypeMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.other_document)) },
+                                onClick = {
+                                    documentType = DocumentType.OTHER
+                                    showDocumentTypeMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) }
+                            )
+                        }
+                    }
+                    
+                    // Document Number
+                    OutlinedTextField(
+                        value = documentNumber,
+                        onValueChange = { documentNumber = it },
+                        label = { Text(stringResource(R.string.document_number_required)) },
+                        placeholder = { Text(when (documentType) {
+                            DocumentType.ID_CARD -> "110101199001011234"
+                            DocumentType.PASSPORT -> "E12345678"
+                            DocumentType.DRIVER_LICENSE -> "123456789012"
+                            DocumentType.SOCIAL_SECURITY -> "1234567890"
+                            DocumentType.OTHER -> stringResource(R.string.document_number_required)
+                        }) },
+                        leadingIcon = { Icon(Icons.Default.Numbers, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showDocumentNumber = !showDocumentNumber }) {
+                                Icon(
+                                    if (showDocumentNumber) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = if (showDocumentNumber) stringResource(R.string.hide) else stringResource(R.string.show)
+                                )
+                            }
+                        },
+                        visualTransformation = if (showDocumentNumber) {
+                            androidx.compose.ui.text.input.VisualTransformation.None
+                        } else {
+                            androidx.compose.ui.text.input.PasswordVisualTransformation()
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // Holder Name
+                    OutlinedTextField(
+                        value = fullName,
+                        onValueChange = { fullName = it },
+                        label = { Text(stringResource(R.string.holder_name)) },
+                        placeholder = { Text(stringResource(R.string.holder_name_example)) },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // Dates
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = issuedDate,
+                            onValueChange = { issuedDate = it },
+                            label = { Text(stringResource(R.string.issue_date)) },
+                            placeholder = { Text("2020/01/01") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null) },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        
+                        OutlinedTextField(
+                            value = expiryDate,
+                            onValueChange = { expiryDate = it },
+                            label = { Text(stringResource(R.string.expiry_date_label)) },
+                            placeholder = { Text("2030/01/01") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Default.Event, contentDescription = null) },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    
+                    // Issuing Authority
+                    OutlinedTextField(
+                        value = issuedBy,
+                        onValueChange = { issuedBy = it },
+                        label = { Text(stringResource(R.string.issuing_authority)) },
+                        placeholder = { Text(stringResource(R.string.issuing_authority_example)) },
+                        leadingIcon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // Nationality (Passport only)
+                    if (documentType == DocumentType.PASSPORT) {
+                        OutlinedTextField(
+                            value = nationality,
+                            onValueChange = { nationality = it },
+                            label = { Text("国籍") },
+                            placeholder = { Text("中国") },
+                            leadingIcon = { Icon(Icons.Default.Public, contentDescription = null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+            }
             
-            // 证件类型选择
-            ExposedDropdownMenuBox(
-                expanded = showDocumentTypeMenu,
-                onExpandedChange = { showDocumentTypeMenu = it }
-            ) {
-                OutlinedTextField(
-                    value = when (documentType) {
+            // Photos InfoCard
+            InfoCard(title = "照片") {
+                DualPhotoPicker(
+                    frontImageFileName = frontImageFileName,
+                    backImageFileName = backImageFileName,
+                    onFrontImageSelected = { fileName -> frontImageFileName = fileName },
+                    onFrontImageRemoved = { frontImageFileName = null },
+                    onBackImageSelected = { fileName -> backImageFileName = fileName },
+                    onBackImageRemoved = { backImageFileName = null },
+                    frontLabel = stringResource(R.string.document_photo_front, when (documentType) {
                         DocumentType.ID_CARD -> stringResource(R.string.id_card)
                         DocumentType.PASSPORT -> stringResource(R.string.passport)
                         DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> "Social Security Card" // 需要添加这个字符串
+                        DocumentType.SOCIAL_SECURITY -> "Social Security Card"
                         DocumentType.OTHER -> stringResource(R.string.other_document)
-                    },
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.document_type)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showDocumentTypeMenu) },
+                    }),
+                    backLabel = stringResource(R.string.document_photo_back, when (documentType) {
+                        DocumentType.ID_CARD -> stringResource(R.string.id_card)
+                        DocumentType.PASSPORT -> stringResource(R.string.passport)
+                        DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+                        DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
+                        DocumentType.OTHER -> stringResource(R.string.other_document)
+                    }),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            
+            // Notes InfoCard
+            InfoCard(title = "备注") {
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text(stringResource(R.string.notes)) },
+                    placeholder = { Text(stringResource(R.string.notes_placeholder)) },
+                    leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .menuAnchor()
-                )
-                
-                ExposedDropdownMenu(
-                    expanded = showDocumentTypeMenu,
-                    onDismissRequest = { showDocumentTypeMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.id_card)) },
-                        onClick = {
-                            documentType = DocumentType.ID_CARD
-                            showDocumentTypeMenu = false
-                        },
-                        leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.passport)) },
-                        onClick = {
-                            documentType = DocumentType.PASSPORT
-                            showDocumentTypeMenu = false
-                        },
-                        leadingIcon = { Icon(Icons.Default.FlightTakeoff, contentDescription = null) }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.drivers_license)) },
-                        onClick = {
-                            documentType = DocumentType.DRIVER_LICENSE
-                            showDocumentTypeMenu = false
-                        },
-                        leadingIcon = { Icon(Icons.Default.DirectionsCar, contentDescription = null) }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.other_document)) },
-                        onClick = {
-                            documentType = DocumentType.OTHER
-                            showDocumentTypeMenu = false
-                        },
-                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) }
-                    )
-                }
-            }
-            
-            // 证件号码
-            OutlinedTextField(
-                value = documentNumber,
-                onValueChange = { documentNumber = it },
-                label = { Text(stringResource(R.string.document_number_required)) },
-                placeholder = { Text(when (documentType) {
-                    DocumentType.ID_CARD -> "110101199001011234"
-                    DocumentType.PASSPORT -> "E12345678"
-                    DocumentType.DRIVER_LICENSE -> "123456789012"
-                    DocumentType.SOCIAL_SECURITY -> "1234567890"
-                    DocumentType.OTHER -> stringResource(R.string.document_number_required)
-                }) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(onClick = { showDocumentNumber = !showDocumentNumber }) {
-                        Icon(
-                            if (showDocumentNumber) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = if (showDocumentNumber) stringResource(R.string.hide) else stringResource(R.string.show)
-                        )
-                    }
-                },
-                visualTransformation = if (showDocumentNumber) {
-                    androidx.compose.ui.text.input.VisualTransformation.None
-                } else {
-                    androidx.compose.ui.text.input.PasswordVisualTransformation()
-                }
-            )
-            
-            // 持有人
-            OutlinedTextField(
-                value = fullName,
-                onValueChange = { fullName = it },
-                label = { Text(stringResource(R.string.holder_name)) },
-                placeholder = { Text(stringResource(R.string.holder_name_example)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            // 签发日期
-            OutlinedTextField(
-                value = issuedDate,
-                onValueChange = { issuedDate = it },
-                label = { Text(stringResource(R.string.issue_date)) },
-                placeholder = { Text("2020-01-01") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null) }
-            )
-            
-            // 有效期至
-            OutlinedTextField(
-                value = expiryDate,
-                onValueChange = { expiryDate = it },
-                label = { Text(stringResource(R.string.expiry_date_label)) },
-                placeholder = { Text("2030-01-01 或 长期") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Event, contentDescription = null) }
-            )
-            
-            // 签发机关
-            OutlinedTextField(
-                value = issuedBy,
-                onValueChange = { issuedBy = it },
-                label = { Text(stringResource(R.string.issuing_authority)) },
-                placeholder = { Text(stringResource(R.string.issuing_authority_example)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            // 国籍（仅护照显示）
-            if (documentType == DocumentType.PASSPORT) {
-                OutlinedTextField(
-                    value = nationality,
-                    onValueChange = { nationality = it },
-                    label = { Text("国籍") },
-                    placeholder = { Text("中国") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                        .height(120.dp),
+                    minLines = 3,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(12.dp)
                 )
             }
-            
-            // 备注
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text(stringResource(R.string.notes)) },
-                placeholder = { Text(stringResource(R.string.notes_placeholder)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 100.dp),
-                maxLines = 4
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
             )
-            
-            // 照片选择器（所有证件类型都显示正反面照片选择器）
-            DualPhotoPicker(
-                frontImageFileName = frontImageFileName,
-                backImageFileName = backImageFileName,
-                onFrontImageSelected = { fileName -> frontImageFileName = fileName },
-                onFrontImageRemoved = { frontImageFileName = null },
-                onBackImageSelected = { fileName -> backImageFileName = fileName },
-                onBackImageRemoved = { backImageFileName = null },
-                frontLabel = stringResource(R.string.document_photo_front, when (documentType) {
-                    DocumentType.ID_CARD -> stringResource(R.string.id_card)
-                    DocumentType.PASSPORT -> stringResource(R.string.passport)
-                    DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                    DocumentType.SOCIAL_SECURITY -> "Social Security Card"
-                    DocumentType.OTHER -> stringResource(R.string.other_document)
-                }),
-                backLabel = stringResource(R.string.document_photo_back, when (documentType) {
-                    DocumentType.ID_CARD -> stringResource(R.string.id_card)
-                    DocumentType.PASSPORT -> stringResource(R.string.passport)
-                    DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                    DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
-                    DocumentType.OTHER -> stringResource(R.string.other_document)
-                }),
-                modifier = Modifier.fillMaxWidth()
-            )
+            content()
         }
     }
 }

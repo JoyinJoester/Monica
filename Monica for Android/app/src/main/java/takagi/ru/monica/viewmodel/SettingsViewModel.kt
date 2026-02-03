@@ -10,6 +10,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.ItemType
@@ -29,6 +30,14 @@ class SettingsViewModel(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = AppSettings()
+        )
+    
+    // 预设自定义字段列表
+    val presetCustomFields: StateFlow<List<PresetCustomField>> = settingsManager.presetCustomFieldsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
         )
 
     // 获取所有TOTP验证器
@@ -213,6 +222,93 @@ class SettingsViewModel(
     fun updateNoteGridLayout(isGrid: Boolean) {
         viewModelScope.launch {
             settingsManager.updateNoteGridLayout(isGrid)
+        }
+    }
+
+    fun updatePasswordFieldVisibility(field: String, visible: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordFieldVisibility(field, visible)
+        }
+    }
+    
+    // ==================== 预设自定义字段管理 ====================
+    
+    fun addPresetCustomField(field: PresetCustomField) {
+        viewModelScope.launch {
+            settingsManager.addPresetCustomField(field)
+        }
+    }
+    
+    fun updatePresetCustomField(field: PresetCustomField) {
+        viewModelScope.launch {
+            settingsManager.updatePresetCustomField(field)
+        }
+    }
+    
+    fun deletePresetCustomField(fieldId: String) {
+        viewModelScope.launch {
+            settingsManager.deletePresetCustomField(fieldId)
+        }
+    }
+    
+    fun reorderPresetCustomFields(fieldIds: List<String>) {
+        viewModelScope.launch {
+            settingsManager.reorderPresetCustomFields(fieldIds)
+        }
+    }
+    
+    fun clearAllPresetCustomFields() {
+        viewModelScope.launch {
+            settingsManager.clearAllPresetCustomFields()
+        }
+    }
+    
+    /**
+     * 更新减少动画设置
+     * 开启后将禁用共享元素动画，改为简单的淡入淡出效果
+     * 主要用于解决 HyperOS 2 / Android 15 等设备上的动画卡顿问题
+     */
+    fun updateReduceAnimations(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateReduceAnimations(enabled)
+        }
+    }
+    
+    // ==================== V2 多源密码库设置 ====================
+    
+    /**
+     * 更新默认密码库视图（V1 经典 / V2 多源）
+     */
+    fun updateDefaultVaultView(view: takagi.ru.monica.data.VaultViewMode) {
+        viewModelScope.launch {
+            settingsManager.updateDefaultVaultView(view)
+        }
+    }
+    
+    /**
+     * 更新自动填充数据源
+     */
+    fun updateAutofillSources(sources: Set<takagi.ru.monica.data.AutofillSource>) {
+        viewModelScope.launch {
+            settingsManager.updateAutofillSources(sources)
+        }
+    }
+    
+    /**
+     * 更新自动填充优先级
+     */
+    fun updateAutofillPriority(priority: List<takagi.ru.monica.data.AutofillSource>) {
+        viewModelScope.launch {
+            settingsManager.updateAutofillPriority(priority)
+        }
+    }
+    
+    /**
+     * 更新导航栏版本
+     */
+    fun updateNavBarVersion(version: takagi.ru.monica.data.NavBarVersion) {
+        viewModelScope.launch {
+            settingsManager.updateNavBarVersion(version)
         }
     }
 }

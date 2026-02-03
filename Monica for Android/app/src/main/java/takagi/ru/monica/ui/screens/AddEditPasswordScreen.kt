@@ -49,12 +49,17 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
+import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.CustomFieldEditorSection
+import takagi.ru.monica.ui.components.CustomFieldEditCard
+import takagi.ru.monica.ui.components.CustomFieldSectionHeader
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.PasswordGenerator
@@ -65,6 +70,8 @@ import takagi.ru.monica.viewmodel.TotpViewModel
 
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +90,9 @@ fun AddEditPasswordScreen(
     // 获取设置以读取进度条样式
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    
+    // 获取预设自定义字段列表
+    val presetCustomFields by settingsManager.presetCustomFieldsFlow.collectAsState(initial = emptyList())
     
     // 常用账号信息
     val commonAccountPreferences = remember { takagi.ru.monica.data.CommonAccountPreferences(context) }
@@ -140,6 +150,16 @@ fun AddEditPasswordScreen(
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
     
+    // Bitwarden Vault 选择
+    var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    
+    // 加载 Bitwarden vaults
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+    
     // SSO 登录方式字段
     var loginType by rememberSaveable { mutableStateOf("PASSWORD") }
     var ssoProvider by rememberSaveable { mutableStateOf("") }
@@ -147,6 +167,10 @@ fun AddEditPasswordScreen(
     
     // 获取所有密码条目用于SSO关联选择
     val allPasswordsForRef by viewModel.allPasswords.collectAsState(initial = emptyList())
+    
+    // 自定义字段状态
+    val customFields = remember { mutableStateListOf<CustomFieldDraft>() }
+    var customFieldsExpanded by remember { mutableStateOf(false) }
 
     // 折叠面板状态
     var personalInfoExpanded by remember { mutableStateOf(false) }
@@ -154,6 +178,22 @@ fun AddEditPasswordScreen(
     var paymentInfoExpanded by remember { mutableStateOf(false) }
 
     val isEditing = passwordId != null && passwordId > 0
+    
+    // 字段可见性设置
+    val fieldVisibility = settings.passwordFieldVisibility
+    
+    // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
+    fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorKey.isNotEmpty()
+    fun shouldShowCategoryAndNotes() = fieldVisibility.categoryAndNotes || categoryId != null || notes.isNotEmpty()
+    fun shouldShowAppBinding() = fieldVisibility.appBinding || appPackageName.isNotEmpty()
+    fun shouldShowPersonalInfo() = fieldVisibility.personalInfo || 
+        emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() }
+    fun shouldShowAddressInfo() = fieldVisibility.addressInfo || 
+        addressLine.isNotEmpty() || city.isNotEmpty() || state.isNotEmpty() || 
+        zipCode.isNotEmpty() || country.isNotEmpty()
+    fun shouldShowPaymentInfo() = fieldVisibility.paymentInfo || 
+        creditCardNumber.isNotEmpty() || creditCardHolder.isNotEmpty() || 
+        creditCardExpiry.isNotEmpty() || creditCardCVV.isNotEmpty()
     
     // 新建条目时的自动填充标记（只执行一次）
     var hasAutoFilled by rememberSaveable { mutableStateOf(false) }
@@ -170,6 +210,24 @@ fun AddEditPasswordScreen(
             }
             if (phones.size == 1 && phones[0].isEmpty() && commonAccountInfo.phone.isNotEmpty()) {
                 phones[0] = commonAccountInfo.phone
+            }
+        }
+    }
+    
+    // 新建条目时初始化预设自定义字段（只执行一次）
+    var hasLoadedPresets by rememberSaveable { mutableStateOf(false) }
+    
+    LaunchedEffect(presetCustomFields, isEditing, hasLoadedPresets) {
+        if (!isEditing && !hasLoadedPresets && presetCustomFields.isNotEmpty()) {
+            hasLoadedPresets = true
+            // 将预设字段添加到自定义字段列表（按order排序）
+            val presetDrafts = presetCustomFields
+                .sortedBy { it.order }
+                .map { preset -> CustomFieldDraft.fromPreset(preset) }
+            customFields.addAll(presetDrafts)
+            // 如果有预设字段，默认展开自定义字段区域
+            if (presetDrafts.isNotEmpty()) {
+                customFieldsExpanded = true
             }
         }
     }
@@ -237,8 +295,53 @@ fun AddEditPasswordScreen(
                             passwords.add(entry.password)
                             originalIds = listOf(entry.id)
                         }
+                        
+                        // 加载自定义字段
+                        val existingFields = viewModel.getCustomFieldsByEntryIdSync(actualId)
+                        customFields.clear()
+                        
+                        // 将现有字段转换为Draft
+                        val existingDrafts = existingFields.map { field ->
+                            CustomFieldDraft.fromCustomField(field)
+                        }.toMutableList()
+                        
+                        // 获取预设字段并标记
+                        // 检查现有字段是否匹配预设（按标题匹配）
+                        val currentPresets = presetCustomFields.sortedBy { it.order }
+                        val existingTitles = existingDrafts.map { it.title.lowercase() }.toSet()
+                        
+                        // 为匹配预设的现有字段添加预设标记
+                        existingDrafts.replaceAll { draft ->
+                            val matchingPreset = currentPresets.find { 
+                                it.fieldName.lowercase() == draft.title.lowercase() 
+                            }
+                            if (matchingPreset != null) {
+                                draft.copy(
+                                    isPreset = true,
+                                    isRequired = matchingPreset.isRequired,
+                                    presetId = matchingPreset.id,
+                                    placeholder = matchingPreset.placeholder
+                                )
+                            } else {
+                                draft
+                            }
+                        }
+                        
+                        // 添加未在现有字段中出现的预设字段
+                        currentPresets.forEach { preset ->
+                            if (preset.fieldName.lowercase() !in existingTitles) {
+                                existingDrafts.add(CustomFieldDraft.fromPreset(preset))
+                            }
+                        }
+                        
+                        customFields.addAll(existingDrafts)
+                        if (existingDrafts.isNotEmpty()) {
+                            customFieldsExpanded = true
+                        }
+                        Unit
                     } else {
                         passwords.add("")
+                        Unit
                     }
                 } ?: run {
                      // Fallback if entry not found or new
@@ -310,16 +413,21 @@ fun AddEditPasswordScreen(
                                     creditCardCVV = creditCardCVV,
                                     categoryId = categoryId,
                                     keepassDatabaseId = keepassDatabaseId,
+                                    bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
                                     authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
                                     loginType = loginType,
                                     ssoProvider = ssoProvider,
                                     ssoRefEntryId = ssoRefEntryId
                                 )
                                 
+                                // 快照自定义字段
+                                val currentCustomFields = customFields.toList()
+                                
                                 viewModel.saveGroupedPasswords(
                                     originalIds = originalIds,
                                     commonEntry = commonEntry,
                                     passwords = passwords.toList(), // Snapshot
+                                    customFields = currentCustomFields, // 保存自定义字段
                                     onComplete = { firstPasswordId ->
                                         // Save TOTP if authenticatorKey is provided
                                         if (currentAuthKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
@@ -382,8 +490,19 @@ fun AddEditPasswordScreen(
             item {
                 VaultSelector(
                     keepassDatabases = keepassDatabases,
-                    selectedDatabaseId = keepassDatabaseId,
-                    onDatabaseSelected = { keepassDatabaseId = it }
+                    selectedKeePassDatabaseId = keepassDatabaseId,
+                    onKeePassDatabaseSelected = { 
+                        keepassDatabaseId = it
+                        // 选择 KeePass 时清除 Bitwarden 选择
+                        if (it != null) bitwardenVaultId = null
+                    },
+                    bitwardenVaults = bitwardenVaults,
+                    selectedBitwardenVaultId = bitwardenVaultId,
+                    onBitwardenVaultSelected = {
+                        bitwardenVaultId = it
+                        // 选择 Bitwarden 时清除 KeePass 选择
+                        if (it != null) keepassDatabaseId = null
+                    }
                 )
             }
             
@@ -544,30 +663,33 @@ fun AddEditPasswordScreen(
                 }
             }
             
-            // Security Card (TOTP)
-            item {
-                InfoCard(title = "安全验证") {
-                    OutlinedTextField(
-                        value = authenticatorKey,
-                        onValueChange = { authenticatorKey = it },
-                        label = { Text("验证码密钥 (可选)") },
-                        placeholder = { Text("输入密钥以自动创建验证器") },
-                        leadingIcon = { Icon(Icons.Default.VpnKey, null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        shape = RoundedCornerShape(12.dp)
-                    )
+            // Security Card (TOTP) - 根据设置和数据决定是否显示
+            if (shouldShowSecurityVerification()) {
+                item {
+                    InfoCard(title = "安全验证") {
+                        OutlinedTextField(
+                            value = authenticatorKey,
+                            onValueChange = { authenticatorKey = it },
+                            label = { Text("验证码密钥 (可选)") },
+                            placeholder = { Text("输入密钥以自动创建验证器") },
+                            leadingIcon = { Icon(Icons.Default.VpnKey, null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
                 }
             }
 
-            // Organization Card
-            item {
-                InfoCard(title = "分类与备注") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Category Selector
-                        var categoryExpanded by remember { mutableStateOf(false) }
-                        var showAddCategoryDialog by remember { mutableStateOf(false) }
+            // Organization Card - 根据设置和数据决定是否显示
+            if (shouldShowCategoryAndNotes()) {
+                item {
+                    InfoCard(title = "分类与备注") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Category Selector
+                            var categoryExpanded by remember { mutableStateOf(false) }
+                            var showAddCategoryDialog by remember { mutableStateOf(false) }
                         var newCategoryName by remember { mutableStateOf("") }
                         
                         ExposedDropdownMenuBox(
@@ -673,40 +795,72 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // 分类与备注 if 结束
             
-            // App Binding Card
+            // 自定义字段区域标题 (带添加按钮)
             item {
-                InfoCard(title = "应用关联") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AppSelectorField(
-                            selectedPackageName = appPackageName,
-                            selectedAppName = appName,
-                            onAppSelected = { packageName, name ->
-                                appPackageName = packageName
-                                appName = name
-                            }
-                        )
-                        
-                        AnimatedVisibility(visible = appPackageName.isNotEmpty()) {
-                            Column(modifier = Modifier.padding(top = 8.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth().clickable { bindWebsite = !bindWebsite }
-                                ) {
-                                    Checkbox(checked = bindWebsite, onCheckedChange = { bindWebsite = it })
-                                    Column {
-                                        Text("绑定网址", style = MaterialTheme.typography.bodyMedium)
-                                        Text("将该应用关联到所有相同网址的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                CustomFieldSectionHeader(
+                    onAddClick = {
+                        customFields.add(CustomFieldDraft(
+                            id = CustomFieldDraft.nextTempId(),
+                            title = "",
+                            value = "",
+                            isProtected = false
+                        ))
+                    }
+                )
+            }
+            
+            // 自定义字段编辑卡片 (独立卡片样式)
+            items(customFields.size) { index ->
+                val field = customFields[index]
+                CustomFieldEditCard(
+                    index = index,
+                    field = field,
+                    onFieldChange = { updated ->
+                        customFields[index] = updated
+                    },
+                    onDelete = {
+                        customFields.removeAt(index)
+                    }
+                )
+            }
+            
+            // App Binding Card - 根据设置和数据决定是否显示
+            if (shouldShowAppBinding()) {
+                item {
+                    InfoCard(title = "应用关联") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AppSelectorField(
+                                selectedPackageName = appPackageName,
+                                selectedAppName = appName,
+                                onAppSelected = { packageName, name ->
+                                    appPackageName = packageName
+                                    appName = name
                                 }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth().clickable { bindTitle = !bindTitle }
-                                ) {
-                                    Checkbox(checked = bindTitle, onCheckedChange = { bindTitle = it })
-                                    Column {
-                                        Text("绑定标题", style = MaterialTheme.typography.bodyMedium)
-                                        Text("将该应用关联到所有相同标题的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            )
+                            
+                            AnimatedVisibility(visible = appPackageName.isNotEmpty()) {
+                                Column(modifier = Modifier.padding(top = 8.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth().clickable { bindWebsite = !bindWebsite }
+                                    ) {
+                                        Checkbox(checked = bindWebsite, onCheckedChange = { bindWebsite = it })
+                                        Column {
+                                            Text("绑定网址", style = MaterialTheme.typography.bodyMedium)
+                                            Text("将该应用关联到所有相同网址的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth().clickable { bindTitle = !bindTitle }
+                                    ) {
+                                        Checkbox(checked = bindTitle, onCheckedChange = { bindTitle = it })
+                                        Column {
+                                            Text("绑定标题", style = MaterialTheme.typography.bodyMedium)
+                                            Text("将该应用关联到所有相同标题的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
                                 }
                             }
@@ -715,46 +869,47 @@ fun AddEditPasswordScreen(
                 }
             }
 
-            // Collapsible: Personal Info
-            item {
-                CollapsibleCard(
-                    title = stringResource(R.string.personal_info),
-                    icon = Icons.Default.Person,
-                    expanded = personalInfoExpanded,
-                    onExpandChange = { personalInfoExpanded = it }
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Multiple Email Fields
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.field_email),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f)
-                            )
-                            // 常用邮箱填充按钮
-                            if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.email.isNotEmpty()) {
-                                TextButton(
-                                    onClick = {
-                                        if (emails.size == 1 && emails[0].isEmpty()) {
-                                            emails[0] = commonAccountInfo.email
-                                        } else {
-                                            emails.add(commonAccountInfo.email)
+            // Collapsible: Personal Info - 根据设置和数据决定是否显示
+            if (shouldShowPersonalInfo()) {
+                item {
+                    CollapsibleCard(
+                        title = stringResource(R.string.personal_info),
+                        icon = Icons.Default.Person,
+                        expanded = personalInfoExpanded,
+                        onExpandChange = { personalInfoExpanded = it }
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Multiple Email Fields
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.field_email),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                // 常用邮箱填充按钮
+                                if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.email.isNotEmpty()) {
+                                    TextButton(
+                                        onClick = {
+                                            if (emails.size == 1 && emails[0].isEmpty()) {
+                                                emails[0] = commonAccountInfo.email
+                                            } else {
+                                                emails.add(commonAccountInfo.email)
+                                            }
                                         }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PersonAdd,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(stringResource(R.string.fill_common_account))
                                     }
-                                ) {
-                                    Icon(
-                                        Icons.Default.PersonAdd,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.fill_common_account))
                                 }
-                            }
                         }
                         emails.forEachIndexed { index, emailValue ->
                             Row(
@@ -867,21 +1022,23 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // Personal Info if 结束
 
-            // Collapsible: Address Info
-            item {
-                CollapsibleCard(
-                    title = stringResource(R.string.address_info),
-                    icon = Icons.Default.Home,
-                    expanded = addressInfoExpanded,
-                    onExpandChange = { addressInfoExpanded = it }
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = addressLine,
-                            onValueChange = { addressLine = it },
-                            label = { Text(stringResource(R.string.field_address)) },
-                            leadingIcon = { Icon(Icons.Default.Home, null) },
+            // Collapsible: Address Info - 根据设置和数据决定是否显示
+            if (shouldShowAddressInfo()) {
+                item {
+                    CollapsibleCard(
+                        title = stringResource(R.string.address_info),
+                        icon = Icons.Default.Home,
+                        expanded = addressInfoExpanded,
+                        onExpandChange = { addressInfoExpanded = it }
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = addressLine,
+                                onValueChange = { addressLine = it },
+                                label = { Text(stringResource(R.string.field_address)) },
+                                leadingIcon = { Icon(Icons.Default.Home, null) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -926,8 +1083,10 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // Address Info if 结束
 
             // Collapsible: Payment Info
+            if (shouldShowPaymentInfo()) {
             item {
                 CollapsibleCard(
                     title = stringResource(R.string.payment_info),
@@ -1046,6 +1205,7 @@ fun AddEditPasswordScreen(
                     }
                 }
             }
+            }  // Payment Info if 结束
         }
     }
 
@@ -1563,34 +1723,74 @@ private fun SsoRefEntryPickerDialog(
 
 /**
  * 保管库选择器 - M3E 风格设计
- * 选择存储位置：仅 Monica 本地 或 同步到 KeePass 数据库
+ * 选择存储位置：仅 Monica 本地、KeePass 数据库 或 Bitwarden Vault
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VaultSelector(
     keepassDatabases: List<LocalKeePassDatabase>,
-    selectedDatabaseId: Long?,
-    onDatabaseSelected: (Long?) -> Unit
+    selectedKeePassDatabaseId: Long?,
+    onKeePassDatabaseSelected: (Long?) -> Unit,
+    bitwardenVaults: List<BitwardenVault>,
+    selectedBitwardenVaultId: Long?,
+    onBitwardenVaultSelected: (Long?) -> Unit
 ) {
-    // 如果没有 KeePass 数据库，不显示选择器
-    if (keepassDatabases.isEmpty()) return
+    // 如果没有任何外部数据库，不显示选择器
+    if (keepassDatabases.isEmpty() && bitwardenVaults.isEmpty()) return
     
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
-    val selectedDatabase = keepassDatabases.find { it.id == selectedDatabaseId }
-    val displayName = selectedDatabase?.name ?: stringResource(R.string.vault_monica_only)
-    val isKeePass = selectedDatabase != null
+    val selectedKeePassDatabase = keepassDatabases.find { it.id == selectedKeePassDatabaseId }
+    val selectedBitwardenVault = bitwardenVaults.find { it.id == selectedBitwardenVaultId }
+    
+    // 判断当前选择的类型
+    val isKeePass = selectedKeePassDatabase != null
+    val isBitwarden = selectedBitwardenVault != null
+    val isLocal = !isKeePass && !isBitwarden
+    
+    val displayName = when {
+        isKeePass -> selectedKeePassDatabase!!.name
+        isBitwarden -> "Bitwarden (${selectedBitwardenVault!!.email})"
+        else -> stringResource(R.string.vault_monica_only)
+    }
+    
+    val displaySubtitle = when {
+        isKeePass -> stringResource(R.string.vault_sync_hint)
+        isBitwarden -> "将同步保存到 Bitwarden"
+        else -> stringResource(R.string.vault_monica_only_desc)
+    }
+    
+    val containerColor = when {
+        isBitwarden -> MaterialTheme.colorScheme.tertiaryContainer
+        isKeePass -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    
+    val contentColor = when {
+        isBitwarden -> MaterialTheme.colorScheme.onTertiaryContainer
+        isKeePass -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    
+    val iconColor = when {
+        isBitwarden -> MaterialTheme.colorScheme.tertiary
+        isKeePass -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.secondary
+    }
+    
+    val icon = when {
+        isBitwarden -> Icons.Default.Cloud
+        isKeePass -> Icons.Default.Key
+        else -> Icons.Default.Shield
+    }
     
     // M3E 风格的卡片选择器
     Surface(
         onClick = { showBottomSheet = true },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        color = if (isKeePass) 
-            MaterialTheme.colorScheme.primaryContainer 
-        else 
-            MaterialTheme.colorScheme.secondaryContainer,
+        color = containerColor,
         tonalElevation = 2.dp
     ) {
         Row(
@@ -1603,10 +1803,7 @@ private fun VaultSelector(
             // M3E 风格图标容器
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = if (isKeePass) 
-                    MaterialTheme.colorScheme.primary 
-                else 
-                    MaterialTheme.colorScheme.secondary,
+                color = iconColor,
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(
@@ -1614,12 +1811,13 @@ private fun VaultSelector(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Icon(
-                        imageVector = if (isKeePass) Icons.Default.Key else Icons.Default.Shield,
+                        imageVector = icon,
                         contentDescription = null,
-                        tint = if (isKeePass)
-                            MaterialTheme.colorScheme.onPrimary
-                        else
-                            MaterialTheme.colorScheme.onSecondary,
+                        tint = when {
+                            isBitwarden -> MaterialTheme.colorScheme.onTertiary
+                            isKeePass -> MaterialTheme.colorScheme.onPrimary
+                            else -> MaterialTheme.colorScheme.onSecondary
+                        },
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -1631,21 +1829,12 @@ private fun VaultSelector(
                     text = displayName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isKeePass)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSecondaryContainer
+                    color = contentColor
                 )
                 Text(
-                    text = if (isKeePass) 
-                        stringResource(R.string.vault_sync_hint)
-                    else 
-                        stringResource(R.string.vault_monica_only_desc),
+                    text = displaySubtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isKeePass)
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    else
-                        MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                    color = contentColor.copy(alpha = 0.7f)
                 )
             }
             
@@ -1653,10 +1842,7 @@ private fun VaultSelector(
             Icon(
                 imageVector = Icons.Default.UnfoldMore,
                 contentDescription = null,
-                tint = if (isKeePass)
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                else
-                    MaterialTheme.colorScheme.onSecondaryContainer
+                tint = contentColor
             )
         }
     }
@@ -1690,37 +1876,75 @@ private fun VaultSelector(
                     title = stringResource(R.string.vault_monica_only),
                     subtitle = stringResource(R.string.vault_monica_only_desc),
                     icon = Icons.Default.Shield,
-                    isSelected = selectedDatabaseId == null,
+                    isSelected = isLocal,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     iconColor = MaterialTheme.colorScheme.secondary,
                     onClick = {
-                        onDatabaseSelected(null)
+                        onKeePassDatabaseSelected(null)
+                        onBitwardenVaultSelected(null)
                         showBottomSheet = false
                     }
                 )
                 
-                // KeePass 数据库选项
-                keepassDatabases.forEach { database ->
-                    val isSelected = selectedDatabaseId == database.id
-                    val storageText = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL)
-                        stringResource(R.string.external_storage)
-                    else
-                        stringResource(R.string.internal_storage)
-                    
-                    VaultOptionItem(
-                        title = database.name,
-                        subtitle = "$storageText · ${stringResource(R.string.vault_sync_hint)}",
-                        icon = Icons.Default.Key,
-                        isSelected = isSelected,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        onClick = {
-                            onDatabaseSelected(database.id)
-                            showBottomSheet = false
-                        }
+                // Bitwarden Vault 选项
+                if (bitwardenVaults.isNotEmpty()) {
+                    Text(
+                        text = "Bitwarden",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                     )
+                    
+                    bitwardenVaults.forEach { vault ->
+                        val isSelected = selectedBitwardenVaultId == vault.id
+                        
+                        VaultOptionItem(
+                            title = vault.displayName ?: vault.email,
+                            subtitle = "${vault.serverUrl} · 将同步保存到 Bitwarden",
+                            icon = Icons.Default.Cloud,
+                            isSelected = isSelected,
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
+                            onClick = {
+                                onBitwardenVaultSelected(vault.id)
+                                showBottomSheet = false
+                            }
+                        )
+                    }
+                }
+                
+                // KeePass 数据库选项
+                if (keepassDatabases.isNotEmpty()) {
+                    Text(
+                        text = "KeePass",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    )
+                    
+                    keepassDatabases.forEach { database ->
+                        val isSelected = selectedKeePassDatabaseId == database.id
+                        val storageText = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL)
+                            stringResource(R.string.external_storage)
+                        else
+                            stringResource(R.string.internal_storage)
+                        
+                        VaultOptionItem(
+                            title = database.name,
+                            subtitle = "$storageText · ${stringResource(R.string.vault_sync_hint)}",
+                            icon = Icons.Default.Key,
+                            isSelected = isSelected,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            onClick = {
+                                onKeePassDatabaseSelected(database.id)
+                                showBottomSheet = false
+                            }
+                        )
+                    }
                 }
             }
         }

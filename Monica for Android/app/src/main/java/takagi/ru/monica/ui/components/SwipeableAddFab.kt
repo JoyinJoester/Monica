@@ -42,6 +42,7 @@ import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateColorAsState
 import kotlin.math.roundToInt
@@ -208,7 +209,11 @@ fun SwipeableAddFab(
                 // 点击 FAB 触发展开
                 // 注意：当展开后，这个 Box 会占满全屏，我们需要确保它不拦截页面内部的点击
                 // 但在收起状态 (FAB)，它需要响应点击
-                .clickable(enabled = !isExpanded) { 
+                .clickable(
+                    enabled = !isExpanded,
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { 
                     expandAction()
                 }
         ) {

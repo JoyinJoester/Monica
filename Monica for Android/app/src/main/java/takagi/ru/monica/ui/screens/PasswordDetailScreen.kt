@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
@@ -51,6 +53,9 @@ import kotlinx.coroutines.isActive
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
+import takagi.ru.monica.ui.components.CustomFieldDisplayCard
+import takagi.ru.monica.ui.components.CustomFieldDetailCard
+import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
 
@@ -73,7 +78,7 @@ import takagi.ru.monica.data.SsoProvider
  * @param onNavigateBack 返回导航回调
  * @param onEditPassword 编辑密码回调
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun PasswordDetailScreen(
     viewModel: PasswordViewModel,
@@ -98,6 +103,9 @@ fun PasswordDetailScreen(
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var passwordVerificationError by remember { mutableStateOf(false) }
+    
+    // 自定义字段状态
+    var customFields by remember { mutableStateOf<List<CustomField>>(emptyList()) }
     
     // Helper function for deletion
     fun executeDeletion() {
@@ -208,6 +216,14 @@ fun PasswordDetailScreen(
                     itKey == key
                 }
                 
+                // 加载自定义字段 (添加错误处理)
+                try {
+                    customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDetailScreen", "Error loading custom fields", e)
+                    customFields = emptyList()
+                }
+                
                 // 根据数据内容设置折叠状态
                 personalInfoExpanded = hasPersonalInfo(entry)
                 addressInfoExpanded = hasAddressInfo(entry)
@@ -221,7 +237,24 @@ fun PasswordDetailScreen(
         }
     }
     
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    val reduceAnimations = takagi.ru.monica.ui.LocalReduceAnimations.current
+    var sharedModifier: Modifier = Modifier
+    // 当减少动画模式开启时，不使用 sharedBounds 以解决部分设备上的动画卡顿问题
+    if (!reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "password_card_${passwordId}"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+
     Scaffold(
+        modifier = sharedModifier,
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
@@ -415,6 +448,32 @@ fun PasswordDetailScreen(
                 // ==========================================
                 if (entry.notes.isNotEmpty()) {
                     NotesCard(notes = entry.notes)
+                }
+                
+                // ==========================================
+                // 📋 自定义字段区块 (独立卡片样式)
+                // ==========================================
+                customFields.forEach { field ->
+                    CustomFieldDetailCard(
+                        field = field,
+                        onCopy = { fieldName ->
+                            val isProtected = field.isProtected
+                            
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText(fieldName, field.value)
+                            
+                            // 敏感字段标记为敏感剪贴板（Android 13+）
+                            if (isProtected && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                clip.description.extras = android.os.PersistableBundle().apply {
+                                    putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
+                                }
+                            }
+                            
+                            clipboard.setPrimaryClip(clip)
+                            val message = if (isProtected) "已复制敏感字段: $fieldName" else "已复制: $fieldName"
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        }
+                    )
                 }
                 
                 // 底部间距 (避免 ActionStrip 遮挡)

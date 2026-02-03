@@ -1,5 +1,7 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,7 +19,7 @@ import takagi.ru.monica.data.SecurityQuestion
 import takagi.ru.monica.security.SecurityManager
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SecurityQuestionsSetupScreen(
     securityManager: SecurityManager,
@@ -50,7 +52,26 @@ fun SecurityQuestionsSetupScreen(
         }
     }
     
+
+    
+    
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "security_questions_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { 
@@ -263,12 +284,16 @@ fun SecurityQuestionsSetupScreen(
                             isLoading = true
                             errorMessage = ""
                             
-                            securityManager.setSecurityQuestions(
-                                selectedQuestion1!!.id,
-                                answer1.trim(),
-                                selectedQuestion2!!.id,
-                                answer2.trim()
-                            )
+                            val q1 = selectedQuestion1
+                            val q2 = selectedQuestion2
+                            if (q1 != null && q2 != null) {
+                                securityManager.setSecurityQuestions(
+                                    q1.id,
+                                    answer1.trim(),
+                                    q2.id,
+                                    answer2.trim()
+                                )
+                            }
                             
                             isLoading = false
                             onSetupComplete()

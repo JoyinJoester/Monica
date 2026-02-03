@@ -45,20 +45,30 @@ enum class UnifiedProgressBarMode {
     ENABLED    // 启用统一进度条（30s周期），标准周期卡片隐藏单独进度条
 }
 
+/**
+ * V1 底部导航内容标签页
+ * 用于经典本地密码库模式
+ */
 enum class BottomNavContentTab {
+    VAULT,        // V2 密码库（多源统一视图）
     PASSWORDS,
     AUTHENTICATOR,
     CARD_WALLET,
     GENERATOR,
     NOTES,
-    TIMELINE;
+    SEND,         // V2 发送（安全分享）
+    TIMELINE,
+    PASSKEY;  // 通行密钥
 
     companion object {
         val DEFAULT_ORDER: List<BottomNavContentTab> = listOf(
+            VAULT,
             PASSWORDS,
             AUTHENTICATOR,
             CARD_WALLET,
+            PASSKEY,
             NOTES,
+            SEND,
             TIMELINE
         )
 
@@ -80,24 +90,219 @@ enum class BottomNavContentTab {
     }
 }
 
+/**
+ * V2 底部导航内容标签页
+ * 用于多源密码库模式（Bitwarden 风格）
+ */
+enum class V2BottomNavTab {
+    VAULT,      // 密码库（统一视图，支持多后端）
+    SEND,       // Send（安全分享）
+    SYNC,       // 同步中心
+    GENERATOR;  // 生成器
+
+    companion object {
+        val DEFAULT_ORDER: List<V2BottomNavTab> = listOf(
+            VAULT,
+            SEND,
+            SYNC,
+            GENERATOR
+        )
+    }
+}
+
 data class BottomNavVisibility(
+    val vault: Boolean = true,        // V2 密码库默认开启
     val passwords: Boolean = true,
     val authenticator: Boolean = true,
     val cardWallet: Boolean = true,
     val generator: Boolean = false,   // 生成器功能默认关闭
     val notes: Boolean = true,        // 笔记功能默认开启
-    val timeline: Boolean = false      // 时间线功能默认关闭
+    val send: Boolean = false,        // V2 发送功能默认关闭
+    val timeline: Boolean = false,    // 时间线功能默认关闭
+    val passkey: Boolean = true       // 通行密钥功能默认开启
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
+        BottomNavContentTab.VAULT -> vault
         BottomNavContentTab.PASSWORDS -> passwords
         BottomNavContentTab.AUTHENTICATOR -> authenticator
         BottomNavContentTab.CARD_WALLET -> cardWallet
         BottomNavContentTab.GENERATOR -> generator
         BottomNavContentTab.NOTES -> notes
+        BottomNavContentTab.SEND -> send
         BottomNavContentTab.TIMELINE -> timeline
+        BottomNavContentTab.PASSKEY -> passkey
     }
 
-    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, timeline).count { it }
+    fun visibleCount(): Int = listOf(vault, passwords, authenticator, cardWallet, generator, notes, send, timeline, passkey).count { it }
+}
+
+/**
+ * 添加/编辑密码页面字段可见性设置
+ * 控制哪些字段卡片在添加密码页面显示
+ * 注意：如果条目已有该字段数据，即使关闭也会显示
+ */
+data class PasswordFieldVisibility(
+    val securityVerification: Boolean = true,  // 安全验证（TOTP密钥）
+    val categoryAndNotes: Boolean = true,      // 分类与备注
+    val appBinding: Boolean = true,            // 应用关联
+    val personalInfo: Boolean = true,          // 个人信息（邮箱、电话）
+    val addressInfo: Boolean = true,           // 地址信息
+    val paymentInfo: Boolean = true            // 支付信息（信用卡）
+)
+
+/**
+ * 预设自定义字段类型
+ */
+enum class PresetFieldType(val displayName: String, val icon: String) {
+    TEXT("文本", "text"),
+    PASSWORD("密码", "password"),
+    NUMBER("数字", "number"),
+    DATE("日期", "date"),
+    URL("网址", "url"),
+    EMAIL("邮箱", "email"),
+    PHONE("电话", "phone")
+}
+
+/**
+ * 预设自定义字段模板
+ * 用户可以在设置中预先定义常用的自定义字段，添加密码时这些字段会自动出现
+ * 
+ * @property id 唯一标识（UUID字符串）
+ * @property fieldName 字段名称（显示给用户的标题）
+ * @property fieldType 字段类型
+ * @property isSensitive 是否为敏感数据（显示时默认隐藏，复制时标记敏感）
+ * @property isRequired 是否必填
+ * @property defaultValue 默认值
+ * @property placeholder 占位提示文字
+ * @property order 排序顺序
+ */
+data class PresetCustomField(
+    val id: String,
+    val fieldName: String,
+    val fieldType: PresetFieldType = PresetFieldType.TEXT,
+    val isSensitive: Boolean = false,
+    val isRequired: Boolean = false,
+    val defaultValue: String = "",
+    val placeholder: String = "",
+    val order: Int = 0
+) {
+    /**
+     * 序列化为 JSON 字符串
+     */
+    fun toJson(): String {
+        return buildString {
+            append("{")
+            append("\"id\":\"$id\",")
+            append("\"fieldName\":\"${fieldName.replace("\"", "\\\"")}\",")
+            append("\"fieldType\":\"${fieldType.name}\",")
+            append("\"isSensitive\":$isSensitive,")
+            append("\"isRequired\":$isRequired,")
+            append("\"defaultValue\":\"${defaultValue.replace("\"", "\\\"")}\",")
+            append("\"placeholder\":\"${placeholder.replace("\"", "\\\"")}\",")
+            append("\"order\":$order")
+            append("}")
+        }
+    }
+    
+    companion object {
+        /**
+         * 从 JSON 字符串解析
+         */
+        fun fromJson(json: String): PresetCustomField? {
+            return try {
+                // 简单的 JSON 解析
+                fun extractString(key: String): String {
+                    val pattern = "\"$key\":\"([^\"]*)\""
+                    val regex = Regex(pattern)
+                    return regex.find(json)?.groupValues?.get(1)
+                        ?.replace("\\\"", "\"") ?: ""
+                }
+                fun extractBoolean(key: String): Boolean {
+                    val pattern = "\"$key\":(true|false)"
+                    val regex = Regex(pattern)
+                    return regex.find(json)?.groupValues?.get(1) == "true"
+                }
+                fun extractInt(key: String): Int {
+                    val pattern = "\"$key\":(\\d+)"
+                    val regex = Regex(pattern)
+                    return regex.find(json)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                }
+                
+                PresetCustomField(
+                    id = extractString("id"),
+                    fieldName = extractString("fieldName"),
+                    fieldType = try { 
+                        PresetFieldType.valueOf(extractString("fieldType")) 
+                    } catch (e: Exception) { 
+                        PresetFieldType.TEXT 
+                    },
+                    isSensitive = extractBoolean("isSensitive"),
+                    isRequired = extractBoolean("isRequired"),
+                    defaultValue = extractString("defaultValue"),
+                    placeholder = extractString("placeholder"),
+                    order = extractInt("order")
+                )
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        /**
+         * 解析预设字段列表的 JSON
+         */
+        fun listFromJson(json: String): List<PresetCustomField> {
+            if (json.isBlank() || json == "[]") return emptyList()
+            return try {
+                // 移除首尾的 [ ]
+                val content = json.trim().removePrefix("[").removeSuffix("]")
+                if (content.isBlank()) return emptyList()
+                
+                // 分割各个对象 - 简单处理，假设对象内没有嵌套
+                val objects = mutableListOf<String>()
+                var depth = 0
+                var current = StringBuilder()
+                for (char in content) {
+                    when (char) {
+                        '{' -> {
+                            depth++
+                            current.append(char)
+                        }
+                        '}' -> {
+                            current.append(char)
+                            depth--
+                            if (depth == 0) {
+                                objects.add(current.toString())
+                                current = StringBuilder()
+                            }
+                        }
+                        ',' -> {
+                            if (depth == 0) {
+                                // 跳过对象之间的逗号
+                            } else {
+                                current.append(char)
+                            }
+                        }
+                        else -> {
+                            if (depth > 0) {
+                                current.append(char)
+                            }
+                        }
+                    }
+                }
+                
+                objects.mapNotNull { fromJson(it) }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        
+        /**
+         * 将预设字段列表序列化为 JSON
+         */
+        fun listToJson(fields: List<PresetCustomField>): String {
+            return "[${fields.joinToString(",") { it.toJson() }}]"
+        }
+    }
 }
 
 data class AppSettings(
@@ -132,7 +337,18 @@ data class AppSettings(
     val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
     val iconCardsEnabled: Boolean = false, // 是否启用带图标卡片
     val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL, // 卡片显示模式
-    val noteGridLayout: Boolean = true // 笔记列表使用网格布局 (true = 网格, false = 列表)
+    val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
+    val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
+    val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
+    val reduceAnimations: Boolean = false, // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题
+    
+    // V2 多源密码库设置
+    val defaultVaultView: VaultViewMode = VaultViewMode.V1, // 默认密码库视图
+    val autofillSources: Set<AutofillSource> = setOf(AutofillSource.V1_LOCAL), // 自动填充数据源
+    val autofillPriority: List<AutofillSource> = listOf(AutofillSource.V1_LOCAL), // 自动填充优先级
+    
+    // 导航栏版本设置
+    val navBarVersion: NavBarVersion = NavBarVersion.V1 // 导航栏版本（V1经典/V2简洁）
 )
 
 /**
@@ -142,4 +358,33 @@ enum class PasswordCardDisplayMode {
     SHOW_ALL,       // 显示所有信息（默认）
     TITLE_USERNAME, // 仅显示标题和用户名
     TITLE_ONLY      // 仅显示标题
+}
+
+/**
+ * 密码库视图模式
+ * V1 = Monica 经典本地库（卡包/证件/密码/TOTP）
+ * V2 = 多源密码库（Bitwarden/KeePass 等后端）
+ */
+enum class VaultViewMode {
+    V1,  // 经典本地库
+    V2   // 多源密码库
+}
+
+/**
+ * 导航栏版本
+ * V1 = 经典底部导航栏（可自定义顺序和显示项）
+ * V2 = 简洁导航栏（固定4项：库、发送、生成、设置）+ 最近页面动态显示
+ */
+enum class NavBarVersion {
+    V1,  // 经典导航栏
+    V2   // 简洁动态导航栏
+}
+
+/**
+ * 自动填充数据源
+ */
+enum class AutofillSource {
+    V1_LOCAL,    // V1 本地密码库
+    BITWARDEN,   // Bitwarden
+    KEEPASS      // KeePass（未来支持）
 }

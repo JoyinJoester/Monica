@@ -35,7 +35,8 @@ class DataExportImportManager(private val context: Context) {
         val isFavorite: Boolean,
         val imagePaths: String,
         val createdAt: Long,
-        val updatedAt: Long
+        val updatedAt: Long,
+        val categoryId: Long? = null
     )
 
     companion object {
@@ -46,7 +47,7 @@ class DataExportImportManager(private val context: Context) {
         // CSV 列标题
         private val CSV_HEADERS = arrayOf(
             "ID", "Type", "Title", "Data", "Notes", "IsFavorite", 
-            "ImagePaths", "CreatedAt", "UpdatedAt"
+            "ImagePaths", "CreatedAt", "UpdatedAt", "CategoryId"
         )
     }
 
@@ -84,7 +85,8 @@ class DataExportImportManager(private val context: Context) {
                                 item.isFavorite.toString(),
                                 escapeCsvField(item.imagePaths),
                                 item.createdAt.time.toString(),
-                                item.updatedAt.time.toString()
+                                item.updatedAt.time.toString(),
+                                item.categoryId?.toString() ?: ""
                             )
                             writer.write(row.joinToString(CSV_SEPARATOR))
                             writer.newLine()
@@ -244,7 +246,8 @@ class DataExportImportManager(private val context: Context) {
             isFavorite = fields[5].toBoolean(),
             imagePaths = fields[6],
             createdAt = fields[7].toLongOrNull() ?: System.currentTimeMillis(),
-            updatedAt = fields[8].toLongOrNull() ?: System.currentTimeMillis()
+            updatedAt = fields[8].toLongOrNull() ?: System.currentTimeMillis(),
+            categoryId = fields.getOrNull(9)?.toLongOrNull()
         )
     }
     

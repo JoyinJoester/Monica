@@ -442,7 +442,7 @@ private fun PasswordVerificationCard(
                 onClick = {
                     when {
                         password.isBlank() -> errorMessage = emptyError
-                        password.length < 6 -> errorMessage = minLengthError
+                        password.length < 4 -> errorMessage = minLengthError
                         !verifyPassword(password) -> errorMessage = incorrectError
                         else -> {
                             keyboardController?.hide()

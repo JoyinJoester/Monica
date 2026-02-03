@@ -16,12 +16,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import takagi.ru.monica.R
 
 /**
  * 同步与备份页面 - 整合导入导出和云同步功能
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SyncBackupScreen(
     onNavigateBack: () -> Unit,
@@ -30,12 +32,29 @@ fun SyncBackupScreen(
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToKeePass: () -> Unit = {},  // KeePass 兼容性配置入口
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
+    onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
     isPlusActivated: Boolean = false
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "sync_settings_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
     
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.sync_backup_title)) },
@@ -149,6 +168,20 @@ fun SyncBackupScreen(
                     title = "KeePass WebDAV",
                     description = "通过 WebDAV 与 KeePass (.kdbx) 同步数据",
                     onClick = onNavigateToKeePass,
+                    enabled = isPlusActivated,
+                    badge = if (!isPlusActivated) "Plus" else null
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Bitwarden 集成区块
+            SyncBackupSection(title = "Bitwarden") {
+                SyncBackupItem(
+                    icon = Icons.Default.CloudSync,
+                    title = "Bitwarden 同步",
+                    description = "连接 Bitwarden 服务器，同步您的密码数据",
+                    onClick = onNavigateToBitwarden,
                     enabled = isPlusActivated,
                     badge = if (!isPlusActivated) "Plus" else null
                 )

@@ -15,6 +15,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -26,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,16 +57,18 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.data.VaultViewMode
 import takagi.ru.monica.navigation.Screen
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.SimpleMainScreen
-import takagi.ru.monica.ui.SimpleMainScreen
+import takagi.ru.monica.ui.v2.V2MainScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
@@ -100,6 +107,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.utils.ScreenshotProtection
+import takagi.ru.monica.ui.base.BaseMonicaActivity
+import takagi.ru.monica.security.SessionManager
 import androidx.compose.runtime.collectAsState
 import takagi.ru.monica.util.FileOperationHelper
 import takagi.ru.monica.util.PhotoPickerHelper
@@ -107,26 +116,15 @@ import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.utils.AutoBackupManager
 
-class MainActivity : FragmentActivity() {
+class MainActivity : BaseMonicaActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
 
-    override fun attachBaseContext(newBase: Context?) {
-        if (newBase != null) {
-            val settingsManager = SettingsManager(newBase)
-            val language = runBlocking {
-                settingsManager.settingsFlow.first().language
-            }
-            super.attachBaseContext(LocaleHelper.setLocale(newBase, language))
-        } else {
-            super.attachBaseContext(newBase)
-        }
-    }
+    // attachBaseContext 已由 BaseMonicaActivity 统一处理（语言、超时保护）
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        super.onCreate(savedInstanceState) // BaseMonicaActivity 已调用 enableEdgeToEdge()
 
-        // 启用沉浸式状态栏
-        enableEdgeToEdge()
+        // 注意：enableEdgeToEdge() 已在基类调用，这里不再重复
 
         installSplashScreen()
 
@@ -200,9 +198,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun enableEdgeToEdge() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-    }
+    // enableEdgeToEdge() 已由 BaseMonicaActivity 统一处理
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -236,9 +232,20 @@ fun MonicaApp(
     val navController = rememberNavController()
     
     // 同步预读取 disablePasswordVerification 设置（避免异步加载时登录页面闪烁）
+    // 使用超时保护，防止 ANR
     val initialDisablePasswordVerification = remember {
-        runBlocking {
-            settingsManager.settingsFlow.first().disablePasswordVerification
+        try {
+            runBlocking {
+                withTimeout(200) {
+                    try {
+                        settingsManager.settingsFlow.first().disablePasswordVerification
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -252,10 +259,12 @@ fun MonicaApp(
     }
 
     val viewModel: PasswordViewModel = viewModel {
+        val customFieldRepository = takagi.ru.monica.repository.CustomFieldRepository(database.customFieldDao())
         PasswordViewModel(
             repository,
             securityManager,
             secureItemRepository,
+            customFieldRepository,
             navController.context,
             database.localKeePassDatabaseDao()
         )
@@ -282,6 +291,12 @@ fun MonicaApp(
     }
     val noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel = viewModel {
         takagi.ru.monica.viewmodel.NoteViewModel(secureItemRepository)
+    }
+    
+    // Passkey 通行密钥
+    val passkeyRepository = remember { takagi.ru.monica.repository.PasskeyRepository(database.passkeyDao()) }
+    val passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel = viewModel {
+        takagi.ru.monica.viewmodel.PasskeyViewModel(passkeyRepository)
     }
     
     // KeePass KDBX 导出/导入
@@ -330,6 +345,7 @@ fun MonicaApp(
                 settingsViewModel = settingsViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
+                passkeyViewModel = passkeyViewModel,
                 keePassViewModel = keePassViewModel,
                 localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
@@ -357,6 +373,7 @@ fun MonicaContent(
     settingsViewModel: SettingsViewModel,
     generatorViewModel: GeneratorViewModel,
     noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
+    passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel,
     keePassViewModel: KeePassWebDavViewModel,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
@@ -385,6 +402,11 @@ fun MonicaContent(
     // 使用预读取的值（initialDisablePasswordVerification）来避免闪烁
     val disablePasswordVerification = if (settingsLoaded) settings.disablePasswordVerification else initialDisablePasswordVerification
     val shouldSkipLogin = disablePasswordVerification && !isFirstTime
+    
+    // 使用 rememberUpdatedState 确保生命周期观察者闭包始终访问最新值
+    val currentIsAuthenticated by rememberUpdatedState(isAuthenticated)
+    val currentSettings by rememberUpdatedState(settings)
+    val currentIsFirstTime by rememberUpdatedState(isFirstTime)
 
     // Auto-lock logic: only use lifecycleOwner as key to prevent observer recreation
     // The settings and auth state are captured by closure and always reflect latest values
@@ -393,18 +415,20 @@ fun MonicaContent(
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
                     // Only record timestamp when user is authenticated
-                    if (isAuthenticated) {
+                    // 使用 currentIsAuthenticated 确保访问最新值
+                    if (currentIsAuthenticated) {
                         lastBackgroundTimestamp = System.currentTimeMillis()
                     }
                 }
                 Lifecycle.Event.ON_START -> {
                     // 如果已禁用密码验证，跳过自动锁定
-                    if (settings.disablePasswordVerification && !isFirstTime) {
+                    // 使用 currentSettings 和 currentIsFirstTime 确保访问最新值
+                    if (currentSettings.disablePasswordVerification && !currentIsFirstTime) {
                         lastBackgroundTimestamp = null
                         return@LifecycleEventObserver
                     }
                     
-                    val minutes = settings.autoLockMinutes
+                    val minutes = currentSettings.autoLockMinutes
                     val timeoutMs = when {
                         minutes == -1 -> null // Never auto-lock
                         minutes <= 0 -> 0L // Immediate lock after background
@@ -413,7 +437,7 @@ fun MonicaContent(
 
                     val lastBackground = lastBackgroundTimestamp
                     if (
-                        isAuthenticated &&
+                        currentIsAuthenticated &&
                         timeoutMs != null &&
                         lastBackground != null &&
                         System.currentTimeMillis() - lastBackground >= timeoutMs
@@ -438,18 +462,42 @@ fun MonicaContent(
         }
     }
     
-    // 当 shouldSkipLogin 为 true 时，自动设置认证状态
-    LaunchedEffect(shouldSkipLogin) {
-        if (shouldSkipLogin && !isAuthenticated) {
+    // 当 shouldSkipLogin 为 true 且设置已加载完成时，自动设置认证状态
+    LaunchedEffect(shouldSkipLogin, settingsLoaded) {
+        if (settingsLoaded && shouldSkipLogin && !isAuthenticated) {
             // 自动认证，跳过登录页面
             viewModel.authenticate("")
         }
     }
+    
+    // 使用固定的 startDestination 避免竞态条件
+    // 认证状态变化时通过 LaunchedEffect 处理导航
+    val fixedStartDestination = remember {
+        if (initialDisablePasswordVerification && !isFirstTime) Screen.Main.createRoute() else Screen.Login.route
+    }
+    
+    // 当认证状态变化时处理导航
+    LaunchedEffect(isAuthenticated) {
+        if (isAuthenticated) {
+            val currentRoute = navController.currentDestination?.route
+            if (currentRoute == Screen.Login.route) {
+                navController.navigate(Screen.Main.createRoute()) {
+                    popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            }
+        }
+    }
 
-    NavHost(
-        navController = navController,
-        startDestination = if (isAuthenticated || shouldSkipLogin) Screen.Main.createRoute() else Screen.Login.route
-    ) {
+    @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+    androidx.compose.animation.SharedTransitionLayout {
+        androidx.compose.runtime.CompositionLocalProvider(
+            takagi.ru.monica.ui.LocalSharedTransitionScope provides this,
+            takagi.ru.monica.ui.LocalReduceAnimations provides settings.reduceAnimations
+        ) {
+            NavHost(
+                navController = navController,
+                startDestination = fixedStartDestination
+            ) {
         composable(Screen.Login.route) {
             LoginScreen(
                 viewModel = viewModel,
@@ -476,6 +524,120 @@ fun MonicaContent(
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getInt("tab") ?: 0
             val scope = rememberCoroutineScope()
+            
+            // 读取当前视图模式
+            val currentSettings by settingsViewModel.settings.collectAsState()
+            val vaultViewMode = currentSettings.defaultVaultView
+
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+            // 根据 VaultViewMode 切换 V1 或 V2 界面
+            when (vaultViewMode) {
+                VaultViewMode.V2 -> {
+                    // V2 多源密码库界面
+                    V2MainScreen(
+                        settingsViewModel = settingsViewModel,
+                        passwordViewModel = viewModel,  // viewModel 是 PasswordViewModel
+                        generatorViewModel = generatorViewModel,
+                        onNavigateToResetPassword = {
+                            navController.navigate(Screen.ChangePassword.route)
+                        },
+                        onNavigateToSecurityQuestions = {
+                            navController.navigate(Screen.SecurityQuestion.route)
+                        },
+                        onNavigateToSyncBackup = {
+                            navController.navigate(Screen.SyncBackup.route)
+                        },
+                        onNavigateToAutofill = {
+                            navController.navigate(Screen.AutofillSettings.route)
+                        },
+                        onNavigateToPasskeySettings = {
+                            navController.navigate(Screen.PasskeySettings.route)
+                        },
+                        onNavigateToBottomNavSettings = {
+                            navController.navigate(Screen.BottomNavSettings.route)
+                        },
+                        onNavigateToColorScheme = {
+                            navController.navigate(Screen.ColorSchemeSelection.route)
+                        },
+                        onSecurityAnalysis = {
+                            navController.navigate(Screen.SecurityAnalysis.route)
+                        },
+                        onNavigateToDeveloperSettings = {
+                            navController.navigate(Screen.DeveloperSettings.route)
+                        },
+                        onNavigateToPermissionManagement = {
+                            navController.navigate(Screen.PermissionManagement.route)
+                        },
+                        onNavigateToMonicaPlus = {
+                            navController.navigate(Screen.MonicaPlus.route)
+                        },
+                        onNavigateToExtensions = {
+                            navController.navigate(Screen.Extensions.route)
+                        },
+                        onNavigateToBitwardenLogin = {
+                            // TODO: Navigate to Bitwarden login screen
+                            navController.navigate(Screen.BitwardenSettings.route)
+                        },
+                        onNavigateToKeePassImport = {
+                            // TODO: Navigate to KeePass import screen
+                        },
+                        onNavigateToWebDAVSettings = {
+                            navController.navigate(Screen.SyncBackup.route)
+                        },
+                        onNavigateToAddEntry = { entryType ->
+                            // 根据类型导航到对应的添加页面
+                            when (entryType) {
+                                "LOGIN" -> navController.navigate(Screen.AddEditPassword.createRoute(null))
+                                "CARD" -> navController.navigate(Screen.AddEditBankCard.createRoute(null))
+                                "IDENTITY" -> navController.navigate(Screen.AddEditDocument.createRoute(null))
+                                "NOTE" -> navController.navigate(Screen.AddEditNote.createRoute(null))
+                                else -> navController.navigate(Screen.AddEditPassword.createRoute(null))
+                            }
+                        },
+                        onNavigateToEntryDetail = { entryType, entryId ->
+                            // 根据类型导航到对应的 V1 编辑页面
+                            when (entryType) {
+                                "LOGIN" -> navController.navigate(Screen.AddEditPassword.createRoute(entryId))
+                                "CARD" -> navController.navigate(Screen.AddEditBankCard.createRoute(entryId))
+                                "IDENTITY" -> navController.navigate(Screen.AddEditDocument.createRoute(entryId))
+                                "NOTE" -> navController.navigate(Screen.AddEditNote.createRoute(entryId))
+                                else -> navController.navigate(Screen.AddEditPassword.createRoute(entryId))
+                            }
+                        },
+                        onClearAllData = { clearPasswords, clearTotp, clearNotes, clearDocuments, clearBankCards, clearGeneratorHistory ->
+                            scope.launch {
+                                try {
+                                    if (clearPasswords) {
+                                        val passwords = repository.getAllPasswordEntries().first()
+                                        passwords.forEach { repository.deletePasswordEntry(it) }
+                                    }
+                                    if (clearTotp || clearDocuments || clearBankCards || clearNotes) {
+                                        val items = secureItemRepository.getAllItems().first()
+                                        items.forEach { item ->
+                                            val shouldDelete = when (item.itemType) {
+                                                ItemType.TOTP -> clearTotp
+                                                ItemType.DOCUMENT -> clearDocuments
+                                                ItemType.BANK_CARD -> clearBankCards
+                                                ItemType.NOTE -> clearNotes
+                                                else -> false
+                                            }
+                                            if (shouldDelete) secureItemRepository.deleteItem(item)
+                                        }
+                                    }
+                                    if (clearGeneratorHistory) passwordHistoryManager.clearHistory()
+                                    android.widget.Toast.makeText(navController.context, "数据已清空", android.widget.Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    android.util.Log.e("MainActivity", "Failed to clear data", e)
+                                }
+                            }
+                        }
+                    )
+                }
+                
+                VaultViewMode.V1 -> {
+                    // V1 经典本地密码库界面
             SimpleMainScreen(
                 passwordViewModel = viewModel,
                 settingsViewModel = settingsViewModel,
@@ -484,6 +646,7 @@ fun MonicaContent(
                 documentViewModel = documentViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
+                passkeyViewModel = passkeyViewModel,
                 localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
                 onNavigateToAddPassword = { passwordId ->
@@ -524,6 +687,9 @@ fun MonicaContent(
                 },
                 onNavigateToAutofill = {
                     navController.navigate(Screen.AutofillSettings.route)
+                },
+                onNavigateToPasskeySettings = {
+                    navController.navigate(Screen.PasskeySettings.route)
                 },
                 onNavigateToBottomNavSettings = {
                     navController.navigate(Screen.BottomNavSettings.route)
@@ -601,6 +767,9 @@ fun MonicaContent(
                     }
                 }
             )
+            } // end V1
+            } // end when
+            } // end CompositionLocalProvider
         }
 
         composable(Screen.AddEditPassword.route) { backStackEntry ->
@@ -664,18 +833,25 @@ fun MonicaContent(
             }
 
             if (!isLoading) {
+                val totpCategories by totpViewModel.categories.collectAsState()
+                val initialCategoryId = initialData?.categoryId
                 takagi.ru.monica.ui.screens.AddEditTotpScreen(
                     totpId = if (totpId > 0) totpId else null,
                     initialData = initialData,
                     initialTitle = initialTitle,
                     initialNotes = initialNotes,
+                    initialCategoryId = initialCategoryId,
+                    categories = totpCategories,
                     passwordViewModel = viewModel,
-                    onSave = { title, notes, totpData ->
+                    localKeePassViewModel = localKeePassViewModel,
+                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId ->
                         totpViewModel.saveTotpItem(
                             id = if (totpId > 0) totpId else null,
                             title = title,
                             notes = notes,
-                            totpData = totpData
+                            totpData = totpData,
+                            categoryId = categoryId,
+                            keepassDatabaseId = keepassDatabaseId
                         )
                         navController.popBackStack()
                     },
@@ -763,17 +939,21 @@ fun MonicaContent(
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
 
             if (passwordId > 0) {
-                takagi.ru.monica.ui.screens.PasswordDetailScreen(
-                    viewModel = viewModel,
-                    passwordId = passwordId,
-                    disablePasswordVerification = settings.disablePasswordVerification,
-                    onNavigateBack = {
-                        navController.popBackStack()
-                    },
-                    onEditPassword = { id ->
-                        navController.navigate(Screen.AddEditPassword.createRoute(id))
-                    }
-                )
+                androidx.compose.runtime.CompositionLocalProvider(
+                    takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+                ) {
+                    takagi.ru.monica.ui.screens.PasswordDetailScreen(
+                        viewModel = viewModel,
+                        passwordId = passwordId,
+                        disablePasswordVerification = settings.disablePasswordVerification,
+                        onNavigateBack = {
+                            navController.popBackStack()
+                        },
+                        onEditPassword = { id ->
+                            navController.navigate(Screen.AddEditPassword.createRoute(id))
+                        }
+                    )
+                }
             }
         }
 
@@ -931,32 +1111,43 @@ fun MonicaContent(
         }
 
         composable(Screen.ChangePassword.route) {
-            takagi.ru.monica.ui.screens.ChangePasswordScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onPasswordChanged = { currentPassword, newPassword ->
-                    // TODO: 实现修改密码逻辑
-                    viewModel.changePassword(currentPassword, newPassword)
-                }
-            )
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                takagi.ru.monica.ui.screens.ChangePasswordScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onPasswordChanged = { currentPassword, newPassword ->
+                        // TODO: 实现修改密码逻辑
+                        viewModel.changePassword(currentPassword, newPassword)
+                    }
+                )
+            }
         }
 
         composable(Screen.SecurityQuestion.route) {
-            SecurityQuestionsSetupScreen(
-                securityManager = securityManager,
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onSetupComplete = {
-                    navController.popBackStack()
-                }
-            )
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                SecurityQuestionsSetupScreen(
+                    securityManager = securityManager,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onSetupComplete = {
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
 
         composable(Screen.Settings.route) {
             val scope = rememberCoroutineScope()
 
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
@@ -973,6 +1164,9 @@ fun MonicaContent(
                 },
                 onNavigateToAutofill = {
                     navController.navigate(Screen.AutofillSettings.route)
+                },
+                onNavigateToPasskeySettings = {
+                    navController.navigate(Screen.PasskeySettings.route)
                 },
                 onNavigateToBottomNavSettings = {
                     navController.navigate(Screen.BottomNavSettings.route)
@@ -1050,15 +1244,26 @@ fun MonicaContent(
                     }
                 }
             )
+            }
         }
 
-        composable(Screen.BottomNavSettings.route) {
+        composable(
+            route = Screen.BottomNavSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             BottomNavSettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+            }
         }
 
         composable(
@@ -1066,9 +1271,16 @@ fun MonicaContent(
             arguments = listOf(navArgument("skipCurrentPassword") {
                 type = NavType.BoolType
                 defaultValue = false
-            })
+            }),
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
         ) { backStackEntry ->
             val skipCurrentPassword = backStackEntry.arguments?.getBoolean("skipCurrentPassword") ?: false
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             ResetPasswordScreen(
                 securityManager = securityManager,
                 skipCurrentPassword = skipCurrentPassword,
@@ -1081,6 +1293,7 @@ fun MonicaContent(
                     }
                 }
             )
+            }
         }
 
         composable(Screen.ForgotPassword.route) {
@@ -1109,7 +1322,16 @@ fun MonicaContent(
             }
         }
 
-        composable(Screen.SecurityQuestionsSetup.route) {
+        composable(
+            route = Screen.SecurityQuestionsSetup.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             SecurityQuestionsSetupScreen(
                 securityManager = securityManager,
                 onNavigateBack = {
@@ -1119,6 +1341,7 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+            }
         }
 
         composable(Screen.SecurityQuestionsVerification.route) {
@@ -1162,20 +1385,57 @@ fun MonicaContent(
             )
         }
 
-        composable(Screen.AutofillSettings.route) {
-            takagi.ru.monica.ui.screens.AutofillSettingsScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
+        composable(
+            route = Screen.AutofillSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                takagi.ru.monica.ui.screens.AutofillSettingsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
 
-        composable(Screen.SecurityAnalysis.route) {
+        composable(
+            route = Screen.PasskeySettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                takagi.ru.monica.ui.screens.PasskeySettingsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Screen.SecurityAnalysis.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
             val securityViewModel: takagi.ru.monica.viewmodel.SecurityAnalysisViewModel = viewModel {
                 takagi.ru.monica.viewmodel.SecurityAnalysisViewModel(repository)
             }
             val analysisData by securityViewModel.analysisData.collectAsState()
 
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.SecurityAnalysisScreen(
                 analysisData = analysisData,
                 onStartAnalysis = {
@@ -1188,20 +1448,40 @@ fun MonicaContent(
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
                 }
             )
+            }
         }
         
-        composable(Screen.DeveloperSettings.route) {
+        composable(
+            route = Screen.DeveloperSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.DeveloperSettingsScreen(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+            }
         }
         
-        composable(Screen.Extensions.route) {
+        composable(
+            route = Screen.Extensions.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
             val settings by settingsViewModel.settings.collectAsState()
             val totpItems by totpViewModel.totpItems.collectAsState()
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.ExtensionsScreen(
                 onNavigateBack = {
                     navController.popBackStack()
@@ -1240,11 +1520,40 @@ fun MonicaContent(
                 },
                 onNotificationValidatorSelected = { id ->
                     settingsViewModel.updateNotificationValidatorId(id)
+                },
+                onNavigateToFieldCustomization = {
+                    navController.navigate(Screen.PasswordFieldCustomization.route)
+                }
+            )
+            }
+        }
+        
+        // 添加密码页面字段定制页面
+        composable(
+            route = Screen.PasswordFieldCustomization.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.PasswordFieldCustomizationScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
         
-        composable(Screen.SyncBackup.route) {
+        composable(
+            route = Screen.SyncBackup.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.SyncBackupScreen(
                 onNavigateBack = {
                     navController.popBackStack()
@@ -1264,8 +1573,12 @@ fun MonicaContent(
                 onNavigateToLocalKeePass = {
                     navController.navigate(Screen.LocalKeePass.route)
                 },
+                onNavigateToBitwarden = {
+                    navController.navigate(Screen.BitwardenSettings.route)
+                },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
+            }
         }
         
         composable(Screen.LocalKeePass.route) {
@@ -1277,7 +1590,16 @@ fun MonicaContent(
             )
         }
         
-        composable(Screen.ColorSchemeSelection.route) {
+        composable(
+            route = Screen.ColorSchemeSelection.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             takagi.ru.monica.ui.screens.ColorSchemeSelectionScreen(
                 settingsViewModel = settingsViewModel,
                 onNavigateBack = {
@@ -1287,6 +1609,7 @@ fun MonicaContent(
                     navController.navigate(Screen.CustomColorSettings.route)
                 }
             )
+            }
         }
         
         composable(Screen.CustomColorSettings.route) {
@@ -1309,16 +1632,35 @@ fun MonicaContent(
         }
         
         // 权限管理页面
-        composable(Screen.PermissionManagement.route) {
+        composable(
+            route = Screen.PermissionManagement.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             PermissionManagementScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+            }
         }
 
-        composable(Screen.MonicaPlus.route) {
+        composable(
+            route = Screen.MonicaPlus.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
             val settings by settingsViewModel.settings.collectAsState()
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
             MonicaPlusScreen(
                 isPlusActivated = settings.isPlusActivated,
                 onNavigateBack = {
@@ -1332,6 +1674,7 @@ fun MonicaContent(
                 }
             )
         }
+        }
 
         composable(Screen.Payment.route) {
             PaymentScreen(
@@ -1343,6 +1686,56 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+        }
+        
+        // Bitwarden 登录页面
+        composable(
+            route = Screen.BitwardenLogin.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = 
+                androidx.lifecycle.viewmodel.compose.viewModel()
+            takagi.ru.monica.bitwarden.ui.BitwardenLoginScreen(
+                viewModel = bitwardenViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onLoginSuccess = {
+                    navController.navigate(Screen.BitwardenSettings.route) {
+                        popUpTo(Screen.BitwardenLogin.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        // Bitwarden 设置/管理页面
+        composable(
+            route = Screen.BitwardenSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = 
+                androidx.lifecycle.viewmodel.compose.viewModel()
+            takagi.ru.monica.bitwarden.ui.BitwardenSettingsScreen(
+                viewModel = bitwardenViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToLogin = {
+                    navController.navigate(Screen.BitwardenLogin.route)
+                },
+                onNavigateToVault = { vaultId ->
+                    // 未来可以添加 Vault 详情页面
+                    // 目前保持空实现
+                }
+            )
+        }
+    }
         }
     }
 }

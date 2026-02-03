@@ -41,6 +41,12 @@ sealed class PasswordItemAction {
     /** 复制密码 */
     data class CopyPassword(val password: PasswordEntry) : PasswordItemAction()
     
+    /** 复制账号，稍后复制密码 */
+    data class SmartCopyUsernameFirst(val password: PasswordEntry) : PasswordItemAction()
+    
+    /** 复制密码，稍后复制账号 */
+    data class SmartCopyPasswordFirst(val password: PasswordEntry) : PasswordItemAction()
+    
     /** 查看详情 */
     data class ViewDetails(val password: PasswordEntry) : PasswordItemAction()
 }
@@ -65,6 +71,7 @@ fun PasswordListItem(
     password: PasswordEntry,
     showDropdownMenu: Boolean = false,
     iconCardsEnabled: Boolean = false,
+    showSmartCopyOptions: Boolean = false,
     onAction: ((PasswordItemAction) -> Unit)? = null,
     onItemClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -168,6 +175,61 @@ fun PasswordListItem(
                     )
                     
                     HorizontalDivider()
+                    
+                    // 复制用户名
+                    DropdownMenuItem(
+                        text = { 
+                            Column {
+                                Text("复制用户名")
+                                Text(
+                                    text = password.username,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                        onClick = {
+                            expanded = false
+                            onAction(PasswordItemAction.CopyUsername(password))
+                        }
+                    )
+                    
+                    // 复制密码
+                    DropdownMenuItem(
+                        text = { Text("复制密码") },
+                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                        onClick = {
+                            expanded = false
+                            onAction(PasswordItemAction.CopyPassword(password))
+                        }
+                    )
+                    
+                    HorizontalDivider()
+                    
+                    // 复制账号 (稍后复制密码) - 仅在有通知权限时显示
+                    if (showSmartCopyOptions) {
+                        DropdownMenuItem(
+                            text = { Text("复制账号 (稍后复制密码)") },
+                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                            onClick = {
+                                expanded = false
+                                onAction(PasswordItemAction.SmartCopyUsernameFirst(password))
+                            }
+                        )
+                        
+                        // 复制密码 (稍后复制账号)
+                        DropdownMenuItem(
+                            text = { Text("复制密码 (稍后复制账号)") },
+                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                            onClick = {
+                                expanded = false
+                                onAction(PasswordItemAction.SmartCopyPasswordFirst(password))
+                            }
+                        )
+                        
+                        HorizontalDivider()
+                    }
                     
                     // 查看详情
                     DropdownMenuItem(
@@ -351,6 +413,7 @@ fun AppIcon(
 fun SuggestedPasswordListItem(
     password: PasswordEntry,
     iconCardsEnabled: Boolean = false,
+    showSmartCopyOptions: Boolean = false,
     onAction: (PasswordItemAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -465,6 +528,30 @@ fun SuggestedPasswordListItem(
                 )
                 
                 HorizontalDivider()
+                
+                // 复制账号 (稍后复制密码) - 仅在有通知权限时显示
+                if (showSmartCopyOptions) {
+                    DropdownMenuItem(
+                        text = { Text("复制账号 (稍后复制密码)") },
+                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                        onClick = {
+                            expanded = false
+                            onAction(PasswordItemAction.SmartCopyUsernameFirst(password))
+                        }
+                    )
+                    
+                    // 复制密码 (稍后复制账号)
+                    DropdownMenuItem(
+                        text = { Text("复制密码 (稍后复制账号)") },
+                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                        onClick = {
+                            expanded = false
+                            onAction(PasswordItemAction.SmartCopyPasswordFirst(password))
+                        }
+                    )
+                    
+                    HorizontalDivider()
+                }
                 
                 // 查看详情
                 DropdownMenuItem(

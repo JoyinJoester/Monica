@@ -33,6 +33,10 @@ data class SecureItem(
     // 图片附件路径(加密存储)
     val imagePaths: String = "", // JSON数组,存储图片文件路径
     
+    // 分类ID（用于验证器等支持分类的类型）
+    @ColumnInfo(defaultValue = "NULL")
+    val categoryId: Long? = null,
+    
     // 回收站功能 - 软删除字段
     @ColumnInfo(defaultValue = "0")
     val isDeleted: Boolean = false,     // 是否已删除（在回收站中）

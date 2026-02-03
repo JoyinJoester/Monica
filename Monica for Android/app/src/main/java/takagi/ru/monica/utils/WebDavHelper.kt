@@ -14,6 +14,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.RestoreReport
 import takagi.ru.monica.data.ItemCounts
@@ -40,6 +41,16 @@ import java.util.zip.ZipOutputStream
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 
+/**
+ * 自定义字段备份数据结构
+ */
+@Serializable
+data class CustomFieldBackupEntry(
+    val title: String = "",
+    val value: String = "",
+    val isProtected: Boolean = false
+)
+
 @Serializable
 private data class PasswordBackupEntry(
     val id: Long = 0,
@@ -59,7 +70,9 @@ private data class PasswordBackupEntry(
     // ✅ 第三方登录(SSO)字段
     val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
     val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
-    val ssoRefEntryId: Long? = null      // 引用的账号条目ID
+    val ssoRefEntryId: Long? = null,     // 引用的账号条目ID
+    // ✅ 自定义字段
+    val customFields: List<CustomFieldBackupEntry> = emptyList()
 )
 
 @Serializable
@@ -72,6 +85,29 @@ private data class NoteBackupEntry(
     val imagePaths: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
+private data class PasskeyBackupEntry(
+    val credentialId: String = "",
+    val rpId: String = "",
+    val rpName: String = "",
+    val userId: String = "",
+    val userName: String = "",
+    val userDisplayName: String = "",
+    val publicKeyAlgorithm: Int = -7,
+    val publicKey: String = "",
+    val privateKeyAlias: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastUsedAt: Long = System.currentTimeMillis(),
+    val useCount: Int = 0,
+    val iconUrl: String? = null,
+    val isDiscoverable: Boolean = true,
+    val isUserVerificationRequired: Boolean = true,
+    val transports: String = "internal",
+    val aaguid: String = "",
+    val signCount: Long = 0,
+    val notes: String = ""
 )
 
 @Serializable
@@ -129,7 +165,8 @@ private data class TrashSecureItemBackupEntry(
     val imagePaths: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val categoryId: Long? = null
 )
 
 /**
@@ -220,6 +257,7 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_AUTHENTICATORS = "backup_include_authenticators"
         private const val KEY_BACKUP_INCLUDE_DOCUMENTS = "backup_include_documents"
         private const val KEY_BACKUP_INCLUDE_BANK_CARDS = "backup_include_bank_cards"
+        private const val KEY_BACKUP_INCLUDE_PASSKEYS = "backup_include_passkeys"
         private const val KEY_BACKUP_INCLUDE_GENERATOR_HISTORY = "backup_include_generator_history"
         private const val KEY_BACKUP_INCLUDE_IMAGES = "backup_include_images"
         private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
@@ -461,6 +499,7 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, preferences.includeAuthenticators)
             putBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, preferences.includeDocuments)
             putBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, preferences.includeBankCards)
+            putBoolean(KEY_BACKUP_INCLUDE_PASSKEYS, preferences.includePasskeys)
             putBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, preferences.includeGeneratorHistory)
             putBoolean(KEY_BACKUP_INCLUDE_IMAGES, preferences.includeImages)
             putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
@@ -483,6 +522,7 @@ class WebDavHelper(
             includeAuthenticators = prefs.getBoolean(KEY_BACKUP_INCLUDE_AUTHENTICATORS, true),
             includeDocuments = prefs.getBoolean(KEY_BACKUP_INCLUDE_DOCUMENTS, true),
             includeBankCards = prefs.getBoolean(KEY_BACKUP_INCLUDE_BANK_CARDS, true),
+            includePasskeys = prefs.getBoolean(KEY_BACKUP_INCLUDE_PASSKEYS, true),
             includeGeneratorHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY, true),
             includeImages = prefs.getBoolean(KEY_BACKUP_INCLUDE_IMAGES, true),
             includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true),
@@ -638,6 +678,7 @@ class WebDavHelper(
             val cardsDocsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_cards_docs.csv")
             val notesDir = File(cacheBackupDir, "notes")
             val passwordsDir = File(cacheBackupDir, "passwords")
+            val passkeysDir = File(cacheBackupDir, "passkeys")
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
             val zipFile = File(context.cacheDir, "monica_backup_$timestamp.zip")
@@ -674,12 +715,34 @@ class WebDavHelper(
                     
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                     val categoryDao = database.categoryDao()
+                    val customFieldDao = database.customFieldDao()
                     val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
                     val categoryMap = allCategories.associateBy { it.id }
+                    
+                    // 收集所有自定义字段用于CSV导出
+                    val allCustomFieldsMap = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
                     
                     filteredPasswords.forEach { password ->
                         try {
                             val categoryName = password.categoryId?.let { id -> categoryMap[id]?.name }
+                            
+                            // 获取自定义字段
+                            val fields = try {
+                                customFieldDao.getFieldsByEntryIdSync(password.id).map { field ->
+                                    CustomFieldBackupEntry(
+                                        title = field.title,
+                                        value = field.value,
+                                        isProtected = field.isProtected
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                emptyList()
+                            }
+                            
+                            // 保存到映射中供CSV导出使用
+                            if (fields.isNotEmpty()) {
+                                allCustomFieldsMap[password.id] = fields
+                            }
                             
                             val backup = PasswordBackupEntry(
                                 id = password.id,
@@ -699,7 +762,9 @@ class WebDavHelper(
                                 // ✅ 第三方登录(SSO)字段
                                 loginType = password.loginType,
                                 ssoProvider = password.ssoProvider,
-                                ssoRefEntryId = password.ssoRefEntryId
+                                ssoRefEntryId = password.ssoRefEntryId,
+                                // ✅ 自定义字段
+                                customFields = fields
                             )
                             val fileName = "password_${password.id}_${password.createdAt.time}.json"
                             val target = File(passwordsDir, fileName)
@@ -717,7 +782,7 @@ class WebDavHelper(
                     }
                     
                     try {
-                        exportPasswordsToCSV(filteredPasswords, passwordsCsvFile)
+                        exportPasswordsToCSV(filteredPasswords, passwordsCsvFile, allCustomFieldsMap)
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavHelper", "CSV backup failed: ${e.message}")
                     }
@@ -784,6 +849,49 @@ class WebDavHelper(
                 }
 
                 // 7. 创建 ZIP
+                // 6.8 导出 Passkeys
+                if (preferences.includePasskeys) {
+                    try {
+                        val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                        val passkeyDao = database.passkeyDao()
+                        val passkeys = passkeyDao.getAllPasskeysSync()
+                        if (passkeys.isNotEmpty()) {
+                            if (!passkeysDir.exists()) passkeysDir.mkdirs()
+                            val json = Json { prettyPrint = false }
+                            passkeys.forEach { passkey ->
+                                val backup = PasskeyBackupEntry(
+                                    credentialId = passkey.credentialId,
+                                    rpId = passkey.rpId,
+                                    rpName = passkey.rpName,
+                                    userId = passkey.userId,
+                                    userName = passkey.userName,
+                                    userDisplayName = passkey.userDisplayName,
+                                    publicKeyAlgorithm = passkey.publicKeyAlgorithm,
+                                    publicKey = passkey.publicKey,
+                                    privateKeyAlias = passkey.privateKeyAlias,
+                                    createdAt = passkey.createdAt,
+                                    lastUsedAt = passkey.lastUsedAt,
+                                    useCount = passkey.useCount,
+                                    iconUrl = passkey.iconUrl,
+                                    isDiscoverable = passkey.isDiscoverable,
+                                    isUserVerificationRequired = passkey.isUserVerificationRequired,
+                                    transports = passkey.transports,
+                                    aaguid = passkey.aaguid,
+                                    signCount = passkey.signCount,
+                                    notes = passkey.notes
+                                )
+                                val safeId = passkey.credentialId.replace("/", "_")
+                                val fileName = "passkey_${safeId}.json"
+                                val target = File(passkeysDir, fileName)
+                                target.writeText(json.encodeToString(PasskeyBackupEntry.serializer(), backup), Charsets.UTF_8)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to backup passkeys: ${e.message}")
+                        warnings.add("通行密钥备份失败: ${e.message}")
+                    }
+                }
+
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
                     if (passwordsDir.exists()) {
                         passwordsDir.listFiles()?.forEach { addFileToZip(zipOut, it, "passwords/${it.name}") }
@@ -795,6 +903,9 @@ class WebDavHelper(
                     if (cardsDocsCsvFile.exists()) addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
                     if (notesDir.exists()) {
                         notesDir.listFiles()?.forEach { addFileToZip(zipOut, it, "notes/${it.name}") }
+                    }
+                    if (passkeysDir.exists()) {
+                        passkeysDir.listFiles()?.forEach { addFileToZip(zipOut, it, "passkeys/${it.name}") }
                     }
                     if (preferences.includeGeneratorHistory) {
                         try {
@@ -933,7 +1044,8 @@ class WebDavHelper(
                                         imagePaths = item.imagePaths,
                                         createdAt = item.createdAt.time,
                                         updatedAt = item.updatedAt.time,
-                                        deletedAt = item.deletedAt?.time
+                                        deletedAt = item.deletedAt?.time,
+                                        categoryId = item.categoryId
                                     )
                                 }
                                 val trashSecureItemsFile = File(trashDir, "trash_secure_items.json")
@@ -1191,6 +1303,7 @@ class WebDavHelper(
                 historyJsonFile.delete()
                 if (finalFile != zipFile) zipFile.delete()
                 passwordsDir.deleteRecursively()
+                passkeysDir.deleteRecursively()
                 cacheBackupDir.deleteRecursively()
             }
         } catch (e: Exception) {
@@ -1292,20 +1405,46 @@ class WebDavHelper(
     
     /**
      * 导出密码到CSV文件
+     * @param passwords 密码条目列表
+     * @param file 目标CSV文件
+     * @param customFieldsMap 密码ID到自定义字段列表的映射（可选）
      */
-    private fun exportPasswordsToCSV(passwords: List<PasswordEntry>, file: File) {
+    private fun exportPasswordsToCSV(
+        passwords: List<PasswordEntry>, 
+        file: File,
+        customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap()
+    ) {
         file.outputStream().use { output ->
             BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
                 // 写入BOM标记
                 writer.write("\uFEFF")
                 
-                // 写入列标题
-                writer.write("name,url,username,password,note,email,phone")
+                // 写入列标题（包含自定义字段列）
+                writer.write("name,url,username,password,note,email,phone,custom_fields")
                 writer.newLine()
+                
+                val json = Json { prettyPrint = false }
                 
                 // 写入数据行
                 passwords.forEach { entry ->
                     val displayName = entry.title.ifBlank { entry.website.ifBlank { entry.username } }
+                    
+                    // 序列化自定义字段为JSON
+                    val customFieldsJson = try {
+                        val fields = customFieldsMap[entry.id] ?: emptyList()
+                        if (fields.isEmpty()) {
+                            ""
+                        } else {
+                            json.encodeToString(
+                                kotlinx.serialization.builtins.ListSerializer(CustomFieldBackupEntry.serializer()),
+                                fields
+                            )
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to serialize custom fields for entry ${entry.id}")
+                        ""
+                    }
+                    
                     val row = listOf(
                         escapeCsvField(displayName),
                         escapeCsvField(entry.website),
@@ -1313,7 +1452,8 @@ class WebDavHelper(
                         escapeCsvField(entry.password),
                         escapeCsvField(buildPasswordNoteWithMetadata(entry)),
                         escapeCsvField(entry.email),
-                        escapeCsvField(entry.phone)
+                        escapeCsvField(entry.phone),
+                        escapeCsvField(customFieldsJson)
                     )
                     writer.write(row.joinToString(","))
                     writer.newLine()
@@ -1386,6 +1526,7 @@ class WebDavHelper(
                     database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
                     database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
                     database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.NOTE)
+                    database.passkeyDao().deleteAllPasskeys()
                     android.util.Log.d("WebDavHelper", "Local data cleared successfully")
                 } catch (e: Exception) {
                     android.util.Log.e("WebDavHelper", "Failed to clear local data: ${e.message}")
@@ -1402,9 +1543,11 @@ class WebDavHelper(
             var backupCardCount = 0
             var backupDocCount = 0
             var backupImageCount = 0
+            var backupPasskeyCount = 0
             var restoredPasswordCount = 0
             var restoredNoteCount = 0
             var restoredImageCount = 0
+            var restoredPasskeyCount = 0
 
             // 1. 检测是否加密
             val isEncrypted = EncryptionHelper.isEncryptedFile(backupFile)
@@ -1516,6 +1659,31 @@ class WebDavHelper(
                                         failedItems.add(FailedItem(
                                             id = 0,
                                             type = "笔记",
+                                            title = entryName,
+                                            reason = "JSON解析失败"
+                                        ))
+                                    }
+                                }
+                                normalizedEntryName.contains("/passkeys/") || normalizedEntryName.startsWith("passkeys/") -> {
+                                    backupPasskeyCount++
+                                    val passkey = restorePasskeyFromJson(tempFile)
+                                    if (passkey != null) {
+                                        try {
+                                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                                            database.passkeyDao().insert(passkey)
+                                            restoredPasskeyCount++
+                                        } catch (e: Exception) {
+                                            failedItems.add(FailedItem(
+                                                id = 0,
+                                                type = "通行密钥",
+                                                title = entryName,
+                                                reason = "写入数据库失败: ${e.message}"
+                                            ))
+                                        }
+                                    } else {
+                                        failedItems.add(FailedItem(
+                                            id = 0,
+                                            type = "通行密钥",
                                             title = entryName,
                                             reason = "JSON解析失败"
                                         ))
@@ -1704,7 +1872,8 @@ class WebDavHelper(
                                                             createdAt = java.util.Date(backup.createdAt),
                                                             updatedAt = java.util.Date(backup.updatedAt),
                                                             isDeleted = true,
-                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) }
+                                                            deletedAt = backup.deletedAt?.let { java.util.Date(it) },
+                                                            categoryId = backup.categoryId
                                                         )
                                                         secureItemDao.insertItem(item)
                                                         importedCount++
@@ -2045,6 +2214,10 @@ class WebDavHelper(
                     documents = docItems,
                     images = restoredImageCount
                 )
+
+                if (backupPasskeyCount > 0) {
+                    warnings.add("通行密钥恢复: $restoredPasskeyCount/$backupPasskeyCount")
+                }
                 
                 val report = RestoreReport(
                     success = failedItems.isEmpty(),
@@ -2057,11 +2230,14 @@ class WebDavHelper(
                 Result.success(RestoreResult(
                     content = BackupContent(
                         passwords = passwords,
-                        secureItems = secureItems
+                        secureItems = secureItems,
+                        customFieldsMap = pendingCustomFields.toMap()
                     ),
                     report = report
                 ))
             } finally {
+                // 清除临时存储的自定义字段，避免内存泄漏
+                pendingCustomFields.clear()
                 if (zipFile != backupFile) {
                     zipFile.delete()
                 }
@@ -2235,7 +2411,7 @@ class WebDavHelper(
      * @return Pair of (PasswordEntry, categoryName) - categoryName用于创建/查找分类
      */
     /**
-     * 从JSON文件恢复密码条目
+     * 从JSON文件恢复密码条目（包含自定义字段）
      * @return Pair<PasswordEntry, categoryName>
      */
     private fun restorePasswordFromJson(file: File): Pair<PasswordEntry, String?>? {
@@ -2262,12 +2438,19 @@ class WebDavHelper(
                 ssoProvider = backup.ssoProvider,
                 ssoRefEntryId = backup.ssoRefEntryId
             )
+            // 临时存储自定义字段到全局 map（将在恢复时使用）
+            if (backup.customFields.isNotEmpty()) {
+                pendingCustomFields[backup.id] = backup.customFields
+            }
             Pair(entry, backup.categoryName)
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to parse password JSON from ${file.name}: ${e.message}")
             null
         }
     }
+    
+    // 临时存储待恢复的自定义字段（原始ID -> 字段列表）
+    private val pendingCustomFields = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
 
     private fun restoreNoteFromJson(file: File): DataExportImportManager.ExportItem? {
         return try {
@@ -2287,6 +2470,39 @@ class WebDavHelper(
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore note from ${file.name}: ${e.message}")
+            null
+        }
+    }
+
+    private fun restorePasskeyFromJson(file: File): PasskeyEntry? {
+        return try {
+            val json = Json { ignoreUnknownKeys = true }
+            val text = file.readText(Charsets.UTF_8)
+            val backup = json.decodeFromString(PasskeyBackupEntry.serializer(), text)
+            PasskeyEntry(
+                credentialId = backup.credentialId,
+                rpId = backup.rpId,
+                rpName = backup.rpName,
+                userId = backup.userId,
+                userName = backup.userName,
+                userDisplayName = backup.userDisplayName,
+                publicKeyAlgorithm = backup.publicKeyAlgorithm,
+                publicKey = backup.publicKey,
+                privateKeyAlias = backup.privateKeyAlias,
+                createdAt = backup.createdAt,
+                lastUsedAt = backup.lastUsedAt,
+                useCount = backup.useCount,
+                iconUrl = backup.iconUrl,
+                isDiscoverable = backup.isDiscoverable,
+                isUserVerificationRequired = backup.isUserVerificationRequired,
+                transports = backup.transports,
+                aaguid = backup.aaguid,
+                signCount = backup.signCount,
+                isBackedUp = true,
+                notes = backup.notes
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("WebDavHelper", "Failed to restore passkey from ${file.name}: ${e.message}")
             null
         }
     }
@@ -2783,7 +2999,8 @@ data class BackupFile(
 
 data class BackupContent(
     val passwords: List<PasswordEntry>,
-    val secureItems: List<DataExportImportManager.ExportItem>
+    val secureItems: List<DataExportImportManager.ExportItem>,
+    val customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap()
 )
 
 /**

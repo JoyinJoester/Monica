@@ -1,0 +1,16 @@
+
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:501:29 Unresolved reference: CompositionLocalProvider
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:504:13 @Composable invocations can only happen from the context of a @Composable function
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:534:33 Unresolved reference: CompositionLocalProvider
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:537:13 @Composable invocations can only happen from the context of a @Composable function
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:1225:33 Unresolved reference: CompositionLocalProvider
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/MainActivity.kt:1228:41 @Composable invocations can only happen from the context of a @Composable function
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:360:65 This is an experimental shared transition API.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:360:92 This is an experimental shared transition API.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:364:21 This is an experimental shared transition API.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:364:43 This is an experimental shared transition API.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:365:21 This is an experimental shared transition API.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:365:26 This is an experimental shared transition API.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:366:53 This is an experimental shared transition API.
+e: file:///C:/Users/joyins/Desktop/Monica-all/Monica%20for%20Android/app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt:367:37 This is an experimental shared transition API.
+

@@ -73,6 +73,18 @@ class SecurityManager(private val context: Context) {
         private const val MDK_PASSWORD_SALT_KEY = "mdk_password_salt"
         private const val MDK_KEYSTORE_BLOB_KEY = "mdk_keystore_blob"
         private const val MDK_READY_KEY = "mdk_ready"
+        
+        // V2 Bitwarden 凭据存储键
+        private const val BITWARDEN_ACCESS_TOKEN_KEY = "bitwarden_access_token"
+        private const val BITWARDEN_REFRESH_TOKEN_KEY = "bitwarden_refresh_token"
+        private const val BITWARDEN_TOKEN_EXPIRY_KEY = "bitwarden_token_expiry"
+        private const val BITWARDEN_USER_EMAIL_KEY = "bitwarden_user_email"
+        private const val BITWARDEN_USER_ID_KEY = "bitwarden_user_id"
+        private const val BITWARDEN_MASTER_KEY_HASH_KEY = "bitwarden_master_key_hash"
+        private const val BITWARDEN_SYMMETRIC_KEY_KEY = "bitwarden_symmetric_key"
+        private const val BITWARDEN_PRIVATE_KEY_KEY = "bitwarden_private_key"
+        private const val BITWARDEN_SERVER_URL_KEY = "bitwarden_server_url"
+        private const val BITWARDEN_CONNECTED_KEY = "bitwarden_connected"
     }
     
     /**
@@ -182,6 +194,17 @@ class SecurityManager(private val context: Context) {
             .remove(MDK_PASSWORD_SALT_KEY)
             .remove(MDK_KEYSTORE_BLOB_KEY)
             .remove(MDK_READY_KEY)
+            // V2 Bitwarden 凭据
+            .remove(BITWARDEN_ACCESS_TOKEN_KEY)
+            .remove(BITWARDEN_REFRESH_TOKEN_KEY)
+            .remove(BITWARDEN_TOKEN_EXPIRY_KEY)
+            .remove(BITWARDEN_USER_EMAIL_KEY)
+            .remove(BITWARDEN_USER_ID_KEY)
+            .remove(BITWARDEN_MASTER_KEY_HASH_KEY)
+            .remove(BITWARDEN_SYMMETRIC_KEY_KEY)
+            .remove(BITWARDEN_PRIVATE_KEY_KEY)
+            .remove(BITWARDEN_SERVER_URL_KEY)
+            .remove(BITWARDEN_CONNECTED_KEY)
             .apply()
         cachedMdk = null
     }
@@ -438,8 +461,14 @@ class SecurityManager(private val context: Context) {
             cachedMdk = mdk
             mdk
         } catch (e: Exception) {
-            if (e is android.security.keystore.KeyPermanentlyInvalidatedException || e is UserNotAuthenticatedException) {
-                throw e
+            // KeyPermanentlyInvalidatedException: 生物识别已更改，密钥永久失效
+            // UserNotAuthenticatedException: 用户认证已过期，需要重新认证
+            if (e is android.security.keystore.KeyPermanentlyInvalidatedException) {
+                throw e  // 密钥永久失效，必须抛出让用户重新设置
+            }
+            if (e is UserNotAuthenticatedException) {
+                android.util.Log.w("SecurityManager", "User authentication expired, MDK not available")
+                return null  // 认证过期，返回 null 让调用方降级处理
             }
             null
         }
@@ -450,9 +479,22 @@ class SecurityManager(private val context: Context) {
     /**
      * AES encryption for sensitive data (additional layer)
      * Automatically chooses between V2 (Secure KeyStore) and V1 (Legacy) based on biometric settings.
+     * 
+     * 安全策略：
+     * - 优先使用 MDK 加密（最安全）
+     * - 如果 MDK 不可用（认证过期），降级到 V1 加密
+     * - 只有当密钥永久失效时才抛出异常
      */
     fun encryptData(data: String): String {
-        val mdk = getMdkForCrypto()
+        // 尝试使用 MDK 加密
+        val mdk = try {
+            getMdkForCrypto()
+        } catch (e: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            // 密钥永久失效（生物识别已更改），需要用户重新设置
+            android.util.Log.e("SecurityManager", "Key permanently invalidated", e)
+            throw e
+        }
+        
         if (mdk != null && mdk.isNotEmpty()) {
             val key = SecretKeySpec(mdk, "AES")
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -462,24 +504,11 @@ class SecurityManager(private val context: Context) {
             val combined = iv + enc
             return DATA_PREFIX_MDK + android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
         }
-        // Decide whether to use Secure Key (V2) or Legacy Key (V1)
-        if (isBiometricEnabled()) {
-            return try {
-                encryptDataV2(data)
-            } catch (e: Exception) {
-                android.util.Log.e("SecurityManager", "V2 Encryption failed, falling back to V1", e)
-                // If V2 fails (e.g. auth required), we might fallback to V1 to avoid data loss during save,
-                // BUT this defeats the security purpose. 
-                // However, crashing is worse.
-                // Given user requirement "reject key if biometric changed", throwing exception is correct for KeyPermanentlyInvalidatedException.
-                if (e is android.security.keystore.KeyPermanentlyInvalidatedException || e is UserNotAuthenticatedException) {
-                    throw e
-                }
-                encryptDataV1(data)
-            }
-        } else {
-            return encryptDataV1(data)
-        }
+        
+        // MDK 不可用，降级到 V1 加密
+        // 注意：V1 使用主密钥派生，安全性较低但不需要生物识别认证
+        android.util.Log.d("SecurityManager", "MDK not available, using V1 encryption")
+        return encryptDataV1(data)
     }
 
     private fun encryptDataV2(data: String): String {
@@ -643,5 +672,237 @@ class SecurityManager(private val context: Context) {
     
     enum class PasswordStrength {
         WEAK, MEDIUM, STRONG
+    }
+    
+    // ==================== V2 Bitwarden 凭据管理 ====================
+    
+    /**
+     * Bitwarden 凭据数据类
+     * 用于存储登录后的认证信息
+     */
+    data class BitwardenCredential(
+        val accessToken: String,
+        val refreshToken: String,
+        val tokenExpiry: Long,          // 过期时间戳（毫秒）
+        val userEmail: String,
+        val userId: String,
+        val serverUrl: String = "https://vault.bitwarden.com"  // 默认官方服务器
+    )
+    
+    /**
+     * Bitwarden 加密密钥数据类
+     * 用于存储解密 Vault 数据所需的密钥
+     */
+    data class BitwardenCryptoKeys(
+        val masterKeyHash: String,      // 主密码哈希（用于验证）
+        val symmetricKey: String,       // 对称加密密钥（加密存储）
+        val privateKey: String?         // RSA 私钥（加密存储，可选）
+    )
+    
+    /**
+     * 保存 Bitwarden 登录凭据
+     * 使用 EncryptedSharedPreferences 安全存储
+     * 
+     * @param credential Bitwarden 凭据
+     */
+    fun saveBitwardenCredential(credential: BitwardenCredential) {
+        // Access Token 和 Refresh Token 使用额外的 AES-GCM 加密层
+        val encryptedAccessToken = encryptData(credential.accessToken)
+        val encryptedRefreshToken = encryptData(credential.refreshToken)
+        
+        sharedPreferences.edit()
+            .putString(BITWARDEN_ACCESS_TOKEN_KEY, encryptedAccessToken)
+            .putString(BITWARDEN_REFRESH_TOKEN_KEY, encryptedRefreshToken)
+            .putLong(BITWARDEN_TOKEN_EXPIRY_KEY, credential.tokenExpiry)
+            .putString(BITWARDEN_USER_EMAIL_KEY, credential.userEmail)
+            .putString(BITWARDEN_USER_ID_KEY, credential.userId)
+            .putString(BITWARDEN_SERVER_URL_KEY, credential.serverUrl)
+            .putBoolean(BITWARDEN_CONNECTED_KEY, true)
+            .apply()
+        
+        android.util.Log.d("SecurityManager", "Bitwarden credential saved for user: ${credential.userEmail}")
+    }
+    
+    /**
+     * 获取 Bitwarden 登录凭据
+     * 
+     * @return BitwardenCredential 或 null（未登录）
+     */
+    fun getBitwardenCredential(): BitwardenCredential? {
+        if (!isBitwardenConnected()) {
+            return null
+        }
+        
+        return try {
+            val encryptedAccessToken = sharedPreferences.getString(BITWARDEN_ACCESS_TOKEN_KEY, null)
+            val encryptedRefreshToken = sharedPreferences.getString(BITWARDEN_REFRESH_TOKEN_KEY, null)
+            
+            if (encryptedAccessToken == null || encryptedRefreshToken == null) {
+                return null
+            }
+            
+            BitwardenCredential(
+                accessToken = decryptData(encryptedAccessToken),
+                refreshToken = decryptData(encryptedRefreshToken),
+                tokenExpiry = sharedPreferences.getLong(BITWARDEN_TOKEN_EXPIRY_KEY, 0L),
+                userEmail = sharedPreferences.getString(BITWARDEN_USER_EMAIL_KEY, "") ?: "",
+                userId = sharedPreferences.getString(BITWARDEN_USER_ID_KEY, "") ?: "",
+                serverUrl = sharedPreferences.getString(BITWARDEN_SERVER_URL_KEY, "https://vault.bitwarden.com") ?: "https://vault.bitwarden.com"
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("SecurityManager", "Failed to get Bitwarden credential", e)
+            null
+        }
+    }
+    
+    /**
+     * 保存 Bitwarden 加密密钥
+     * 这些密钥用于解密从服务器获取的 Vault 数据
+     * 
+     * @param keys Bitwarden 加密密钥
+     */
+    fun saveBitwardenCryptoKeys(keys: BitwardenCryptoKeys) {
+        // 所有密钥都使用 AES-GCM 加密存储
+        val encryptedSymmetricKey = encryptData(keys.symmetricKey)
+        val encryptedPrivateKey = keys.privateKey?.let { encryptData(it) }
+        
+        sharedPreferences.edit()
+            .putString(BITWARDEN_MASTER_KEY_HASH_KEY, keys.masterKeyHash)
+            .putString(BITWARDEN_SYMMETRIC_KEY_KEY, encryptedSymmetricKey)
+            .apply {
+                if (encryptedPrivateKey != null) {
+                    putString(BITWARDEN_PRIVATE_KEY_KEY, encryptedPrivateKey)
+                }
+            }
+            .apply()
+        
+        android.util.Log.d("SecurityManager", "Bitwarden crypto keys saved")
+    }
+    
+    /**
+     * 获取 Bitwarden 加密密钥
+     * 
+     * @return BitwardenCryptoKeys 或 null
+     */
+    fun getBitwardenCryptoKeys(): BitwardenCryptoKeys? {
+        return try {
+            val masterKeyHash = sharedPreferences.getString(BITWARDEN_MASTER_KEY_HASH_KEY, null)
+            val encryptedSymmetricKey = sharedPreferences.getString(BITWARDEN_SYMMETRIC_KEY_KEY, null)
+            
+            if (masterKeyHash == null || encryptedSymmetricKey == null) {
+                return null
+            }
+            
+            val encryptedPrivateKey = sharedPreferences.getString(BITWARDEN_PRIVATE_KEY_KEY, null)
+            
+            BitwardenCryptoKeys(
+                masterKeyHash = masterKeyHash,
+                symmetricKey = decryptData(encryptedSymmetricKey),
+                privateKey = encryptedPrivateKey?.let { decryptData(it) }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("SecurityManager", "Failed to get Bitwarden crypto keys", e)
+            null
+        }
+    }
+    
+    /**
+     * 检查是否已连接 Bitwarden
+     * 
+     * @return true 如果已保存凭据
+     */
+    fun isBitwardenConnected(): Boolean {
+        return sharedPreferences.getBoolean(BITWARDEN_CONNECTED_KEY, false)
+    }
+    
+    /**
+     * 检查 Bitwarden Token 是否过期
+     * 
+     * @return true 如果已过期或未连接
+     */
+    fun isBitwardenTokenExpired(): Boolean {
+        if (!isBitwardenConnected()) return true
+        
+        val expiry = sharedPreferences.getLong(BITWARDEN_TOKEN_EXPIRY_KEY, 0L)
+        // 提前 5 分钟判断为过期，以便有时间刷新
+        return System.currentTimeMillis() > (expiry - 5 * 60 * 1000)
+    }
+    
+    /**
+     * 更新 Bitwarden Access Token（Token 刷新后调用）
+     * 
+     * @param newAccessToken 新的 Access Token
+     * @param newRefreshToken 新的 Refresh Token（可选）
+     * @param newExpiry 新的过期时间
+     */
+    fun updateBitwardenTokens(
+        newAccessToken: String,
+        newRefreshToken: String? = null,
+        newExpiry: Long
+    ) {
+        val encryptedAccessToken = encryptData(newAccessToken)
+        
+        sharedPreferences.edit().apply {
+            putString(BITWARDEN_ACCESS_TOKEN_KEY, encryptedAccessToken)
+            putLong(BITWARDEN_TOKEN_EXPIRY_KEY, newExpiry)
+            
+            if (newRefreshToken != null) {
+                putString(BITWARDEN_REFRESH_TOKEN_KEY, encryptData(newRefreshToken))
+            }
+        }.apply()
+        
+        android.util.Log.d("SecurityManager", "Bitwarden tokens updated, new expiry: $newExpiry")
+    }
+    
+    /**
+     * 获取 Bitwarden 用户邮箱
+     * 
+     * @return 用户邮箱或 null
+     */
+    fun getBitwardenUserEmail(): String? {
+        return sharedPreferences.getString(BITWARDEN_USER_EMAIL_KEY, null)
+    }
+    
+    /**
+     * 获取 Bitwarden 服务器 URL
+     * 
+     * @return 服务器 URL
+     */
+    fun getBitwardenServerUrl(): String {
+        return sharedPreferences.getString(BITWARDEN_SERVER_URL_KEY, "https://vault.bitwarden.com") 
+            ?: "https://vault.bitwarden.com"
+    }
+    
+    /**
+     * 清除 Bitwarden 凭据（登出时调用）
+     * 同时清除所有相关的加密密钥
+     */
+    fun clearBitwardenCredential() {
+        sharedPreferences.edit()
+            .remove(BITWARDEN_ACCESS_TOKEN_KEY)
+            .remove(BITWARDEN_REFRESH_TOKEN_KEY)
+            .remove(BITWARDEN_TOKEN_EXPIRY_KEY)
+            .remove(BITWARDEN_USER_EMAIL_KEY)
+            .remove(BITWARDEN_USER_ID_KEY)
+            .remove(BITWARDEN_MASTER_KEY_HASH_KEY)
+            .remove(BITWARDEN_SYMMETRIC_KEY_KEY)
+            .remove(BITWARDEN_PRIVATE_KEY_KEY)
+            .remove(BITWARDEN_SERVER_URL_KEY)
+            .remove(BITWARDEN_CONNECTED_KEY)
+            .apply()
+        
+        android.util.Log.d("SecurityManager", "Bitwarden credential cleared")
+    }
+    
+    /**
+     * 验证 Bitwarden 主密码哈希
+     * 用于解锁时验证用户输入的主密码是否正确
+     * 
+     * @param masterPasswordHash 用户输入的主密码生成的哈希
+     * @return true 如果匹配
+     */
+    fun verifyBitwardenMasterPasswordHash(masterPasswordHash: String): Boolean {
+        val storedHash = sharedPreferences.getString(BITWARDEN_MASTER_KEY_HASH_KEY, null)
+        return storedHash != null && storedHash == masterPasswordHash
     }
 }

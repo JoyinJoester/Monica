@@ -23,6 +23,7 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.PasswordRepository
 import java.io.File
@@ -254,7 +255,8 @@ class KeePassWebDavViewModel {
             }
             
             // 列出目录内容
-            val resources = sardine!!.list(folderPath)
+            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+            val resources = currentSardine.list(folderPath)
             
             val kdbxFiles = resources
                 .filter { !it.isDirectory && it.name.endsWith(".kdbx", ignoreCase = true) }
@@ -377,7 +379,8 @@ class KeePassWebDavViewModel {
                 val remotePath = "$serverUrl/$KEEPASS_FOLDER/$fileName"
                 val fileBytes = tempFile.readBytes()
                 
-                sardine!!.put(remotePath, fileBytes, "application/octet-stream")
+                val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+                currentSardine.put(remotePath, fileBytes, "application/octet-stream")
                 
                 Log.d(TAG, "Uploaded successfully: $fileName")
                 Result.success(fileName)
@@ -416,7 +419,8 @@ class KeePassWebDavViewModel {
             val tempFile = File(context.cacheDir, "import_${file.name}")
             
             try {
-                sardine!!.get(remotePath).use { inputStream ->
+                val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+                currentSardine.get(remotePath).use { inputStream ->
                     tempFile.outputStream().use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
@@ -456,7 +460,8 @@ class KeePassWebDavViewModel {
             }
             
             val remotePath = "$serverUrl/$KEEPASS_FOLDER/${file.name}"
-            val inputStream = sardine!!.get(remotePath)
+            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+            val inputStream = currentSardine.get(remotePath)
             
             Log.d(TAG, "Downloaded stream for: ${file.name}")
             Result.success(inputStream)
@@ -782,8 +787,41 @@ class KeePassWebDavViewModel {
                             updatedAt = Date()
                         )
                         
-                        passwordDao.insertPasswordEntry(passwordEntry)
+                        val newPasswordId = passwordDao.insertPasswordEntry(passwordEntry)
                         passwordImportedCount++
+                        
+                        // 导入自定义字段（KeePass 中的非标准字段）
+                        if (newPasswordId > 0) {
+                            val customFieldDao = database.customFieldDao()
+                            val standardFields = setOf(
+                                "Title", "UserName", "Password", "URL", "Notes",
+                                "otp", "TOTP Seed", "TOTP Settings"
+                            )
+                            
+                            var sortOrder = 0
+                            entry.fields.forEach { (fieldKey, fieldValue) ->
+                                if (fieldKey !in standardFields) {
+                                    try {
+                                        val fieldContent = fieldValue.content
+                                        if (fieldContent.isNotEmpty()) {
+                                            val isProtected = fieldValue is EntryValue.Encrypted
+                                            val customField = CustomField(
+                                                id = 0,
+                                                entryId = newPasswordId,
+                                                title = fieldKey,
+                                                value = if (isProtected) securityManager.encryptData(fieldContent) else fieldContent,
+                                                isProtected = isProtected,
+                                                sortOrder = sortOrder++
+                                            )
+                                            customFieldDao.insert(customField)
+                                            Log.d(TAG, "Imported custom field '$fieldKey' for password: $title")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to import custom field '$fieldKey': ${e.message}")
+                                    }
+                                }
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to import entry: ${e.message}")

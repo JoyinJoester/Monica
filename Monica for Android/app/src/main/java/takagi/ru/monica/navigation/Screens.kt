@@ -88,6 +88,7 @@ sealed class Screen(val route: String) {
     object ChangePassword : Screen("change_password")
     object SecurityQuestion : Screen("security_question")
     object AutofillSettings : Screen("autofill_settings")
+    object PasskeySettings : Screen("passkey_settings")
     object SecurityAnalysis : Screen("security_analysis")
     object BottomNavSettings : Screen("bottom_nav_settings")
     object ColorSchemeSelection : Screen("color_scheme_selection")
@@ -96,8 +97,13 @@ sealed class Screen(val route: String) {
     object DeveloperSettings : Screen("developer_settings")  // 添加开发者设置页面路由
     object PermissionManagement : Screen("permission_management")  // 权限管理页面路由
     object Extensions : Screen("extensions")  // 功能拓展页面路由
+    object PasswordFieldCustomization : Screen("password_field_customization")  // 添加密码页面字段定制
     object SyncBackup : Screen("sync_backup")  // 同步与备份页面路由
     object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面
     object MonicaPlus : Screen("monica_plus") // Monica Plus 页面
     object Payment : Screen("payment") // 付款页面
+    
+    // Bitwarden 集成相关路由
+    object BitwardenLogin : Screen("bitwarden_login")  // Bitwarden 登录页面
+    object BitwardenSettings : Screen("bitwarden_settings")  // Bitwarden 设置/管理页面
 }

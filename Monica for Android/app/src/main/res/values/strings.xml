@@ -92,6 +92,20 @@
     <string name="copy">Copy</string>
     <string name="username_copied">Username copied to clipboard</string>
     <string name="password_copied">Password copied to clipboard</string>
+    
+    <!-- Quick Settings Tile & Smart Copy -->
+    <string name="tile_autofill_label">Monica Fill</string>
+    <string name="smart_copy_username_first">Copy username (password next)</string>
+    <string name="smart_copy_password_first">Copy password (username next)</string>
+    <string name="smart_copy_notification_title">Monica</string>
+    <string name="smart_copy_notification_copy_password">Tap to copy password</string>
+    <string name="smart_copy_notification_copy_username">Tap to copy username</string>
+    
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_required">Autofill Verification</string>
+    <string name="autofill_auth_required_desc">Require biometric or password verification before accessing autofill</string>
+    <string name="autofill_auth_waiting">Waiting for verification…</string>
+    
     <string name="notification_validator_ready">Authenticator notification is starting...</string>
     <string name="notification_validator_no_match">No matching authenticator yet</string>
     <string name="notification_validator_switch">切换</string>
@@ -441,16 +455,16 @@
     <string name="delete_password_message">Are you sure you want to delete \"%s\"?</string>
     
     <!-- Error Messages -->
-    <string name="error_password_too_short">Master password must be at least 6 characters long</string>
-    <string name="error_password_must_be_6_digits">Password must be 6 digits</string>
-    <string name="error_password_min_6_digits">Password must be at least 6 digits</string>
+    <string name="error_password_too_short">Master password must be at least 4 characters long</string>
+    <string name="error_password_must_be_6_digits">Password must be 4 digits</string>
+    <string name="error_password_min_6_digits">Password must be at least 4 digits</string>
     <string name="error_password_must_be_numeric">Password must contain only numbers</string>
     <string name="error_passwords_not_match">Passwords do not match</string>
     <string name="error_invalid_password">Invalid master password</string>
     <string name="error_authentication_failed">Authentication failed</string>
     <string name="error_title_required">Title is required</string>
     <string name="error_password_required">Password is required</string>
-    <string name="password_min_6_digits">Minimum 6 digits required</string>
+    <string name="password_min_6_digits">Minimum 4 digits required</string>
     
     <!-- Multi Password Dialog -->
     <string name="common_info">Common Info</string>
@@ -500,12 +514,12 @@
     <string name="reset_password_title">Reset Password</string>
     <string name="reset_password">Reset Password</string>
     <string name="reset_master_password">Reset Master Password</string>
-    <string name="reset_password_description">Please enter your current password and set a new numeric password (minimum 6 digits)</string>
-    <string name="reset_password_verified_description">Please set your new numeric password (minimum 6 digits)</string>
+    <string name="reset_password_description">Please enter your current password and set a new numeric password (minimum 4 digits)</string>
+    <string name="reset_password_verified_description">Please set your new numeric password (minimum 4 digits)</string>
     <string name="current_password">Current Password</string>
     <string name="enter_current_password">Enter your current password</string>
     <string name="new_password">New Password</string>
-    <string name="enter_new_password">Enter new numeric password (min 6 digits)</string>
+    <string name="enter_new_password">Enter new numeric password (min 4 digits)</string>
     <string name="confirm_new_password">Confirm New Password</string>
     <string name="enter_confirm_password">Confirm your new password</string>
     <string name="current_password_required">Current password is required</string>
@@ -514,7 +528,7 @@
     <string name="password_reset_success">Password Reset Successful</string>
     <string name="password_reset_success_message">Your master password has been successfully changed. Please remember your new password.</string>
     <string name="passwords_do_not_match">Passwords do not match</string>
-    <string name="password_too_short">Password must be at least 6 characters</string>
+    <string name="password_too_short">Password must be at least 4 characters</string>
     
     <!-- Forgot Password -->
     <string name="forgot_password">Forgot Password?</string>
@@ -556,6 +570,7 @@
     <string name="verify_identity_to_delete">Verify identity to delete</string>
     <string name="verify_master_password_desc">Please enter your master password to continue</string>
     <string name="wrong_password">Wrong password</string>
+    <string name="notes_delete_selected_confirm">Are you sure you want to delete %d selected notes?</string>
     <string name="back_to_login">Back to Login</string>
     
     <!-- Main Screen Bottom Navigation -->
@@ -568,6 +583,7 @@
     <string name="nav_ledger">Ledger</string>
     <string name="nav_generator">Generator</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_timeline">Timeline</string>
+    <string name="nav_passkey">Passkey</string>
     <string name="nav_settings">Settings</string>
     <string name="trash_bin">回收站</string>
     <string name="trash_settings">回收站设置</string>
@@ -583,6 +599,86 @@
     <string name="nav_ledger_short">Ledger</string>
     <string name="nav_generator_short">Gen</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_timeline_short">History</string>
+    <string name="nav_passkey_short">Pass</string>
+    <string name="nav_settings_short">Set</string>
+    
+    <!-- V2 Multi-Source Vault Navigation -->
+    <string name="nav_v2_vault">Vault</string>
+    <string name="nav_v2_vault_short">Vault</string>
+    <string name="nav_v2_send">Send</string>
+    <string name="nav_v2_send_short">Send</string>
+    <string name="nav_v2_sync">Sync</string>
+    <string name="nav_v2_sync_short">Sync</string>
+    <string name="v2_vault_title">Multi-Source Vault</string>
+    <string name="v2_vault_subtitle">View and manage passwords from multiple sources</string>
+    <string name="v2_send_title">Secure Send</string>
+    <string name="v2_send_subtitle">Share secrets securely</string>
+    <string name="v2_sync_title">Sync Center</string>
+    <string name="v2_sync_subtitle">Manage sync with Bitwarden and other services</string>
+    <string name="v2_source_local">Local</string>
+    <string name="v2_source_bitwarden">Bitwarden</string>
+    <string name="v2_source_keepass">KeePass</string>
+    <string name="v2_filter_all">All</string>
+    <string name="v2_filter_login">Login</string>
+    <string name="v2_filter_card">Card</string>
+    <string name="v2_filter_identity">Identity</string>
+    <string name="v2_filter_note">Note</string>
+    <string name="v2_no_items">No items in vault</string>
+    <string name="v2_connect_bitwarden">Connect Bitwarden</string>
+    <string name="v2_search_placeholder">Search vault…</string>
+    <string name="v2_create_login">Login</string>
+    <string name="v2_create_card">Card</string>
+    <string name="v2_create_identity">Identity</string>
+    <string name="v2_create_note">Note</string>
+    
+    <!-- Passkey Screen -->
+    <string name="passkey_title">Passkey</string>
+    <string name="passkey_count">%1$d passkeys</string>
+    <string name="passkey_view_only_mode">View Only Mode</string>
+    <string name="passkey_search_placeholder">Search passkeys…</string>
+    <string name="passkey_used_count">Used %1$d times</string>
+    <string name="passkey_discoverable">Discoverable</string>
+    <string name="passkey_empty_title">No Passkeys Yet</string>
+    <string name="passkey_empty_message">Passkeys are a more secure and convenient way to sign in. When you create a passkey on a website or app, it will appear here.</string>
+    <string name="passkey_empty_message_unsupported">Your device does not support creating passkeys. You can still view passkeys synced from other devices.</string>
+    <string name="passkey_add_hint">Passkeys must be created by websites or apps. Choose \"Use passkey\" when signing in to a supported website.</string>
+    <string name="passkey_no_search_results">No Results</string>
+    <string name="passkey_no_search_results_hint">Try a different search term</string>
+    <string name="passkey_version_warning_title">Limited Passkey Support</string>
+    <string name="passkey_version_warning_message">Full passkey functionality requires Android 14 or later. Current: %1$s. You can view synced passkeys but cannot create new ones.</string>
+    <string name="passkey_what_is_title">What are Passkeys?</string>
+    <string name="passkey_feature_1">More secure than passwords - resistant to phishing</string>
+    <string name="passkey_feature_2">Easy to use - just use your fingerprint or face</string>
+    <string name="passkey_feature_3">Synced across your devices</string>
+    <string name="passkey_create_title">Create Passkey</string>
+    <string name="passkey_create_message">Create a passkey for %1$s to sign in without a password</string>
+    <string name="passkey_create_confirm">Create Passkey</string>
+    <string name="passkey_auth_title">Sign In with Passkey</string>
+    <string name="passkey_auth_message">Use your passkey to sign in to %1$s</string>
+    <string name="passkey_auth_confirm">Sign In</string>
+    
+    <!-- Passkey Management -->
+    <string name="passkey">Passkey</string>
+    <string name="passkey_search_hint">Search passkeys…</string>
+    <string name="passkey_search_empty">No Matching Passkeys</string>
+    <string name="passkey_search_empty_hint">Try a different search term</string>
+    <string name="passkey_empty_subtitle">Create passkeys on websites and apps to see them here</string>
+    <string name="passkey_delete_title">Delete Passkey</string>
+    <string name="passkey_delete_message">Are you sure you want to delete the passkey for %1$s (%2$s)? You will no longer be able to sign in with this passkey.</string>
+    <string name="passkey_delete_button">Delete Passkey</string>
+    <string name="passkey_detail_user">Display Name</string>
+    <string name="passkey_detail_username">Username</string>
+    <string name="passkey_detail_created">Created</string>
+    <string name="passkey_detail_last_used">Last Used</string>
+    <string name="passkey_detail_use_count">Use Count</string>
+    <string name="passkey_view_details">View Details</string>
+    <string name="passkey_rp_id">Website</string>
+    <string name="passkey_username">Username</string>
+    <string name="passkey_created_at">Created</string>
+    <string name="passkey_last_used">Last Used</string>
+    <string name="passkey_use_count">Use Count</string>
+    
+    <string name="dismiss">Dismiss</string>
     
     <!-- Timeline Screen -->
     <string name="no_history_records">No history records</string>
@@ -591,7 +687,6 @@
     <string name="restore_version">Restore Version</string>
     <string name="save_as_new_entry">Save as New Entry</string>
     <string name="no_changes">No changes</string>
-    <string name="nav_settings_short">Set</string>
 
     <!-- Detail Screens -->
     <string name="bank_card_details">Bank Card Details</string>
@@ -696,13 +791,13 @@
     <string name="change_password_current">Current Password *</string>
     <string name="change_password_new">New Password *</string>
     <string name="change_password_confirm">Confirm New Password *</string>
-    <string name="change_password_hint">Password must be at least 6 digits</string>
+    <string name="change_password_hint">Password must be at least 4 digits</string>
     <string name="change_password_button">Change Password</string>
     <string name="change_password_success_title">Password Changed Successfully</string>
     <string name="change_password_success_message">Your master password has been successfully changed and all data has been re-encrypted with the new password. Please login with the new password.</string>
     <string name="change_password_error_current_empty">Please enter current password</string>
     <string name="change_password_error_new_empty">Please enter new password</string>
-    <string name="change_password_error_new_too_short">New password must be at least 6 digits</string>
+    <string name="change_password_error_new_too_short">New password must be at least 4 digits</string>
     <string name="change_password_error_confirm_empty">Please confirm new password</string>
     <string name="change_password_error_not_match">New passwords do not match</string>
     <string name="change_password_error_same_as_current">New password cannot be the same as current password</string>
@@ -764,6 +859,10 @@
     <!-- Dynamic Color -->
     <string name="disable_wallpaper_color_extraction">Disable Wallpaper Color Extraction</string>
     <string name="disable_wallpaper_color_extraction_description">Use system default color scheme instead of extracting colors from wallpaper</string>
+    
+    <!-- Reduce Animations -->
+    <string name="reduce_animations">Reduce Animations</string>
+    <string name="reduce_animations_description">Disable shared element animations to fix lag on some devices (HyperOS 2/Android 15)</string>
     
     <!-- Color Scheme -->
     <string name="color_scheme">Color Scheme</string>
@@ -932,6 +1031,36 @@
     <!-- Autofill -->
     <string name="autofill">Autofill</string>
     <string name="autofill_subtitle">Auto-fill passwords for apps and websites</string>
+    
+    <!-- Passkey Settings -->
+    <string name="passkey_settings">Passkey Provider</string>
+    <string name="passkey_settings_subtitle">Sign in to apps and websites without passwords</string>
+    <string name="passkey_settings_title">Passkey Settings</string>
+    <string name="passkey_settings_intro_title">Passkey Provider</string>
+    <string name="passkey_settings_intro_subtitle">Monica can create and manage passkeys for websites and apps, providing a more secure and convenient sign-in experience.</string>
+    <string name="passkey_settings_unsupported_title">Not Supported</string>
+    <string name="passkey_settings_unsupported_subtitle">Passkey Provider requires Android 14 or later. Your device is running Android %1$s.</string>
+    <string name="passkey_settings_system_title">Open System Settings</string>
+    <string name="passkey_settings_system_subtitle">Enable Monica as a Passkey provider in system settings</string>
+    <string name="passkey_stats_saved">Passkeys Saved</string>
+    <string name="passkey_settings_features_title">Passkey Features</string>
+    <string name="passkey_feature_security_title">Enhanced Security</string>
+    <string name="passkey_feature_security_desc">Passkeys use public-key cryptography, more secure than passwords</string>
+    <string name="passkey_feature_biometric_title">Biometric Authentication</string>
+    <string name="passkey_feature_biometric_desc">Sign in with fingerprint or face recognition</string>
+    <string name="passkey_feature_sync_title">Cross-Device Sync</string>
+    <string name="passkey_feature_sync_desc">Sync passkeys across devices with WebDAV backup</string>
+    <string name="passkey_feature_phishing_title">Phishing Resistant</string>
+    <string name="passkey_feature_phishing_desc">Passkeys are bound to specific websites, preventing phishing attacks</string>
+    <string name="passkey_settings_requirement_title">System Requirements</string>
+    <string name="passkey_settings_requirement_desc">To use Monica as a Passkey provider, your device must be running Android 14 (API 34) or later. You can still view passkeys synced from other devices.</string>
+    
+    <!-- Passkey Biometric Authentication -->
+    <string name="biometric_title_passkey_auth">Verify to Sign In</string>
+    <string name="biometric_subtitle_passkey_auth">Using passkey for %1$s</string>
+    <string name="biometric_title_passkey_create">Verify to Create Passkey</string>
+    <string name="biometric_subtitle_passkey_create">Creating passkey for %1$s</string>
+    
     <string name="autofill_service_description">Automatically fill passwords and forms in apps and websites</string>
     <string name="autofill_service_summary">Monica Password Manager provides secure autofill for your passwords</string>
     <string name="autofill_save_password">Save Password</string>
@@ -1473,6 +1602,9 @@
     <string name="backup_content_images">Images</string>
     <string name="backup_content_timeline">Operation History</string>
     <string name="backup_content_trash">Recycle Bin</string>
+    <string name="backup_content_passkeys">Passkeys</string>
+    <string name="backup_content_trash_and_history">Recycle Bin &amp; History</string>
+    <string name="backup_content_trash_and_history_hint">Include recycle bin, password generator history, and operation history</string>
     <string name="backup_content_local_keepass">Local KeePass Databases</string>
     <string name="backup_content_local_keepass_hint">Include all local KeePass databases (both internal and external). Restored as internal storage databases.</string>
     <string name="backup_content_local_keepass_empty">No local KeePass databases</string>

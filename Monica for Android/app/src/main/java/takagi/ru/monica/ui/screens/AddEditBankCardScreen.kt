@@ -3,6 +3,7 @@ package takagi.ru.monica.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -193,200 +194,196 @@ fun AddEditBankCardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 标题
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text(stringResource(R.string.card_name)) },
-                placeholder = { Text(stringResource(R.string.card_name_example)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            // 银行名称
-            OutlinedTextField(
-                value = bankName,
-                onValueChange = { bankName = it },
-                label = { Text(stringResource(R.string.bank_name)) },
-                placeholder = { Text(stringResource(R.string.bank_name_example)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            // 卡类型选择
-            ExposedDropdownMenuBox(
-                expanded = showCardTypeMenu,
-                onExpandedChange = { showCardTypeMenu = it }
-            ) {
-                OutlinedTextField(
-                    value = when (cardType) {
-                        CardType.CREDIT -> stringResource(R.string.credit_card)
-                        CardType.DEBIT -> stringResource(R.string.debit_card)
-                        CardType.PREPAID -> stringResource(R.string.prepaid_card)
-                    },
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.card_type)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCardTypeMenu) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor()
-                )
-                
-                ExposedDropdownMenu(
-                    expanded = showCardTypeMenu,
-                    onDismissRequest = { showCardTypeMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.debit_card)) },
-                        onClick = {
-                            cardType = CardType.DEBIT
-                            showCardTypeMenu = false
-                        }
+            // Basic Information
+            InfoCard(title = "基本信息") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Card Name
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text(stringResource(R.string.card_name)) },
+                        placeholder = { Text(stringResource(R.string.card_name_example)) },
+                        leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.credit_card)) },
-                        onClick = {
-                            cardType = CardType.CREDIT
-                            showCardTypeMenu = false
-                        }
+                    
+                    // Bank Name
+                    OutlinedTextField(
+                        value = bankName,
+                        onValueChange = { bankName = it },
+                        label = { Text(stringResource(R.string.bank_name)) },
+                        placeholder = { Text(stringResource(R.string.bank_name_example)) },
+                        leadingIcon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.prepaid_card)) },
-                        onClick = {
-                            cardType = CardType.PREPAID
-                            showCardTypeMenu = false
+                    
+                    // Card Type
+                    ExposedDropdownMenuBox(
+                        expanded = showCardTypeMenu,
+                        onExpandedChange = { showCardTypeMenu = it }
+                    ) {
+                        OutlinedTextField(
+                            value = when (cardType) {
+                                CardType.CREDIT -> stringResource(R.string.credit_card)
+                                CardType.DEBIT -> stringResource(R.string.debit_card)
+                                CardType.PREPAID -> stringResource(R.string.prepaid_card)
+                            },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text(stringResource(R.string.card_type)) },
+                            leadingIcon = { Icon(Icons.Default.CreditCard, contentDescription = null) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCardTypeMenu) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                        )
+                        
+                        ExposedDropdownMenu(
+                            expanded = showCardTypeMenu,
+                            onDismissRequest = { showCardTypeMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.debit_card)) },
+                                onClick = {
+                                    cardType = CardType.DEBIT
+                                    showCardTypeMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.credit_card)) },
+                                onClick = {
+                                    cardType = CardType.CREDIT
+                                    showCardTypeMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.prepaid_card)) },
+                                onClick = {
+                                    cardType = CardType.PREPAID
+                                    showCardTypeMenu = false
+                                }
+                            )
                         }
+                    }
+                    
+                    // Card Number
+                    OutlinedTextField(
+                        value = cardNumber,
+                        onValueChange = { 
+                            // Only allow digits and spaces
+                            cardNumber = it.filter { char -> char.isDigit() || char == ' ' }
+                        },
+                        label = { Text(stringResource(R.string.card_number_required)) },
+                        placeholder = { Text("1234 5678 9012 3456") },
+                        leadingIcon = { Icon(Icons.Default.Numbers, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showCardNumber = !showCardNumber }) {
+                                Icon(
+                                    if (showCardNumber) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = stringResource(if (showCardNumber) R.string.hide_password else R.string.show_password)
+                                )
+                            }
+                        },
+                        visualTransformation = if (showCardNumber) {
+                            androidx.compose.ui.text.input.VisualTransformation.None
+                        } else {
+                            androidx.compose.ui.text.input.PasswordVisualTransformation()
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // Cardholder Name
+                    OutlinedTextField(
+                        value = cardholderName,
+                        onValueChange = { cardholderName = it },
+                        label = { Text(stringResource(R.string.cardholder_name)) },
+                        placeholder = { Text("ZHANG SAN") },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    
+                    // Expiry
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = expiryMonth,
+                            onValueChange = { 
+                                if (it.length <= 2 && it.all { char -> char.isDigit() }) {
+                                    expiryMonth = it
+                                }
+                            },
+                            label = { Text(stringResource(R.string.month)) },
+                            placeholder = { Text("12") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        
+                        OutlinedTextField(
+                            value = expiryYear,
+                            onValueChange = { 
+                                if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                                    expiryYear = it
+                                }
+                            },
+                            label = { Text(stringResource(R.string.year)) },
+                            placeholder = { Text("2025") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    
+                    // CVV
+                    OutlinedTextField(
+                        value = cvv,
+                        onValueChange = { 
+                            if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                                cvv = it
+                            }
+                        },
+                        label = { Text(stringResource(R.string.cvv)) },
+                        placeholder = { Text("123") },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showCvv = !showCvv }) {
+                                Icon(
+                                    if (showCvv) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = stringResource(if (showCvv) R.string.hide_password else R.string.show_password)
+                                )
+                            }
+                        },
+                        visualTransformation = if (showCvv) {
+                            androidx.compose.ui.text.input.VisualTransformation.None
+                        } else {
+                            androidx.compose.ui.text.input.PasswordVisualTransformation()
+                        },
+                        shape = RoundedCornerShape(12.dp)
                     )
                 }
             }
-            
-            // 卡号
-            OutlinedTextField(
-                value = cardNumber,
-                onValueChange = { 
-                    // 只允许数字和空格
-                    cardNumber = it.filter { char -> char.isDigit() || char == ' ' }
-                },
-                label = { Text(stringResource(R.string.card_number_required)) },
-                placeholder = { Text("1234 5678 9012 3456") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(onClick = { showCardNumber = !showCardNumber }) {
-                        Icon(
-                            if (showCardNumber) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = stringResource(if (showCardNumber) R.string.hide_password else R.string.show_password)
-                        )
-                    }
-                },
-                visualTransformation = if (showCardNumber) {
-                    androidx.compose.ui.text.input.VisualTransformation.None
-                } else {
-                    androidx.compose.ui.text.input.PasswordVisualTransformation()
-                }
-            )
-            
-            // 持卡人
-            OutlinedTextField(
-                value = cardholderName,
-                onValueChange = { cardholderName = it },
-                label = { Text(stringResource(R.string.cardholder_name)) },
-                placeholder = { Text("ZHANG SAN") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            // 有效期
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = expiryMonth,
-                    onValueChange = { 
-                        if (it.length <= 2 && it.all { char -> char.isDigit() }) {
-                            expiryMonth = it
-                        }
-                    },
-                    label = { Text(stringResource(R.string.month)) },
-                    placeholder = { Text("12") },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
-                
-                OutlinedTextField(
-                    value = expiryYear,
-                    onValueChange = { 
-                        if (it.length <= 4 && it.all { char -> char.isDigit() }) {
-                            expiryYear = it
-                        }
-                    },
-                    label = { Text(stringResource(R.string.year)) },
-                    placeholder = { Text("2025") },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
-            }
-            
-            // CVV
-            OutlinedTextField(
-                value = cvv,
-                onValueChange = { 
-                    if (it.length <= 4 && it.all { char -> char.isDigit() }) {
-                        cvv = it
-                    }
-                },
-                label = { Text(stringResource(R.string.cvv)) },
-                placeholder = { Text("123") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(onClick = { showCvv = !showCvv }) {
-                        Icon(
-                            if (showCvv) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = stringResource(if (showCvv) R.string.hide_password else R.string.show_password)
-                        )
-                    }
-                },
-                visualTransformation = if (showCvv) {
-                    androidx.compose.ui.text.input.VisualTransformation.None
-                } else {
-                    androidx.compose.ui.text.input.PasswordVisualTransformation()
-                }
-            )
-            
-            // 备注
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text(stringResource(R.string.notes)) },
-                placeholder = { Text(stringResource(R.string.notes_placeholder)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 120.dp),
-                maxLines = 5
-            )
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            // Billing Address Card
+            InfoCard(title = stringResource(R.string.billing_address)) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.billing_address),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-
                     if (hasBillingAddress && !billingAddress.isEmpty()) {
                         Text(
                             text = billingAddress.formatForDisplay(),
@@ -400,7 +397,8 @@ fun AddEditBankCardScreen(
                         ) {
                             OutlinedButton(
                                 onClick = { showBillingAddressDialog = true },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Edit,
@@ -438,7 +436,8 @@ fun AddEditBankCardScreen(
 
                         OutlinedButton(
                             onClick = { showBillingAddressDialog = true },
-                            modifier = Modifier.align(Alignment.End)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
@@ -451,18 +450,37 @@ fun AddEditBankCardScreen(
                 }
             }
             
-            // 双面照片选择器
-            DualPhotoPicker(
-                frontImageFileName = frontImageFileName,
-                backImageFileName = backImageFileName,
-                onFrontImageSelected = { fileName -> frontImageFileName = fileName },
-                onFrontImageRemoved = { frontImageFileName = null },
-                onBackImageSelected = { fileName -> backImageFileName = fileName },
-                onBackImageRemoved = { backImageFileName = null },
-                frontLabel = "银行卡照片（正面）",
-                backLabel = "银行卡照片（背面）",
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Photos Card
+            InfoCard(title = "照片") {
+                DualPhotoPicker(
+                    frontImageFileName = frontImageFileName,
+                    backImageFileName = backImageFileName,
+                    onFrontImageSelected = { fileName -> frontImageFileName = fileName },
+                    onFrontImageRemoved = { frontImageFileName = null },
+                    onBackImageSelected = { fileName -> backImageFileName = fileName },
+                    onBackImageRemoved = { backImageFileName = null },
+                    frontLabel = "银行卡照片（正面）",
+                    backLabel = "银行卡照片（背面）",
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Notes Card
+            InfoCard(title = "备注") {
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text(stringResource(R.string.notes)) },
+                    placeholder = { Text(stringResource(R.string.notes_placeholder)) },
+                    leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    minLines = 3,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
         }
     }
 
@@ -483,37 +501,43 @@ fun AddEditBankCardScreen(
                         value = streetAddress,
                         onValueChange = { streetAddress = it },
                         label = { Text(stringResource(R.string.street_address)) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = apartment,
                         onValueChange = { apartment = it },
                         label = { Text(stringResource(R.string.apartment)) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = city,
                         onValueChange = { city = it },
                         label = { Text(stringResource(R.string.city)) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = stateProvince,
                         onValueChange = { stateProvince = it },
                         label = { Text(stringResource(R.string.state_province)) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = postalCode,
                         onValueChange = { postalCode = it },
                         label = { Text(stringResource(R.string.postal_code)) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = country,
                         onValueChange = { country = it },
                         label = { Text(stringResource(R.string.country)) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                 }
             },
@@ -553,5 +577,33 @@ fun AddEditBankCardScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun InfoCard(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            content()
+        }
     }
 }

@@ -29,7 +29,8 @@ private fun ContentTypeSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    subtitle: String? = null
 ) {
     Row(
         modifier = modifier
@@ -50,6 +51,16 @@ private fun ContentTypeSwitch(
             if (count != null) {
                 Text(
                     text = "$count 项",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (enabled) 
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            }
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (enabled) 
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -81,6 +92,7 @@ fun SelectiveBackupCard(
     bankCardCount: Int,
     noteCount: Int,
     trashCount: Int = 0,
+    passkeyCount: Int = 0,  // ✅ 新增：验证密钥数量
     localKeePassCount: Int = 0,
     isWebDavConfigured: Boolean = false,
     isKeePassWebDavConfigured: Boolean = false,
@@ -110,17 +122,16 @@ fun SelectiveBackupCard(
                     
                     // 折叠状态下显示摘要
                     if (!expanded) {
-                        // 卡包算作一个选项（证件+银行卡同时选中才算）
+                        // 统计选中的项目数（新逻辑：8个主要选项）
                         val walletSelected = preferences.includeDocuments && preferences.includeBankCards
                         val selectedCount = listOf(
                             preferences.includePasswords,
                             preferences.includeAuthenticators,
                             walletSelected,  // 卡包
+                            preferences.includePasskeys,  // 验证密钥
                             preferences.includeNotes,
-                            preferences.includeGeneratorHistory,
                             preferences.includeImages,
-                            preferences.includeTimeline,
-                            preferences.includeTrash,
+                            preferences.includeTrashAndHistory,  // 回收站与历史（合并项）
                             preferences.includeLocalKeePass
                         ).count { it }
                         
@@ -132,7 +143,7 @@ fun SelectiveBackupCard(
                         val extrasText = if (extras.isNotEmpty()) " (+${extras.joinToString(", ")})" else ""
                         
                         Text(
-                            text = stringResource(R.string.selective_backup_summary, selectedCount, 9) + extrasText,
+                            text = stringResource(R.string.selective_backup_summary, selectedCount, 8) + extrasText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -185,6 +196,17 @@ fun SelectiveBackupCard(
                         }
                     )
                     
+                    // ✅ 新增：验证密钥 (Passkey)
+                    ContentTypeSwitch(
+                        label = stringResource(R.string.backup_content_passkeys),
+                        count = if (passkeyCount > 0) passkeyCount else null,
+                        checked = preferences.includePasskeys,
+                        onCheckedChange = { 
+                            onPreferencesChange(preferences.copy(includePasskeys = it))
+                        },
+                        enabled = passkeyCount > 0
+                    )
+                    
                     // 卡包（证件 + 银行卡）
                     ContentTypeSwitch(
                         label = stringResource(R.string.backup_content_wallet),
@@ -208,15 +230,6 @@ fun SelectiveBackupCard(
                     )
                     
                     ContentTypeSwitch(
-                        label = stringResource(R.string.backup_content_generator_history),
-                        count = null, // 历史记录不显示数量
-                        checked = preferences.includeGeneratorHistory,
-                        onCheckedChange = { 
-                            onPreferencesChange(preferences.copy(includeGeneratorHistory = it))
-                        }
-                    )
-                    
-                    ContentTypeSwitch(
                         label = stringResource(R.string.backup_content_images),
                         count = null, // 图片不显示数量
                         checked = preferences.includeImages,
@@ -225,22 +238,21 @@ fun SelectiveBackupCard(
                         }
                     )
                     
+                    // ✅ 合并项：回收站与历史（包含密码生成历史、操作历史、回收站）
                     ContentTypeSwitch(
-                        label = stringResource(R.string.backup_content_timeline),
-                        count = null, // 时间线不显示数量
-                        checked = preferences.includeTimeline,
-                        onCheckedChange = { 
-                            onPreferencesChange(preferences.copy(includeTimeline = it))
-                        }
-                    )
-                    
-                    ContentTypeSwitch(
-                        label = stringResource(R.string.backup_content_trash),
+                        label = stringResource(R.string.backup_content_trash_and_history),
                         count = trashCount,
-                        checked = preferences.includeTrash,
+                        checked = preferences.includeTrashAndHistory,
                         onCheckedChange = { 
-                            onPreferencesChange(preferences.copy(includeTrash = it))
-                        }
+                            onPreferencesChange(preferences.copy(
+                                includeTrashAndHistory = it,
+                                // 同时更新旧字段以保持兼容性
+                                includeGeneratorHistory = it,
+                                includeTimeline = it,
+                                includeTrash = it
+                            ))
+                        },
+                        subtitle = stringResource(R.string.backup_content_trash_and_history_hint)
                     )
                     
                     // 本地 KeePass 数据库选项（始终显示）
@@ -324,9 +336,11 @@ fun SelectiveBackupCard(
                                         includeAuthenticators = true,
                                         includeDocuments = true,
                                         includeBankCards = true,
+                                        includePasskeys = passkeyCount > 0,  // ✅ 新增
                                         includeNotes = true,
-                                        includeGeneratorHistory = true,
                                         includeImages = true,
+                                        includeTrashAndHistory = true,  // ✅ 新增
+                                        includeGeneratorHistory = true,
                                         includeTimeline = true,
                                         includeTrash = true,
                                         includeLocalKeePass = localKeePassCount > 0
@@ -346,9 +360,11 @@ fun SelectiveBackupCard(
                                         includeAuthenticators = false,
                                         includeDocuments = false,
                                         includeBankCards = false,
+                                        includePasskeys = false,  // ✅ 新增
                                         includeNotes = false,
-                                        includeGeneratorHistory = false,
                                         includeImages = false,
+                                        includeTrashAndHistory = false,  // ✅ 新增
+                                        includeGeneratorHistory = false,
                                         includeTimeline = false,
                                         includeTrash = false,
                                         includeLocalKeePass = false

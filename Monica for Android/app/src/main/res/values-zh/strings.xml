@@ -93,6 +93,20 @@
     <string name="username_copied">用户名已复制到剪贴板</string>
     <string name="password_copied">密码已复制到剪贴板</string>
     
+    <!-- Quick Settings Tile & Smart Copy -->
+    <string name="tile_autofill_label">Monica 填充</string>
+    <string name="smart_copy_username_first">复制账号 (稍后复制密码)</string>
+    <string name="smart_copy_password_first">复制密码 (稍后复制账号)</string>
+    <string name="smart_copy_notification_title">Monica</string>
+    <string name="smart_copy_notification_copy_password">点击复制密码</string>
+    <string name="smart_copy_notification_copy_username">点击复制账号</string>
+    
+    <!-- Autofill Authentication -->
+    <string name="autofill_auth_required">自动填充验证</string>
+    <string name="autofill_auth_required_desc">进入自动填充前需要生物识别或密码验证</string>
+    <string name="autofill_auth_waiting">正在等待验证…</string>
+
+    
     <!-- Form Fields -->
     <string name="field_email">邮箱</string>
     <string name="field_phone">手机号</string>
@@ -432,16 +446,16 @@
     <string name="delete_password_message">确定要删除「%s」吗？</string>
     
     <!-- Error Messages -->
-    <string name="error_password_too_short">主密码至少需要6个字符</string>
-    <string name="error_password_must_be_6_digits">密码必须为6位数字</string>
-    <string name="error_password_min_6_digits">密码至少需要6位数字</string>
+    <string name="error_password_too_short">主密码至少需要4个字符</string>
+    <string name="error_password_must_be_6_digits">密码必须为4位数字</string>
+    <string name="error_password_min_6_digits">密码至少需要4位数字</string>
     <string name="error_password_must_be_numeric">密码只能包含数字</string>
     <string name="error_passwords_not_match">密码不匹配</string>
     <string name="error_invalid_password">主密码无效</string>
     <string name="error_authentication_failed">认证失败</string>
     <string name="error_title_required">标题为必填项</string>
     <string name="error_password_required">密码为必填项</string>
-    <string name="password_min_6_digits">最少需要6位数字</string>
+    <string name="password_min_6_digits">最少需要4位数字</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">设置</string>
@@ -482,12 +496,12 @@
     <string name="reset_password_title">重设密码</string>
     <string name="reset_password">重设密码</string>
     <string name="reset_master_password">重设主密码</string>
-    <string name="reset_password_description">请输入当前密码并设置新的纯数字密码（最低6位数字）</string>
-    <string name="reset_password_verified_description">请设置您的新纯数字密码（最低6位数字）</string>
+    <string name="reset_password_description">请输入当前密码并设置新的纯数字密码（最低4位数字）</string>
+    <string name="reset_password_verified_description">请设置您的新纯数字密码（最低4位数字）</string>
     <string name="current_password">当前密码</string>
     <string name="enter_current_password">输入您的当前密码</string>
     <string name="new_password">新密码</string>
-    <string name="enter_new_password">输入新的纯数字密码（最低6位数字）</string>
+    <string name="enter_new_password">输入新的纯数字密码（最低4位数字）</string>
     <string name="confirm_new_password">确认新密码</string>
     <string name="enter_confirm_password">确认您的新密码</string>
     <string name="current_password_required">请输入当前密码</string>
@@ -496,7 +510,7 @@
     <string name="password_reset_success">密码重设成功</string>
     <string name="password_reset_success_message">您的主密码已成功更改。请记住您的新密码。</string>
     <string name="passwords_do_not_match">密码不匹配</string>
-    <string name="password_too_short">密码至少需要6位字符</string>
+    <string name="password_too_short">密码至少需要4位字符</string>
     
     <!-- Forgot Password -->
     
@@ -522,6 +536,9 @@
     <string name="verify_identity">验证身份</string>
     <string name="verify_to_delete">验证后删除</string>
     <string name="answer_security_questions">回答密保问题</string>
+    <string name="verify_master_password_desc">请输入主密码以继续</string>
+    <string name="wrong_password">密码错误</string>
+    <string name="notes_delete_selected_confirm">确定要删除选中的 %d 条笔记吗？</string>
     <string name="security_questions_verify_description">请回答您的密保问题以重置密码</string>
     <string name="question_1">问题 1：</string>
     <string name="question_2">问题 2：</string>
@@ -539,6 +556,7 @@
     <string name="nav_notes">笔记</string>
     <string name="nav_generator">生成器</string>  <!-- 添加生成器导航标签 -->
     <string name="nav_timeline">时间线</string>
+    <string name="nav_passkey">通行密钥</string>
     <string name="nav_settings">设置</string>
     <string name="add">添加</string>
     
@@ -552,6 +570,81 @@
     <string name="nav_notes_short">笔记</string>
     <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_timeline_short">历史</string>
+    <string name="nav_passkey_short">通行</string>
+    <string name="nav_settings_short">设置</string>
+    
+    <!-- V2 多源密码库导航 -->
+    <string name="nav_v2_vault">密码库</string>
+    <string name="nav_v2_vault_short">库</string>
+    <string name="nav_v2_send">发送</string>
+    <string name="nav_v2_send_short">发送</string>
+    <string name="nav_v2_sync">同步</string>
+    <string name="nav_v2_sync_short">同步</string>
+    <string name="v2_vault_title">多源密码库</string>
+    <string name="v2_vault_subtitle">查看和管理多个来源的密码</string>
+    <string name="v2_send_title">安全发送</string>
+    <string name="v2_send_subtitle">安全分享敏感信息</string>
+    <string name="v2_sync_title">同步中心</string>
+    <string name="v2_sync_subtitle">管理 Bitwarden 等服务的同步</string>
+    <string name="v2_source_local">本地</string>
+    <string name="v2_source_bitwarden">Bitwarden</string>
+    <string name="v2_source_keepass">KeePass</string>
+    <string name="v2_filter_all">全部</string>
+    <string name="v2_filter_login">登录</string>
+    <string name="v2_filter_card">支付卡</string>
+    <string name="v2_filter_identity">身份</string>
+    <string name="v2_filter_note">笔记</string>
+    <string name="v2_no_items">密码库为空</string>
+    <string name="v2_connect_bitwarden">连接 Bitwarden</string>
+    
+    <!-- Passkey Screen -->
+    <string name="passkey_title">通行密钥</string>
+    <string name="passkey_count">%1$d 个通行密钥</string>
+    <string name="passkey_view_only_mode">仅查看模式</string>
+    <string name="passkey_search_placeholder">搜索通行密钥…</string>
+    <string name="passkey_used_count">已使用 %1$d 次</string>
+    <string name="passkey_discoverable">可发现</string>
+    <string name="passkey_empty_title">暂无通行密钥</string>
+    <string name="passkey_empty_message">通行密钥是一种更安全便捷的登录方式。当您在网站或应用中创建通行密钥时，它将显示在这里。</string>
+    <string name="passkey_empty_message_unsupported">您的设备不支持创建通行密钥。您仍可查看从其他设备同步的通行密钥。</string>
+    <string name="passkey_add_hint">通行密钥需要由网站或应用发起创建。请在支持的网站登录时选择"使用通行密钥"。</string>
+    <string name="passkey_no_search_results">无结果</string>
+    <string name="passkey_no_search_results_hint">请尝试其他搜索词</string>
+    <string name="passkey_version_warning_title">通行密钥支持受限</string>
+    <string name="passkey_version_warning_message">完整的通行密钥功能需要 Android 14 或更高版本。当前：%1$s。您可以查看同步的通行密钥，但无法创建新的。</string>
+    <string name="passkey_what_is_title">什么是通行密钥？</string>
+    <string name="passkey_feature_1">比密码更安全 - 防钓鱼攻击</string>
+    <string name="passkey_feature_2">使用简便 - 只需指纹或面容</string>
+    <string name="passkey_feature_3">跨设备同步</string>
+    <string name="passkey_create_title">创建通行密钥</string>
+    <string name="passkey_create_message">为 %1$s 创建通行密钥，无需密码即可登录</string>
+    <string name="passkey_create_confirm">创建通行密钥</string>
+    <string name="passkey_auth_title">使用通行密钥登录</string>
+    <string name="passkey_auth_message">使用您的通行密钥登录 %1$s</string>
+    <string name="passkey_auth_confirm">登录</string>
+    
+    <!-- Passkey Management -->
+    <string name="passkey">通行密钥</string>
+    <string name="passkey_search_hint">搜索通行密钥…</string>
+    <string name="passkey_search_empty">未找到匹配的通行密钥</string>
+    <string name="passkey_search_empty_hint">尝试其他搜索词</string>
+    <string name="passkey_empty_subtitle">在网站和应用中创建通行密钥后将显示在这里</string>
+    <string name="passkey_delete_title">删除通行密钥</string>
+    <string name="passkey_delete_message">确定要删除 %1$s (%2$s) 的通行密钥吗？删除后将无法使用此通行密钥登录。</string>
+    <string name="passkey_delete_button">删除通行密钥</string>
+    <string name="passkey_detail_user">显示名称</string>
+    <string name="passkey_detail_username">用户名</string>
+    <string name="passkey_detail_created">创建时间</string>
+    <string name="passkey_detail_last_used">最近使用</string>
+    <string name="passkey_detail_use_count">使用次数</string>
+    <string name="passkey_view_details">查看详情</string>
+    <string name="passkey_rp_id">网站</string>
+    <string name="passkey_username">用户名</string>
+    <string name="passkey_created_at">创建时间</string>
+    <string name="passkey_last_used">最近使用</string>
+    <string name="passkey_use_count">使用次数</string>
+    
+    <string name="dismiss">关闭</string>
     
     <!-- Timeline Screen -->
     <string name="no_history_records">暂无历史记录</string>
@@ -560,7 +653,6 @@
     <string name="restore_version">恢复此版本</string>
     <string name="save_as_new_entry">保存为新条目</string>
     <string name="no_changes">无变更</string>
-    <string name="nav_settings_short">设置</string>
     
     <!-- Generator Screen -->  <!-- 添加生成器页面相关字符串 -->
     <string name="generator_title">生成器</string>
@@ -666,13 +758,13 @@
     <string name="change_password_current">当前密码 *</string>
     <string name="change_password_new">新密码 *</string>
     <string name="change_password_confirm">确认新密码 *</string>
-    <string name="change_password_hint">密码长度至少6位数字</string>
+    <string name="change_password_hint">密码长度至少4位数字</string>
     <string name="change_password_button">修改密码</string>
     <string name="change_password_success_title">密码修改成功</string>
     <string name="change_password_success_message">您的主密码已成功修改，所有数据已使用新密码重新加密。请使用新密码登录。</string>
     <string name="change_password_error_current_empty">请输入当前密码</string>
     <string name="change_password_error_new_empty">请输入新密码</string>
-    <string name="change_password_error_new_too_short">新密码长度至少6位数字</string>
+    <string name="change_password_error_new_too_short">新密码长度至少4位数字</string>
     <string name="change_password_error_confirm_empty">请确认新密码</string>
     <string name="change_password_error_not_match">两次输入的新密码不一致</string>
     <string name="change_password_error_same_as_current">新密码不能与当前密码相同</string>
@@ -734,6 +826,10 @@
     <!-- Dynamic Color -->
     <string name="disable_wallpaper_color_extraction">关闭壁纸取色</string>
     <string name="disable_wallpaper_color_extraction_description">使用系统默认配色方案而非从壁纸提取颜色</string>
+    
+    <!-- Reduce Animations -->
+    <string name="reduce_animations">减少动画</string>
+    <string name="reduce_animations_description">禁用共享元素动画以解决部分设备（HyperOS 2/Android 15）的卡顿问题</string>
     
     <!-- Color Scheme -->
     <string name="color_scheme">配色方案</string>
@@ -885,6 +981,36 @@
     <!-- Autofill -->
     <string name="autofill">自动填充</string>
     <string name="autofill_subtitle">为应用和网站自动填充密码</string>
+    
+    <!-- Passkey Settings -->
+    <string name="passkey_settings">通行密钥提供者</string>
+    <string name="passkey_settings_subtitle">无需密码即可登录应用和网站</string>
+    <string name="passkey_settings_title">通行密钥设置</string>
+    <string name="passkey_settings_intro_title">通行密钥提供者</string>
+    <string name="passkey_settings_intro_subtitle">Monica 可以为网站和应用创建和管理通行密钥，提供更安全便捷的登录体验。</string>
+    <string name="passkey_settings_unsupported_title">不支持</string>
+    <string name="passkey_settings_unsupported_subtitle">通行密钥提供者需要 Android 14 或更高版本。您的设备运行的是 Android %1$s。</string>
+    <string name="passkey_settings_system_title">打开系统设置</string>
+    <string name="passkey_settings_system_subtitle">在系统设置中启用 Monica 作为通行密钥提供者</string>
+    <string name="passkey_stats_saved">已保存的通行密钥</string>
+    <string name="passkey_settings_features_title">通行密钥特性</string>
+    <string name="passkey_feature_security_title">增强安全性</string>
+    <string name="passkey_feature_security_desc">通行密钥使用公钥密码学，比传统密码更安全</string>
+    <string name="passkey_feature_biometric_title">生物识别认证</string>
+    <string name="passkey_feature_biometric_desc">使用指纹或面容识别登录</string>
+    <string name="passkey_feature_sync_title">跨设备同步</string>
+    <string name="passkey_feature_sync_desc">通过 WebDAV 备份在设备间同步通行密钥</string>
+    <string name="passkey_feature_phishing_title">防钓鱼</string>
+    <string name="passkey_feature_phishing_desc">通行密钥绑定到特定网站，防止钓鱼攻击</string>
+    <string name="passkey_settings_requirement_title">系统要求</string>
+    <string name="passkey_settings_requirement_desc">要使用 Monica 作为通行密钥提供者，您的设备必须运行 Android 14 (API 34) 或更高版本。您仍可查看从其他设备同步的通行密钥。</string>
+    
+    <!-- Passkey 生物识别认证 -->
+    <string name="biometric_title_passkey_auth">验证身份以登录</string>
+    <string name="biometric_subtitle_passkey_auth">使用通行密钥登录 %1$s</string>
+    <string name="biometric_title_passkey_create">验证身份以创建通行密钥</string>
+    <string name="biometric_subtitle_passkey_create">为 %1$s 创建通行密钥</string>
+    
     <string name="autofill_save_password">保存密码</string>
     <string name="autofill_save_to_monica">将此密码保存到Monica</string>
     <string name="autofill_title">标题</string>
@@ -1322,6 +1448,9 @@
     <string name="backup_content_images">图片</string>
     <string name="backup_content_timeline">操作历史</string>
     <string name="backup_content_trash">回收站</string>
+    <string name="backup_content_passkeys">通行密钥</string>
+    <string name="backup_content_trash_and_history">回收站与历史</string>
+    <string name="backup_content_trash_and_history_hint">包含回收站、密码生成历史和操作历史</string>
     <string name="backup_content_local_keepass">本地 KeePass 数据库</string>
     <string name="backup_content_local_keepass_hint">包含所有本地 KeePass 数据库（内部和外部存储）。恢复时统一存储到内部存储。</string>
     <string name="backup_content_local_keepass_empty">暂无本地 KeePass 数据库</string>

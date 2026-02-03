@@ -48,9 +48,14 @@ object AppIconCache {
         val icon = try {
             val drawable = packageManager.getApplicationIcon(packageName)
             android.util.Log.d("AppIconCache", "getIcon: successfully loaded icon for $packageName")
-            drawable.toBitmap().asImageBitmap()
+            // 使用固定尺寸转换，避免某些 Drawable (如 AdaptiveIconDrawable) 崩溃
+            val size = 96 // 合适的图标尺寸
+            drawable.toBitmap(size, size).asImageBitmap()
         } catch (e: PackageManager.NameNotFoundException) {
             android.util.Log.w("AppIconCache", "getIcon: app not found: $packageName", e)
+            null
+        } catch (e: OutOfMemoryError) {
+            android.util.Log.e("AppIconCache", "getIcon: OOM loading icon for $packageName", e)
             null
         } catch (e: Exception) {
             android.util.Log.e("AppIconCache", "getIcon: error loading icon for $packageName", e)

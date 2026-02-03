@@ -70,7 +70,27 @@ data class PasswordEntry(
     @ColumnInfo(defaultValue = "0")
     val isDeleted: Boolean = false,      // 是否已删除（在回收站中）
     @ColumnInfo(defaultValue = "NULL")
-    val deletedAt: java.util.Date? = null // 删除时间（用于自动清空）
+    val deletedAt: java.util.Date? = null, // 删除时间（用于自动清空）
+    
+    // === Bitwarden 集成字段 ===
+    // 当此条目来自 Bitwarden 时，以下字段有值
+    @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")
+    val bitwardenVaultId: Long? = null,   // 归属的 Bitwarden Vault ID
+    
+    @ColumnInfo(name = "bitwarden_cipher_id", defaultValue = "NULL")
+    val bitwardenCipherId: String? = null, // Bitwarden Cipher UUID
+    
+    @ColumnInfo(name = "bitwarden_folder_id", defaultValue = "NULL")
+    val bitwardenFolderId: String? = null, // Bitwarden Folder UUID
+    
+    @ColumnInfo(name = "bitwarden_revision_date", defaultValue = "NULL")
+    val bitwardenRevisionDate: String? = null, // 服务器版本号 (ISO 8601)
+    
+    @ColumnInfo(name = "bitwarden_cipher_type", defaultValue = "1")
+    val bitwardenCipherType: Int = 1,     // Cipher 类型: 1=Login, 2=SecureNote, 3=Card, 4=Identity
+    
+    @ColumnInfo(name = "bitwarden_local_modified", defaultValue = "0")
+    val bitwardenLocalModified: Boolean = false // 本地是否有未同步的修改
 ) : Parcelable {
     
     /**
@@ -86,4 +106,24 @@ data class PasswordEntry(
             SsoProvider.fromName(ssoProvider)
         } else null
     }
+    
+    /**
+     * 是否来自 Bitwarden
+     */
+    fun isBitwardenEntry(): Boolean = bitwardenVaultId != null && bitwardenCipherId != null
+    
+    /**
+     * 是否有待同步的 Bitwarden 修改
+     */
+    fun hasPendingBitwardenSync(): Boolean = isBitwardenEntry() && bitwardenLocalModified
+    
+    /**
+     * 是否来自 KeePass
+     */
+    fun isKeePassEntry(): Boolean = keepassDatabaseId != null
+    
+    /**
+     * 是否为本地条目 (不关联任何外部数据库)
+     */
+    fun isLocalOnlyEntry(): Boolean = !isBitwardenEntry() && !isKeePassEntry()
 }

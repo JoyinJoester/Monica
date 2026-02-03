@@ -37,23 +37,46 @@ import androidx.compose.runtime.LaunchedEffect
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import takagi.ru.monica.autofill.AutofillPreferences
 import takagi.ru.monica.autofill.DomainMatchStrategy
 import takagi.ru.monica.autofill.core.AutofillServiceChecker
 import takagi.ru.monica.autofill.core.AutofillDiagnostics
 import takagi.ru.monica.ui.components.AutofillStatusCard
+import takagi.ru.monica.utils.SettingsManager
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun AutofillSettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val autofillPreferences = remember { AutofillPreferences(context) }
+
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
     
-    val autofillEnabled by autofillPreferences.isAutofillEnabled.collectAsState(initial = false)
+    var scaffoldModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            scaffoldModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "autofill_settings_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+    
+
+    val autofillPreferences = remember { AutofillPreferences(context) }
+    val settingsManager = remember { SettingsManager(context) }
+    
+    // 自动填充验证设置
+    val appSettings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    val autofillAuthRequired = appSettings.autofillAuthRequired
     val domainMatchStrategy by autofillPreferences.domainMatchStrategy.collectAsState(initial = DomainMatchStrategy.BASE_DOMAIN)
     val fillSuggestionsEnabled by autofillPreferences.isFillSuggestionsEnabled.collectAsState(initial = true)
     val manualSelectionEnabled by autofillPreferences.isManualSelectionEnabled.collectAsState(initial = true)
@@ -118,6 +141,7 @@ fun AutofillSettingsScreen(
     }
     
     Scaffold(
+        modifier = scaffoldModifier,
         topBar = {
             TopAppBar(
                 title = { 
@@ -251,19 +275,7 @@ fun AutofillSettingsScreen(
                 icon = Icons.Outlined.Input,
                 iconTint = MaterialTheme.colorScheme.tertiary
             ) {
-                SwitchSettingItem(
-                    icon = Icons.Outlined.Fingerprint,
-                    title = stringResource(R.string.autofill_fill_verify_identity),
-                    subtitle = stringResource(R.string.autofill_fill_verify_identity_desc),
-                    checked = biometricQuickFillEnabled,
-                    onCheckedChange = {
-                        scope.launch {
-                            autofillPreferences.setBiometricQuickFillEnabled(it)
-                        }
-                    }
-                )
-                
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
                 SwitchSettingItem(
                     icon = Icons.Outlined.AutoAwesome,
                     title = stringResource(R.string.autofill_fill_suggestions),

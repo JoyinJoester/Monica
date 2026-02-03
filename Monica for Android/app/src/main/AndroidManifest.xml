@@ -90,8 +90,66 @@
                 android:resource="@xml/autofill_service_config" />
         </service>
         
+        <!-- Credential Provider Service (Passkey, Android 14+) -->
+        <service
+            android:name=".passkey.MonicaCredentialProviderService"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE"
+            tools:targetApi="upside_down_cake">
+            <intent-filter>
+                <action android:name="android.service.credentials.CredentialProviderService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.credentials.provider"
+                android:resource="@xml/credential_provider_config" />
+        </service>
+        
+        <!-- Passkey Create Activity -->
+        <activity
+            android:name=".passkey.PasskeyCreateActivity"
+            android:theme="@style/Theme.Monica.Passkey"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+        
+        <!-- Passkey Auth Activity -->
+        <activity
+            android:name=".passkey.PasskeyAuthActivity"
+            android:theme="@style/Theme.Monica.Passkey"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
+        <!-- Passkey Settings Activity (for system settings entry) -->
+        <activity
+            android:name=".passkey.PasskeySettingsActivity"
+            android:theme="@style/Theme.Monica"
+            android:exported="true" />
+        
         <receiver android:name=".autofill.AutofillNotificationReceiver"
             android:exported="false" />
+
+        <!-- Quick Settings Tile for Manual Autofill -->
+        <service
+            android:name=".autofill.service.AutofillTileService"
+            android:label="@string/tile_autofill_label"
+            android:icon="@drawable/ic_key"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Smart Copy Broadcast Receiver -->
+        <receiver 
+            android:name=".autofill.utils.SmartCopyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="takagi.ru.monica.ACTION_SMART_COPY" />
+            </intent-filter>
+        </receiver>
 
         <!-- Notification Validator Service -->
         <service

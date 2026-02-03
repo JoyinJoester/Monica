@@ -5,13 +5,17 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.utils.KeePassEntryData
@@ -27,6 +31,7 @@ sealed class CategoryFilter {
     object Uncategorized : CategoryFilter()
     data class Custom(val categoryId: Long) : CategoryFilter()
     data class KeePassDatabase(val databaseId: Long) : CategoryFilter()
+    data class BitwardenVault(val vaultId: Long) : CategoryFilter()
 }
 
 /**
@@ -36,6 +41,7 @@ class PasswordViewModel(
     private val repository: PasswordRepository,
     private val securityManager: SecurityManager,
     private val secureItemRepository: SecureItemRepository? = null,
+    private val customFieldRepository: CustomFieldRepository? = null,
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
@@ -75,7 +81,37 @@ class PasswordViewModel(
         .distinctUntilChanged()
         .flatMapLatest { (query, filter) ->
             val baseFlow = if (query.isNotBlank()) {
-                repository.searchPasswordEntries(query)
+                // 扩展搜索：同时搜索基础字段和自定义字段
+                repository.searchPasswordEntries(query).map { baseResults ->
+                    // 获取通过自定义字段搜索匹配的条目ID
+                    val customFieldMatchIds = try {
+                        customFieldRepository?.searchEntryIdsByFieldContent(query) ?: emptyList()
+                    } catch (e: Exception) {
+                        Log.w("PasswordViewModel", "Custom field search failed", e)
+                        emptyList()
+                    }
+                    
+                    if (customFieldMatchIds.isEmpty()) {
+                        baseResults
+                    } else {
+                        // 合并结果：基础搜索结果 + 自定义字段匹配的条目
+                        val baseIds = baseResults.map { it.id }.toSet()
+                        val additionalIds = customFieldMatchIds.filter { it !in baseIds }
+                        
+                        if (additionalIds.isEmpty()) {
+                            baseResults
+                        } else {
+                            // 获取额外匹配的条目
+                            val additionalEntries = try {
+                                repository.getPasswordsByIds(additionalIds)
+                            } catch (e: Exception) {
+                                Log.w("PasswordViewModel", "Failed to fetch custom field matched entries", e)
+                                emptyList()
+                            }
+                            baseResults + additionalEntries
+                        }
+                    }
+                }
             } else {
                 when (filter) {
                     is CategoryFilter.All -> repository.getAllPasswordEntries()
@@ -83,10 +119,13 @@ class PasswordViewModel(
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
                     is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
+                    is CategoryFilter.BitwardenVault -> repository.getPasswordEntriesByBitwardenVault(filter.vaultId)
                 }
             }
             baseFlow.map { entries ->
-                val filtered = if (filter is CategoryFilter.All) {
+                // 在搜索模式或"全部"视图时进行去重
+                // 搜索结果可能包含来自多个来源的重复条目
+                val filtered = if (query.isNotBlank() || filter is CategoryFilter.All) {
                     dedupeForAll(entries)
                 } else {
                     entries
@@ -117,12 +156,16 @@ class PasswordViewModel(
         )
 
     private fun dedupeForAll(entries: List<PasswordEntry>): List<PasswordEntry> {
+        // 本地条目 (既不是 KeePass 也不是 Bitwarden)
         val localKeys = entries
-            .filter { it.keepassDatabaseId == null }
+            .filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
             .map { buildDedupeKey(it) }
             .toSet()
         return entries.filter { entry ->
-            entry.keepassDatabaseId == null || buildDedupeKey(entry) !in localKeys
+            // 本地条目始终保留
+            // KeePass/Bitwarden 条目如果与本地重复则跳过
+            val isLocal = entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+            isLocal || buildDedupeKey(entry) !in localKeys
         }
     }
 
@@ -236,12 +279,16 @@ class PasswordViewModel(
     fun authenticate(password: String): Boolean {
         val isValid = securityManager.verifyMasterPassword(password)
         _isAuthenticated.value = isValid
+        if (isValid) {
+            SessionManager.markUnlocked()
+        }
         return isValid
     }
     
     fun setMasterPassword(password: String) {
         securityManager.setMasterPassword(password)
         _isAuthenticated.value = true
+        SessionManager.markUnlocked()
     }
     
     fun isMasterPasswordSet(): Boolean {
@@ -250,6 +297,7 @@ class PasswordViewModel(
     
     fun logout() {
         _isAuthenticated.value = false
+        SessionManager.markLocked()
     }
     
     fun addPasswordEntry(entry: PasswordEntry, onResult: (Long) -> Unit = {}) {
@@ -628,6 +676,7 @@ class PasswordViewModel(
         originalIds: List<Long>,
         commonEntry: PasswordEntry, // Contains common info and ONE password (ignored)
         passwords: List<String>,
+        customFields: List<CustomFieldDraft> = emptyList(), // 自定义字段
         onComplete: (firstPasswordId: Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -674,7 +723,55 @@ class PasswordViewModel(
                 }
             }
             
+            // 3. 保存自定义字段（只针对第一个密码条目）
+            firstId?.let { entryId ->
+                saveCustomFieldsForEntry(entryId, customFields)
+            }
+            
             onComplete(firstId)
         }
+    }
+    
+    // =============== 自定义字段相关方法 ===============
+    
+    /**
+     * 获取指定密码条目的自定义字段（Flow）
+     */
+    fun getCustomFieldsByEntryId(entryId: Long): Flow<List<CustomField>> {
+        return customFieldRepository?.getFieldsByEntryId(entryId) ?: flowOf(emptyList())
+    }
+    
+    /**
+     * 获取指定密码条目的自定义字段（同步版本）
+     */
+    suspend fun getCustomFieldsByEntryIdSync(entryId: Long): List<CustomField> {
+        return customFieldRepository?.getFieldsByEntryIdSync(entryId) ?: emptyList()
+    }
+    
+    /**
+     * 保存密码条目的自定义字段
+     * 同时更新密码条目的 updatedAt 以触发同步
+     */
+    suspend fun saveCustomFieldsForEntry(entryId: Long, fields: List<CustomFieldDraft>) {
+        customFieldRepository?.saveFieldsForEntry(entryId, fields)
+        
+        // 更新密码条目的 updatedAt 以确保 WebDAV 同步能检测到自定义字段的变化
+        repository.getPasswordEntryById(entryId)?.let { entry ->
+            repository.updatePasswordEntry(entry.copy(updatedAt = java.util.Date()))
+        }
+    }
+    
+    /**
+     * 批量获取多个条目的自定义字段（用于列表显示优化）
+     */
+    suspend fun getCustomFieldsByEntryIds(entryIds: List<Long>): Map<Long, List<CustomField>> {
+        return customFieldRepository?.getFieldsByEntryIds(entryIds) ?: emptyMap()
+    }
+    
+    /**
+     * 搜索包含指定关键词的条目ID（通过自定义字段搜索）
+     */
+    suspend fun searchEntryIdsByCustomFieldContent(query: String): List<Long> {
+        return customFieldRepository?.searchEntryIdsByFieldContent(query) ?: emptyList()
     }
 }

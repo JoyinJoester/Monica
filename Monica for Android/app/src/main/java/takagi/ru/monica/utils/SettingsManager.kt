@@ -11,7 +11,11 @@ import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.data.VaultViewMode
+import takagi.ru.monica.data.AutofillSource
+import takagi.ru.monica.data.NavBarVersion
 
 private val Context.dataStore by preferencesDataStore("settings")
 
@@ -32,13 +36,16 @@ class SettingsManager(private val context: Context) {
         private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
+        private val SHOW_VAULT_TAB_KEY = booleanPreferencesKey("show_vault_tab")  // V2 库
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
         private val SHOW_AUTHENTICATOR_TAB_KEY = booleanPreferencesKey("show_authenticator_tab")
         private val SHOW_CARD_WALLET_TAB_KEY = booleanPreferencesKey("show_card_wallet_tab")
         private val SHOW_NOTES_TAB_KEY = booleanPreferencesKey("show_notes_tab")
         private val SHOW_LEDGER_TAB_KEY = booleanPreferencesKey("show_ledger_tab")
         private val SHOW_GENERATOR_TAB_KEY = booleanPreferencesKey("show_generator_tab")  // 添加生成器标签键
+        private val SHOW_SEND_TAB_KEY = booleanPreferencesKey("show_send_tab")  // V2 发送
         private val SHOW_TIMELINE_TAB_KEY = booleanPreferencesKey("show_timeline_tab")  // 添加时间线标签键
+        private val SHOW_PASSKEY_TAB_KEY = booleanPreferencesKey("show_passkey_tab")  // 添加 Passkey 标签键
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
         private val USE_DRAGGABLE_BOTTOM_NAV_KEY = booleanPreferencesKey("use_draggable_bottom_nav")
@@ -61,6 +68,32 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_CARD_DISPLAY_MODE_KEY = stringPreferencesKey("password_card_display_mode") // 密码卡片显示模式
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
+        private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
+        
+        // 密码页面字段可见性
+        private val FIELD_SECURITY_VERIFICATION_KEY = booleanPreferencesKey("field_security_verification")
+        private val FIELD_CATEGORY_AND_NOTES_KEY = booleanPreferencesKey("field_category_and_notes")
+        private val FIELD_APP_BINDING_KEY = booleanPreferencesKey("field_app_binding")
+        private val FIELD_PERSONAL_INFO_KEY = booleanPreferencesKey("field_personal_info")
+        private val FIELD_ADDRESS_INFO_KEY = booleanPreferencesKey("field_address_info")
+        private val FIELD_PAYMENT_INFO_KEY = booleanPreferencesKey("field_payment_info")
+        
+        // 预设自定义字段 (JSON 格式存储)
+        private val PRESET_CUSTOM_FIELDS_KEY = stringPreferencesKey("preset_custom_fields")
+        
+        // 减少动画 - 解决部分设备动画卡顿问题
+        private val REDUCE_ANIMATIONS_KEY = booleanPreferencesKey("reduce_animations")
+        
+        // V2 多源密码库设置
+        private val DEFAULT_VAULT_VIEW_KEY = stringPreferencesKey("default_vault_view")
+        private val AUTOFILL_SOURCES_KEY = stringPreferencesKey("autofill_sources")
+        private val AUTOFILL_PRIORITY_KEY = stringPreferencesKey("autofill_priority")
+        
+        // 导航栏版本设置
+        private val NAV_BAR_VERSION_KEY = stringPreferencesKey("nav_bar_version")
+        
+        // V2导航栏上次打开的子页面（默认密码）
+        private val V2_LAST_SUB_PAGE_KEY = stringPreferencesKey("v2_last_sub_page")
     }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
@@ -93,12 +126,15 @@ class SettingsManager(private val context: Context) {
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true, // 默认启用动态颜色
             bottomNavVisibility = BottomNavVisibility(
+                vault = preferences[SHOW_VAULT_TAB_KEY] ?: true,
                 passwords = preferences[SHOW_PASSWORDS_TAB_KEY] ?: true,
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
                 cardWallet = preferences[SHOW_CARD_WALLET_TAB_KEY] ?: true,
                 generator = preferences[SHOW_GENERATOR_TAB_KEY] ?: false,
                 notes = preferences[SHOW_NOTES_TAB_KEY] ?: false,
-                timeline = preferences[SHOW_TIMELINE_TAB_KEY] ?: false
+                send = preferences[SHOW_SEND_TAB_KEY] ?: false,
+                timeline = preferences[SHOW_TIMELINE_TAB_KEY] ?: false,
+                passkey = preferences[SHOW_PASSKEY_TAB_KEY] ?: true
             ),
             bottomNavOrder = sanitizedOrder,
             useDraggableBottomNav = preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] ?: false,
@@ -132,7 +168,39 @@ class SettingsManager(private val context: Context) {
                 val modeString = preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] ?: takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name
                 takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(modeString)
             }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL),
-            noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true
+            noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
+            autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true, // 默认开启
+            passwordFieldVisibility = takagi.ru.monica.data.PasswordFieldVisibility(
+                securityVerification = preferences[FIELD_SECURITY_VERIFICATION_KEY] ?: true,
+                categoryAndNotes = preferences[FIELD_CATEGORY_AND_NOTES_KEY] ?: true,
+                appBinding = preferences[FIELD_APP_BINDING_KEY] ?: true,
+                personalInfo = preferences[FIELD_PERSONAL_INFO_KEY] ?: true,
+                addressInfo = preferences[FIELD_ADDRESS_INFO_KEY] ?: true,
+                paymentInfo = preferences[FIELD_PAYMENT_INFO_KEY] ?: true
+            ),
+            reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
+            
+            // V2 多源密码库设置
+            defaultVaultView = runCatching {
+                VaultViewMode.valueOf(preferences[DEFAULT_VAULT_VIEW_KEY] ?: VaultViewMode.V1.name)
+            }.getOrDefault(VaultViewMode.V1),
+            autofillSources = runCatching {
+                val sourcesStr = preferences[AUTOFILL_SOURCES_KEY] ?: AutofillSource.V1_LOCAL.name
+                sourcesStr.split(",").mapNotNull { 
+                    runCatching { AutofillSource.valueOf(it.trim()) }.getOrNull() 
+                }.toSet()
+            }.getOrDefault(setOf(AutofillSource.V1_LOCAL)),
+            autofillPriority = runCatching {
+                val priorityStr = preferences[AUTOFILL_PRIORITY_KEY] ?: AutofillSource.V1_LOCAL.name
+                priorityStr.split(",").mapNotNull { 
+                    runCatching { AutofillSource.valueOf(it.trim()) }.getOrNull() 
+                }
+            }.getOrDefault(listOf(AutofillSource.V1_LOCAL)),
+            
+            // 导航栏版本
+            navBarVersion = runCatching {
+                NavBarVersion.valueOf(preferences[NAV_BAR_VERSION_KEY] ?: NavBarVersion.V1.name)
+            }.getOrDefault(NavBarVersion.V1)
         )
     }
     
@@ -181,12 +249,15 @@ class SettingsManager(private val context: Context) {
     suspend fun updateBottomNavVisibility(tab: BottomNavContentTab, visible: Boolean) {
         dataStore.edit { preferences ->
             when (tab) {
+                BottomNavContentTab.VAULT -> preferences[SHOW_VAULT_TAB_KEY] = visible
                 BottomNavContentTab.PASSWORDS -> preferences[SHOW_PASSWORDS_TAB_KEY] = visible
                 BottomNavContentTab.AUTHENTICATOR -> preferences[SHOW_AUTHENTICATOR_TAB_KEY] = visible
                 BottomNavContentTab.CARD_WALLET -> preferences[SHOW_CARD_WALLET_TAB_KEY] = visible
-                BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible  // 添加生成器分支
+                BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible
                 BottomNavContentTab.NOTES -> preferences[SHOW_NOTES_TAB_KEY] = visible
+                BottomNavContentTab.SEND -> preferences[SHOW_SEND_TAB_KEY] = visible
                 BottomNavContentTab.TIMELINE -> preferences[SHOW_TIMELINE_TAB_KEY] = visible
+                BottomNavContentTab.PASSKEY -> preferences[SHOW_PASSKEY_TAB_KEY] = visible
             }
         }
     }
@@ -325,6 +396,168 @@ class SettingsManager(private val context: Context) {
     suspend fun updateNoteGridLayout(isGrid: Boolean) {
         dataStore.edit { preferences ->
             preferences[NOTE_GRID_LAYOUT_KEY] = isGrid
+        }
+    }
+
+    suspend fun updateAutofillAuthRequired(required: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[AUTOFILL_AUTH_REQUIRED_KEY] = required
+        }
+    }
+
+    suspend fun updatePasswordFieldVisibility(field: String, visible: Boolean) {
+        dataStore.edit { preferences ->
+            when (field) {
+                "securityVerification" -> preferences[FIELD_SECURITY_VERIFICATION_KEY] = visible
+                "categoryAndNotes" -> preferences[FIELD_CATEGORY_AND_NOTES_KEY] = visible
+                "appBinding" -> preferences[FIELD_APP_BINDING_KEY] = visible
+                "personalInfo" -> preferences[FIELD_PERSONAL_INFO_KEY] = visible
+                "addressInfo" -> preferences[FIELD_ADDRESS_INFO_KEY] = visible
+                "paymentInfo" -> preferences[FIELD_PAYMENT_INFO_KEY] = visible
+            }
+        }
+    }
+    
+    // ==================== 预设自定义字段管理 ====================
+    
+    /**
+     * 获取预设自定义字段列表 Flow
+     */
+    val presetCustomFieldsFlow: Flow<List<PresetCustomField>> = dataStore.data.map { preferences ->
+        val json = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+        PresetCustomField.listFromJson(json)
+    }
+    
+    /**
+     * 添加预设自定义字段
+     */
+    suspend fun addPresetCustomField(field: PresetCustomField) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson).toMutableList()
+            // 设置新字段的排序为最后
+            val maxOrder = currentList.maxOfOrNull { it.order } ?: -1
+            val newField = field.copy(order = maxOrder + 1)
+            currentList.add(newField)
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(currentList)
+        }
+    }
+    
+    /**
+     * 更新预设自定义字段
+     */
+    suspend fun updatePresetCustomField(field: PresetCustomField) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson).toMutableList()
+            val index = currentList.indexOfFirst { it.id == field.id }
+            if (index >= 0) {
+                currentList[index] = field
+                preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(currentList)
+            }
+        }
+    }
+    
+    /**
+     * 删除预设自定义字段
+     */
+    suspend fun deletePresetCustomField(fieldId: String) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson).toMutableList()
+            currentList.removeAll { it.id == fieldId }
+            // 重新排序
+            val reordered = currentList.mapIndexed { index, field -> field.copy(order = index) }
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(reordered)
+        }
+    }
+    
+    /**
+     * 重新排序预设自定义字段
+     */
+    suspend fun reorderPresetCustomFields(fieldIds: List<String>) {
+        dataStore.edit { preferences ->
+            val currentJson = preferences[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            val currentList = PresetCustomField.listFromJson(currentJson)
+            val fieldMap = currentList.associateBy { it.id }
+            val reorderedList = fieldIds.mapIndexedNotNull { index, id ->
+                fieldMap[id]?.copy(order = index)
+            }
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = PresetCustomField.listToJson(reorderedList)
+        }
+    }
+    
+    /**
+     * 清空所有预设自定义字段
+     */
+    suspend fun clearAllPresetCustomFields() {
+        dataStore.edit { preferences ->
+            preferences[PRESET_CUSTOM_FIELDS_KEY] = "[]"
+        }
+    }
+    
+    /**
+     * 更新减少动画设置
+     * 开启后将禁用共享元素动画，改为简单的淡入淡出效果
+     * 主要用于解决 HyperOS 2 / Android 15 等设备上的动画卡顿问题
+     */
+    suspend fun updateReduceAnimations(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[REDUCE_ANIMATIONS_KEY] = enabled
+        }
+    }
+    
+    // ==================== V2 多源密码库设置 ====================
+    
+    /**
+     * 更新默认密码库视图（V1 经典 / V2 多源）
+     */
+    suspend fun updateDefaultVaultView(view: VaultViewMode) {
+        dataStore.edit { preferences ->
+            preferences[DEFAULT_VAULT_VIEW_KEY] = view.name
+        }
+    }
+    
+    /**
+     * 更新自动填充数据源
+     */
+    suspend fun updateAutofillSources(sources: Set<AutofillSource>) {
+        dataStore.edit { preferences ->
+            preferences[AUTOFILL_SOURCES_KEY] = sources.joinToString(",") { it.name }
+        }
+    }
+    
+    /**
+     * 更新自动填充优先级
+     */
+    suspend fun updateAutofillPriority(priority: List<AutofillSource>) {
+        dataStore.edit { preferences ->
+            preferences[AUTOFILL_PRIORITY_KEY] = priority.joinToString(",") { it.name }
+        }
+    }
+    
+    /**
+     * 更新导航栏版本
+     */
+    suspend fun updateNavBarVersion(version: NavBarVersion) {
+        dataStore.edit { preferences ->
+            preferences[NAV_BAR_VERSION_KEY] = version.name
+        }
+    }
+    
+    /**
+     * 获取V2导航栏上次打开的子页面
+     */
+    val v2LastSubPageFlow: Flow<String> = dataStore.data.map { preferences ->
+        preferences[V2_LAST_SUB_PAGE_KEY] ?: "PASSWORDS"
+    }
+    
+    /**
+     * 更新V2导航栏上次打开的子页面
+     */
+    suspend fun updateV2LastSubPage(subPageKey: String) {
+        dataStore.edit { preferences ->
+            preferences[V2_LAST_SUB_PAGE_KEY] = subPageKey
         }
     }
 }

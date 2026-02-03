@@ -221,6 +221,7 @@ fun PasswordListScreen(
                                     is CategoryFilter.Uncategorized -> "未分类"
                                     is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
                                     is CategoryFilter.KeePassDatabase -> "KeePass"
+                                    is CategoryFilter.BitwardenVault -> "Bitwarden"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -877,6 +878,10 @@ fun rememberAppIcon(context: Context, packageName: String?): Drawable? {
             } catch (e: PackageManager.NameNotFoundException) {
                 // 应用未安装
                 android.util.Log.w("PasswordListScreen", "rememberAppIcon: App not found: $packageName", e)
+                null
+            } catch (e: OutOfMemoryError) {
+                // 内存不足
+                android.util.Log.e("PasswordListScreen", "rememberAppIcon: OOM for $packageName", e)
                 null
             } catch (e: Exception) {
                 // 其他错误

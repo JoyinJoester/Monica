@@ -1,6 +1,8 @@
 package takagi.ru.monica.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,7 +32,7 @@ import takagi.ru.monica.data.SecureItem
  * 功能拓展页面 - 聚合各种扩展功能的设置
  * 包含：常用账号信息设置、验证器震动提醒等
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun ExtensionsScreen(
     onNavigateBack: () -> Unit,
@@ -52,7 +54,9 @@ fun ExtensionsScreen(
     totpItems: List<SecureItem> = emptyList(),
     onNotificationValidatorEnabledChange: (Boolean) -> Unit = {},
     onNotificationValidatorAutoMatchChange: (Boolean) -> Unit = {},
-    onNotificationValidatorSelected: (Long) -> Unit = {}
+    onNotificationValidatorSelected: (Long) -> Unit = {},
+    // 字段定制导航
+    onNavigateToFieldCustomization: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -107,7 +111,23 @@ fun ExtensionsScreen(
         )
     }
     
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "extensions_settings_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+    
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.extensions_title)) },
@@ -167,6 +187,16 @@ fun ExtensionsScreen(
             // 常用账号信息设置
             ExtensionSection(title = stringResource(R.string.extensions_account_settings)) {
                 CommonAccountCard()
+                
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                
+                // 添加密码页面字段定制入口
+                ExtensionClickableItem(
+                    icon = Icons.Default.Tune,
+                    title = "添加密码页面字段定制",
+                    description = "自定义显示的字段卡片",
+                    onClick = onNavigateToFieldCustomization
+                )
                 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 
@@ -336,6 +366,65 @@ private fun ExtensionSection(
                 content()
             }
         }
+    }
+}
+
+/**
+ * 可点击的功能项（导航到其他页面）
+ */
+@Composable
+private fun ExtensionClickableItem(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 图标
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(48.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        // 文字内容
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        // 右箭头
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

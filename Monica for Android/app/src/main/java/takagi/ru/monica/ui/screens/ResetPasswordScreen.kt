@@ -1,5 +1,7 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.security.SecurityManager
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun ResetPasswordScreen(
     securityManager: SecurityManager,
@@ -41,7 +43,25 @@ fun ResetPasswordScreen(
     var errorMessage by remember { mutableStateOf("") }
     var showSuccessDialog by remember { mutableStateOf(false) }
     
+
+
+    // 准备共享元素 Modifier
+    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
+    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
+    
+    var sharedModifier: Modifier = Modifier
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = "reset_password_card"),
+                animatedVisibilityScope = animatedVisibilityScope,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+            )
+        }
+    }
+
     Scaffold(
+        modifier = sharedModifier,
         topBar = {
             TopAppBar(
                 title = { Text(context.getString(R.string.reset_password_title)) },
@@ -169,10 +189,10 @@ fun ResetPasswordScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading,
                 singleLine = true,
-                isError = newPassword.isNotEmpty() && newPassword.length < 6
+                isError = newPassword.isNotEmpty() && newPassword.length < 4
             )
             
-            if (newPassword.isNotEmpty() && newPassword.length < 6) {
+            if (newPassword.isNotEmpty() && newPassword.length < 4) {
                 Text(
                     text = context.getString(R.string.password_too_short),
                     color = MaterialTheme.colorScheme.error,
@@ -271,7 +291,7 @@ fun ResetPasswordScreen(
                         newPassword.isEmpty() -> {
                             errorMessage = context.getString(R.string.new_password_required)
                         }
-                        newPassword.length < 6 -> {
+                        newPassword.length < 4 -> {
                             errorMessage = context.getString(R.string.password_too_short)
                         }
                         newPassword != confirmPassword -> {
