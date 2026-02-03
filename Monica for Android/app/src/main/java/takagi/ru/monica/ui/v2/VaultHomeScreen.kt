@@ -1,12 +1,12 @@
 package takagi.ru.monica.ui.v2
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -18,10 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -30,9 +27,10 @@ import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 
 /**
- * 库主页 - 分类导航页面
+ * 库主页 - M3E 设计
  * 
- * 显示 Bitwarden 状态、各类型的条目统计，点击跳转到对应的底栏页面
+ * 显示：数据库、类型、文件夹
+ * 不显示无文件夹的密码列表
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,9 +40,8 @@ fun VaultHomeScreen(
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
     noteViewModel: NoteViewModel,
-    v2ViewModel: V2ViewModel = viewModel(),
     onNavigateToPasswords: () -> Unit = {},
-    onNavigateToCardWallet: () -> Unit = {}, // 保持兼容，虽然现在可能拆分了，但底栏Tab还是同一个
+    onNavigateToCardWallet: () -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToPasskey: () -> Unit = {},
     onNavigateToTimeline: () -> Unit = {},
@@ -52,22 +49,27 @@ fun VaultHomeScreen(
     onNavigateToBankCardDetail: (Long) -> Unit = {},
     onNavigateToNoteDetail: (Long) -> Unit = {}
 ) {
-    // 收集各类条目数量
+    // 收集数据
     val passwords by passwordViewModel.passwordEntries.collectAsState()
     val bankCards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
     val documents by documentViewModel.allDocuments.collectAsState(initial = emptyList())
     val notes by noteViewModel.allNotes.collectAsState(initial = emptyList())
-    
-    // 收集 Bitwarden 状态
-    val dataSources by v2ViewModel.dataSources.collectAsState()
-    val syncState by v2ViewModel.syncState.collectAsState()
-    val bitwardenSource = dataSources.find { it.id == "bitwarden" }
+    val categories by passwordViewModel.categories.collectAsState(initial = emptyList())
     
     // 计算各类型数量
     val loginCount = passwords.size
     val cardCount = bankCards.size
     val documentCount = documents.size
     val noteCount = notes.size
+    val totalCount = loginCount + cardCount + documentCount + noteCount
+    
+    // 提取文件夹（分类）和数量
+    val foldersWithCounts: List<Pair<String, Int>> = remember(passwords, categories) {
+        categories.map { category: takagi.ru.monica.data.Category ->
+            val count = passwords.count { pw -> pw.categoryId == category.id }
+            category.name to count
+        }.filter { pair -> pair.second > 0 } // 只显示有密码的分类
+    }
 
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -77,110 +79,152 @@ fun VaultHomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        // 顶栏
         ExpressiveTopBar(
             title = stringResource(R.string.nav_v2_vault),
             searchQuery = searchQuery,
             onSearchQueryChange = { searchQuery = it },
             isSearchExpanded = isSearchExpanded,
             onSearchExpandedChange = { isSearchExpanded = it },
-            searchHint = stringResource(R.string.search_passwords_hint),
-            actions = {
-                IconButton(onClick = { v2ViewModel.refresh() }) {
-                    Icon(Icons.Default.Sync, contentDescription = "刷新")
-                }
-            }
+            searchHint = stringResource(R.string.search_passwords_hint)
         )
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 1. Bitwarden 状态卡片
-            item(key = "status_card") {
-                VaultStatusCard(
-                    bitwardenSource = bitwardenSource,
-                    syncState = syncState,
-                    onConnect = { v2ViewModel.connectBitwarden() },
-                    onSync = { v2ViewModel.syncDataSource("bitwarden") }
+            // ========== 数据库区域 ==========
+            item(key = "section_databases") {
+                SectionHeader(
+                    title = "数据库",
+                    icon = Icons.Outlined.Storage
                 )
             }
             
-            // 2. 分类标题
-            item(key = "categories_header") {
-                Text(
-                    text = "分类",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
-                )
-            }
-
-            // 3. 分类列表 - 扁平化处理
-            item(key = "nav_login") {
-                VaultNavigationItem(
-                    icon = Icons.Default.Language,
+            item(key = "db_monica") {
+                DatabaseItem(
+                    name = "Monica 本地",
+                    icon = Icons.Filled.Home,
                     iconTint = MaterialTheme.colorScheme.primary,
-                    title = "登录",
-                    subtitle = "$loginCount 个帐号",
+                    itemCount = totalCount,
+                    isConnected = true,
                     onClick = onNavigateToPasswords
                 )
             }
             
-            item(key = "nav_cards") {
-                VaultNavigationItem(
-                    icon = Icons.Default.CreditCard,
+            item(key = "db_keepass") {
+                DatabaseItem(
+                    name = "KeePass",
+                    icon = Icons.Filled.Key,
+                    iconTint = Color(0xFF4CAF50), // 绿色
+                    itemCount = 0,
+                    isConnected = false,
+                    onClick = { /* TODO: 打开KeePass */ }
+                )
+            }
+            
+            item(key = "db_bitwarden") {
+                DatabaseItem(
+                    name = "Bitwarden",
+                    icon = Icons.Filled.Cloud,
+                    iconTint = Color(0xFF175DDC), // Bitwarden 蓝
+                    itemCount = 0,
+                    isConnected = false,
+                    onClick = { /* TODO: 连接Bitwarden */ }
+                )
+            }
+            
+            // ========== 类型区域 ==========
+            item(key = "section_types") {
+                Spacer(modifier = Modifier.height(16.dp))
+                SectionHeader(
+                    title = "类型",
+                    icon = Icons.Outlined.Category
+                )
+            }
+            
+            item(key = "type_logins") {
+                TypeItem(
+                    name = "登录",
+                    icon = Icons.Filled.Person,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    count = loginCount,
+                    onClick = onNavigateToPasswords
+                )
+            }
+            
+            item(key = "type_cards") {
+                TypeItem(
+                    name = "银行卡",
+                    icon = Icons.Filled.CreditCard,
                     iconTint = MaterialTheme.colorScheme.tertiary,
-                    title = "银行卡",
-                    subtitle = "$cardCount 张卡片",
+                    count = cardCount,
                     onClick = onNavigateToCardWallet
                 )
             }
             
-            item(key = "nav_docs") {
-                VaultNavigationItem(
-                    icon = Icons.Default.Badge,
-                    iconTint = MaterialTheme.colorScheme.tertiary,
-                    title = "证件",
-                    subtitle = "$documentCount 个证件",
+            item(key = "type_documents") {
+                TypeItem(
+                    name = "证件",
+                    icon = Icons.Filled.Badge,
+                    iconTint = Color(0xFFFF9800), // 橙色
+                    count = documentCount,
                     onClick = onNavigateToCardWallet
                 )
             }
             
-            item(key = "nav_notes") {
-                VaultNavigationItem(
+            item(key = "type_notes") {
+                TypeItem(
+                    name = "安全笔记",
                     icon = Icons.Outlined.Description,
                     iconTint = MaterialTheme.colorScheme.secondary,
-                    title = "安全笔记",
-                    subtitle = "$noteCount 条笔记",
+                    count = noteCount,
                     onClick = onNavigateToNotes
                 )
             }
             
-            item(key = "nav_passkey") {
-                VaultNavigationItem(
-                    icon = Icons.Default.Key,
+            item(key = "type_passkey") {
+                TypeItem(
+                    name = "通行密钥",
+                    icon = Icons.Filled.Fingerprint,
                     iconTint = MaterialTheme.colorScheme.error,
-                    title = "通行密钥",
-                    subtitle = "管理 Passkey",
+                    count = 0,
                     onClick = onNavigateToPasskey
                 )
             }
             
-            item(key = "nav_trash") {
-                VaultNavigationItem(
-                    icon = Icons.Default.Delete,
-                    iconTint = MaterialTheme.colorScheme.outline,
-                    title = "回收站",
-                    subtitle = "已删除的项目",
-                    onClick = onNavigateToTimeline
+            // ========== 文件夹区域 ==========
+            // 文件夹标题
+            if (foldersWithCounts.isNotEmpty()) {
+                item(key = "section_folders") {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SectionHeader(
+                        title = "文件夹",
+                        icon = Icons.Outlined.Folder
+                    )
+                }
+            }
+            
+            // 文件夹列表
+            items(
+                items = foldersWithCounts,
+                key = { pair: Pair<String, Int> -> "folder_${pair.first}" }
+            ) { pair: Pair<String, Int> ->
+                FolderItem(
+                    name = pair.first,
+                    count = pair.second,
+                    onClick = { 
+                        // TODO: 导航到该文件夹的密码列表
+                        onNavigateToPasswords()
+                    }
                 )
             }
             
             // 底部间距
-            item(key = "spacer") {
+            item(key = "bottom_spacer") {
                 Spacer(modifier = Modifier.height(80.dp))
             }
         }
@@ -188,179 +232,51 @@ fun VaultHomeScreen(
 }
 
 /**
- * 密码库状态卡片
+ * 区域标题
  */
 @Composable
-private fun VaultStatusCard(
-    bitwardenSource: V2ViewModel.DataSourceState?,
-    syncState: V2SyncState,
-    onConnect: () -> Unit,
-    onSync: () -> Unit
+private fun SectionHeader(
+    title: String,
+    icon: ImageVector
 ) {
-    val isConnected = bitwardenSource?.isConnected == true
-    val isSyncing = syncState is V2SyncState.Syncing && syncState.sourceId == "bitwarden"
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp), // 更圆润的角
-        colors = CardDefaults.cardColors(
-            containerColor = if (isConnected) 
-                MaterialTheme.colorScheme.primaryContainer 
-            else 
-                MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 状态图标
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = if (isConnected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = if (isConnected) Icons.Default.CloudQueue else Icons.Default.CloudOff,
-                                contentDescription = null,
-                                tint = if (isConnected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.width(16.dp))
-                
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (isConnected) "Bitwarden 已连接" else "Bitwarden 未连接",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isConnected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface 
-                    )
-                    
-                    if (isConnected && bitwardenSource != null) {
-                         val lastSync = bitwardenSource.lastSyncTime
-                         val timeText = if (lastSync != null && lastSync > 0) {
-                             java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(lastSync))
-                         } else {
-                             "从未同步"
-                         }
-                         Text(
-                            text = "上次同步: $timeText",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                        )
-                    } else {
-                        Text(
-                            text = "点击连接以同步您的密码",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                
-                // 操作按钮
-                if (isConnected) {
-                    IconButton(
-                        onClick = onSync,
-                        enabled = !isSyncing
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = "同步",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = onConnect,
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Text("连接")
-                    }
-                }
-            }
-            
-            // 如果已连接，显示统计信息
-            if (isConnected && bitwardenSource != null) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)) // 半透明背景
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "云端条目",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                        )
-                        Text(
-                            text = "${bitwardenSource.itemCount}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                    
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "状态",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                        )
-                        Text(
-                            text = "已同步", // 这里可以根据 actual logic 判断
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-            }
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
 /**
- * 导航条目 (替代原 CategoryRow)
+ * 数据库条目
  */
 @Composable
-private fun VaultNavigationItem(
+private fun DatabaseItem(
+    name: String,
     icon: ImageVector,
     iconTint: Color,
-    title: String,
-    subtitle: String,
+    itemCount: Int,
+    isConnected: Boolean,
     onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow, // 浅色背景
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -370,7 +286,7 @@ private fun VaultNavigationItem(
             // 图标
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = iconTint.copy(alpha = 0.1f),
+                color = iconTint.copy(alpha = 0.15f),
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -385,19 +301,34 @@ private fun VaultNavigationItem(
             
             Spacer(modifier = Modifier.width(16.dp))
             
-            // 文本
+            // 名称和状态
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = title,
+                    text = name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 连接状态指示器
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isConnected) Color(0xFF4CAF50) 
+                                else MaterialTheme.colorScheme.outline
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isConnected) "$itemCount 个条目" else "未连接",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             
             // 箭头
@@ -405,6 +336,136 @@ private fun VaultNavigationItem(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        }
+    }
+}
+
+/**
+ * 类型条目
+ */
+@Composable
+private fun TypeItem(
+    name: String,
+    icon: ImageVector,
+    iconTint: Color,
+    count: Int,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 图标
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = iconTint.copy(alpha = 0.1f),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            // 名称
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // 数量
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+/**
+ * 文件夹条目
+ */
+@Composable
+private fun FolderItem(
+    name: String,
+    count: Int,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 文件夹图标
+            Icon(
+                imageVector = Icons.Filled.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                modifier = Modifier.size(24.dp)
+            )
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            // 名称
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // 数量
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
