@@ -127,7 +127,8 @@ data class BitwardenConflictBackup(
     indices = [
         Index(value = ["vault_id"]),
         Index(value = ["status"]),
-        Index(value = ["created_at"])
+        Index(value = ["created_at"]),
+        Index(value = ["item_type"])
     ],
     foreignKeys = [
         ForeignKey(
