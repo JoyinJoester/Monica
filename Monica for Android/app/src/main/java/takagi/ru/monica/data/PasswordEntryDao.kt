@@ -244,6 +244,22 @@ interface PasswordEntryDao {
      */
     @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): PasswordEntry?
+
+        /**
+         * 查找本地重复条目（仅本地库）
+         * 用于 Bitwarden 同步时合并本地条目，避免重复
+         */
+        @Query("""
+                SELECT * FROM password_entries
+                WHERE bitwarden_vault_id IS NULL
+                    AND keepassDatabaseId IS NULL
+                    AND isDeleted = 0
+                    AND LOWER(title) = :title
+                    AND LOWER(username) = :username
+                    AND LOWER(website) = :website
+                LIMIT 1
+        """)
+        suspend fun findLocalDuplicateByKey(title: String, username: String, website: String): PasswordEntry?
     
     /**
      * 根据 Bitwarden Vault ID 获取所有条目

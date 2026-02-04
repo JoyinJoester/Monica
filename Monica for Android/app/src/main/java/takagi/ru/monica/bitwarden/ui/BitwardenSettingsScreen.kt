@@ -47,6 +47,8 @@ fun BitwardenSettingsScreen(
     val unlockState by viewModel.unlockState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
     val isNeverLockEnabled by viewModel.isNeverLockEnabledFlow.collectAsState()
+    val pendingCount by viewModel.pendingSyncCount.collectAsState()
+    val failedCount by viewModel.failedSyncCount.collectAsState()
     
     // 对话框状态
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
@@ -206,8 +208,8 @@ fun BitwardenSettingsScreen(
             // 同步队列入口
             item {
                 SyncQueueEntryCard(
-                    pendingCount = viewModel.pendingSyncCount,
-                    failedCount = viewModel.failedSyncCount,
+                    pendingCount = pendingCount,
+                    failedCount = failedCount,
                     onClick = onNavigateToSyncQueue
                 )
             }

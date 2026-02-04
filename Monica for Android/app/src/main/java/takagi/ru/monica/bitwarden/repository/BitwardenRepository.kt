@@ -7,6 +7,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
@@ -715,6 +716,13 @@ class BitwardenRepository(private val context: Context) {
     
     val lastSyncTime: Long
         get() = securePrefs.getLong(KEY_LAST_SYNC_TIME, 0)
+
+    /**
+     * 同步队列计数（实时）
+     */
+    fun getPendingSyncCountFlow(): Flow<Int> = pendingOpDao.getPendingCountFlow()
+
+    fun getFailedSyncCountFlow(): Flow<Int> = pendingOpDao.getFailedCountFlow()
     
     // ==================== 加密辅助 ====================
     

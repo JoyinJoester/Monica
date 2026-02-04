@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.service.LoginResult
@@ -481,12 +483,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     val lastSyncTime: Long
         get() = repository.lastSyncTime
     
-    // 同步队列计数 (TODO: 连接到实际的 SyncQueueManager)
-    val pendingSyncCount: Int
-        get() = 0  // 待实现：从 SyncQueueManager 获取待同步数量
-    
-    val failedSyncCount: Int
-        get() = 0  // 待实现：从 SyncQueueManager 获取失败数量
+    // 同步队列计数（实时）
+    val pendingSyncCount: StateFlow<Int> = repository.getPendingSyncCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val failedSyncCount: StateFlow<Int> = repository.getFailedSyncCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     
     // ==================== 私有方法 ====================
     

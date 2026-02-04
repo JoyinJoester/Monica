@@ -123,9 +123,14 @@ class PasswordViewModel(
                 }
             }
             baseFlow.map { entries ->
-                // 在搜索模式或"全部"视图时进行去重
-                // 搜索结果可能包含来自多个来源的重复条目
-                val filtered = if (query.isNotBlank() || filter is CategoryFilter.All) {
+                // 默认去重：避免本地与 Bitwarden/KeePass 同步后的重复显示
+                // 仅在明确查看某个数据源时不去重
+                val shouldDedupe = query.isNotBlank() || when (filter) {
+                    is CategoryFilter.BitwardenVault -> false
+                    is CategoryFilter.KeePassDatabase -> false
+                    else -> true
+                }
+                val filtered = if (shouldDedupe) {
                     dedupeForAll(entries)
                 } else {
                     entries

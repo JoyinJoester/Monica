@@ -101,6 +101,33 @@ class CipherSyncProcessor(
         val existing = passwordEntryDao.getByBitwardenCipherId(cipher.id)
         
         if (existing == null) {
+            // 尝试合并本地重复条目，避免同步后出现两份
+            val localDuplicate = passwordEntryDao.findLocalDuplicateByKey(
+                title = name.trim().lowercase(),
+                username = username.trim().lowercase(),
+                website = primaryUri.trim().lowercase()
+            )
+            if (localDuplicate != null) {
+                val merged = localDuplicate.copy(
+                    title = name,
+                    website = primaryUri,
+                    username = username,
+                    password = password,
+                    notes = notes,
+                    authenticatorKey = totp,
+                    isFavorite = cipher.favorite == true,
+                    updatedAt = Date(),
+                    bitwardenVaultId = vault.id,
+                    bitwardenCipherId = cipher.id,
+                    bitwardenFolderId = cipher.folderId,
+                    bitwardenRevisionDate = cipher.revisionDate,
+                    bitwardenCipherType = 1,
+                    bitwardenLocalModified = false
+                )
+                passwordEntryDao.update(merged)
+                return CipherSyncResult.Updated
+            }
+
             // 创建新条目
             val newEntry = PasswordEntry(
                 title = name,

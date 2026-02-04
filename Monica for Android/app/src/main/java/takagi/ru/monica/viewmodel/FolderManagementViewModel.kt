@@ -5,12 +5,14 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import takagi.ru.monica.bitwarden.api.BitwardenApiManager
 import takagi.ru.monica.bitwarden.api.FolderCreateRequest
@@ -102,6 +104,8 @@ class FolderManagementViewModel(application: Application) : AndroidViewModel(app
     private val _bitwardenFolders = MutableStateFlow<List<BitwardenFolder>>(emptyList())
     val bitwardenFolders: StateFlow<List<BitwardenFolder>> = _bitwardenFolders.asStateFlow()
 
+    private var bitwardenFolderJob: Job? = null
+
     // 所有 KeePass 数据库的组（合并显示）
     private val _allKeePassGroups = MutableStateFlow<List<KeePassGroupWithDatabase>>(emptyList())
     val allKeePassGroups: StateFlow<List<KeePassGroupWithDatabase>> = _allKeePassGroups.asStateFlow()
@@ -138,7 +142,13 @@ class FolderManagementViewModel(application: Application) : AndroidViewModel(app
 
     fun selectBitwardenVault(vaultId: Long) {
         _selectedBitwardenVaultId.value = vaultId
-        loadBitwardenFolders(vaultId)
+        bitwardenFolderJob?.cancel()
+        bitwardenFolderJob = viewModelScope.launch(Dispatchers.IO) {
+            bitwardenFolderDao.getFoldersByVaultFlow(vaultId)
+                .collectLatest { folders ->
+                    _bitwardenFolders.value = folders
+                }
+        }
     }
 
     // ========== 设置 ==========
