@@ -1557,7 +1557,8 @@
     <string name="associated_link">关联链接</string>
     <string name="associated_app">关联应用</string>
     <string name="bind_password">绑定密码</string>
-    <string name="bound_password_change">已绑定密码 (点击更换)</string>
+    <string name="bound_password_change">更换绑定</string>
+    <string name="passkey_bound_label">已绑定通行秘钥</string>
     <string name="unbind">解除绑定</string>
     <string name="select_password_to_bind">选择要绑定的密码</string>
     <string name="link_example">https://example.com</string>

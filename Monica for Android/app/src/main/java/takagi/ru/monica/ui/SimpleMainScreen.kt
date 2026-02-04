@@ -683,6 +683,7 @@ fun SimpleMainScreen(
                         BottomNavItem.Authenticator -> {
                             TotpListContent(
                                 viewModel = totpViewModel,
+                                passwordViewModel = passwordViewModel,
                                 onTotpClick = { totpId ->
                                     onNavigateToAddTotp(totpId)
                                 },
@@ -752,6 +753,8 @@ fun SimpleMainScreen(
                         BottomNavItem.Passkey -> {
                             PasskeyListScreen(
                                 viewModel = passkeyViewModel,
+                                passwordViewModel = passwordViewModel,
+                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                                 onPasskeyClick = { /* TODO: 导航到详情页 */ }
                             )
                         }
@@ -925,6 +928,7 @@ fun SimpleMainScreen(
                     // TOTP验证器页面
                     TotpListContent(
                         viewModel = totpViewModel,
+                        passwordViewModel = passwordViewModel,
                         onTotpClick = { totpId ->
                             onNavigateToAddTotp(totpId)
                         },
@@ -999,6 +1003,8 @@ fun SimpleMainScreen(
                     // 通行密钥页面
                     PasskeyListScreen(
                         viewModel = passkeyViewModel,
+                        passwordViewModel = passwordViewModel,
+                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                         onPasskeyClick = { /* TODO: 导航到详情页 */ }
                     )
                 }
@@ -2660,6 +2666,7 @@ private fun PasswordListContent(
 @Composable
 private fun TotpListContent(
     viewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    passwordViewModel: PasswordViewModel,
     onTotpClick: (Long) -> Unit,
     onDeleteTotp: (takagi.ru.monica.data.SecureItem) -> Unit,
     onQuickScanTotp: () -> Unit,
@@ -2674,6 +2681,8 @@ private fun TotpListContent(
     val context = androidx.compose.ui.platform.LocalContext.current
     val totpItems by viewModel.totpItems.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val passwords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())
+    val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
     val haptic = rememberHapticFeedback()
     val focusManager = LocalFocusManager.current
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
@@ -3308,6 +3317,7 @@ private fun TotpListContent(
 @Composable
 private fun TotpItemCard(
     item: takagi.ru.monica.data.SecureItem,
+    boundPasswordSummary: String? = null,
     onEdit: () -> Unit,
     onToggleSelect: (() -> Unit)? = null,
     onDelete: () -> Unit,
@@ -3327,6 +3337,7 @@ private fun TotpItemCard(
     // 直接使用修改后的 TotpCodeCard 组件
     takagi.ru.monica.ui.components.TotpCodeCard(
         item = item,
+        boundPasswordSummary = boundPasswordSummary,
         onCopyCode = { code ->
             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val clip = android.content.ClipData.newPlainText("TOTP Code", code)
@@ -5995,6 +6006,7 @@ private fun V2NavScaffold(
                                 RecentSubPage.AUTHENTICATOR -> {
                                     TotpListContent(
                                         viewModel = totpViewModel,
+                                        passwordViewModel = passwordViewModel,
                                         onTotpClick = { totpId -> onNavigateToAddTotp(totpId) },
                                         onDeleteTotp = { totp -> totpViewModel.deleteTotpItem(totp) },
                                         onQuickScanTotp = onNavigateToQuickTotpScan,
@@ -6044,6 +6056,8 @@ private fun V2NavScaffold(
                                 RecentSubPage.PASSKEY -> {
                                     PasskeyListScreen(
                                         viewModel = passkeyViewModel,
+                                        passwordViewModel = passwordViewModel,
+                                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                                         onPasskeyClick = {}
                                     )
                                 }

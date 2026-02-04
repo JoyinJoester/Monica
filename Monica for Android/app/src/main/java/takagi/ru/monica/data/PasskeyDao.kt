@@ -175,6 +175,18 @@ interface PasskeyDao {
      */
     @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId")
     suspend fun getByBitwardenVaultId(vaultId: Long): List<PasskeyEntry>
+
+    /**
+     * 获取绑定到指定密码的 Passkeys
+     */
+    @Query("SELECT * FROM passkeys WHERE bound_password_id = :passwordId ORDER BY last_used_at DESC")
+    fun getByBoundPasswordId(passwordId: Long): Flow<List<PasskeyEntry>>
+
+    /**
+     * 更新绑定的密码 ID
+     */
+    @Query("UPDATE passkeys SET bound_password_id = :passwordId WHERE credential_id = :credentialId")
+    suspend fun updateBoundPasswordId(credentialId: String, passwordId: Long?)
     
     /**
      * 获取待上传到 Bitwarden 的 Passkeys

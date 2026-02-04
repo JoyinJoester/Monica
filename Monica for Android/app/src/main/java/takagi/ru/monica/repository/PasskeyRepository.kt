@@ -77,6 +77,12 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
      */
     suspend fun getUnbackedPasskeys(): List<PasskeyEntry> = 
         passkeyDao.getUnbackedPasskeys()
+
+    /**
+     * 获取绑定到指定密码的 Passkeys
+     */
+    fun getPasskeysByBoundPasswordId(passwordId: Long): Flow<List<PasskeyEntry>> =
+        passkeyDao.getByBoundPasswordId(passwordId)
     
     // ==================== 写入操作 ====================
     
@@ -94,6 +100,12 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
      * 更新 Passkey
      */
     suspend fun updatePasskey(passkey: PasskeyEntry) = passkeyDao.update(passkey)
+
+    /**
+     * 更新绑定的密码 ID
+     */
+    suspend fun updateBoundPasswordId(credentialId: String, passwordId: Long?) =
+        passkeyDao.updateBoundPasswordId(credentialId, passwordId)
     
     /**
      * 更新使用记录

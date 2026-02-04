@@ -72,6 +72,7 @@ fun TotpCodeCard(
     onLongClick: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
+    boundPasswordSummary: String? = null,
     sharedTickSeconds: Long? = null,
     appSettings: AppSettings? = null
 ) {
@@ -412,7 +413,7 @@ fun TotpCodeCard(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
             
             // 验证码显示

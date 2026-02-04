@@ -112,6 +112,8 @@ fun AddEditPasswordScreen(
     var originalIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     
     var authenticatorKey by rememberSaveable { mutableStateOf("") }
+    var passkeyBindings by rememberSaveable { mutableStateOf("") }
+    var originalAuthenticatorKey by rememberSaveable { mutableStateOf("") }
     var existingTotpId by remember { mutableStateOf<Long?>(null) }
     var notes by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
@@ -270,6 +272,8 @@ fun AddEditPasswordScreen(
                     categoryId = entry.categoryId
                     keepassDatabaseId = entry.keepassDatabaseId
                     authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
+                    originalAuthenticatorKey = entry.authenticatorKey
+                    passkeyBindings = entry.passkeyBindings
                     
                     // 加载SSO登录方式字段
                     loginType = entry.loginType
@@ -415,6 +419,7 @@ fun AddEditPasswordScreen(
                                     keepassDatabaseId = keepassDatabaseId,
                                     bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
                                     authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
+                                    passkeyBindings = passkeyBindings,
                                     loginType = loginType,
                                     ssoProvider = ssoProvider,
                                     ssoRefEntryId = ssoRefEntryId
@@ -454,6 +459,9 @@ fun AddEditPasswordScreen(
                                                 totpData = totpData,
                                                 isFavorite = existingTotp?.isFavorite ?: false
                                             )
+                                        } else if (currentAuthKey.isEmpty() && originalAuthenticatorKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
+                                            // 密码页清空密钥：只取消验证器绑定，不删除验证器
+                                            totpViewModel.unbindTotpFromPassword(firstPasswordId, originalAuthenticatorKey)
                                         }
                                         
                                         if (currentAppPackageName.isNotEmpty()) {

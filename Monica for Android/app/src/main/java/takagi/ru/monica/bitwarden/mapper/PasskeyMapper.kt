@@ -75,6 +75,7 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
             signCount = 0,
             isBackedUp = false,
             notes = cipher.notes?.substringBefore("---")?.trim() ?: "",
+            boundPasswordId = null,
             bitwardenVaultId = vaultId,
             bitwardenCipherId = cipher.id,
             syncStatus = "REFERENCE"  // 标记为引用，需要重新注册

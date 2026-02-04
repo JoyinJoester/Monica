@@ -182,4 +182,18 @@ class PasswordRepository(
     suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String) {
         passwordEntryDao.updateAppAssociationByTitle(title, packageName, appName)
     }
+
+    /**
+     * 更新绑定的验证器密钥
+     */
+    suspend fun updateAuthenticatorKey(id: Long, authenticatorKey: String) {
+        passwordEntryDao.updateAuthenticatorKey(id, authenticatorKey)
+    }
+
+    /**
+     * 更新绑定的通行密钥元数据
+     */
+    suspend fun updatePasskeyBindings(id: Long, passkeyBindings: String) {
+        passwordEntryDao.updatePasskeyBindings(id, passkeyBindings)
+    }
 }

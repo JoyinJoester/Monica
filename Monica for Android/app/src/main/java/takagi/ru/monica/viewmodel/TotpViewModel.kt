@@ -198,6 +198,17 @@ class TotpViewModel(
     ) {
         viewModelScope.launch {
             try {
+                val existingItem = if (id != null && id > 0) repository.getItemById(id) else null
+                val previousTotpData = existingItem?.let { item ->
+                    try {
+                        Json.decodeFromString<TotpData>(item.itemData)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                val previousBoundId = previousTotpData?.boundPasswordId
+                val previousSecret = previousTotpData?.secret ?: ""
+
                 // 将categoryId和keepassDatabaseId保存到TotpData中
                 val updatedTotpData = totpData.copy(
                     categoryId = categoryId,
@@ -259,9 +270,58 @@ class TotpViewModel(
                         itemTitle = title
                     )
                 }
+
+                // 同步绑定到密码的验证器密钥
+                val boundId = updatedTotpData.boundPasswordId
+                val secret = updatedTotpData.secret
+                if (boundId != null && secret.isNotBlank()) {
+                    passwordRepository.updateAuthenticatorKey(boundId, secret)
+                }
+
+                // 如果解绑或更换绑定，清理旧绑定的密钥（仅当密钥一致时）
+                if (previousBoundId != null && previousBoundId != boundId && previousSecret.isNotBlank()) {
+                    val previousPassword = passwordRepository.getPasswordEntryById(previousBoundId)
+                    if (previousPassword?.authenticatorKey == previousSecret) {
+                        passwordRepository.updateAuthenticatorKey(previousBoundId, "")
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 // TODO: 处理错误
+            }
+        }
+    }
+
+    /**
+     * 解绑指定密码条目对应的验证器（不删除验证器本身）
+     * 当密码页清空密钥时，仅解除绑定
+     */
+    fun unbindTotpFromPassword(passwordId: Long, secret: String? = null) {
+        viewModelScope.launch {
+            try {
+                val items = repository.getItemsByType(ItemType.TOTP).first()
+                val target = items.firstOrNull { item ->
+                    val data = try {
+                        Json.decodeFromString<TotpData>(item.itemData)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    data?.boundPasswordId == passwordId &&
+                        (secret.isNullOrBlank() || data.secret == secret)
+                }
+
+                if (target != null) {
+                    val data = Json.decodeFromString<TotpData>(target.itemData)
+                    val updatedData = data.copy(boundPasswordId = null)
+                    repository.updateItem(
+                        target.copy(
+                            itemData = Json.encodeToString(updatedData),
+                            updatedAt = Date()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -273,6 +333,20 @@ class TotpViewModel(
      */
     fun deleteTotpItem(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
+            val totpData = try {
+                Json.decodeFromString<TotpData>(item.itemData)
+            } catch (e: Exception) {
+                null
+            }
+
+            if (totpData?.boundPasswordId != null && totpData.secret.isNotBlank()) {
+                val boundId = totpData.boundPasswordId
+                val password = boundId?.let { passwordRepository.getPasswordEntryById(it) }
+                if (password?.authenticatorKey == totpData.secret) {
+                    passwordRepository.updateAuthenticatorKey(boundId, "")
+                }
+            }
+
             if (softDelete) {
                 // 软删除：移动到回收站
                 repository.softDeleteItem(item)

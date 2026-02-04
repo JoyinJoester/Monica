@@ -25,7 +25,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 31,
+    version = 33,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -803,6 +803,40 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 31 -> 32: 为 passkeys 添加绑定密码字段
+         */
+        private val MIGRATION_31_32 = object : androidx.room.migration.Migration(31, 32) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 31→32: passkey bound password")
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN bound_password_id INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 31→32 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 31→32 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 32 -> 33: 为 password_entries 添加通行密钥绑定字段
+         */
+        private val MIGRATION_32_33 = object : androidx.room.migration.Migration(32, 33) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 32→33: password passkey bindings")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN passkey_bindings TEXT NOT NULL DEFAULT ''"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 32→33 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 32→33 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -840,7 +874,9 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_27_28,  // 添加 Passkey 通行密钥表
                         MIGRATION_28_29,  // 为 secure_items 添加 categoryId 字段
                         MIGRATION_29_30,  // Bitwarden 集成
-                        MIGRATION_30_31   // Bitwarden 多类型同步支持
+                        MIGRATION_30_31,  // Bitwarden 多类型同步支持
+                        MIGRATION_31_32,  // Passkey 绑定密码
+                        MIGRATION_32_33   // Password 绑定通行密钥元数据
                     )
                     .build()
                 INSTANCE = instance

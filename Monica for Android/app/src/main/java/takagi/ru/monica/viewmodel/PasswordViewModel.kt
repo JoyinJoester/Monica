@@ -513,6 +513,24 @@ class PasswordViewModel(
             repository.updateSortOrders(items)
         }
     }
+
+    /**
+     * 更新绑定的验证器密钥
+     */
+    fun updateAuthenticatorKey(id: Long, authenticatorKey: String) {
+        viewModelScope.launch {
+            repository.updateAuthenticatorKey(id, authenticatorKey)
+        }
+    }
+
+    /**
+     * 更新绑定的通行密钥元数据
+     */
+    fun updatePasskeyBindings(id: Long, passkeyBindings: String) {
+        viewModelScope.launch {
+            repository.updatePasskeyBindings(id, passkeyBindings)
+        }
+    }
     
     suspend fun getPasswordEntryById(id: Long): PasswordEntry? {
         return repository.getPasswordEntryById(id)?.let { entry ->

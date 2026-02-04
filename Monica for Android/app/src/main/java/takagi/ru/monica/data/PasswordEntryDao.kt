@@ -89,6 +89,18 @@ interface PasswordEntryDao {
     @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName WHERE title = :title AND title != ''")
     suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String)
 
+    /**
+     * 更新绑定的验证器密钥
+     */
+    @Query("UPDATE password_entries SET authenticatorKey = :authenticatorKey WHERE id = :id")
+    suspend fun updateAuthenticatorKey(id: Long, authenticatorKey: String)
+
+    /**
+     * 更新绑定的通行密钥元数据
+     */
+    @Query("UPDATE password_entries SET passkey_bindings = :passkeyBindings WHERE id = :id")
+    suspend fun updatePasskeyBindings(id: Long, passkeyBindings: String)
+
     
     @Query("UPDATE password_entries SET sortOrder = :sortOrder WHERE id = :id")
     suspend fun updateSortOrder(id: Long, sortOrder: Int)

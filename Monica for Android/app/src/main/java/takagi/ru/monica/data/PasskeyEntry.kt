@@ -100,6 +100,10 @@ data class PasskeyEntry(
     
     @ColumnInfo(name = "notes")
     val notes: String = "",
+
+    // 绑定的密码条目（可为空，支持后期绑定）
+    @ColumnInfo(name = "bound_password_id", defaultValue = "NULL")
+    val boundPasswordId: Long? = null,
     
     // Bitwarden 同步字段（仅同步元数据，私钥无法导出）
     @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")

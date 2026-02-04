@@ -67,6 +67,7 @@ private data class PasswordBackupEntry(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val authenticatorKey: String = "",  // ✅ 直接存储验证器密钥
+    val passkeyBindings: String = "",   // ✅ 绑定通行密钥元数据
     // ✅ 第三方登录(SSO)字段
     val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
     val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
@@ -107,7 +108,8 @@ private data class PasskeyBackupEntry(
     val transports: String = "internal",
     val aaguid: String = "",
     val signCount: Long = 0,
-    val notes: String = ""
+    val notes: String = "",
+    val boundPasswordId: Long? = null
 )
 
 @Serializable
@@ -147,6 +149,7 @@ private data class TrashPasswordBackupEntry(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val authenticatorKey: String = "",
+    val passkeyBindings: String = "",
     val deletedAt: Long? = null,
     // ✅ 第三方登录(SSO)字段
     val loginType: String = "PASSWORD",
@@ -759,6 +762,7 @@ class WebDavHelper(
                                 createdAt = password.createdAt.time,
                                 updatedAt = password.updatedAt.time,
                                 authenticatorKey = password.authenticatorKey,  // ✅ 直接备份验证器密钥
+                                passkeyBindings = password.passkeyBindings,
                                 // ✅ 第三方登录(SSO)字段
                                 loginType = password.loginType,
                                 ssoProvider = password.ssoProvider,
@@ -878,7 +882,8 @@ class WebDavHelper(
                                     transports = passkey.transports,
                                     aaguid = passkey.aaguid,
                                     signCount = passkey.signCount,
-                                    notes = passkey.notes
+                                    notes = passkey.notes,
+                                    boundPasswordId = passkey.boundPasswordId
                                 )
                                 val safeId = passkey.credentialId.replace("/", "_")
                                 val fileName = "passkey_${safeId}.json"
@@ -1013,6 +1018,7 @@ class WebDavHelper(
                                         createdAt = password.createdAt.time,
                                         updatedAt = password.updatedAt.time,
                                         authenticatorKey = password.authenticatorKey,
+                                        passkeyBindings = password.passkeyBindings,
                                         deletedAt = password.deletedAt?.time,
                                         // ✅ 第三方登录(SSO)字段
                                         loginType = password.loginType,
@@ -1815,6 +1821,7 @@ class WebDavHelper(
                                                             createdAt = java.util.Date(backup.createdAt),
                                                             updatedAt = java.util.Date(backup.updatedAt),
                                                             authenticatorKey = backup.authenticatorKey,
+                                                            passkeyBindings = backup.passkeyBindings,
                                                             isDeleted = true,
                                                             deletedAt = backup.deletedAt?.let { java.util.Date(it) },
                                                             // ✅ 第三方登录(SSO)字段
@@ -2433,6 +2440,7 @@ class WebDavHelper(
                 createdAt = Date(backup.createdAt),
                 updatedAt = Date(backup.updatedAt),
                 authenticatorKey = backup.authenticatorKey,  // ✅ 直接恢复验证器密钥
+                passkeyBindings = backup.passkeyBindings,
                 // ✅ 第三方登录(SSO)字段
                 loginType = backup.loginType,
                 ssoProvider = backup.ssoProvider,
@@ -2499,7 +2507,8 @@ class WebDavHelper(
                 aaguid = backup.aaguid,
                 signCount = backup.signCount,
                 isBackedUp = true,
-                notes = backup.notes
+                notes = backup.notes,
+                boundPasswordId = backup.boundPasswordId
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore passkey from ${file.name}: ${e.message}")

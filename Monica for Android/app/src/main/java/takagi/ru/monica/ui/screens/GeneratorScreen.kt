@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -48,6 +49,7 @@ import takagi.ru.monica.viewmodel.GeneratorType
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordGenerationHistory
 import takagi.ru.monica.data.HistoryFilterPreferences
 import takagi.ru.monica.data.HistoryFilterSettings
 import java.util.Date
@@ -871,395 +873,24 @@ fun GeneratorScreen(
         }
     }
     
-    // 历史记录底部弹窗
-    if (showHistorySheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showHistorySheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                // 标题和过滤按钮
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.history),
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    
-                    IconButton(
-                        onClick = { showFilterSheet = true }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FilterList,
-                            contentDescription = stringResource(R.string.filter_history),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-                
-                if (filteredHistoryList.isEmpty()) {
-                    // 空状态
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Text(
-                                text = stringResource(R.string.no_history),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = stringResource(R.string.generator_history_description),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                } else {
-                    // 历史记录列表
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(filteredHistoryList) { historyItem ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp)
-                                ) {
-                                    // 密码显示和操作按钮
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        var passwordVisible by remember { mutableStateOf(false) }
-                                        
-                                        Text(
-                                            text = if (passwordVisible) historyItem.password else "••••••••••",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        
-                                        // 显示/隐藏密码按钮
-                                        IconButton(
-                                            onClick = { passwordVisible = !passwordVisible }
-                                        ) {
-                                            Icon(
-                                                imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                contentDescription = if (passwordVisible) context.getString(R.string.hide_password) else context.getString(R.string.show_password),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        
-                                        var copied by remember { mutableStateOf(false) }
-                                        
-                                        // 复制按钮
-                                        IconButton(
-                                            onClick = {
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                val clip = ClipData.newPlainText("password", historyItem.password)
-                                                clipboard.setPrimaryClip(clip)
-                                                copied = true
-                                            }
-                                        ) {
-                                            Icon(
-                                                imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
-                                                contentDescription = stringResource(R.string.copy_password_desc),
-                                                tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        
-                                        // 删除按钮
-                                        IconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    historyManager.deleteHistory(historyItem.timestamp)
-                                                }
-                                            }
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = stringResource(R.string.delete),
-                                                tint = MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                    }
-                                    
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    
-                                    // 应用信息
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Key,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                        Text(
-                                            text = if (historyItem.domain.isNotEmpty()) {
-                                                historyItem.domain
-                                            } else {
-                                                historyItem.packageName
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                    
-                                    // 用户名信息
-                                    if (historyItem.username.isNotEmpty()) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Key,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.username_label, historyItem.username),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                    
-                                    // 时间戳
-                                    Text(
-                                        text = java.text.SimpleDateFormat(
-                                            "yyyy-MM-dd HH:mm:ss",
-                                            java.util.Locale.getDefault()
-                                        ).format(java.util.Date(historyItem.timestamp)),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    
-                                    // 保存到密码库按钮
-                                    val allPasswords by passwordViewModel.passwordEntries.collectAsState()
-                                    
-                                    // 检查密码是否已存在（相同密码和域名/包名）
-                                    val alreadyExists = remember(historyItem.password, historyItem.domain, historyItem.packageName, allPasswords) {
-                                        allPasswords.any { entry ->
-                                            entry.password == historyItem.password && 
-                                            (entry.website == historyItem.domain || 
-                                             entry.appPackageName == historyItem.packageName)
-                                        }
-                                    }
-                                    
-                                    var saved by remember { mutableStateOf(false) }
-                                    
-                                    Button(
-                                        onClick = {
-                                            if (!alreadyExists) {
-                                                scope.launch {
-                                                    val entry = PasswordEntry(
-                                                        title = if (historyItem.domain.isNotEmpty()) {
-                                                            historyItem.domain
-                                                        } else {
-                                                            historyItem.packageName.substringAfterLast('.')
-                                                        },
-                                                        website = historyItem.domain,
-                                                        username = historyItem.username,
-                                                        password = historyItem.password,
-                                                        notes = context.getString(
-                                                            R.string.saved_from_generator_history,
-                                                            java.text.SimpleDateFormat(
-                                                                "yyyy-MM-dd HH:mm:ss",
-                                                                java.util.Locale.getDefault()
-                                                            ).format(java.util.Date(historyItem.timestamp))
-                                                        ),
-                                                        appPackageName = historyItem.packageName,
-                                                        createdAt = Date(),
-                                                        updatedAt = Date()
-                                                    )
-                                                    passwordViewModel.addPasswordEntry(entry)
-                                                    saved = true
-                                                    Toast.makeText(context, context.getString(R.string.saved_to_vault), Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = !alreadyExists && !saved,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (alreadyExists || saved) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
-                                            contentColor = if (alreadyExists || saved) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    ) {
-                                        Icon(
-                                            imageVector = if (alreadyExists || saved) Icons.Default.Done else Icons.Default.Save,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            if (alreadyExists) stringResource(R.string.already_in_vault)
-                                            else if (saved) stringResource(R.string.saved_to_vault)
-                                            else stringResource(R.string.save_to_vault)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // 清空历史按钮
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                historyManager.clearHistory()
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    ) {
-                        Text(stringResource(R.string.clear_history))
-                    }
-                }
-            }
-        }
-    }
-    
-    // 过滤设置弹窗
-    if (showFilterSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showFilterSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.select_history_types),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                Text(
-                    text = stringResource(R.string.history_filter_description),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                // 过滤选项
-                CheckboxWithText(
-                    text = stringResource(R.string.history_type_symbol),
-                    checked = filterSettings.showSymbol,
-                    onCheckedChange = { 
-                        scope.launch {
-                            filterPreferences.updateFilterSettings(
-                                filterSettings.copy(showSymbol = it)
-                            )
-                        }
-                    }
-                )
-                
-                CheckboxWithText(
-                    text = stringResource(R.string.history_type_password),
-                    checked = filterSettings.showPassword,
-                    onCheckedChange = { 
-                        scope.launch {
-                            filterPreferences.updateFilterSettings(
-                                filterSettings.copy(showPassword = it)
-                            )
-                        }
-                    }
-                )
-                
-                CheckboxWithText(
-                    text = stringResource(R.string.history_type_passphrase),
-                    checked = filterSettings.showPassphrase,
-                    onCheckedChange = { 
-                        scope.launch {
-                            filterPreferences.updateFilterSettings(
-                                filterSettings.copy(showPassphrase = it)
-                            )
-                        }
-                    }
-                )
-                
-                CheckboxWithText(
-                    text = stringResource(R.string.history_type_pin),
-                    checked = filterSettings.showPin,
-                    onCheckedChange = { 
-                        scope.launch {
-                            filterPreferences.updateFilterSettings(
-                                filterSettings.copy(showPin = it)
-                            )
-                        }
-                    }
-                )
-                
-                CheckboxWithText(
-                    text = stringResource(R.string.history_type_autofill),
-                    checked = filterSettings.showAutofill,
-                    onCheckedChange = { 
-                        scope.launch {
-                            filterPreferences.updateFilterSettings(
-                                filterSettings.copy(showAutofill = it)
-                            )
-                        }
-                    }
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // 关闭按钮
-                Button(
-                    onClick = { showFilterSheet = false },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.close))
-                }
-            }
-        }
-    }
+    GeneratorHistorySheet(
+        visible = showHistorySheet,
+        onDismiss = { showHistorySheet = false },
+        onShowFilter = { showFilterSheet = true },
+        filteredHistoryList = filteredHistoryList,
+        historyManager = historyManager,
+        scope = scope,
+        context = context,
+        passwordViewModel = passwordViewModel
+    )
+
+    GeneratorFilterSheet(
+        visible = showFilterSheet,
+        onDismiss = { showFilterSheet = false },
+        filterSettings = filterSettings,
+        filterPreferences = filterPreferences,
+        scope = scope
+    )
 }
 
 
@@ -1760,6 +1391,417 @@ private fun ResultCard(
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GeneratorHistorySheet(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onShowFilter: () -> Unit,
+    filteredHistoryList: List<PasswordGenerationHistory>,
+    historyManager: PasswordHistoryManager,
+    scope: CoroutineScope,
+    context: Context,
+    passwordViewModel: PasswordViewModel
+) {
+    if (!visible) return
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // 标题和过滤按钮
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.history),
+                    style = MaterialTheme.typography.titleLarge
+                )
+
+                IconButton(
+                    onClick = onShowFilter
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = stringResource(R.string.filter_history),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (filteredHistoryList.isEmpty()) {
+                // 空状态
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = stringResource(R.string.no_history),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(R.string.generator_history_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                // 历史记录列表
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredHistoryList) { historyItem ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                // 密码显示和操作按钮
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    var passwordVisible by remember { mutableStateOf(false) }
+
+                                    Text(
+                                        text = if (passwordVisible) historyItem.password else "••••••••••",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    // 显示/隐藏密码按钮
+                                    IconButton(
+                                        onClick = { passwordVisible = !passwordVisible }
+                                    ) {
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = if (passwordVisible) context.getString(R.string.hide_password) else context.getString(R.string.show_password),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    var copied by remember { mutableStateOf(false) }
+
+                                    // 复制按钮
+                                    IconButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            val clip = ClipData.newPlainText("password", historyItem.password)
+                                            clipboard.setPrimaryClip(clip)
+                                            copied = true
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
+                                            contentDescription = stringResource(R.string.copy_password_desc),
+                                            tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    // 删除按钮
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                historyManager.deleteHistory(historyItem.timestamp)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = stringResource(R.string.delete),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // 应用信息
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Key,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                    Text(
+                                        text = if (historyItem.domain.isNotEmpty()) {
+                                            historyItem.domain
+                                        } else {
+                                            historyItem.packageName
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+
+                                // 用户名信息
+                                if (historyItem.username.isNotEmpty()) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Key,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.username_label, historyItem.username),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                        )
+                                    }
+                                }
+
+                                // 时间戳
+                                Text(
+                                    text = java.text.SimpleDateFormat(
+                                        "yyyy-MM-dd HH:mm:ss",
+                                        java.util.Locale.getDefault()
+                                    ).format(java.util.Date(historyItem.timestamp)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // 保存到密码库按钮
+                                val allPasswords by passwordViewModel.passwordEntries.collectAsState()
+
+                                // 检查密码是否已存在（相同密码和域名/包名）
+                                val alreadyExists = remember(historyItem.password, historyItem.domain, historyItem.packageName, allPasswords) {
+                                    allPasswords.any { entry ->
+                                        entry.password == historyItem.password &&
+                                            (entry.website == historyItem.domain ||
+                                                entry.appPackageName == historyItem.packageName)
+                                    }
+                                }
+
+                                var saved by remember { mutableStateOf(false) }
+
+                                Button(
+                                    onClick = {
+                                        if (!alreadyExists) {
+                                            scope.launch {
+                                                val entry = PasswordEntry(
+                                                    title = if (historyItem.domain.isNotEmpty()) {
+                                                        historyItem.domain
+                                                    } else {
+                                                        historyItem.packageName.substringAfterLast('.')
+                                                    },
+                                                    website = historyItem.domain,
+                                                    username = historyItem.username,
+                                                    password = historyItem.password,
+                                                    notes = context.getString(
+                                                        R.string.saved_from_generator_history,
+                                                        java.text.SimpleDateFormat(
+                                                            "yyyy-MM-dd HH:mm:ss",
+                                                            java.util.Locale.getDefault()
+                                                        ).format(java.util.Date(historyItem.timestamp))
+                                                    ),
+                                                    appPackageName = historyItem.packageName,
+                                                    createdAt = Date(),
+                                                    updatedAt = Date()
+                                                )
+                                                passwordViewModel.addPasswordEntry(entry)
+                                                saved = true
+                                                Toast.makeText(context, context.getString(R.string.saved_to_vault), Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = !alreadyExists && !saved,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (alreadyExists || saved) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = if (alreadyExists || saved) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = if (alreadyExists || saved) Icons.Default.Done else Icons.Default.Save,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        if (alreadyExists) stringResource(R.string.already_in_vault)
+                                        else if (saved) stringResource(R.string.saved_to_vault)
+                                        else stringResource(R.string.save_to_vault)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 清空历史按钮
+                Button(
+                    onClick = {
+                        scope.launch {
+                            historyManager.clearHistory()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    Text(stringResource(R.string.clear_history))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GeneratorFilterSheet(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    filterSettings: HistoryFilterSettings,
+    filterPreferences: HistoryFilterPreferences,
+    scope: CoroutineScope
+) {
+    if (!visible) return
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.select_history_types),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            Text(
+                text = stringResource(R.string.history_filter_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // 过滤选项
+            CheckboxWithText(
+                text = stringResource(R.string.history_type_symbol),
+                checked = filterSettings.showSymbol,
+                onCheckedChange = {
+                    scope.launch {
+                        filterPreferences.updateFilterSettings(
+                            filterSettings.copy(showSymbol = it)
+                        )
+                    }
+                }
+            )
+
+            CheckboxWithText(
+                text = stringResource(R.string.history_type_password),
+                checked = filterSettings.showPassword,
+                onCheckedChange = {
+                    scope.launch {
+                        filterPreferences.updateFilterSettings(
+                            filterSettings.copy(showPassword = it)
+                        )
+                    }
+                }
+            )
+
+            CheckboxWithText(
+                text = stringResource(R.string.history_type_passphrase),
+                checked = filterSettings.showPassphrase,
+                onCheckedChange = {
+                    scope.launch {
+                        filterPreferences.updateFilterSettings(
+                            filterSettings.copy(showPassphrase = it)
+                        )
+                    }
+                }
+            )
+
+            CheckboxWithText(
+                text = stringResource(R.string.history_type_pin),
+                checked = filterSettings.showPin,
+                onCheckedChange = {
+                    scope.launch {
+                        filterPreferences.updateFilterSettings(
+                            filterSettings.copy(showPin = it)
+                        )
+                    }
+                }
+            )
+
+            CheckboxWithText(
+                text = stringResource(R.string.history_type_autofill),
+                checked = filterSettings.showAutofill,
+                onCheckedChange = {
+                    scope.launch {
+                        filterPreferences.updateFilterSettings(
+                            filterSettings.copy(showAutofill = it)
+                        )
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 关闭按钮
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.close))
             }
         }
     }

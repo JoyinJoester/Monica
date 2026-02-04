@@ -57,6 +57,10 @@ data class PasswordEntry(
     
     // 关联的验证器密钥 (TOTP Secret)
     val authenticatorKey: String = "",  // 用于存储绑定的TOTP验证器密钥
+
+    // 绑定的通行密钥元数据（JSON）
+    @ColumnInfo(name = "passkey_bindings", defaultValue = "")
+    val passkeyBindings: String = "",
     
     // 第三方登录(SSO)字段
     @ColumnInfo(defaultValue = "PASSWORD")
