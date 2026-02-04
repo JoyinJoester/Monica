@@ -149,6 +149,7 @@ class FolderManagementViewModel(application: Application) : AndroidViewModel(app
                     _bitwardenFolders.value = folders
                 }
         }
+        syncBitwardenFolders(vaultId)
     }
 
     // ========== 设置 ==========
@@ -311,6 +312,30 @@ class FolderManagementViewModel(application: Application) : AndroidViewModel(app
     // ========== Bitwarden 文件夹操作 ==========
 
     /**
+     * 同步 Bitwarden 文件夹到本地（作为客户端拉取最新文件夹）
+     */
+    fun syncBitwardenFolders(vaultId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val vault = _bitwardenVaults.value.find { it.id == vaultId }
+            if (vault == null) {
+                _operationResult.value = FolderOperationResult(
+                    success = false,
+                    message = "Vault 不存在"
+                )
+                return@launch
+            }
+
+            if (!bitwardenRepository.isVaultUnlocked(vaultId)) {
+                pendingOperation = { syncBitwardenFoldersInternal(vaultId) }
+                _needsUnlock.value = true
+                return@launch
+            }
+
+            syncBitwardenFoldersInternal(vaultId)
+        }
+    }
+
+    /**
      * 创建 Bitwarden 文件夹
      * 
      * 流程：
@@ -420,6 +445,40 @@ class FolderManagementViewModel(application: Application) : AndroidViewModel(app
                 _operationResult.value = FolderOperationResult(
                     success = false,
                     message = "创建失败: ${e.message}"
+                )
+            } finally {
+                _isLoading.value = false
+                _syncStatusMessage.value = null
+            }
+        }
+    }
+
+    /**
+     * 内部方法：执行 Bitwarden 同步（拉取文件夹）
+     */
+    private fun syncBitwardenFoldersInternal(vaultId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true
+            try {
+                _syncStatusMessage.value = "正在同步 Bitwarden 数据库..."
+                val syncResult = bitwardenRepository.sync(vaultId)
+                when (syncResult) {
+                    is BitwardenRepository.SyncResult.Success -> {
+                        Log.d(TAG, "同步成功，已同步 ${syncResult.syncedCount} 条记录")
+                    }
+                    is BitwardenRepository.SyncResult.Error -> {
+                        Log.w(TAG, "同步失败: ${syncResult.message}")
+                    }
+                    is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                        Log.w(TAG, "空 Vault 保护触发，未拉取数据")
+                    }
+                }
+                loadBitwardenFolders(vaultId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync Bitwarden folders", e)
+                _operationResult.value = FolderOperationResult(
+                    success = false,
+                    message = "同步失败: ${e.message}"
                 )
             } finally {
                 _isLoading.value = false
