@@ -1008,48 +1008,8 @@ fun SettingsScreen(
                         )
                     }
 
-                    // 导航栏版本切换
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                val newVersion = if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1)
-                                    takagi.ru.monica.data.NavBarVersion.V2
-                                else
-                                    takagi.ru.monica.data.NavBarVersion.V1
-                                viewModel.updateNavBarVersion(newVersion)
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Dashboard,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "导航栏版本",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1)
-                                    "V1 经典导航栏（可自定义）"
-                                else
-                                    "V2 简洁导航栏（固定4项 + 最近页面）",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    // 导航栏版本切换 - Removed
+
 
                     // 减少动画设置
                     Row(
@@ -1616,7 +1576,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
-    BottomNavContentTab.VAULT -> Icons.Default.Dataset
+    // BottomNavContentTab.VAULT -> Icons.Default.Dataset
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
 }
 
@@ -1628,7 +1588,7 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.TIMELINE -> R.string.nav_timeline
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
-    BottomNavContentTab.VAULT -> R.string.nav_v2_vault
+    // BottomNavContentTab.VAULT -> R.string.nav_v2_vault
     BottomNavContentTab.SEND -> R.string.nav_v2_send
 }
 

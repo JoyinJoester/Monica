@@ -36,7 +36,7 @@ class SettingsManager(private val context: Context) {
         private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
-        private val SHOW_VAULT_TAB_KEY = booleanPreferencesKey("show_vault_tab")  // V2 库
+        // private val SHOW_VAULT_TAB_KEY = booleanPreferencesKey("show_vault_tab")  // V2 库 - Removed
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
         private val SHOW_AUTHENTICATOR_TAB_KEY = booleanPreferencesKey("show_authenticator_tab")
         private val SHOW_CARD_WALLET_TAB_KEY = booleanPreferencesKey("show_card_wallet_tab")
@@ -129,7 +129,7 @@ class SettingsManager(private val context: Context) {
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true, // 默认启用动态颜色
             bottomNavVisibility = BottomNavVisibility(
-                vault = preferences[SHOW_VAULT_TAB_KEY] ?: true,
+                // vault = preferences[SHOW_VAULT_TAB_KEY] ?: true,
                 passwords = preferences[SHOW_PASSWORDS_TAB_KEY] ?: true,
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
                 cardWallet = preferences[SHOW_CARD_WALLET_TAB_KEY] ?: true,
@@ -259,7 +259,7 @@ class SettingsManager(private val context: Context) {
     suspend fun updateBottomNavVisibility(tab: BottomNavContentTab, visible: Boolean) {
         dataStore.edit { preferences ->
             when (tab) {
-                BottomNavContentTab.VAULT -> preferences[SHOW_VAULT_TAB_KEY] = visible
+                // BottomNavContentTab.VAULT -> preferences[SHOW_VAULT_TAB_KEY] = visible
                 BottomNavContentTab.PASSWORDS -> preferences[SHOW_PASSWORDS_TAB_KEY] = visible
                 BottomNavContentTab.AUTHENTICATOR -> preferences[SHOW_AUTHENTICATOR_TAB_KEY] = visible
                 BottomNavContentTab.CARD_WALLET -> preferences[SHOW_CARD_WALLET_TAB_KEY] = visible

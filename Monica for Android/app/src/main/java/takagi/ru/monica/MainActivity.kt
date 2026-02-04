@@ -1578,13 +1578,14 @@ fun MonicaContent(
                     navController.navigate(Screen.BitwardenSettings.route)
                 },
                 onNavigateToDatabaseFolderManagement = {
-                    navController.navigate(Screen.DatabaseFolderManagement.route)
+                    navController.navigate(Screen.FolderManagement.route)  // 使用新版 M3E 文件夹管理页面
                 },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
             }
         }
 
+        // 旧版文件夹管理（保留兼容）
         composable(
             route = Screen.DatabaseFolderManagement.route,
             enterTransition = { fadeIn() },
@@ -1593,6 +1594,36 @@ fun MonicaContent(
             popExitTransition = { fadeOut() }
         ) {
             takagi.ru.monica.ui.screens.DatabaseFolderManagementScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        
+        // V2 文件夹管理页面 - M3E 设计（旧版保留兼容）
+        composable(
+            route = "v2_folder_management",
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.v2.V2FolderManagementScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // 新版文件夹管理页面 - M3E 设计（无数据源切换器）
+        composable(
+            route = Screen.FolderManagement.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.FolderManagementScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }

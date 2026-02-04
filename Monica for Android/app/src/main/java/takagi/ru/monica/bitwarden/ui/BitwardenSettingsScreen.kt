@@ -46,12 +46,15 @@ fun BitwardenSettingsScreen(
     val activeVault by viewModel.activeVault.collectAsState()
     val unlockState by viewModel.unlockState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
+    val isNeverLockEnabled by viewModel.isNeverLockEnabledFlow.collectAsState()
     
     // 对话框状态
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
     var vaultToLogout by remember { mutableStateOf<BitwardenVault?>(null) }
     var showUnlockDialog by remember { mutableStateOf(false) }
     var vaultToUnlock by remember { mutableStateOf<BitwardenVault?>(null) }
+    var showNeverLockUnlockDialog by remember { mutableStateOf(false) }
+    var pendingEnableNeverLock by remember { mutableStateOf(false) }
     
     // 监听事件
     LaunchedEffect(Unit) {
@@ -62,6 +65,19 @@ fun BitwardenSettingsScreen(
                 }
                 else -> {}
             }
+        }
+    }
+
+    LaunchedEffect(unlockState, showNeverLockUnlockDialog) {
+        if (pendingEnableNeverLock && unlockState == BitwardenViewModel.UnlockState.Unlocked) {
+            viewModel.isNeverLockEnabled = true
+            pendingEnableNeverLock = false
+        }
+
+        if (pendingEnableNeverLock && !showNeverLockUnlockDialog &&
+            unlockState == BitwardenViewModel.UnlockState.Locked
+        ) {
+            pendingEnableNeverLock = false
         }
     }
     
@@ -164,7 +180,26 @@ fun BitwardenSettingsScreen(
                     isAutoSyncEnabled = viewModel.isAutoSyncEnabled,
                     onAutoSyncChanged = { viewModel.isAutoSyncEnabled = it },
                     isSyncOnWifiOnly = viewModel.isSyncOnWifiOnly,
-                    onSyncOnWifiOnlyChanged = { viewModel.isSyncOnWifiOnly = it }
+                    onSyncOnWifiOnlyChanged = { viewModel.isSyncOnWifiOnly = it },
+                    isNeverLockEnabled = isNeverLockEnabled,
+                    onNeverLockChanged = { enabled ->
+                        if (!enabled) {
+                            viewModel.isNeverLockEnabled = false
+                            return@SyncSettingsCard
+                        }
+
+                        val vault = activeVault
+                        if (vault == null) {
+                            return@SyncSettingsCard
+                        }
+
+                        if (unlockState == BitwardenViewModel.UnlockState.Unlocked) {
+                            viewModel.isNeverLockEnabled = true
+                        } else {
+                            pendingEnableNeverLock = true
+                            showNeverLockUnlockDialog = true
+                        }
+                    }
                 )
             }
             
@@ -264,6 +299,22 @@ fun BitwardenSettingsScreen(
             onDismiss = {
                 showUnlockDialog = false
                 vaultToUnlock = null
+            }
+        )
+    }
+
+    if (showNeverLockUnlockDialog) {
+        val vault = activeVault
+        UnlockVaultDialog(
+            email = vault?.email ?: "",
+            onUnlock = { password ->
+                vault?.let { viewModel.setActiveVault(it) }
+                viewModel.unlock(password)
+                showNeverLockUnlockDialog = false
+            },
+            onDismiss = {
+                showNeverLockUnlockDialog = false
+                pendingEnableNeverLock = false
             }
         )
     }
@@ -497,7 +548,9 @@ fun SyncSettingsCard(
     isAutoSyncEnabled: Boolean,
     onAutoSyncChanged: (Boolean) -> Unit,
     isSyncOnWifiOnly: Boolean,
-    onSyncOnWifiOnlyChanged: (Boolean) -> Unit
+    onSyncOnWifiOnlyChanged: (Boolean) -> Unit,
+    isNeverLockEnabled: Boolean = false,
+    onNeverLockChanged: (Boolean) -> Unit = {}
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -545,6 +598,37 @@ fun SyncSettingsCard(
                     checked = isSyncOnWifiOnly,
                     onCheckedChange = onSyncOnWifiOnlyChanged,
                     enabled = isAutoSyncEnabled
+                )
+            }
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "永不锁定",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "保持 Bitwarden 解锁状态，无需重复输入密码",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isNeverLockEnabled) {
+                        Text(
+                            text = "⚠️ 仅在安全环境下使用",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                Switch(
+                    checked = isNeverLockEnabled,
+                    onCheckedChange = onNeverLockChanged
                 )
             }
         }

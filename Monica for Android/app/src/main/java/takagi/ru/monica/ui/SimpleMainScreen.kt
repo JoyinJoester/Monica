@@ -461,7 +461,7 @@ fun SimpleMainScreen(
     val coroutineScope = rememberCoroutineScope()
     
     // 当前选中的位置（0-4）
-    var v2SelectedPosition by remember { mutableStateOf(takagi.ru.monica.ui.components.V2NavPosition.VAULT) }
+    var v2SelectedPosition by remember { mutableStateOf(takagi.ru.monica.ui.components.V2NavPosition.DYNAMIC) }
     // 底栏第2项显示的动态内容（持久化）
     val v2DynamicContent = remember(v2DynamicContentKey) {
         if (v2DynamicContentKey.isNotEmpty()) {
@@ -758,7 +758,7 @@ fun SimpleMainScreen(
                                 onPasskeyClick = { /* TODO: 导航到详情页 */ }
                             )
                         }
-                        BottomNavItem.Vault -> {
+                        /* BottomNavItem.Vault -> {
                             VaultHomeScreen(
                                 passwordViewModel = passwordViewModel,
                                 bankCardViewModel = bankCardViewModel,
@@ -773,7 +773,7 @@ fun SimpleMainScreen(
                                 onNavigateToBankCardDetail = onNavigateToBankCardDetail,
                                 onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
                             )
-                        }
+                        } */
                         BottomNavItem.Send -> {
                             V2SendScreen()
                         }
@@ -1008,7 +1008,7 @@ fun SimpleMainScreen(
                         onPasskeyClick = { /* TODO: 导航到详情页 */ }
                     )
                 }
-                BottomNavItem.Vault -> {
+                /* BottomNavItem.Vault -> {
                     // 库主页
                     VaultHomeScreen(
                         passwordViewModel = passwordViewModel,
@@ -1024,7 +1024,7 @@ fun SimpleMainScreen(
                         onNavigateToBankCardDetail = onNavigateToBankCardDetail,
                         onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
                     )
-                }
+                } */
                 BottomNavItem.Send -> {
                     // V2 发送页面
                     V2SendScreen()
@@ -5545,7 +5545,7 @@ sealed class BottomNavItem(
 ) {
     val key: String = contentTab?.name ?: SETTINGS_TAB_KEY
 
-    object Vault : BottomNavItem(BottomNavContentTab.VAULT, Icons.Default.Shield)  // V2 密码库
+    // object Vault : BottomNavItem(BottomNavContentTab.VAULT, Icons.Default.Shield)  // V2 密码库 - Removed
     object Passwords : BottomNavItem(BottomNavContentTab.PASSWORDS, Icons.Default.Lock)
     object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
     object CardWallet : BottomNavItem(BottomNavContentTab.CARD_WALLET, Icons.Default.Wallet)
@@ -5567,7 +5567,7 @@ sealed class V2BottomNavItem(
 ) {
     val key: String = v2Tab?.name ?: V2_SETTINGS_TAB_KEY
     
-    object Vault : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.VAULT, Icons.Default.Shield)
+    // object Vault : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.VAULT, Icons.Default.Shield) - Removed
     object Send : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SEND, Icons.Default.Send)
     object Sync : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SYNC, Icons.Default.Sync)
     object Generator : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.GENERATOR, Icons.Default.AutoAwesome)
@@ -5577,7 +5577,7 @@ sealed class V2BottomNavItem(
 private const val V2_SETTINGS_TAB_KEY = "V2_SETTINGS"
 
 private fun V2BottomNavItem.fullLabelRes(): Int = when (this) {
-    V2BottomNavItem.Vault -> R.string.nav_v2_vault
+    // V2BottomNavItem.Vault -> R.string.nav_v2_vault
     V2BottomNavItem.Send -> R.string.nav_v2_send
     V2BottomNavItem.Sync -> R.string.nav_v2_sync
     V2BottomNavItem.Generator -> R.string.nav_generator
@@ -5585,7 +5585,7 @@ private fun V2BottomNavItem.fullLabelRes(): Int = when (this) {
 }
 
 private fun V2BottomNavItem.shortLabelRes(): Int = when (this) {
-    V2BottomNavItem.Vault -> R.string.nav_v2_vault_short
+    // V2BottomNavItem.Vault -> R.string.nav_v2_vault_short
     V2BottomNavItem.Send -> R.string.nav_v2_send_short
     V2BottomNavItem.Sync -> R.string.nav_v2_sync_short
     V2BottomNavItem.Generator -> R.string.nav_generator_short
@@ -5593,7 +5593,7 @@ private fun V2BottomNavItem.shortLabelRes(): Int = when (this) {
 }
 
 private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
-    BottomNavContentTab.VAULT -> BottomNavItem.Vault
+    // BottomNavContentTab.VAULT -> BottomNavItem.Vault
     BottomNavContentTab.PASSWORDS -> BottomNavItem.Passwords
     BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
     BottomNavContentTab.CARD_WALLET -> BottomNavItem.CardWallet
@@ -5605,7 +5605,7 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
-    BottomNavItem.Vault -> R.string.nav_v2_vault
+    // BottomNavItem.Vault -> R.string.nav_v2_vault
     BottomNavItem.Passwords -> R.string.nav_passwords
     BottomNavItem.Authenticator -> R.string.nav_authenticator
     BottomNavItem.CardWallet -> R.string.nav_card_wallet
@@ -5618,7 +5618,7 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
 }
 
 private fun BottomNavItem.shortLabelRes(): Int = when (this) {
-    BottomNavItem.Vault -> R.string.nav_v2_vault_short
+    // BottomNavItem.Vault -> R.string.nav_v2_vault_short
     BottomNavItem.Passwords -> R.string.nav_passwords_short
     BottomNavItem.Authenticator -> R.string.nav_authenticator_short
     BottomNavItem.CardWallet -> R.string.nav_card_wallet_short
@@ -5949,9 +5949,10 @@ private fun V2NavScaffold(
                 .padding(paddingValues)
         ) {
             // 根据位置显示内容
+            // 根据位置显示内容
             when (selectedPosition) {
-                V2NavPosition.VAULT -> {
-                    // 位置0：库首页
+                /* V2NavPosition.VAULT -> {
+                    // 位置0：库首页 - Removed
                     VaultHomeScreen(
                         passwordViewModel = passwordViewModel,
                         bankCardViewModel = bankCardViewModel,
@@ -5966,7 +5967,7 @@ private fun V2NavScaffold(
                         onNavigateToBankCardDetail = onNavigateToBankCardDetail,
                         onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
                     )
-                }
+                } */
                 V2NavPosition.DYNAMIC -> {
                     // 位置1：动态内容 - 使用 Crossfade 平滑切换，避免 key() 导致的崩溃
                     if (dynamicContent != null) {

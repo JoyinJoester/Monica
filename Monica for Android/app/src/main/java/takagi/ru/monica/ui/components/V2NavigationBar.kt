@@ -27,7 +27,7 @@ enum class V2NavItem(
     val labelRes: Int,
     val icon: ImageVector
 ) {
-    VAULT("vault", R.string.nav_v2_vault, Icons.Default.Shield),
+    // VAULT("vault", R.string.nav_v2_vault, Icons.Default.Shield), - Removed
     SEND("send", R.string.nav_v2_send, Icons.AutoMirrored.Filled.Send),
     GENERATOR("generator", R.string.nav_generator, Icons.Default.AutoAwesome),
     SETTINGS("settings", R.string.nav_settings, Icons.Default.Settings)
@@ -53,7 +53,7 @@ enum class RecentSubPage(
  * V2 导航栏选中位置（0-4）
  */
 enum class V2NavPosition {
-    VAULT,      // 位置0：库首页
+    // VAULT,      // 位置0：库首页 - Removed
     DYNAMIC,    // 位置1：动态内容（密码/验证器/卡包等）
     SEND,       // 位置2：发送
     GENERATOR,  // 位置3：生成
@@ -81,12 +81,15 @@ fun V2NavigationBar(
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         // 位置0：库
+        /*
+        // 位置0：库 - Removed
         NavigationBarItem(
             icon = { Icon(V2NavItem.VAULT.icon, contentDescription = null) },
             label = { Text(stringResource(V2NavItem.VAULT.labelRes)) },
             selected = selectedPosition == V2NavPosition.VAULT,
             onClick = { onPositionSelected(V2NavPosition.VAULT) }
         )
+        */
         
         // 位置1：动态内容（如果有）
         if (dynamicContent != null) {

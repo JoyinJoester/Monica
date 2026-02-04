@@ -45,12 +45,12 @@ sealed class V2NavItem(
 ) {
     val key: String = tab?.name ?: "V2_SETTINGS"
     
-    object Vault : V2NavItem(
-        V2BottomNavTab.VAULT,
-        Icons.Default.Shield,
-        R.string.nav_v2_vault,
-        R.string.nav_v2_vault_short
-    )
+    // object Vault : V2NavItem(
+    //     V2BottomNavTab.VAULT,
+    //     Icons.Default.Shield,
+    //     R.string.nav_v2_vault,
+    //     R.string.nav_v2_vault_short
+    // ) - Removed
     
     object Send : V2NavItem(
         V2BottomNavTab.SEND,
@@ -75,7 +75,7 @@ sealed class V2NavItem(
     
     companion object {
         // 移除 Sync，同步功能在设置->同步与备份中
-        val defaultTabs: List<V2NavItem> = listOf(Vault, Send, Generator, Settings)
+        val defaultTabs: List<V2NavItem> = listOf(Send, Generator, Settings)
     }
 }
 
@@ -140,18 +140,18 @@ fun V2MainScreen(
     
     // 当前选中的 Tab - 使用完全安全的方式
     val tabs: List<V2NavItem> = remember { V2NavItem.defaultTabs }
-    var selectedTabKey by rememberSaveable { mutableStateOf(V2NavItem.Vault.key) }
+    var selectedTabKey by rememberSaveable { mutableStateOf(V2NavItem.Send.key) }
     
     // 直接使用非空的 tabs 查找，完全避免 NPE
     val currentTab: V2NavItem = remember(selectedTabKey, tabs) {
-        tabs.find { it.key == selectedTabKey } ?: V2NavItem.Vault
+        tabs.find { it.key == selectedTabKey } ?: V2NavItem.Send
     }
     
     // 如果 key 无效，重置为 Vault
     LaunchedEffect(selectedTabKey, tabs) {
         val isValidKey = tabs.any { it.key == selectedTabKey }
         if (!isValidKey) {
-            selectedTabKey = V2NavItem.Vault.key
+            selectedTabKey = V2NavItem.Send.key
         }
     }
     
@@ -189,7 +189,7 @@ fun V2MainScreen(
                 .padding(paddingValues)
         ) { tab ->
             when (tab) {
-                V2NavItem.Vault -> {
+                /* V2NavItem.Vault -> {
                     V2VaultScreen(
                         viewModel = v2ViewModel,
                         onNavigateToBitwardenLogin = onNavigateToBitwardenLogin,
@@ -199,7 +199,7 @@ fun V2MainScreen(
                             onNavigateToEntryDetail(type.name, id)
                         }
                     )
-                }
+                } */
                 
                 V2NavItem.Send -> {
                     V2SendScreen()
@@ -208,7 +208,7 @@ fun V2MainScreen(
                 V2NavItem.Generator -> {
                     // 复用 V1 生成器页面
                     GeneratorScreen(
-                        onNavigateBack = { selectedTabKey = V2NavItem.Vault.key },
+                        onNavigateBack = { selectedTabKey = V2NavItem.Send.key },
                         passwordViewModel = passwordViewModel,
                         viewModel = generatorViewModel
                     )
@@ -218,7 +218,7 @@ fun V2MainScreen(
                     // 复用 V1 设置页面
                     SettingsScreen(
                         viewModel = settingsViewModel,
-                        onNavigateBack = { selectedTabKey = V2NavItem.Vault.key },
+                        onNavigateBack = { selectedTabKey = V2NavItem.Send.key },
                         onResetPassword = onNavigateToResetPassword,
                         onSecurityQuestions = onNavigateToSecurityQuestions,
                         onNavigateToSyncBackup = onNavigateToSyncBackup,

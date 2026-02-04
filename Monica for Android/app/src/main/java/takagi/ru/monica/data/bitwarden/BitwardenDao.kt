@@ -200,6 +200,9 @@ interface BitwardenFolderDao {
     suspend fun upsert(folder: BitwardenFolder): Long
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(folder: BitwardenFolder): Long
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(folders: List<BitwardenFolder>)
     
     @Update
@@ -210,6 +213,12 @@ interface BitwardenFolderDao {
     
     @Query("DELETE FROM bitwarden_folders WHERE vault_id = :vaultId")
     suspend fun deleteByVault(vaultId: Long)
+    
+    @Query("DELETE FROM bitwarden_folders WHERE bitwarden_folder_id = :bitwardenId")
+    suspend fun deleteByBitwardenId(bitwardenId: String)
+    
+    @Query("UPDATE bitwarden_folders SET name = :newName, encrypted_name = :encryptedName WHERE bitwarden_folder_id = :folderId")
+    suspend fun updateName(folderId: String, newName: String, encryptedName: String)
     
     @Query("DELETE FROM bitwarden_folders WHERE bitwarden_folder_id NOT IN (:keepIds) AND vault_id = :vaultId")
     suspend fun deleteNotIn(vaultId: Long, keepIds: List<String>)

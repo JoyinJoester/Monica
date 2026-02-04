@@ -53,6 +53,12 @@ interface CategoryDao {
     suspend fun unlinkFromBitwarden(categoryId: Long)
     
     /**
+     * 解除关联到特定文件夹的所有分类
+     */
+    @Query("UPDATE categories SET bitwarden_vault_id = NULL, bitwarden_folder_id = NULL, sync_item_types = NULL WHERE bitwarden_folder_id = :folderId")
+    suspend fun unlinkByFolderId(folderId: String)
+    
+    /**
      * 更新同步类型
      */
     @Query("UPDATE categories SET sync_item_types = :syncTypes WHERE id = :categoryId")
