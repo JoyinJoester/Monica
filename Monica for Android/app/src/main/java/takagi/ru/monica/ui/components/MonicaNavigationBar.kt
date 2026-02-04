@@ -1,7 +1,5 @@
 package takagi.ru.monica.ui.components
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -13,28 +11,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 
 /**
- * V2 导航栏固定项（位置0、2、3、4）
+ * 导航栏固定项（位置2、3、4）
  */
 enum class V2NavItem(
     val key: String,
     val labelRes: Int,
     val icon: ImageVector
 ) {
-    // VAULT("vault", R.string.nav_v2_vault, Icons.Default.Shield), - Removed
     SEND("send", R.string.nav_v2_send, Icons.AutoMirrored.Filled.Send),
     GENERATOR("generator", R.string.nav_generator, Icons.Default.AutoAwesome),
     SETTINGS("settings", R.string.nav_settings, Icons.Default.Settings)
 }
 
 /**
- * 底栏第2项的动态内容类型
+ * 底栏第1项的动态内容类型
  */
 enum class RecentSubPage(
     val key: String,
@@ -50,10 +46,9 @@ enum class RecentSubPage(
 }
 
 /**
- * V2 导航栏选中位置（0-4）
+ * 导航栏选中位置（0-4）
  */
 enum class V2NavPosition {
-    // VAULT,      // 位置0：库首页 - Removed
     DYNAMIC,    // 位置1：动态内容（密码/验证器/卡包等）
     SEND,       // 位置2：发送
     GENERATOR,  // 位置3：生成
@@ -61,10 +56,10 @@ enum class V2NavPosition {
 }
 
 /**
- * V2 导航栏 - 使用Material 3标准NavigationBar
- * 
+ * Monica 导航栏 - 使用Material 3标准NavigationBar
+ *
  * @param selectedPosition 当前选中的位置（0-4）
- * @param dynamicContent 第2项显示的动态内容
+ * @param dynamicContent 第1项显示的动态内容
  * @param onPositionSelected 位置选中回调
  */
 @Suppress("UNUSED_PARAMETER")
@@ -80,21 +75,10 @@ fun V2NavigationBar(
         tonalElevation = 0.dp,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        // 位置0：库
-        /*
-        // 位置0：库 - Removed
-        NavigationBarItem(
-            icon = { Icon(V2NavItem.VAULT.icon, contentDescription = null) },
-            label = { Text(stringResource(V2NavItem.VAULT.labelRes)) },
-            selected = selectedPosition == V2NavPosition.VAULT,
-            onClick = { onPositionSelected(V2NavPosition.VAULT) }
-        )
-        */
-        
         // 位置1：动态内容（如果有）
         if (dynamicContent != null) {
             NavigationBarItem(
-                icon = { 
+                icon = {
                     Box {
                         Icon(dynamicContent.icon, contentDescription = null)
                         // 小圆点标记表示这是动态项
@@ -120,7 +104,7 @@ fun V2NavigationBar(
                 )
             )
         }
-        
+
         // 位置2：发送
         NavigationBarItem(
             icon = { Icon(V2NavItem.SEND.icon, contentDescription = null) },
@@ -128,7 +112,7 @@ fun V2NavigationBar(
             selected = selectedPosition == V2NavPosition.SEND,
             onClick = { onPositionSelected(V2NavPosition.SEND) }
         )
-        
+
         // 位置3：生成
         NavigationBarItem(
             icon = { Icon(V2NavItem.GENERATOR.icon, contentDescription = null) },
@@ -136,7 +120,7 @@ fun V2NavigationBar(
             selected = selectedPosition == V2NavPosition.GENERATOR,
             onClick = { onPositionSelected(V2NavPosition.GENERATOR) }
         )
-        
+
         // 位置4：设置
         NavigationBarItem(
             icon = { Icon(V2NavItem.SETTINGS.icon, contentDescription = null) },

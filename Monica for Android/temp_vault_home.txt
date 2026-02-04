@@ -27,10 +27,10 @@ import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 
 /**
- * 库主页 - M3E 设计
+ * 搴撲富椤?- M3E 璁捐
  * 
- * 显示：数据库、类型、文件夹
- * 不显示无文件夹的密码列表
+ * 鏄剧ず锛氭暟鎹簱銆佺被鍨嬨€佹枃浠跺す
+ * 涓嶆樉绀烘棤鏂囦欢澶圭殑瀵嗙爜鍒楄〃
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,22 +49,20 @@ fun VaultHomeScreen(
     onNavigateToBankCardDetail: (Long) -> Unit = {},
     onNavigateToNoteDetail: (Long) -> Unit = {}
 ) {
-    // 收集数据
+    // 鏀堕泦鏁版嵁
     val passwords by passwordViewModel.passwordEntries.collectAsState()
     val bankCards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
     val documents by documentViewModel.allDocuments.collectAsState(initial = emptyList())
     val notes by noteViewModel.allNotes.collectAsState(initial = emptyList())
     val categories by passwordViewModel.categories.collectAsState(initial = emptyList())
     
-    // 计算各类型数量
-    val loginCount = passwords.size
+    // 璁＄畻鍚勭被鍨嬫暟閲?    val loginCount = passwords.size
     val cardCount = bankCards.size
     val documentCount = documents.size
     val noteCount = notes.size
     val totalCount = loginCount + cardCount + documentCount + noteCount
     
-    // 提取文件夹（分类）和数量 - 显示所有分类
-    val foldersWithCounts: List<Pair<String, Int>> = remember(passwords, categories) {
+    // 鎻愬彇鏂囦欢澶癸紙鍒嗙被锛夊拰鏁伴噺 - 鏄剧ず鎵€鏈夊垎绫?    val foldersWithCounts: List<Pair<String, Int>> = remember(passwords, categories) {
         categories.map { category: takagi.ru.monica.data.Category ->
             val count = passwords.count { pw -> pw.categoryId == category.id }
             category.name to count
@@ -79,7 +77,7 @@ fun VaultHomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 顶栏
+        // 椤舵爮
         ExpressiveTopBar(
             title = stringResource(R.string.nav_v2_vault),
             searchQuery = searchQuery,
@@ -96,17 +94,17 @@ fun VaultHomeScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // ========== 数据库区域 ==========
+            // ========== 鏁版嵁搴撳尯鍩?==========
             item(key = "section_databases") {
                 SectionHeader(
-                    title = "数据库",
+                    title = "鏁版嵁搴?,
                     icon = Icons.Outlined.Storage
                 )
             }
             
             item(key = "db_monica") {
                 DatabaseItem(
-                    name = "Monica 本地",
+                    name = "Monica 鏈湴",
                     icon = Icons.Filled.Home,
                     iconTint = MaterialTheme.colorScheme.primary,
                     itemCount = totalCount,
@@ -119,10 +117,10 @@ fun VaultHomeScreen(
                 DatabaseItem(
                     name = "KeePass",
                     icon = Icons.Filled.Key,
-                    iconTint = Color(0xFF4CAF50), // 绿色
+                    iconTint = Color(0xFF4CAF50), // 缁胯壊
                     itemCount = 0,
                     isConnected = false,
-                    onClick = { /* TODO: 打开KeePass */ }
+                    onClick = { /* TODO: 鎵撳紑KeePass */ }
                 )
             }
             
@@ -130,25 +128,24 @@ fun VaultHomeScreen(
                 DatabaseItem(
                     name = "Bitwarden",
                     icon = Icons.Filled.Cloud,
-                    iconTint = Color(0xFF175DDC), // Bitwarden 蓝
-                    itemCount = 0,
+                    iconTint = Color(0xFF175DDC), // Bitwarden 钃?                    itemCount = 0,
                     isConnected = false,
-                    onClick = { /* TODO: 连接Bitwarden */ }
+                    onClick = { /* TODO: 杩炴帴Bitwarden */ }
                 )
             }
             
-            // ========== 类型区域 ==========
+            // ========== 绫诲瀷鍖哄煙 ==========
             item(key = "section_types") {
                 Spacer(modifier = Modifier.height(16.dp))
                 SectionHeader(
-                    title = "类型",
+                    title = "绫诲瀷",
                     icon = Icons.Outlined.Category
                 )
             }
             
             item(key = "type_logins") {
                 TypeItem(
-                    name = "登录",
+                    name = "鐧诲綍",
                     icon = Icons.Filled.Person,
                     iconTint = MaterialTheme.colorScheme.primary,
                     count = loginCount,
@@ -158,7 +155,7 @@ fun VaultHomeScreen(
             
             item(key = "type_cards") {
                 TypeItem(
-                    name = "银行卡",
+                    name = "閾惰鍗?,
                     icon = Icons.Filled.CreditCard,
                     iconTint = MaterialTheme.colorScheme.tertiary,
                     count = cardCount,
@@ -168,9 +165,9 @@ fun VaultHomeScreen(
             
             item(key = "type_documents") {
                 TypeItem(
-                    name = "证件",
+                    name = "璇佷欢",
                     icon = Icons.Filled.Badge,
-                    iconTint = Color(0xFFFF9800), // 橙色
+                    iconTint = Color(0xFFFF9800), // 姗欒壊
                     count = documentCount,
                     onClick = onNavigateToCardWallet
                 )
@@ -178,7 +175,7 @@ fun VaultHomeScreen(
             
             item(key = "type_notes") {
                 TypeItem(
-                    name = "安全笔记",
+                    name = "瀹夊叏绗旇",
                     icon = Icons.Outlined.Description,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     count = noteCount,
@@ -188,7 +185,7 @@ fun VaultHomeScreen(
             
             item(key = "type_passkey") {
                 TypeItem(
-                    name = "通行密钥",
+                    name = "閫氳瀵嗛挜",
                     icon = Icons.Filled.Fingerprint,
                     iconTint = MaterialTheme.colorScheme.error,
                     count = 0,
@@ -196,20 +193,19 @@ fun VaultHomeScreen(
                 )
             }
             
-            // ========== 文件夹区域 ==========
-            // 文件夹标题 - 有分类就显示
+            // ========== 鏂囦欢澶瑰尯鍩?==========
+            // 鏂囦欢澶规爣棰?- 鏈夊垎绫诲氨鏄剧ず
             if (categories.isNotEmpty()) {
                 item(key = "section_folders") {
                     Spacer(modifier = Modifier.height(16.dp))
                     SectionHeader(
-                        title = "文件夹",
+                        title = "鏂囦欢澶?,
                         icon = Icons.Outlined.Folder
                     )
                 }
             }
             
-            // 文件夹列表
-            items(
+            // 鏂囦欢澶瑰垪琛?            items(
                 items = foldersWithCounts,
                 key = { pair: Pair<String, Int> -> "folder_${pair.first}" }
             ) { pair: Pair<String, Int> ->
@@ -217,13 +213,13 @@ fun VaultHomeScreen(
                     name = pair.first,
                     count = pair.second,
                     onClick = { 
-                        // TODO: 导航到该文件夹的密码列表
+                        // TODO: 瀵艰埅鍒拌鏂囦欢澶圭殑瀵嗙爜鍒楄〃
                         onNavigateToPasswords()
                     }
                 )
             }
             
-            // 底部间距
+            // 搴曢儴闂磋窛
             item(key = "bottom_spacer") {
                 Spacer(modifier = Modifier.height(80.dp))
             }
@@ -232,7 +228,7 @@ fun VaultHomeScreen(
 }
 
 /**
- * 区域标题
+ * 鍖哄煙鏍囬
  */
 @Composable
 private fun SectionHeader(
@@ -262,8 +258,7 @@ private fun SectionHeader(
 }
 
 /**
- * 数据库条目
- */
+ * 鏁版嵁搴撴潯鐩? */
 @Composable
 private fun DatabaseItem(
     name: String,
@@ -283,7 +278,7 @@ private fun DatabaseItem(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 图标
+            // 鍥炬爣
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = iconTint.copy(alpha = 0.15f),
@@ -301,8 +296,7 @@ private fun DatabaseItem(
             
             Spacer(modifier = Modifier.width(16.dp))
             
-            // 名称和状态
-            Column(modifier = Modifier.weight(1f)) {
+            // 鍚嶇О鍜岀姸鎬?            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = name,
                     style = MaterialTheme.typography.titleMedium,
@@ -312,7 +306,7 @@ private fun DatabaseItem(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 连接状态指示器
+                    // 杩炴帴鐘舵€佹寚绀哄櫒
                     Box(
                         modifier = Modifier
                             .size(8.dp)
@@ -324,14 +318,14 @@ private fun DatabaseItem(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isConnected) "$itemCount 个条目" else "未连接",
+                        text = if (isConnected) "$itemCount 涓潯鐩? else "鏈繛鎺?,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
             
-            // 箭头
+            // 绠ご
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
@@ -342,7 +336,7 @@ private fun DatabaseItem(
 }
 
 /**
- * 类型条目
+ * 绫诲瀷鏉＄洰
  */
 @Composable
 private fun TypeItem(
@@ -362,7 +356,7 @@ private fun TypeItem(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 图标
+            // 鍥炬爣
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = iconTint.copy(alpha = 0.1f),
@@ -380,7 +374,7 @@ private fun TypeItem(
             
             Spacer(modifier = Modifier.width(12.dp))
             
-            // 名称
+            // 鍚嶇О
             Text(
                 text = name,
                 style = MaterialTheme.typography.bodyLarge,
@@ -389,7 +383,7 @@ private fun TypeItem(
                 modifier = Modifier.weight(1f)
             )
             
-            // 数量
+            // 鏁伴噺
             Text(
                 text = count.toString(),
                 style = MaterialTheme.typography.bodyMedium,
@@ -409,8 +403,7 @@ private fun TypeItem(
 }
 
 /**
- * 文件夹条目
- */
+ * 鏂囦欢澶规潯鐩? */
 @Composable
 private fun FolderItem(
     name: String,
@@ -427,8 +420,7 @@ private fun FolderItem(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 文件夹图标
-            Icon(
+            // 鏂囦欢澶瑰浘鏍?            Icon(
                 imageVector = Icons.Filled.Folder,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
@@ -437,7 +429,7 @@ private fun FolderItem(
             
             Spacer(modifier = Modifier.width(12.dp))
             
-            // 名称
+            // 鍚嶇О
             Text(
                 text = name,
                 style = MaterialTheme.typography.bodyLarge,
@@ -446,7 +438,7 @@ private fun FolderItem(
                 modifier = Modifier.weight(1f)
             )
             
-            // 数量
+            // 鏁伴噺
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.primaryContainer

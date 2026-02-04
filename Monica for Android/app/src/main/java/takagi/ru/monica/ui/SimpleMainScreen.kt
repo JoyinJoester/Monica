@@ -98,8 +98,7 @@ import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.screens.NoteListScreen
 import takagi.ru.monica.ui.screens.NoteListContent
-import takagi.ru.monica.ui.v2.VaultHomeScreen
-import takagi.ru.monica.ui.v2.V2SendScreen
+import takagi.ru.monica.ui.screens.SendScreen
 import takagi.ru.monica.ui.screens.CardWalletScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
 import takagi.ru.monica.ui.screens.TimelineScreen
@@ -118,7 +117,7 @@ import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.ui.components.V2NavigationBar
 import takagi.ru.monica.ui.components.V2NavItem
 import takagi.ru.monica.ui.components.V2NavPosition
-import takagi.ru.monica.ui.components.RecentSubPage
+import takagi.ru.monica.ui.components.RecentSubPage  // Now from MonicaNavigationBar.kt
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
@@ -758,24 +757,8 @@ fun SimpleMainScreen(
                                 onPasskeyClick = { /* TODO: 导航到详情页 */ }
                             )
                         }
-                        /* BottomNavItem.Vault -> {
-                            VaultHomeScreen(
-                                passwordViewModel = passwordViewModel,
-                                bankCardViewModel = bankCardViewModel,
-                                documentViewModel = documentViewModel,
-                                noteViewModel = noteViewModel,
-                                onNavigateToPasswords = { selectedTabKey = BottomNavItem.Passwords.key },
-                                onNavigateToCardWallet = { selectedTabKey = BottomNavItem.CardWallet.key },
-                                onNavigateToNotes = { selectedTabKey = BottomNavItem.Notes.key },
-                                onNavigateToPasskey = { selectedTabKey = BottomNavItem.Passkey.key },
-                                onNavigateToTimeline = { selectedTabKey = BottomNavItem.Timeline.key },
-                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                                onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
-                            )
-                        } */
                         BottomNavItem.Send -> {
-                            V2SendScreen()
+                            SendScreen()
                         }
                         BottomNavItem.Settings -> {
                             SettingsScreen(
@@ -1008,26 +991,9 @@ fun SimpleMainScreen(
                         onPasskeyClick = { /* TODO: 导航到详情页 */ }
                     )
                 }
-                /* BottomNavItem.Vault -> {
-                    // 库主页
-                    VaultHomeScreen(
-                        passwordViewModel = passwordViewModel,
-                        bankCardViewModel = bankCardViewModel,
-                        documentViewModel = documentViewModel,
-                        noteViewModel = noteViewModel,
-                        onNavigateToPasswords = { selectedTabKey = BottomNavItem.Passwords.key },
-                        onNavigateToCardWallet = { selectedTabKey = BottomNavItem.CardWallet.key },
-                        onNavigateToNotes = { selectedTabKey = BottomNavItem.Notes.key },
-                        onNavigateToPasskey = { selectedTabKey = BottomNavItem.Passkey.key },
-                        onNavigateToTimeline = { selectedTabKey = BottomNavItem.Timeline.key },
-                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                        onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
-                    )
-                } */
                 BottomNavItem.Send -> {
                     // V2 发送页面
-                    V2SendScreen()
+                    SendScreen()
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -5951,23 +5917,6 @@ private fun V2NavScaffold(
             // 根据位置显示内容
             // 根据位置显示内容
             when (selectedPosition) {
-                /* V2NavPosition.VAULT -> {
-                    // 位置0：库首页 - Removed
-                    VaultHomeScreen(
-                        passwordViewModel = passwordViewModel,
-                        bankCardViewModel = bankCardViewModel,
-                        documentViewModel = documentViewModel,
-                        noteViewModel = noteViewModel,
-                        onNavigateToPasswords = { onNavigateToDynamicContent(RecentSubPage.PASSWORDS) },
-                        onNavigateToCardWallet = { onNavigateToDynamicContent(RecentSubPage.CARD_WALLET) },
-                        onNavigateToNotes = { onNavigateToDynamicContent(RecentSubPage.NOTES) },
-                        onNavigateToPasskey = { onNavigateToDynamicContent(RecentSubPage.PASSKEY) },
-                        onNavigateToTimeline = { onNavigateToDynamicContent(RecentSubPage.TIMELINE) },
-                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                        onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
-                    )
-                } */
                 V2NavPosition.DYNAMIC -> {
                     // 位置1：动态内容 - 使用 Crossfade 平滑切换，避免 key() 导致的崩溃
                     if (dynamicContent != null) {
@@ -6068,25 +6017,12 @@ private fun V2NavScaffold(
                             }
                         }
                     } else {
-                        // 如果没有动态内容，回到库首页
-                        VaultHomeScreen(
-                            passwordViewModel = passwordViewModel,
-                            bankCardViewModel = bankCardViewModel,
-                            documentViewModel = documentViewModel,
-                            noteViewModel = noteViewModel,
-                            onNavigateToPasswords = { onNavigateToDynamicContent(RecentSubPage.PASSWORDS) },
-                            onNavigateToCardWallet = { onNavigateToDynamicContent(RecentSubPage.CARD_WALLET) },
-                            onNavigateToNotes = { onNavigateToDynamicContent(RecentSubPage.NOTES) },
-                            onNavigateToPasskey = { onNavigateToDynamicContent(RecentSubPage.PASSKEY) },
-                            onNavigateToTimeline = { onNavigateToDynamicContent(RecentSubPage.TIMELINE) },
-                            onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                            onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                            onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
-                        )
+                        // 如果没有动态内容，默认显示密码列表
+                        onNavigateToDynamicContent(RecentSubPage.PASSWORDS)
                     }
                 }
                 V2NavPosition.SEND -> {
-                    V2SendScreen()
+                    SendScreen()
                 }
                 V2NavPosition.GENERATOR -> {
                     GeneratorScreen(

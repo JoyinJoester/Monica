@@ -62,13 +62,11 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.ThemeMode
-import takagi.ru.monica.data.VaultViewMode
 import takagi.ru.monica.navigation.Screen
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.SimpleMainScreen
-import takagi.ru.monica.ui.v2.V2MainScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
@@ -524,120 +522,11 @@ fun MonicaContent(
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getInt("tab") ?: 0
             val scope = rememberCoroutineScope()
-            
-            // 读取当前视图模式
-            val currentSettings by settingsViewModel.settings.collectAsState()
-            val vaultViewMode = currentSettings.defaultVaultView
 
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
             ) {
-            // 根据 VaultViewMode 切换 V1 或 V2 界面
-            when (vaultViewMode) {
-                VaultViewMode.V2 -> {
-                    // V2 多源密码库界面
-                    V2MainScreen(
-                        settingsViewModel = settingsViewModel,
-                        passwordViewModel = viewModel,  // viewModel 是 PasswordViewModel
-                        generatorViewModel = generatorViewModel,
-                        onNavigateToResetPassword = {
-                            navController.navigate(Screen.ChangePassword.route)
-                        },
-                        onNavigateToSecurityQuestions = {
-                            navController.navigate(Screen.SecurityQuestion.route)
-                        },
-                        onNavigateToSyncBackup = {
-                            navController.navigate(Screen.SyncBackup.route)
-                        },
-                        onNavigateToAutofill = {
-                            navController.navigate(Screen.AutofillSettings.route)
-                        },
-                        onNavigateToPasskeySettings = {
-                            navController.navigate(Screen.PasskeySettings.route)
-                        },
-                        onNavigateToBottomNavSettings = {
-                            navController.navigate(Screen.BottomNavSettings.route)
-                        },
-                        onNavigateToColorScheme = {
-                            navController.navigate(Screen.ColorSchemeSelection.route)
-                        },
-                        onSecurityAnalysis = {
-                            navController.navigate(Screen.SecurityAnalysis.route)
-                        },
-                        onNavigateToDeveloperSettings = {
-                            navController.navigate(Screen.DeveloperSettings.route)
-                        },
-                        onNavigateToPermissionManagement = {
-                            navController.navigate(Screen.PermissionManagement.route)
-                        },
-                        onNavigateToMonicaPlus = {
-                            navController.navigate(Screen.MonicaPlus.route)
-                        },
-                        onNavigateToExtensions = {
-                            navController.navigate(Screen.Extensions.route)
-                        },
-                        onNavigateToBitwardenLogin = {
-                            // TODO: Navigate to Bitwarden login screen
-                            navController.navigate(Screen.BitwardenSettings.route)
-                        },
-                        onNavigateToKeePassImport = {
-                            // TODO: Navigate to KeePass import screen
-                        },
-                        onNavigateToWebDAVSettings = {
-                            navController.navigate(Screen.SyncBackup.route)
-                        },
-                        onNavigateToAddEntry = { entryType ->
-                            // 根据类型导航到对应的添加页面
-                            when (entryType) {
-                                "LOGIN" -> navController.navigate(Screen.AddEditPassword.createRoute(null))
-                                "CARD" -> navController.navigate(Screen.AddEditBankCard.createRoute(null))
-                                "IDENTITY" -> navController.navigate(Screen.AddEditDocument.createRoute(null))
-                                "NOTE" -> navController.navigate(Screen.AddEditNote.createRoute(null))
-                                else -> navController.navigate(Screen.AddEditPassword.createRoute(null))
-                            }
-                        },
-                        onNavigateToEntryDetail = { entryType, entryId ->
-                            // 根据类型导航到对应的 V1 编辑页面
-                            when (entryType) {
-                                "LOGIN" -> navController.navigate(Screen.AddEditPassword.createRoute(entryId))
-                                "CARD" -> navController.navigate(Screen.AddEditBankCard.createRoute(entryId))
-                                "IDENTITY" -> navController.navigate(Screen.AddEditDocument.createRoute(entryId))
-                                "NOTE" -> navController.navigate(Screen.AddEditNote.createRoute(entryId))
-                                else -> navController.navigate(Screen.AddEditPassword.createRoute(entryId))
-                            }
-                        },
-                        onClearAllData = { clearPasswords, clearTotp, clearNotes, clearDocuments, clearBankCards, clearGeneratorHistory ->
-                            scope.launch {
-                                try {
-                                    if (clearPasswords) {
-                                        val passwords = repository.getAllPasswordEntries().first()
-                                        passwords.forEach { repository.deletePasswordEntry(it) }
-                                    }
-                                    if (clearTotp || clearDocuments || clearBankCards || clearNotes) {
-                                        val items = secureItemRepository.getAllItems().first()
-                                        items.forEach { item ->
-                                            val shouldDelete = when (item.itemType) {
-                                                ItemType.TOTP -> clearTotp
-                                                ItemType.DOCUMENT -> clearDocuments
-                                                ItemType.BANK_CARD -> clearBankCards
-                                                ItemType.NOTE -> clearNotes
-                                                else -> false
-                                            }
-                                            if (shouldDelete) secureItemRepository.deleteItem(item)
-                                        }
-                                    }
-                                    if (clearGeneratorHistory) passwordHistoryManager.clearHistory()
-                                    android.widget.Toast.makeText(navController.context, "数据已清空", android.widget.Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    android.util.Log.e("MainActivity", "Failed to clear data", e)
-                                }
-                            }
-                        }
-                    )
-                }
-                
-                VaultViewMode.V1 -> {
-                    // V1 经典本地密码库界面
+            // V1 经典本地密码库界面
             SimpleMainScreen(
                 passwordViewModel = viewModel,
                 settingsViewModel = settingsViewModel,
@@ -767,8 +656,6 @@ fun MonicaContent(
                     }
                 }
             )
-            } // end V1
-            } // end when
             } // end CompositionLocalProvider
         }
 
@@ -1599,23 +1486,8 @@ fun MonicaContent(
                 }
             )
         }
-        
-        // V2 文件夹管理页面 - M3E 设计（旧版保留兼容）
-        composable(
-            route = "v2_folder_management",
-            enterTransition = { fadeIn() },
-            exitTransition = { fadeOut() },
-            popEnterTransition = { fadeIn() },
-            popExitTransition = { fadeOut() }
-        ) {
-            takagi.ru.monica.ui.v2.V2FolderManagementScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
 
-        // 新版文件夹管理页面 - M3E 设计（无数据源切换器）
+        // 文件夹管理页面 - M3E 设计
         composable(
             route = Screen.FolderManagement.route,
             enterTransition = { fadeIn() },
