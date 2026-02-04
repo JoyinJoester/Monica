@@ -388,6 +388,12 @@ interface PasswordEntryDao {
      */
     @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL AND isDeleted = 0")
     suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<PasswordEntry>
+
+    /**
+     * 标记所有未关联 Bitwarden 的条目为指定 Vault
+     */
+    @Query("UPDATE password_entries SET bitwarden_vault_id = :vaultId WHERE bitwarden_vault_id IS NULL AND isDeleted = 0")
+    suspend fun markAllForBitwarden(vaultId: Long)
     
     /**
      * 获取本地已修改但未同步的 Bitwarden 条目

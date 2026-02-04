@@ -17,6 +17,7 @@ import takagi.ru.monica.data.bitwarden.*
         Category::class,
         OperationLog::class,
         LocalKeePassDatabase::class,
+        KeepassGroupSyncConfig::class,
         CustomField::class,  // 自定义字段表
         PasskeyEntry::class,  // Passkey 通行密钥表
         // Bitwarden 集成表
@@ -25,7 +26,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 33,
+    version = 34,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -36,6 +37,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun operationLogDao(): OperationLogDao
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
+    abstract fun keepassGroupSyncConfigDao(): KeepassGroupSyncConfigDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
     abstract fun passkeyDao(): PasskeyDao  // Passkey DAO
     
@@ -837,6 +839,37 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 33 -> 34: 添加 KeePass 组同步映射表
+         */
+        private val MIGRATION_33_34 = object : androidx.room.migration.Migration(33, 34) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 33→34: keepass group sync configs")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS keepass_group_sync_configs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            keepassDatabaseId INTEGER NOT NULL,
+                            groupPath TEXT NOT NULL,
+                            groupUuid TEXT,
+                            bitwarden_vault_id INTEGER DEFAULT NULL,
+                            bitwarden_folder_id TEXT DEFAULT NULL,
+                            sync_item_types TEXT DEFAULT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS index_keepass_group_sync_configs_keepassDatabaseId_groupPath ON keepass_group_sync_configs(keepassDatabaseId, groupPath)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 33→34 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 33→34 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -876,7 +909,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_29_30,  // Bitwarden 集成
                         MIGRATION_30_31,  // Bitwarden 多类型同步支持
                         MIGRATION_31_32,  // Passkey 绑定密码
-                        MIGRATION_32_33   // Password 绑定通行密钥元数据
+                        MIGRATION_32_33,  // Password 绑定通行密钥元数据
+                        MIGRATION_33_34   // KeePass 组同步配置
                     )
                     .build()
                 INSTANCE = instance

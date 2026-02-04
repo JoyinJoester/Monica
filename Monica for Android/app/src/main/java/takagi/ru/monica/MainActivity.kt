@@ -1577,9 +1577,26 @@ fun MonicaContent(
                 onNavigateToBitwarden = {
                     navController.navigate(Screen.BitwardenSettings.route)
                 },
+                onNavigateToDatabaseFolderManagement = {
+                    navController.navigate(Screen.DatabaseFolderManagement.route)
+                },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
             }
+        }
+
+        composable(
+            route = Screen.DatabaseFolderManagement.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.DatabaseFolderManagementScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
         
         composable(Screen.LocalKeePass.route) {

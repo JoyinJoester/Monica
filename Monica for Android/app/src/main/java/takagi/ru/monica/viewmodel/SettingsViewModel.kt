@@ -273,6 +273,12 @@ class SettingsViewModel(
             settingsManager.updateReduceAnimations(enabled)
         }
     }
+
+    fun updateBitwardenUploadAll(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateBitwardenUploadAll(enabled)
+        }
+    }
     
     // ==================== V2 多源密码库设置 ====================
     

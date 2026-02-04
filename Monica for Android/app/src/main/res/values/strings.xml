@@ -1625,11 +1625,27 @@
     <string name="copy_next_code_when_expiring_description">When countdown is within 5 seconds, copy the next verification code</string>
 
     <!-- Sync &amp; Backup Page -->
-    <string name="sync_backup_title">Sync &amp; Backup</string>
-    <string name="sync_backup_description">Manage data import, export and cloud sync</string>
+    <string name="sync_backup_title">Database &amp; Backup</string>
+    <string name="sync_backup_description">Manage databases, folders and backups</string>
     <string name="sync_backup_local">Local Backup</string>
     <string name="sync_backup_cloud">Cloud Sync</string>
     <string name="sync_backup_plus_hint">Upgrade to Monica Plus to unlock WebDAV cloud sync</string>
+
+    <string name="database_folder_management_title">Database Folder Management</string>
+    <string name="folder_management_title">Folder Management</string>
+    <string name="folder_management_description">Manage local/KeePass folders and Bitwarden sync</string>
+    <string name="database_source_label">Database Source</string>
+    <string name="database_source_local">Monica Local</string>
+    <string name="database_source_keepass">KeePass Database</string>
+    <string name="bitwarden_vault_label">Bitwarden Vault</string>
+    <string name="sync_scope_section_title">Sync Scope</string>
+    <string name="bitwarden_upload_all">Upload all data to Bitwarden</string>
+    <string name="bitwarden_upload_all_desc">Ignore folder rules and sync everything to Bitwarden</string>
+    <string name="apply_upload_all">Apply to all data</string>
+    <string name="bitwarden_folder_section_title">Bitwarden Folders</string>
+    <string name="bitwarden_not_logged_in">Not logged in to Bitwarden</string>
+    <string name="bitwarden_folder_empty">No Bitwarden folders</string>
+    <string name="bitwarden_create_folder_not_supported">Creating folders is not supported yet</string>
     
     <!-- Local KeePass Database -->
     <string name="local_keepass_section_title">KeePass Database</string>

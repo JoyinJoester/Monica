@@ -186,6 +186,12 @@ interface SecureItemDao {
      */
     @Query("SELECT * FROM secure_items WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL AND isDeleted = 0")
     suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<SecureItem>
+
+    /**
+     * 标记所有未关联 Bitwarden 的项目为指定 Vault
+     */
+    @Query("UPDATE secure_items SET bitwarden_vault_id = :vaultId WHERE bitwarden_vault_id IS NULL AND isDeleted = 0")
+    suspend fun markAllForBitwarden(vaultId: Long)
     
     /**
      * 获取有本地修改需要同步的项目

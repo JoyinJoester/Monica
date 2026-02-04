@@ -33,6 +33,7 @@ fun SyncBackupScreen(
     onNavigateToKeePass: () -> Unit = {},  // KeePass 兼容性配置入口
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
+    onNavigateToDatabaseFolderManagement: () -> Unit = {},  // 数据库文件夹管理入口
     isPlusActivated: Boolean = false
 ) {
     val context = LocalContext.current
@@ -142,6 +143,18 @@ fun SyncBackupScreen(
                     title = stringResource(R.string.local_keepass_database),
                     description = stringResource(R.string.local_keepass_database_description),
                     onClick = onNavigateToLocalKeePass
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 数据库文件夹管理区块
+            SyncBackupSection(title = stringResource(R.string.folder_management_title)) {
+                SyncBackupItem(
+                    icon = Icons.Default.Folder,
+                    title = stringResource(R.string.folder_management_title),
+                    description = stringResource(R.string.folder_management_description),
+                    onClick = onNavigateToDatabaseFolderManagement
                 )
             }
             

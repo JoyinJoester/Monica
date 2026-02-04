@@ -83,6 +83,9 @@ class SettingsManager(private val context: Context) {
         
         // 减少动画 - 解决部分设备动画卡顿问题
         private val REDUCE_ANIMATIONS_KEY = booleanPreferencesKey("reduce_animations")
+
+        // Bitwarden 同步范围
+        private val BITWARDEN_UPLOAD_ALL_KEY = booleanPreferencesKey("bitwarden_upload_all")
         
         // V2 多源密码库设置
         private val DEFAULT_VAULT_VIEW_KEY = stringPreferencesKey("default_vault_view")
@@ -179,6 +182,7 @@ class SettingsManager(private val context: Context) {
                 paymentInfo = preferences[FIELD_PAYMENT_INFO_KEY] ?: true
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
+            bitwardenUploadAll = preferences[BITWARDEN_UPLOAD_ALL_KEY] ?: false,
             
             // V2 多源密码库设置
             defaultVaultView = runCatching {
@@ -219,6 +223,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateLanguage(language: Language) {
         dataStore.edit { preferences ->
             preferences[LANGUAGE_KEY] = language.name
+        }
+    }
+
+    suspend fun updateBitwardenUploadAll(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BITWARDEN_UPLOAD_ALL_KEY] = enabled
         }
     }
     

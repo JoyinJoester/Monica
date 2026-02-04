@@ -193,6 +193,12 @@ interface PasskeyDao {
      */
     @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL")
     suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<PasskeyEntry>
+
+    /**
+     * 标记所有未关联 Bitwarden 的 Passkeys 为指定 Vault
+     */
+    @Query("UPDATE passkeys SET bitwarden_vault_id = :vaultId WHERE bitwarden_vault_id IS NULL")
+    suspend fun markAllForBitwarden(vaultId: Long)
     
     /**
      * 标记 Passkey 为已同步

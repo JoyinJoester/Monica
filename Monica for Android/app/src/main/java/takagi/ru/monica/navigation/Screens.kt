@@ -99,6 +99,7 @@ sealed class Screen(val route: String) {
     object Extensions : Screen("extensions")  // 功能拓展页面路由
     object PasswordFieldCustomization : Screen("password_field_customization")  // 添加密码页面字段定制
     object SyncBackup : Screen("sync_backup")  // 同步与备份页面路由
+    object DatabaseFolderManagement : Screen("database_folder_management")  // 数据库文件夹管理
     object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面
     object MonicaPlus : Screen("monica_plus") // Monica Plus 页面
     object Payment : Screen("payment") // 付款页面

@@ -1469,11 +1469,27 @@
     <string name="copy_next_code_when_expiring_description">倒计时剩余 5 秒内点击复制时，自动复制下一个验证码</string>
     
     <!-- 同步与备份页面 -->
-    <string name="sync_backup_title">同步与备份</string>
-    <string name="sync_backup_description">管理数据导入导出和云同步</string>
+    <string name="sync_backup_title">数据库与备份</string>
+    <string name="sync_backup_description">管理数据库、文件夹与备份</string>
     <string name="sync_backup_local">本地备份</string>
     <string name="sync_backup_cloud">云同步</string>
     <string name="sync_backup_plus_hint">升级 Monica Plus 解锁 WebDAV 云同步功能</string>
+
+    <string name="database_folder_management_title">数据库文件夹管理</string>
+    <string name="folder_management_title">文件夹管理</string>
+    <string name="folder_management_description">管理本地/KeePass 文件夹与 Bitwarden 同步</string>
+    <string name="database_source_label">数据库来源</string>
+    <string name="database_source_local">Monica 本地</string>
+    <string name="database_source_keepass">KeePass 数据库</string>
+    <string name="bitwarden_vault_label">Bitwarden Vault</string>
+    <string name="sync_scope_section_title">同步范围</string>
+    <string name="bitwarden_upload_all">上传所有数据到 Bitwarden</string>
+    <string name="bitwarden_upload_all_desc">忽略文件夹规则，所有数据同步到 Bitwarden</string>
+    <string name="apply_upload_all">应用到所有数据</string>
+    <string name="bitwarden_folder_section_title">Bitwarden 文件夹</string>
+    <string name="bitwarden_not_logged_in">未登录 Bitwarden</string>
+    <string name="bitwarden_folder_empty">暂无 Bitwarden 文件夹</string>
+    <string name="bitwarden_create_folder_not_supported">暂不支持创建新文件夹</string>
     
     <!-- 本地 KeePass 数据库 -->
     <string name="local_keepass_section_title">KeePass 数据库</string>
