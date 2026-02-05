@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -205,13 +207,14 @@ fun BitwardenSettingsScreen(
                 )
             }
             
-            // 同步队列入口
-            item {
-                SyncQueueEntryCard(
-                    pendingCount = pendingCount,
-                    failedCount = failedCount,
-                    onClick = onNavigateToSyncQueue
-                )
+            // 同步队列 (仅在有任务或失败时显示)
+            if (pendingCount > 0 || failedCount > 0) {
+                item {
+                    SyncQueueEntryCard(
+                        pendingCount = pendingCount,
+                        failedCount = failedCount
+                    )
+                }
             }
             
             // 关于
@@ -774,13 +777,11 @@ private fun formatTime(timestamp: Long): String {
 @Composable
 private fun SyncQueueEntryCard(
     pendingCount: Int,
-    failedCount: Int,
-    onClick: () -> Unit
+    failedCount: Int
 ) {
     Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
@@ -793,7 +794,7 @@ private fun SyncQueueEntryCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -801,39 +802,64 @@ private fun SyncQueueEntryCard(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )
-                Column {
-                    Text(
-                        text = "同步队列",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    if (pendingCount > 0 || failedCount > 0) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = buildString {
-                                if (pendingCount > 0) append("${pendingCount} 待同步")
-                                if (pendingCount > 0 && failedCount > 0) append(" · ")
-                                if (failedCount > 0) append("${failedCount} 失败")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (failedCount > 0) 
-                                MaterialTheme.colorScheme.error 
-                            else 
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "同步队列",
+                            style = MaterialTheme.typography.titleSmall
                         )
-                    } else {
-                        Text(
-                            text = "所有数据已同步",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        
+                        if (pendingCount > 0 || failedCount > 0) {
+                            Text(
+                                text = buildString {
+                                    if (pendingCount > 0) append("${pendingCount} 待处理")
+                                    if (pendingCount > 0 && failedCount > 0) append(" · ")
+                                    if (failedCount > 0) append("${failedCount} 失败")
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (failedCount > 0) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                           Text(
+                                text = "已同步",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            ) 
+                        }
+                    }
+
+                    if (pendingCount > 0) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        )
+                    } else if (failedCount > 0) {
+                         LinearProgressIndicator(
+                            progress = { 1f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.error,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         )
                     }
                 }
             }
-            
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
