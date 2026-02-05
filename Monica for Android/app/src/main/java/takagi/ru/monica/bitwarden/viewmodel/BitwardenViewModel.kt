@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.service.LoginResult
@@ -84,11 +86,17 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     private val _selectedFolder = MutableStateFlow<BitwardenFolder?>(null)
     val selectedFolder: StateFlow<BitwardenFolder?> = _selectedFolder.asStateFlow()
     
+    // 永不锁定设置状态
+    private val _isNeverLockEnabled = MutableStateFlow(false)
+    val isNeverLockEnabledFlow: StateFlow<Boolean> = _isNeverLockEnabled.asStateFlow()
+    
     // 一次性事件
     private val _events = MutableSharedFlow<BitwardenEvent>()
     val events = _events.asSharedFlow()
     
     init {
+        // 加载永不锁定设置
+        _isNeverLockEnabled.value = repository.isNeverLockEnabled
         loadVaults()
     }
     
@@ -112,6 +120,18 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     if (repository.isVaultUnlocked(active.id)) {
                         _unlockState.value = UnlockState.Unlocked
                         loadVaultData(active.id)
+                    } else if (_isNeverLockEnabled.value) {
+                        // 永不锁定模式：尝试从存储恢复解锁状态
+                        Log.d(TAG, "永不锁定模式：尝试恢复 Vault 解锁状态")
+                        val restored = repository.tryRestoreUnlockState(active.id)
+                        if (restored) {
+                            _unlockState.value = UnlockState.Unlocked
+                            loadVaultData(active.id)
+                            Log.d(TAG, "成功恢复 Vault 解锁状态")
+                        } else {
+                            _unlockState.value = UnlockState.Locked
+                            Log.w(TAG, "无法恢复 Vault 解锁状态，需要手动解锁")
+                        }
                     } else {
                         _unlockState.value = UnlockState.Locked
                     }
@@ -450,8 +470,25 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         get() = repository.isSyncOnWifiOnly
         set(value) { repository.isSyncOnWifiOnly = value }
     
+    /**
+     * 是否永不锁定 Bitwarden
+     */
+    var isNeverLockEnabled: Boolean
+        get() = _isNeverLockEnabled.value
+        set(value) { 
+            repository.isNeverLockEnabled = value
+            _isNeverLockEnabled.value = value
+        }
+    
     val lastSyncTime: Long
         get() = repository.lastSyncTime
+    
+    // 同步队列计数（实时）
+    val pendingSyncCount: StateFlow<Int> = repository.getPendingSyncCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val failedSyncCount: StateFlow<Int> = repository.getFailedSyncCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     
     // ==================== 私有方法 ====================
     

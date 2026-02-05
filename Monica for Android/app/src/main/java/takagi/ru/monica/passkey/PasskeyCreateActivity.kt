@@ -11,7 +11,10 @@ import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.exceptions.CreateCredentialCancellationException
@@ -39,7 +43,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.model.PasskeyBinding
+import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
@@ -93,6 +100,7 @@ class PasskeyCreateActivity : FragmentActivity() {
     private var pendingUserDisplayName: String = ""
     private var pendingCallingAppInfo: CallingAppInfo? = null
     private var pendingClientDataHash: ByteArray? = null
+    private var pendingBoundPasswordId: Long? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -168,14 +176,22 @@ class PasskeyCreateActivity : FragmentActivity() {
         
         setContent {
             MonicaTheme {
+                var showPasswordPicker by remember { mutableStateOf(false) }
+                val passwords by database.passwordEntryDao().getAllPasswordEntries()
+                    .collectAsState(initial = emptyList())
+
                 PasskeyCreateScreen(
                     rpId = rpId,
                     rpName = parseRpName(requestJson, rpId),
                     userName = userName,
                     userDisplayName = userDisplayName,
-                    onConfirm = {
+                    onCreateDirect = {
+                        pendingBoundPasswordId = null
                         // 触发生物识别验证
                         requestBiometricAuth()
+                    },
+                    onBindToPassword = {
+                        showPasswordPicker = true
                     },
                     onCancel = {
                         repository.logAudit("PASSKEY_CREATE_CANCELLED", rpId)
@@ -189,6 +205,21 @@ class PasskeyCreateActivity : FragmentActivity() {
                         finish()
                     }
                 )
+
+                if (showPasswordPicker) {
+                    PasswordPickerDialog(
+                        passwords = passwords,
+                        onDismiss = {
+                            pendingBoundPasswordId = null
+                            showPasswordPicker = false
+                        },
+                        onPasswordSelected = { password ->
+                            pendingBoundPasswordId = password.id
+                            showPasswordPicker = false
+                            requestBiometricAuth()
+                        }
+                    )
+                }
             }
         }
     }
@@ -335,12 +366,31 @@ class PasskeyCreateActivity : FragmentActivity() {
                 lastUsedAt = System.currentTimeMillis(),
                 useCount = 0,
                 isDiscoverable = discoverable,
-                signCount = 0L
+                signCount = 0L,
+                boundPasswordId = pendingBoundPasswordId
             )
             
             // 在协程中保存
             kotlinx.coroutines.runBlocking {
                 database.passkeyDao().insert(passkeyEntry)
+
+                // 同步写入密码条目的通行密钥绑定（用于备份/恢复）
+                val boundPasswordId = pendingBoundPasswordId
+                if (boundPasswordId != null) {
+                    val passwordDao = database.passwordEntryDao()
+                    val passwordEntry = passwordDao.getPasswordEntryById(boundPasswordId)
+                    if (passwordEntry != null) {
+                        val binding = PasskeyBinding(
+                            credentialId = credentialIdB64,
+                            rpId = rpId,
+                            rpName = parseRpName(requestJson, rpId),
+                            userName = userName,
+                            userDisplayName = userDisplayName
+                        )
+                        val updatedBindings = PasskeyBindingCodec.addBinding(passwordEntry.passkeyBindings, binding)
+                        passwordDao.updatePasskeyBindings(boundPasswordId, updatedBindings)
+                    }
+                }
             }
             
             // 构建响应 JSON
@@ -656,7 +706,8 @@ private fun PasskeyCreateScreen(
     rpName: String,
     userName: String,
     userDisplayName: String,
-    onConfirm: () -> Unit,
+    onCreateDirect: () -> Unit,
+    onBindToPassword: () -> Unit,
     onCancel: () -> Unit
 ) {
     var isCreating by remember { mutableStateOf(false) }
@@ -784,11 +835,10 @@ private fun PasskeyCreateScreen(
             
             Spacer(modifier = Modifier.height(32.dp))
             
-            // 按钮
+            // 绑定密码按钮（先选择密码）
             Button(
                 onClick = {
-                    isCreating = true
-                    onConfirm()
+                    onBindToPassword()
                 },
                 enabled = !isCreating,
                 modifier = Modifier
@@ -796,20 +846,34 @@ private fun PasskeyCreateScreen(
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                if (isCreating) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.passkey_create_confirm))
-                }
+                Icon(
+                    imageVector = Icons.Default.Link,
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.bind_password))
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+ 
+            // 直接创建按钮（不绑定）
+            OutlinedButton(
+                onClick = {
+                    isCreating = true
+                    onCreateDirect()
+                },
+                enabled = !isCreating,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.passkey_create_confirm))
             }
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -823,6 +887,109 @@ private fun PasskeyCreateScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text(stringResource(R.string.cancel))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PasswordPickerDialog(
+    passwords: List<PasswordEntry>,
+    onDismiss: () -> Unit,
+    onPasswordSelected: (PasswordEntry) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredPasswords = remember(passwords, searchQuery) {
+        if (searchQuery.isBlank()) {
+            passwords
+        } else {
+            passwords.filter { entry ->
+                entry.title.contains(searchQuery, ignoreCase = true) ||
+                    entry.username.contains(searchQuery, ignoreCase = true) ||
+                    entry.website.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 600.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = stringResource(R.string.select_password_to_bind),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(stringResource(R.string.search)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null)
+                            }
+                        }
+                    } else null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.large
+                )
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    items(filteredPasswords) { password ->
+                        ListItem(
+                            headlineContent = { Text(password.title) },
+                            supportingContent = {
+                                val parts = listOf(password.username, password.website).filter { it.isNotBlank() }
+                                if (parts.isNotEmpty()) {
+                                    Text(parts.joinToString(" · "))
+                                }
+                            },
+                            leadingContent = {
+                                Surface(
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = password.title.firstOrNull()?.toString()?.uppercase() ?: "?",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .clickable { onPasswordSelected(password) }
+                                .fillMaxWidth()
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         }
     }

@@ -36,7 +36,7 @@ class SettingsManager(private val context: Context) {
         private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
-        private val SHOW_VAULT_TAB_KEY = booleanPreferencesKey("show_vault_tab")  // V2 库
+        // private val SHOW_VAULT_TAB_KEY = booleanPreferencesKey("show_vault_tab")  // V2 库 - Removed
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
         private val SHOW_AUTHENTICATOR_TAB_KEY = booleanPreferencesKey("show_authenticator_tab")
         private val SHOW_CARD_WALLET_TAB_KEY = booleanPreferencesKey("show_card_wallet_tab")
@@ -83,6 +83,12 @@ class SettingsManager(private val context: Context) {
         
         // 减少动画 - 解决部分设备动画卡顿问题
         private val REDUCE_ANIMATIONS_KEY = booleanPreferencesKey("reduce_animations")
+
+        // 智能去重
+        private val SMART_DEDUPLICATION_ENABLED_KEY = booleanPreferencesKey("smart_deduplication_enabled")
+
+        // Bitwarden 同步范围
+        private val BITWARDEN_UPLOAD_ALL_KEY = booleanPreferencesKey("bitwarden_upload_all")
         
         // V2 多源密码库设置
         private val DEFAULT_VAULT_VIEW_KEY = stringPreferencesKey("default_vault_view")
@@ -126,7 +132,7 @@ class SettingsManager(private val context: Context) {
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true, // 默认启用动态颜色
             bottomNavVisibility = BottomNavVisibility(
-                vault = preferences[SHOW_VAULT_TAB_KEY] ?: true,
+                // vault = preferences[SHOW_VAULT_TAB_KEY] ?: true,
                 passwords = preferences[SHOW_PASSWORDS_TAB_KEY] ?: true,
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
                 cardWallet = preferences[SHOW_CARD_WALLET_TAB_KEY] ?: true,
@@ -179,6 +185,8 @@ class SettingsManager(private val context: Context) {
                 paymentInfo = preferences[FIELD_PAYMENT_INFO_KEY] ?: true
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
+            smartDeduplicationEnabled = preferences[SMART_DEDUPLICATION_ENABLED_KEY] ?: true,
+            bitwardenUploadAll = preferences[BITWARDEN_UPLOAD_ALL_KEY] ?: false,
             
             // V2 多源密码库设置
             defaultVaultView = runCatching {
@@ -221,6 +229,12 @@ class SettingsManager(private val context: Context) {
             preferences[LANGUAGE_KEY] = language.name
         }
     }
+
+    suspend fun updateBitwardenUploadAll(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BITWARDEN_UPLOAD_ALL_KEY] = enabled
+        }
+    }
     
     suspend fun updateBiometricEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
@@ -249,7 +263,7 @@ class SettingsManager(private val context: Context) {
     suspend fun updateBottomNavVisibility(tab: BottomNavContentTab, visible: Boolean) {
         dataStore.edit { preferences ->
             when (tab) {
-                BottomNavContentTab.VAULT -> preferences[SHOW_VAULT_TAB_KEY] = visible
+                // BottomNavContentTab.VAULT -> preferences[SHOW_VAULT_TAB_KEY] = visible
                 BottomNavContentTab.PASSWORDS -> preferences[SHOW_PASSWORDS_TAB_KEY] = visible
                 BottomNavContentTab.AUTHENTICATOR -> preferences[SHOW_AUTHENTICATOR_TAB_KEY] = visible
                 BottomNavContentTab.CARD_WALLET -> preferences[SHOW_CARD_WALLET_TAB_KEY] = visible
@@ -504,6 +518,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateReduceAnimations(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[REDUCE_ANIMATIONS_KEY] = enabled
+        }
+    }
+
+    suspend fun updateSmartDeduplicationEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[SMART_DEDUPLICATION_ENABLED_KEY] = enabled
         }
     }
     

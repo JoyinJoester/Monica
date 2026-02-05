@@ -285,6 +285,19 @@ fun SettingsScreen(
                 }
             }
             
+            // Display & Grouping
+            SettingsSection(
+                title = context.getString(R.string.display_options_menu_title)
+            ) {
+                 SettingsItemWithSwitch(
+                    icon = Icons.Default.CallMerge,
+                    title = context.getString(R.string.smart_deduplication),
+                    subtitle = context.getString(R.string.smart_deduplication_desc),
+                    checked = settings.smartDeduplicationEnabled,
+                    onCheckedChange = { viewModel.updateSmartDeduplicationEnabled(it) }
+                )
+            }
+
             // Security Settings
             SettingsSection(
                 title = context.getString(R.string.security)
@@ -448,23 +461,6 @@ fun SettingsScreen(
                     onClick = { showLanguageDialog = true }
                 )
                 
-                // 导航栏版本切换
-                SettingsItem(
-                    icon = Icons.Default.Dashboard,
-                    title = "导航栏版本",
-                    subtitle = if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) 
-                        "V1 经典导航栏（可自定义）" 
-                    else 
-                        "V2 简洁导航栏（固定4项 + 最近页面）",
-                    onClick = {
-                        val newVersion = if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) 
-                            takagi.ru.monica.data.NavBarVersion.V2 
-                        else 
-                            takagi.ru.monica.data.NavBarVersion.V1
-                        viewModel.updateNavBarVersion(newVersion)
-                    }
-                )
-                
                 // 2. 底部导航栏设置（仅V1模式可用）
                 if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) {
                     SettingsItem(
@@ -496,17 +492,8 @@ fun SettingsScreen(
                         viewModel.updateDynamicColorEnabled(!enabled)
                     }
                 )
-                
-                // 4. 减少动画设置 - 解决 HyperOS 2/Android 15 等设备的动画卡顿问题
-                SettingsItemWithSwitch(
-                    icon = Icons.Default.Speed,
-                    title = context.getString(R.string.reduce_animations),
-                    subtitle = context.getString(R.string.reduce_animations_description),
-                    checked = settings.reduceAnimations,
-                    onCheckedChange = { enabled ->
-                        viewModel.updateReduceAnimations(enabled)
-                    }
-                )
+
+
             }
 
             // About Settings
@@ -1031,6 +1018,42 @@ fun SettingsScreen(
                         Switch(
                             checked = settings.hideFabOnScroll,
                             onCheckedChange = { viewModel.updateHideFabOnScroll(it) }
+                        )
+                    }
+
+                    // 导航栏版本切换 - Removed
+
+
+                    // 减少动画设置
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { viewModel.updateReduceAnimations(!settings.reduceAnimations) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.reduce_animations),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.reduce_animations_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.reduceAnimations,
+                            onCheckedChange = { viewModel.updateReduceAnimations(it) }
                         )
                     }
                 }
@@ -1566,7 +1589,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
-    BottomNavContentTab.VAULT -> Icons.Default.Dataset
+    // BottomNavContentTab.VAULT -> Icons.Default.Dataset
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
 }
 
@@ -1578,7 +1601,7 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.TIMELINE -> R.string.nav_timeline
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
-    BottomNavContentTab.VAULT -> R.string.nav_v2_vault
+    // BottomNavContentTab.VAULT -> R.string.nav_v2_vault
     BottomNavContentTab.SEND -> R.string.nav_v2_send
 }
 

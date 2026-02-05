@@ -98,8 +98,7 @@ import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.screens.NoteListScreen
 import takagi.ru.monica.ui.screens.NoteListContent
-import takagi.ru.monica.ui.v2.VaultHomeScreen
-import takagi.ru.monica.ui.v2.V2SendScreen
+import takagi.ru.monica.ui.screens.SendScreen
 import takagi.ru.monica.ui.screens.CardWalletScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
 import takagi.ru.monica.ui.screens.TimelineScreen
@@ -118,7 +117,9 @@ import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.ui.components.V2NavigationBar
 import takagi.ru.monica.ui.components.V2NavItem
 import takagi.ru.monica.ui.components.V2NavPosition
-import takagi.ru.monica.ui.components.RecentSubPage
+import takagi.ru.monica.ui.components.RecentSubPage  // Now from MonicaNavigationBar.kt
+import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -459,7 +460,7 @@ fun SimpleMainScreen(
     val coroutineScope = rememberCoroutineScope()
     
     // 当前选中的位置（0-4）
-    var v2SelectedPosition by remember { mutableStateOf(takagi.ru.monica.ui.components.V2NavPosition.VAULT) }
+    var v2SelectedPosition by remember { mutableStateOf(takagi.ru.monica.ui.components.V2NavPosition.DYNAMIC) }
     // 底栏第2项显示的动态内容（持久化）
     val v2DynamicContent = remember(v2DynamicContentKey) {
         if (v2DynamicContentKey.isNotEmpty()) {
@@ -681,6 +682,7 @@ fun SimpleMainScreen(
                         BottomNavItem.Authenticator -> {
                             TotpListContent(
                                 viewModel = totpViewModel,
+                                passwordViewModel = passwordViewModel,
                                 onTotpClick = { totpId ->
                                     onNavigateToAddTotp(totpId)
                                 },
@@ -750,27 +752,13 @@ fun SimpleMainScreen(
                         BottomNavItem.Passkey -> {
                             PasskeyListScreen(
                                 viewModel = passkeyViewModel,
+                                passwordViewModel = passwordViewModel,
+                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                                 onPasskeyClick = { /* TODO: 导航到详情页 */ }
                             )
                         }
-                        BottomNavItem.Vault -> {
-                            VaultHomeScreen(
-                                passwordViewModel = passwordViewModel,
-                                bankCardViewModel = bankCardViewModel,
-                                documentViewModel = documentViewModel,
-                                noteViewModel = noteViewModel,
-                                onNavigateToPasswords = { selectedTabKey = BottomNavItem.Passwords.key },
-                                onNavigateToCardWallet = { selectedTabKey = BottomNavItem.CardWallet.key },
-                                onNavigateToNotes = { selectedTabKey = BottomNavItem.Notes.key },
-                                onNavigateToPasskey = { selectedTabKey = BottomNavItem.Passkey.key },
-                                onNavigateToTimeline = { selectedTabKey = BottomNavItem.Timeline.key },
-                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                                onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
-                            )
-                        }
                         BottomNavItem.Send -> {
-                            V2SendScreen()
+                            SendScreen()
                         }
                         BottomNavItem.Settings -> {
                             SettingsScreen(
@@ -923,6 +911,7 @@ fun SimpleMainScreen(
                     // TOTP验证器页面
                     TotpListContent(
                         viewModel = totpViewModel,
+                        passwordViewModel = passwordViewModel,
                         onTotpClick = { totpId ->
                             onNavigateToAddTotp(totpId)
                         },
@@ -997,29 +986,14 @@ fun SimpleMainScreen(
                     // 通行密钥页面
                     PasskeyListScreen(
                         viewModel = passkeyViewModel,
-                        onPasskeyClick = { /* TODO: 导航到详情页 */ }
-                    )
-                }
-                BottomNavItem.Vault -> {
-                    // 库主页
-                    VaultHomeScreen(
                         passwordViewModel = passwordViewModel,
-                        bankCardViewModel = bankCardViewModel,
-                        documentViewModel = documentViewModel,
-                        noteViewModel = noteViewModel,
-                        onNavigateToPasswords = { selectedTabKey = BottomNavItem.Passwords.key },
-                        onNavigateToCardWallet = { selectedTabKey = BottomNavItem.CardWallet.key },
-                        onNavigateToNotes = { selectedTabKey = BottomNavItem.Notes.key },
-                        onNavigateToPasskey = { selectedTabKey = BottomNavItem.Passkey.key },
-                        onNavigateToTimeline = { selectedTabKey = BottomNavItem.Timeline.key },
                         onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                        onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
+                        onPasskeyClick = { /* TODO: 导航到详情页 */ }
                     )
                 }
                 BottomNavItem.Send -> {
                     // V2 发送页面
-                    V2SendScreen()
+                    SendScreen()
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -1826,13 +1800,15 @@ private fun PasswordListContent(
     Column {
         // M3E Top Bar with integrated search - 始终显示
         val currentFilter by viewModel.categoryFilter.collectAsState()
-        val title = when(currentFilter) {
-            is CategoryFilter.All -> stringResource(R.string.app_name)
+        val title = when(val filter = currentFilter) {
+            is CategoryFilter.All -> stringResource(R.string.filter_all)
+            is CategoryFilter.Local -> stringResource(R.string.filter_monica)
             is CategoryFilter.Starred -> "标星"
             is CategoryFilter.Uncategorized -> "未分类"
-            is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
-            is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == (currentFilter as CategoryFilter.KeePassDatabase).databaseId }?.name ?: "KeePass"
+            is CategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name ?: "未知分类"
+            is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
             is CategoryFilter.BitwardenVault -> "Bitwarden"
+            is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
         }
 
             ExpressiveTopBar(
@@ -1898,157 +1874,218 @@ private fun PasswordListContent(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                                 contentPadding = PaddingValues(bottom = 10.dp)
                            ) {
-                           item {
-                               val selected = currentFilter is CategoryFilter.All
-                               CategoryListItem(
-                                   title = stringResource(R.string.category_all),
+                            item {
+                                val selected = currentFilter is CategoryFilter.All
+                                CategoryListItem(
+                                    title = stringResource(R.string.category_all),
                                     icon = Icons.Default.List,
-                                   selected = selected,
-                                   onClick = {
-                                       viewModel.setCategoryFilter(CategoryFilter.All)
-                                   }
-                               )
-                           }
-                           item {
-                               val selected = currentFilter is CategoryFilter.Starred
-                               CategoryListItem(
-                                   title = "标星",
-                                   icon = Icons.Outlined.CheckCircle,
-                                   selected = selected,
-                                   onClick = {
-                                       viewModel.setCategoryFilter(CategoryFilter.Starred)
-                                   }
-                               )
-                           }
-                           item {
-                               val selected = currentFilter is CategoryFilter.Uncategorized
-                               CategoryListItem(
-                                   title = "未分类",
-                                   icon = Icons.Default.FolderOff,
-                                   selected = selected,
-                                   onClick = {
-                                       viewModel.setCategoryFilter(CategoryFilter.Uncategorized)
-                                   }
-                               )
-                           }
-                           
-                           // KeePass 数据库部分
-                           if (keepassDatabases.isNotEmpty()) {
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                                   Text(
-                                       text = stringResource(R.string.local_keepass_database),
-                                       style = MaterialTheme.typography.labelLarge,
-                                       color = MaterialTheme.colorScheme.primary,
-                                       modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                   )
-                               }
-                               
-                               items(keepassDatabases, key = { "keepass_${it.id}" }) { database ->
-                                   val selected = currentFilter is CategoryFilter.KeePassDatabase && 
-                                       (currentFilter as CategoryFilter.KeePassDatabase).databaseId == database.id
-                                   CategoryListItem(
-                                       title = database.name,
-                                       icon = Icons.Default.Key,
-                                       selected = selected,
-                                       onClick = {
-                                           viewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(database.id))
-                                       },
-                                       badge = {
-                                           Text(
-                                               text = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
-                                                   stringResource(R.string.external_storage) 
-                                               else 
-                                                   stringResource(R.string.internal_storage),
-                                               style = MaterialTheme.typography.labelSmall,
-                                               color = MaterialTheme.colorScheme.onSurfaceVariant
-                                           )
-                                       }
-                                   )
-                               }
-                               
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                               }
-                           }
-                           
-                           // Bitwarden 保险库部分
-                           if (bitwardenVaults.isNotEmpty()) {
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                                   Text(
-                                       text = "Bitwarden",
-                                       style = MaterialTheme.typography.labelLarge,
-                                       color = MaterialTheme.colorScheme.primary,
-                                       modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                   )
-                               }
-                               
-                               items(bitwardenVaults, key = { "bitwarden_${it.id}" }) { vault ->
-                                   val selected = currentFilter is CategoryFilter.BitwardenVault && 
-                                       (currentFilter as CategoryFilter.BitwardenVault).vaultId == vault.id
-                                   CategoryListItem(
-                                       title = vault.email,
-                                       icon = Icons.Default.CloudSync,
-                                       selected = selected,
-                                       onClick = {
-                                           viewModel.setCategoryFilter(CategoryFilter.BitwardenVault(vault.id))
-                                       },
-                                       badge = {
-                                           if (vault.isDefault) {
-                                               Text(
-                                                   text = "默认",
-                                                   style = MaterialTheme.typography.labelSmall,
-                                                   color = MaterialTheme.colorScheme.primary
-                                               )
-                                           }
-                                       }
-                                   )
-                               }
-                               
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                               }
-                           }
-                           
-                           items(categoryList, key = { it.id }) { category ->
-                               val selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id
-                               CategoryListItem(
-                                   title = category.name,
-                                   icon = Icons.Default.Folder,
-                                   selected = selected,
-                                   onClick = {
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.All)
+                                    }
+                                )
+                            }
+                            item {
+                                val selected = currentFilter is CategoryFilter.Starred
+                                CategoryListItem(
+                                    title = "标星",
+                                    icon = Icons.Outlined.CheckCircle,
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.Starred)
+                                    }
+                                )
+                            }
+                            item {
+                                val selected = currentFilter is CategoryFilter.Uncategorized
+                                CategoryListItem(
+                                    title = "未分类",
+                                    icon = Icons.Default.FolderOff,
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.Uncategorized)
+                                    }
+                                )
+                            }
+
+                            // Monica Section
+                            item {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Monica",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                            item {
+                                val selected = currentFilter is CategoryFilter.Local
+                                CategoryListItem(
+                                    title = stringResource(R.string.filter_monica),
+                                    icon = androidx.compose.material.icons.Icons.Default.Smartphone,
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.Local)
+                                    }
+                                )
+                            }
+                            items(categoryList, key = { it.id }) { category ->
+                                val selected = currentFilter is CategoryFilter.Custom && 
+                                    (currentFilter as CategoryFilter.Custom).categoryId == category.id
+                                CategoryListItem(
+                                    title = category.name,
+                                    icon = Icons.Default.Folder,
+                                    selected = selected,
+                                    onClick = {
                                         viewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
-                                   },
-                                   menu = {
-                                       IconButton(onClick = { expandedMenuId = category.id }) {
-                                           Icon(Icons.Default.MoreVert, contentDescription = null)
-                                       }
-                                       DropdownMenu(
-                                           expanded = expandedMenuId == category.id,
-                                           onDismissRequest = { expandedMenuId = null },
-                                           modifier = Modifier.clip(RoundedCornerShape(18.dp))
-                                       ) {
-                                           DropdownMenuItem(
-                                               text = { Text("重命名") },
-                                               leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                               onClick = {
-                                                   expandedMenuId = null
-                                                   onRenameCategory(category)
-                                               }
-                                           )
-                                           DropdownMenuItem(
-                                               text = { Text("删除") },
-                                               leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                                               onClick = {
-                                                   expandedMenuId = null
-                                                   onDeleteCategory(category)
-                                               }
-                                           )
-                                       }
-                                   }
-                               )
-                           }
+                                    },
+                                    menu = {
+                                        IconButton(onClick = { expandedMenuId = category.id }) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = null)
+                                        }
+                                        DropdownMenu(
+                                            expanded = expandedMenuId == category.id,
+                                            onDismissRequest = { expandedMenuId = null },
+                                            modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("重命名") },
+                                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                                onClick = {
+                                                    expandedMenuId = null
+                                                    onRenameCategory(category)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("删除") },
+                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                                onClick = {
+                                                    expandedMenuId = null
+                                                    onDeleteCategory(category)
+                                                }
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+
+                            // Bitwarden Section
+                            if (bitwardenVaults.isNotEmpty()) {
+                                item {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = "Bitwarden",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                
+                                items(bitwardenVaults, key = { "bitwarden_${it.id}" }) { vault ->
+                                    val selected = currentFilter is CategoryFilter.BitwardenVault && 
+                                        (currentFilter as CategoryFilter.BitwardenVault).vaultId == vault.id
+                                    
+                                    // State for expansion
+                                    var expanded by remember { mutableStateOf(false) }
+                                    // Fetch folders
+                                    val foldersState = viewModel.getBitwardenFolders(vault.id).collectAsState(initial = emptyList())
+                                    val folders = foldersState.value
+                                    
+                                    // Auto-expand if a folder in this vault is currently selected
+                                    // Capture currentFilter to local variable for smart cast safety
+                                    val activeFilter = currentFilter
+                                    LaunchedEffect(activeFilter) {
+                                        if (activeFilter is CategoryFilter.BitwardenFolderFilter && activeFilter.vaultId == vault.id) {
+                                            expanded = true
+                                        }
+                                    }
+
+                                    Column {
+                                        CategoryListItem(
+                                            title = vault.email,
+                                            icon = Icons.Default.CloudSync,
+                                            selected = selected,
+                                            onClick = {
+                                                viewModel.setCategoryFilter(CategoryFilter.BitwardenVault(vault.id))
+                                            },
+                                            badge = {
+                                                if (vault.isDefault) {
+                                                    Text(
+                                                        text = "默认",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            },
+                                            menu = {
+                                                if (folders.isNotEmpty()) {
+                                                    IconButton(onClick = { expanded = !expanded }) {
+                                                        Icon(
+                                                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                            contentDescription = "Expand"
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        )
+                                        
+                                        if (expanded) {
+                                            folders.forEach { folder ->
+                                                val folderSelected = activeFilter is CategoryFilter.BitwardenFolderFilter && 
+                                                    activeFilter.folderId == folder.bitwardenFolderId
+                                                
+                                                Box(modifier = Modifier.padding(start = 32.dp)) {
+                                                    CategoryListItem(
+                                                        title = folder.name,
+                                                        icon = Icons.Default.Folder,
+                                                        selected = folderSelected,
+                                                        onClick = {
+                                                            viewModel.setCategoryFilter(CategoryFilter.BitwardenFolderFilter(folder.bitwardenFolderId, vault.id))
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // KeePass Section
+                            if (keepassDatabases.isNotEmpty()) {
+                                item {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = stringResource(R.string.local_keepass_database),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                
+                                items(keepassDatabases, key = { "keepass_${it.id}" }) { database ->
+                                    val selected = currentFilter is CategoryFilter.KeePassDatabase && 
+                                        (currentFilter as CategoryFilter.KeePassDatabase).databaseId == database.id
+                                    CategoryListItem(
+                                        title = database.name,
+                                        icon = Icons.Default.Key,
+                                        selected = selected,
+                                        onClick = {
+                                            viewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(database.id))
+                                        },
+                                        badge = {
+                                            Text(
+                                                text = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
+                                                    stringResource(R.string.external_storage) 
+                                                else 
+                                                    stringResource(R.string.internal_storage),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
                             item {
                                 Spacer(modifier = Modifier.height(18.dp))
 
@@ -2658,6 +2695,7 @@ private fun PasswordListContent(
 @Composable
 private fun TotpListContent(
     viewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    passwordViewModel: PasswordViewModel,
     onTotpClick: (Long) -> Unit,
     onDeleteTotp: (takagi.ru.monica.data.SecureItem) -> Unit,
     onQuickScanTotp: () -> Unit,
@@ -2672,6 +2710,8 @@ private fun TotpListContent(
     val context = androidx.compose.ui.platform.LocalContext.current
     val totpItems by viewModel.totpItems.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val passwords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())
+    val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
     val haptic = rememberHapticFeedback()
     val focusManager = LocalFocusManager.current
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
@@ -3306,6 +3346,7 @@ private fun TotpListContent(
 @Composable
 private fun TotpItemCard(
     item: takagi.ru.monica.data.SecureItem,
+    boundPasswordSummary: String? = null,
     onEdit: () -> Unit,
     onToggleSelect: (() -> Unit)? = null,
     onDelete: () -> Unit,
@@ -3325,6 +3366,7 @@ private fun TotpItemCard(
     // 直接使用修改后的 TotpCodeCard 组件
     takagi.ru.monica.ui.components.TotpCodeCard(
         item = item,
+        boundPasswordSummary = boundPasswordSummary,
         onCopyCode = { code ->
             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val clip = android.content.ClipData.newPlainText("TOTP Code", code)
@@ -5158,12 +5200,14 @@ private fun PasswordEntryCard(
                         
                         // 数据来源标识 - Bitwarden / KeePass
                         if (entry.isBitwardenEntry()) {
-                            // Bitwarden 云同步标识
-                            Icon(
-                                Icons.Default.CloudSync,
-                                contentDescription = "Bitwarden",
-                                tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
-                                modifier = Modifier.size(16.dp)
+                            // Bitwarden 同步状态标识
+                            val syncStatus = when {
+                                entry.hasPendingBitwardenSync() -> SyncStatus.PENDING
+                                else -> SyncStatus.SYNCED
+                            }
+                            SyncStatusIcon(
+                                status = syncStatus,
+                                size = 16.dp
                             )
                         } else if (entry.isKeePassEntry()) {
                             // KeePass 密钥标识
@@ -5530,7 +5574,7 @@ sealed class BottomNavItem(
 ) {
     val key: String = contentTab?.name ?: SETTINGS_TAB_KEY
 
-    object Vault : BottomNavItem(BottomNavContentTab.VAULT, Icons.Default.Shield)  // V2 密码库
+    // object Vault : BottomNavItem(BottomNavContentTab.VAULT, Icons.Default.Shield)  // V2 密码库 - Removed
     object Passwords : BottomNavItem(BottomNavContentTab.PASSWORDS, Icons.Default.Lock)
     object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
     object CardWallet : BottomNavItem(BottomNavContentTab.CARD_WALLET, Icons.Default.Wallet)
@@ -5552,7 +5596,7 @@ sealed class V2BottomNavItem(
 ) {
     val key: String = v2Tab?.name ?: V2_SETTINGS_TAB_KEY
     
-    object Vault : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.VAULT, Icons.Default.Shield)
+    // object Vault : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.VAULT, Icons.Default.Shield) - Removed
     object Send : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SEND, Icons.Default.Send)
     object Sync : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SYNC, Icons.Default.Sync)
     object Generator : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.GENERATOR, Icons.Default.AutoAwesome)
@@ -5562,7 +5606,7 @@ sealed class V2BottomNavItem(
 private const val V2_SETTINGS_TAB_KEY = "V2_SETTINGS"
 
 private fun V2BottomNavItem.fullLabelRes(): Int = when (this) {
-    V2BottomNavItem.Vault -> R.string.nav_v2_vault
+    // V2BottomNavItem.Vault -> R.string.nav_v2_vault
     V2BottomNavItem.Send -> R.string.nav_v2_send
     V2BottomNavItem.Sync -> R.string.nav_v2_sync
     V2BottomNavItem.Generator -> R.string.nav_generator
@@ -5570,7 +5614,7 @@ private fun V2BottomNavItem.fullLabelRes(): Int = when (this) {
 }
 
 private fun V2BottomNavItem.shortLabelRes(): Int = when (this) {
-    V2BottomNavItem.Vault -> R.string.nav_v2_vault_short
+    // V2BottomNavItem.Vault -> R.string.nav_v2_vault_short
     V2BottomNavItem.Send -> R.string.nav_v2_send_short
     V2BottomNavItem.Sync -> R.string.nav_v2_sync_short
     V2BottomNavItem.Generator -> R.string.nav_generator_short
@@ -5578,7 +5622,7 @@ private fun V2BottomNavItem.shortLabelRes(): Int = when (this) {
 }
 
 private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
-    BottomNavContentTab.VAULT -> BottomNavItem.Vault
+    // BottomNavContentTab.VAULT -> BottomNavItem.Vault
     BottomNavContentTab.PASSWORDS -> BottomNavItem.Passwords
     BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
     BottomNavContentTab.CARD_WALLET -> BottomNavItem.CardWallet
@@ -5590,7 +5634,7 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
-    BottomNavItem.Vault -> R.string.nav_v2_vault
+    // BottomNavItem.Vault -> R.string.nav_v2_vault
     BottomNavItem.Passwords -> R.string.nav_passwords
     BottomNavItem.Authenticator -> R.string.nav_authenticator
     BottomNavItem.CardWallet -> R.string.nav_card_wallet
@@ -5603,7 +5647,7 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
 }
 
 private fun BottomNavItem.shortLabelRes(): Int = when (this) {
-    BottomNavItem.Vault -> R.string.nav_v2_vault_short
+    // BottomNavItem.Vault -> R.string.nav_v2_vault_short
     BottomNavItem.Passwords -> R.string.nav_passwords_short
     BottomNavItem.Authenticator -> R.string.nav_authenticator_short
     BottomNavItem.CardWallet -> R.string.nav_card_wallet_short
@@ -5934,24 +5978,8 @@ private fun V2NavScaffold(
                 .padding(paddingValues)
         ) {
             // 根据位置显示内容
+            // 根据位置显示内容
             when (selectedPosition) {
-                V2NavPosition.VAULT -> {
-                    // 位置0：库首页
-                    VaultHomeScreen(
-                        passwordViewModel = passwordViewModel,
-                        bankCardViewModel = bankCardViewModel,
-                        documentViewModel = documentViewModel,
-                        noteViewModel = noteViewModel,
-                        onNavigateToPasswords = { onNavigateToDynamicContent(RecentSubPage.PASSWORDS) },
-                        onNavigateToCardWallet = { onNavigateToDynamicContent(RecentSubPage.CARD_WALLET) },
-                        onNavigateToNotes = { onNavigateToDynamicContent(RecentSubPage.NOTES) },
-                        onNavigateToPasskey = { onNavigateToDynamicContent(RecentSubPage.PASSKEY) },
-                        onNavigateToTimeline = { onNavigateToDynamicContent(RecentSubPage.TIMELINE) },
-                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                        onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
-                    )
-                }
                 V2NavPosition.DYNAMIC -> {
                     // 位置1：动态内容 - 使用 Crossfade 平滑切换，避免 key() 导致的崩溃
                     if (dynamicContent != null) {
@@ -5991,6 +6019,7 @@ private fun V2NavScaffold(
                                 RecentSubPage.AUTHENTICATOR -> {
                                     TotpListContent(
                                         viewModel = totpViewModel,
+                                        passwordViewModel = passwordViewModel,
                                         onTotpClick = { totpId -> onNavigateToAddTotp(totpId) },
                                         onDeleteTotp = { totp -> totpViewModel.deleteTotpItem(totp) },
                                         onQuickScanTotp = onNavigateToQuickTotpScan,
@@ -6040,6 +6069,8 @@ private fun V2NavScaffold(
                                 RecentSubPage.PASSKEY -> {
                                     PasskeyListScreen(
                                         viewModel = passkeyViewModel,
+                                        passwordViewModel = passwordViewModel,
+                                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                                         onPasskeyClick = {}
                                     )
                                 }
@@ -6049,25 +6080,12 @@ private fun V2NavScaffold(
                             }
                         }
                     } else {
-                        // 如果没有动态内容，回到库首页
-                        VaultHomeScreen(
-                            passwordViewModel = passwordViewModel,
-                            bankCardViewModel = bankCardViewModel,
-                            documentViewModel = documentViewModel,
-                            noteViewModel = noteViewModel,
-                            onNavigateToPasswords = { onNavigateToDynamicContent(RecentSubPage.PASSWORDS) },
-                            onNavigateToCardWallet = { onNavigateToDynamicContent(RecentSubPage.CARD_WALLET) },
-                            onNavigateToNotes = { onNavigateToDynamicContent(RecentSubPage.NOTES) },
-                            onNavigateToPasskey = { onNavigateToDynamicContent(RecentSubPage.PASSKEY) },
-                            onNavigateToTimeline = { onNavigateToDynamicContent(RecentSubPage.TIMELINE) },
-                            onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                            onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                            onNavigateToNoteDetail = { noteId -> onNavigateToAddNote(noteId) }
-                        )
+                        // 如果没有动态内容，默认显示密码列表
+                        onNavigateToDynamicContent(RecentSubPage.PASSWORDS)
                     }
                 }
                 V2NavPosition.SEND -> {
-                    V2SendScreen()
+                    SendScreen()
                 }
                 V2NavPosition.GENERATOR -> {
                     GeneratorScreen(

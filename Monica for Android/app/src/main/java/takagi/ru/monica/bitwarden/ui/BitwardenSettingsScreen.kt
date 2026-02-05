@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -39,18 +41,24 @@ fun BitwardenSettingsScreen(
     viewModel: BitwardenViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    onNavigateToVault: (Long) -> Unit
+    onNavigateToVault: (Long) -> Unit,
+    onNavigateToSyncQueue: () -> Unit = {}
 ) {
     val vaults by viewModel.vaults.collectAsState()
     val activeVault by viewModel.activeVault.collectAsState()
     val unlockState by viewModel.unlockState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
+    val isNeverLockEnabled by viewModel.isNeverLockEnabledFlow.collectAsState()
+    val pendingCount by viewModel.pendingSyncCount.collectAsState()
+    val failedCount by viewModel.failedSyncCount.collectAsState()
     
     // 对话框状态
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
     var vaultToLogout by remember { mutableStateOf<BitwardenVault?>(null) }
     var showUnlockDialog by remember { mutableStateOf(false) }
     var vaultToUnlock by remember { mutableStateOf<BitwardenVault?>(null) }
+    var showNeverLockUnlockDialog by remember { mutableStateOf(false) }
+    var pendingEnableNeverLock by remember { mutableStateOf(false) }
     
     // 监听事件
     LaunchedEffect(Unit) {
@@ -61,6 +69,19 @@ fun BitwardenSettingsScreen(
                 }
                 else -> {}
             }
+        }
+    }
+
+    LaunchedEffect(unlockState, showNeverLockUnlockDialog) {
+        if (pendingEnableNeverLock && unlockState == BitwardenViewModel.UnlockState.Unlocked) {
+            viewModel.isNeverLockEnabled = true
+            pendingEnableNeverLock = false
+        }
+
+        if (pendingEnableNeverLock && !showNeverLockUnlockDialog &&
+            unlockState == BitwardenViewModel.UnlockState.Locked
+        ) {
+            pendingEnableNeverLock = false
         }
     }
     
@@ -163,8 +184,37 @@ fun BitwardenSettingsScreen(
                     isAutoSyncEnabled = viewModel.isAutoSyncEnabled,
                     onAutoSyncChanged = { viewModel.isAutoSyncEnabled = it },
                     isSyncOnWifiOnly = viewModel.isSyncOnWifiOnly,
-                    onSyncOnWifiOnlyChanged = { viewModel.isSyncOnWifiOnly = it }
+                    onSyncOnWifiOnlyChanged = { viewModel.isSyncOnWifiOnly = it },
+                    isNeverLockEnabled = isNeverLockEnabled,
+                    onNeverLockChanged = { enabled ->
+                        if (!enabled) {
+                            viewModel.isNeverLockEnabled = false
+                            return@SyncSettingsCard
+                        }
+
+                        val vault = activeVault
+                        if (vault == null) {
+                            return@SyncSettingsCard
+                        }
+
+                        if (unlockState == BitwardenViewModel.UnlockState.Unlocked) {
+                            viewModel.isNeverLockEnabled = true
+                        } else {
+                            pendingEnableNeverLock = true
+                            showNeverLockUnlockDialog = true
+                        }
+                    }
                 )
+            }
+            
+            // 同步队列 (仅在有任务或失败时显示)
+            if (pendingCount > 0 || failedCount > 0) {
+                item {
+                    SyncQueueEntryCard(
+                        pendingCount = pendingCount,
+                        failedCount = failedCount
+                    )
+                }
             }
             
             // 关于
@@ -254,6 +304,22 @@ fun BitwardenSettingsScreen(
             onDismiss = {
                 showUnlockDialog = false
                 vaultToUnlock = null
+            }
+        )
+    }
+
+    if (showNeverLockUnlockDialog) {
+        val vault = activeVault
+        UnlockVaultDialog(
+            email = vault?.email ?: "",
+            onUnlock = { password ->
+                vault?.let { viewModel.setActiveVault(it) }
+                viewModel.unlock(password)
+                showNeverLockUnlockDialog = false
+            },
+            onDismiss = {
+                showNeverLockUnlockDialog = false
+                pendingEnableNeverLock = false
             }
         )
     }
@@ -487,7 +553,9 @@ fun SyncSettingsCard(
     isAutoSyncEnabled: Boolean,
     onAutoSyncChanged: (Boolean) -> Unit,
     isSyncOnWifiOnly: Boolean,
-    onSyncOnWifiOnlyChanged: (Boolean) -> Unit
+    onSyncOnWifiOnlyChanged: (Boolean) -> Unit,
+    isNeverLockEnabled: Boolean = false,
+    onNeverLockChanged: (Boolean) -> Unit = {}
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -535,6 +603,37 @@ fun SyncSettingsCard(
                     checked = isSyncOnWifiOnly,
                     onCheckedChange = onSyncOnWifiOnlyChanged,
                     enabled = isAutoSyncEnabled
+                )
+            }
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "永不锁定",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "保持 Bitwarden 解锁状态，无需重复输入密码",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isNeverLockEnabled) {
+                        Text(
+                            text = "⚠️ 仅在安全环境下使用",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                Switch(
+                    checked = isNeverLockEnabled,
+                    onCheckedChange = onNeverLockChanged
                 )
             }
         }
@@ -668,6 +767,99 @@ private fun formatTime(timestamp: Long): String {
         else -> {
             val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
             sdf.format(Date(timestamp))
+        }
+    }
+}
+
+/**
+ * 同步队列入口卡片
+ */
+@Composable
+private fun SyncQueueEntryCard(
+    pendingCount: Int,
+    failedCount: Int
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Outlined.Sync,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "同步队列",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        
+                        if (pendingCount > 0 || failedCount > 0) {
+                            Text(
+                                text = buildString {
+                                    if (pendingCount > 0) append("${pendingCount} 待处理")
+                                    if (pendingCount > 0 && failedCount > 0) append(" · ")
+                                    if (failedCount > 0) append("${failedCount} 失败")
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (failedCount > 0) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                           Text(
+                                text = "已同步",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            ) 
+                        }
+                    }
+
+                    if (pendingCount > 0) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        )
+                    } else if (failedCount > 0) {
+                         LinearProgressIndicator(
+                            progress = { 1f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.error,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        )
+                    }
+                }
+            }
         }
     }
 }

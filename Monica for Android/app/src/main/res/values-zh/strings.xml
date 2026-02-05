@@ -597,6 +597,11 @@
     <string name="v2_no_items">密码库为空</string>
     <string name="v2_connect_bitwarden">连接 Bitwarden</string>
     
+    <string name="filter_monica">Monica</string>
+    <string name="filter_bitwarden">Bitwarden</string>
+    <string name="filter_keepass">KeePass</string>
+    <string name="filter_all">全部</string>
+    
     <!-- Passkey Screen -->
     <string name="passkey_title">通行密钥</string>
     <string name="passkey_count">%1$d 个通行密钥</string>
@@ -1469,11 +1474,27 @@
     <string name="copy_next_code_when_expiring_description">倒计时剩余 5 秒内点击复制时，自动复制下一个验证码</string>
     
     <!-- 同步与备份页面 -->
-    <string name="sync_backup_title">同步与备份</string>
-    <string name="sync_backup_description">管理数据导入导出和云同步</string>
+    <string name="sync_backup_title">数据库与备份</string>
+    <string name="sync_backup_description">管理数据库、文件夹与备份</string>
     <string name="sync_backup_local">本地备份</string>
     <string name="sync_backup_cloud">云同步</string>
     <string name="sync_backup_plus_hint">升级 Monica Plus 解锁 WebDAV 云同步功能</string>
+
+    <string name="database_folder_management_title">数据库文件夹管理</string>
+    <string name="folder_management_title">文件夹管理</string>
+    <string name="folder_management_description">管理本地/KeePass 文件夹与 Bitwarden 同步</string>
+    <string name="database_source_label">数据库来源</string>
+    <string name="database_source_local">Monica 本地</string>
+    <string name="database_source_keepass">KeePass 数据库</string>
+    <string name="bitwarden_vault_label">Bitwarden Vault</string>
+    <string name="sync_scope_section_title">同步范围</string>
+    <string name="bitwarden_upload_all">上传所有数据到 Bitwarden</string>
+    <string name="bitwarden_upload_all_desc">忽略文件夹规则，所有数据同步到 Bitwarden</string>
+    <string name="apply_upload_all">应用到所有数据</string>
+    <string name="bitwarden_folder_section_title">Bitwarden 文件夹</string>
+    <string name="bitwarden_not_logged_in">未登录 Bitwarden</string>
+    <string name="bitwarden_folder_empty">暂无 Bitwarden 文件夹</string>
+    <string name="bitwarden_create_folder_not_supported">暂不支持创建新文件夹</string>
     
     <!-- 本地 KeePass 数据库 -->
     <string name="local_keepass_section_title">KeePass 数据库</string>
@@ -1557,7 +1578,8 @@
     <string name="associated_link">关联链接</string>
     <string name="associated_app">关联应用</string>
     <string name="bind_password">绑定密码</string>
-    <string name="bound_password_change">已绑定密码 (点击更换)</string>
+    <string name="bound_password_change">更换绑定</string>
+    <string name="passkey_bound_label">已绑定通行秘钥</string>
     <string name="unbind">解除绑定</string>
     <string name="select_password_to_bind">选择要绑定的密码</string>
     <string name="link_example">https://example.com</string>
@@ -1628,4 +1650,71 @@
     <string name="multi_del_batch_delete">批量删除</string>
     <string name="multi_del_select_all">全选</string>
     <string name="multi_del_select_items">请选择要删除的项目</string>
+
+    <!-- V2 Folder Management -->
+    <string name="v2_folder_management_title">文件夹管理</string>
+    <string name="v2_folder_management_subtitle">整理并同步你的文件夹</string>
+    <string name="v2_sync_all_title">Bitwarden 全量同步</string>
+    <string name="v2_sync_all_desc">将所有数据同步到 Bitwarden 云端</string>
+    <string name="v2_apply_sync">立即应用</string>
+    <string name="v2_select_database">选择数据库</string>
+    <string name="v2_bitwarden_account">Bitwarden 账户</string>
+    <string name="v2_bitwarden_not_connected">Bitwarden 未连接</string>
+    <string name="v2_bitwarden_connect_hint">登录以启用云端同步</string>
+    <string name="v2_local_folders">本地文件夹</string>
+    <string name="v2_keepass_groups">KeePass 组</string>
+    <string name="v2_bitwarden_folders">Bitwarden 文件夹</string>
+    <string name="v2_no_local_folders">暂无本地文件夹</string>
+    <string name="v2_no_keepass_groups">暂无 KeePass 组</string>
+    <string name="v2_no_bitwarden_folders">暂无 Bitwarden 文件夹</string>
+    <string name="v2_create_first_folder">创建第一个文件夹</string>
+    <string name="v2_create_folder">创建文件夹</string>
+    <string name="v2_edit_folder">编辑文件夹</string>
+    <string name="v2_delete_folder">删除文件夹</string>
+    <string name="v2_delete_folder_confirm">确定要删除文件夹 \"%1$s\" 吗？此操作无法撤销。</string>
+    <string name="v2_folder_name">文件夹名称</string>
+    <string name="v2_not_synced">未同步</string>
+    <string name="v2_link">关联</string>
+    <string name="v2_unlink">解除关联</string>
+    <string name="v2_edit">编辑</string>
+    <string name="v2_delete">删除</string>
+    <string name="v2_link_to_bitwarden">关联到 Bitwarden</string>
+    <string name="v2_select_vault">选择保险库</string>
+    <string name="v2_select_folder">选择文件夹</string>
+    <string name="v2_create_new_folder">创建新文件夹</string>
+    <string name="v2_no_folder_root">不关联文件夹（根目录）</string>
+
+    <!-- New Folder Management (M3E Design) -->
+    <string name="folder_management_subtitle">整理并同步你的文件夹</string>
+    <string name="sync_all_title">Bitwarden 全量同步</string>
+    <string name="sync_all_desc">将所有数据同步到 Bitwarden 云端</string>
+    <string name="sync_apply_now">立即应用</string>
+    <string name="bitwarden_account_label">Bitwarden 账户</string>
+    <string name="bitwarden_not_connected">Bitwarden 未连接</string>
+    <string name="bitwarden_connect_hint">登录以启用云端同步</string>
+    <string name="folder_section_local">Monica 本地文件夹</string>
+    <string name="folder_section_keepass">KeePass 文件夹</string>
+    <string name="folder_section_bitwarden">Bitwarden 文件夹</string>
+    <string name="folder_empty_local">暂无本地文件夹</string>
+    <string name="folder_empty_keepass">暂无 KeePass 组</string>
+    <string name="folder_empty_bitwarden">暂无 Bitwarden 文件夹</string>
+    <string name="folder_create_first">创建第一个文件夹</string>
+    <string name="folder_create">创建文件夹</string>
+    <string name="folder_edit">编辑文件夹</string>
+    <string name="folder_delete">删除文件夹</string>
+    <string name="folder_delete_confirm">确定要删除文件夹 \"%1$s\" 吗？此操作无法撤销。</string>
+    <string name="folder_name_label">文件夹名称</string>
+    <string name="folder_not_synced">未同步</string>
+    <string name="folder_link">关联</string>
+    <string name="folder_unlink">解除关联</string>
+    <string name="folder_link_to_bitwarden">关联到 Bitwarden</string>
+    <string name="folder_select_vault">选择保险库</string>
+    <string name="folder_select_folder">选择文件夹</string>
+    <string name="folder_create_new">创建新文件夹</string>
+    <string name="folder_no_folder_root">不关联文件夹（根目录）</string>
+    
+    <!-- Bitwarden Unlock -->
+    <string name="bitwarden_unlock_title">解锁 Bitwarden</string>
+    <string name="bitwarden_unlock_message">输入主密码解锁 %1$s</string>
+    <string name="bitwarden_master_password">主密码</string>
 </resources>

@@ -1,17 +1,20 @@
 package takagi.ru.monica.repository
 
+import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.CategoryDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
-import kotlinx.coroutines.flow.Flow
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 
 /**
  * Repository for password entries
  */
 class PasswordRepository(
     private val passwordEntryDao: PasswordEntryDao,
-    private val categoryDao: CategoryDao? = null
+    private val categoryDao: CategoryDao? = null,
+    private val bitwardenFolderDao: BitwardenFolderDao? = null
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
@@ -32,6 +35,14 @@ class PasswordRepository(
     
     fun getPasswordEntriesByBitwardenVault(vaultId: Long): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getByBitwardenVaultIdFlow(vaultId)
+    }
+
+    fun getPasswordEntriesByBitwardenFolder(folderId: String): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getByBitwardenFolderIdFlow(folderId)
+    }
+    
+    fun getBitwardenFoldersByVaultId(vaultId: Long): Flow<List<BitwardenFolder>> {
+        return bitwardenFolderDao?.getFoldersByVaultFlow(vaultId) ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }
 
     fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>> {
@@ -181,5 +192,19 @@ class PasswordRepository(
 
     suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String) {
         passwordEntryDao.updateAppAssociationByTitle(title, packageName, appName)
+    }
+
+    /**
+     * 更新绑定的验证器密钥
+     */
+    suspend fun updateAuthenticatorKey(id: Long, authenticatorKey: String) {
+        passwordEntryDao.updateAuthenticatorKey(id, authenticatorKey)
+    }
+
+    /**
+     * 更新绑定的通行密钥元数据
+     */
+    suspend fun updatePasskeyBindings(id: Long, passkeyBindings: String) {
+        passwordEntryDao.updatePasskeyBindings(id, passkeyBindings)
     }
 }

@@ -34,6 +34,12 @@ data class KeePassEntryData(
     val monicaLocalId: Long?
 )
 
+data class KeePassGroupInfo(
+    val name: String,
+    val path: String,
+    val uuid: String?
+)
+
 class KeePassKdbxService(
     private val context: Context,
     private val dao: LocalKeePassDatabaseDao,
@@ -47,6 +53,19 @@ class KeePassKdbxService(
             val data = entries.mapNotNull { entryToData(it) }
             dao.updateEntryCount(database.id, data.size)
             Result.success(data)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun listGroups(databaseId: Long): Result<List<KeePassGroupInfo>> = withContext(Dispatchers.IO) {
+        try {
+            val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val groups = mutableListOf<KeePassGroupInfo>()
+            keePassDatabase.content.group.groups.forEach { group ->
+                collectGroups(group, "", groups)
+            }
+            Result.success(groups.sortedBy { it.path })
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -272,6 +291,25 @@ class KeePassKdbxService(
     private fun collectEntries(group: Group, entries: MutableList<Entry>) {
         entries.addAll(group.entries)
         group.groups.forEach { collectEntries(it, entries) }
+    }
+
+    private fun collectGroups(
+        group: Group,
+        parentPath: String,
+        result: MutableList<KeePassGroupInfo>
+    ) {
+        val name = group.name.ifBlank { "(未命名)" }
+        val currentPath = if (parentPath.isBlank()) name else "$parentPath/$name"
+        result.add(
+            KeePassGroupInfo(
+                name = name,
+                path = currentPath,
+                uuid = group.uuid.toString()
+            )
+        )
+        group.groups.forEach { child ->
+            collectGroups(child, currentPath, result)
+        }
     }
 
     private suspend fun loadDatabase(databaseId: Long): Triple<LocalKeePassDatabase, Credentials, KeePassDatabase> {

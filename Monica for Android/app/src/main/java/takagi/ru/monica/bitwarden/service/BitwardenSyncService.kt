@@ -43,6 +43,9 @@ class BitwardenSyncService(
     private val pendingOpDao = database.bitwardenPendingOperationDao()
     private val passwordEntryDao = database.passwordEntryDao()
     
+    // 多类型 Cipher 同步处理器
+    private val cipherSyncProcessor = CipherSyncProcessor(context)
+    
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -187,10 +190,11 @@ class BitwardenSyncService(
             }
         }
         
-        // 2. 同步 Ciphers
+        // 2. 同步 Ciphers (使用新的多类型处理器)
         response.ciphers.forEach { cipherApi ->
             try {
-                val result = syncCipher(vault, cipherApi, symmetricKey)
+                // 使用 CipherSyncProcessor 处理所有类型
+                val result = cipherSyncProcessor.syncCipherFromServer(vault, cipherApi, symmetricKey)
                 when (result) {
                     is CipherSyncResult.Added -> ciphersAdded++
                     is CipherSyncResult.Updated -> ciphersUpdated++

@@ -17,6 +17,7 @@ import takagi.ru.monica.data.bitwarden.*
         Category::class,
         OperationLog::class,
         LocalKeePassDatabase::class,
+        KeepassGroupSyncConfig::class,
         CustomField::class,  // 自定义字段表
         PasskeyEntry::class,  // Passkey 通行密钥表
         // Bitwarden 集成表
@@ -25,7 +26,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 30,
+    version = 34,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -36,6 +37,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun operationLogDao(): OperationLogDao
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
+    abstract fun keepassGroupSyncConfigDao(): KeepassGroupSyncConfigDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
     abstract fun passkeyDao(): PasskeyDao  // Passkey DAO
     
@@ -731,6 +733,142 @@ abstract class PasswordDatabase : RoomDatabase() {
                 }
             }
         }
+        
+        /**
+         * Migration 30 -> 31: 扩展 Bitwarden 同步支持多数据类型
+         * 
+         * 添加内容:
+         * 1. 为 bitwarden_pending_operations 添加 item_type 字段
+         * 2. 为 secure_items 添加 Bitwarden 关联字段
+         * 3. 为 passkeys 添加 Bitwarden 关联字段
+         * 4. 为 categories 添加 Bitwarden 文件夹关联字段
+         */
+        private val MIGRATION_30_31 = object : androidx.room.migration.Migration(30, 31) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 30→31: Bitwarden multi-type sync support")
+                    
+                    // 1. 为 bitwarden_pending_operations 添加 item_type 字段
+                    database.execSQL(
+                        "ALTER TABLE bitwarden_pending_operations ADD COLUMN item_type TEXT NOT NULL DEFAULT 'PASSWORD'"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_bitwarden_pending_operations_item_type ON bitwarden_pending_operations(item_type)"
+                    )
+                    
+                    // 2. 为 secure_items 添加 Bitwarden 关联字段
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN bitwarden_vault_id INTEGER DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN bitwarden_cipher_id TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN bitwarden_folder_id TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN bitwarden_revision_date TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN bitwarden_local_modified INTEGER NOT NULL DEFAULT 0"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'NONE'"
+                    )
+                    
+                    // 3. 为 passkeys 添加 Bitwarden 关联字段
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN bitwarden_vault_id INTEGER DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN bitwarden_cipher_id TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'NONE'"
+                    )
+                    
+                    // 4. 为 categories 添加 Bitwarden 文件夹关联字段
+                    database.execSQL(
+                        "ALTER TABLE categories ADD COLUMN bitwarden_vault_id INTEGER DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE categories ADD COLUMN bitwarden_folder_id TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE categories ADD COLUMN sync_item_types TEXT DEFAULT NULL"
+                    )
+                    
+                    android.util.Log.i("PasswordDatabase", "Migration 30→31 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 30→31 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 31 -> 32: 为 passkeys 添加绑定密码字段
+         */
+        private val MIGRATION_31_32 = object : androidx.room.migration.Migration(31, 32) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 31→32: passkey bound password")
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN bound_password_id INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 31→32 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 31→32 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 32 -> 33: 为 password_entries 添加通行密钥绑定字段
+         */
+        private val MIGRATION_32_33 = object : androidx.room.migration.Migration(32, 33) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 32→33: password passkey bindings")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN passkey_bindings TEXT NOT NULL DEFAULT ''"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 32→33 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 32→33 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 33 -> 34: 添加 KeePass 组同步映射表
+         */
+        private val MIGRATION_33_34 = object : androidx.room.migration.Migration(33, 34) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 33→34: keepass group sync configs")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS keepass_group_sync_configs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            keepassDatabaseId INTEGER NOT NULL,
+                            groupPath TEXT NOT NULL,
+                            groupUuid TEXT,
+                            bitwarden_vault_id INTEGER DEFAULT NULL,
+                            bitwarden_folder_id TEXT DEFAULT NULL,
+                            sync_item_types TEXT DEFAULT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS index_keepass_group_sync_configs_keepassDatabaseId_groupPath ON keepass_group_sync_configs(keepassDatabaseId, groupPath)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 33→34 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 33→34 failed: ${e.message}")
+                }
+            }
+        }
 
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -768,7 +906,11 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_26_27,  // 添加自定义字段表
                         MIGRATION_27_28,  // 添加 Passkey 通行密钥表
                         MIGRATION_28_29,  // 为 secure_items 添加 categoryId 字段
-                        MIGRATION_29_30   // Bitwarden 集成
+                        MIGRATION_29_30,  // Bitwarden 集成
+                        MIGRATION_30_31,  // Bitwarden 多类型同步支持
+                        MIGRATION_31_32,  // Passkey 绑定密码
+                        MIGRATION_32_33,  // Password 绑定通行密钥元数据
+                        MIGRATION_33_34   // KeePass 组同步配置
                     )
                     .build()
                 INSTANCE = instance

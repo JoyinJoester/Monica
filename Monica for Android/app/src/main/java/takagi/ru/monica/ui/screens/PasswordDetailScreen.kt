@@ -46,8 +46,11 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.ui.components.MasterPasswordDialog
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.PasskeyBinding
+import takagi.ru.monica.data.model.PasskeyBindingCodec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import takagi.ru.monica.ui.components.InfoField
@@ -82,6 +85,7 @@ import takagi.ru.monica.data.SsoProvider
 @Composable
 fun PasswordDetailScreen(
     viewModel: PasswordViewModel,
+    passkeyViewModel: PasskeyViewModel? = null,
     passwordId: Long,
     disablePasswordVerification: Boolean,
     onNavigateBack: () -> Unit,
@@ -173,6 +177,9 @@ fun PasswordDetailScreen(
     
     // 获取关联的TOTP数据
     val linkedTotp by viewModel.getLinkedTotpFlow(passwordId).collectAsState(initial = null)
+    val boundPasskeys by (passkeyViewModel?.getPasskeysByBoundPasswordId(passwordId)
+        ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsState(initial = emptyList())
     var totpCode by remember { mutableStateOf("") }
     var totpProgress by remember { mutableStateOf(1f) }
     
@@ -393,6 +400,58 @@ fun PasswordDetailScreen(
                         code = totpCode,
                         progress = totpProgress,
                         context = context
+                    )
+                }
+
+                val bindingSummaries = remember(entry.passkeyBindings, boundPasskeys) {
+                    val fromField = PasskeyBindingCodec.decodeList(entry.passkeyBindings)
+                        .map { binding ->
+                            listOf(
+                                binding.rpName.ifBlank { binding.rpId },
+                                binding.userDisplayName.ifBlank { binding.userName }
+                            ).filter { it.isNotBlank() }.joinToString(" · ")
+                        }
+                        .filter { it.isNotBlank() }
+
+                    if (fromField.isNotEmpty()) {
+                        fromField
+                    } else {
+                        boundPasskeys.map { passkey ->
+                            listOf(
+                                passkey.rpName,
+                                passkey.userDisplayName.ifBlank { passkey.userName },
+                                passkey.rpId
+                            ).filter { it.isNotBlank() }.joinToString(" · ")
+                        }.filter { it.isNotBlank() }
+                    }
+                }
+
+                LaunchedEffect(entry.id, entry.passkeyBindings, boundPasskeys) {
+                    if (entry.passkeyBindings.isBlank() && boundPasskeys.isNotEmpty()) {
+                        val bindings = boundPasskeys.map { passkey ->
+                            PasskeyBinding(
+                                credentialId = passkey.credentialId,
+                                rpId = passkey.rpId,
+                                rpName = passkey.rpName,
+                                userName = passkey.userName,
+                                userDisplayName = passkey.userDisplayName
+                            )
+                        }
+                        val encoded = PasskeyBindingCodec.encodeList(bindings)
+                        viewModel.updatePasskeyBindings(entry.id, encoded)
+                    }
+                }
+
+                if (boundPasskeys.isNotEmpty() || bindingSummaries.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.passkey_bound_label),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                    PasskeyBoundCard(
+                        passkeys = boundPasskeys,
+                        bindingSummaries = bindingSummaries
                     )
                 }
                 
@@ -901,6 +960,61 @@ private fun TotpCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PasskeyBoundCard(
+    passkeys: List<takagi.ru.monica.data.PasskeyEntry>,
+    bindingSummaries: List<String> = emptyList()
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Key,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.passkey_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            val summaries = if (passkeys.isNotEmpty()) {
+                passkeys.map { passkey ->
+                    listOf(
+                        passkey.rpName,
+                        passkey.userDisplayName.ifBlank { passkey.userName },
+                        passkey.rpId
+                    ).filter { it.isNotBlank() }.joinToString(" · ")
+                }
+            } else {
+                bindingSummaries
+            }
+
+            summaries.forEach { summary ->
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }

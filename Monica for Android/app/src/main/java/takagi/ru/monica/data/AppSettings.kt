@@ -50,7 +50,7 @@ enum class UnifiedProgressBarMode {
  * 用于经典本地密码库模式
  */
 enum class BottomNavContentTab {
-    VAULT,        // V2 密码库（多源统一视图）
+    // VAULT,        // V2 密码库（多源统一视图） - Removed
     PASSWORDS,
     AUTHENTICATOR,
     CARD_WALLET,
@@ -62,7 +62,6 @@ enum class BottomNavContentTab {
 
     companion object {
         val DEFAULT_ORDER: List<BottomNavContentTab> = listOf(
-            VAULT,
             PASSWORDS,
             AUTHENTICATOR,
             CARD_WALLET,
@@ -95,14 +94,13 @@ enum class BottomNavContentTab {
  * 用于多源密码库模式（Bitwarden 风格）
  */
 enum class V2BottomNavTab {
-    VAULT,      // 密码库（统一视图，支持多后端）
+    // VAULT,      // 密码库（统一视图，支持多后端） - Removed
     SEND,       // Send（安全分享）
     SYNC,       // 同步中心
     GENERATOR;  // 生成器
 
     companion object {
         val DEFAULT_ORDER: List<V2BottomNavTab> = listOf(
-            VAULT,
             SEND,
             SYNC,
             GENERATOR
@@ -111,7 +109,7 @@ enum class V2BottomNavTab {
 }
 
 data class BottomNavVisibility(
-    val vault: Boolean = true,        // V2 密码库默认开启
+    // val vault: Boolean = true,        // V2 密码库默认开启 - Removed
     val passwords: Boolean = true,
     val authenticator: Boolean = true,
     val cardWallet: Boolean = true,
@@ -122,7 +120,7 @@ data class BottomNavVisibility(
     val passkey: Boolean = true       // 通行密钥功能默认开启
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
-        BottomNavContentTab.VAULT -> vault
+        // BottomNavContentTab.VAULT -> vault
         BottomNavContentTab.PASSWORDS -> passwords
         BottomNavContentTab.AUTHENTICATOR -> authenticator
         BottomNavContentTab.CARD_WALLET -> cardWallet
@@ -133,7 +131,7 @@ data class BottomNavVisibility(
         BottomNavContentTab.PASSKEY -> passkey
     }
 
-    fun visibleCount(): Int = listOf(vault, passwords, authenticator, cardWallet, generator, notes, send, timeline, passkey).count { it }
+    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, send, timeline, passkey).count { it }
 }
 
 /**
@@ -341,6 +339,10 @@ data class AppSettings(
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
     val reduceAnimations: Boolean = false, // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题
+    val smartDeduplicationEnabled: Boolean = true, // 智能去重（在“所有”视图中合并显示相同密码）
+
+    // Bitwarden 同步范围设置
+    val bitwardenUploadAll: Boolean = false, // 一键上传所有数据到 Bitwarden
     
     // V2 多源密码库设置
     val defaultVaultView: VaultViewMode = VaultViewMode.V1, // 默认密码库视图

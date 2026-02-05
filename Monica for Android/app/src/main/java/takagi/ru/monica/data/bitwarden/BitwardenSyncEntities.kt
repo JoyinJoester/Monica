@@ -127,7 +127,8 @@ data class BitwardenConflictBackup(
     indices = [
         Index(value = ["vault_id"]),
         Index(value = ["status"]),
-        Index(value = ["created_at"])
+        Index(value = ["created_at"]),
+        Index(value = ["item_type"])
     ],
     foreignKeys = [
         ForeignKey(
@@ -148,10 +149,14 @@ data class BitwardenPendingOperation(
     val vaultId: Long,
     
     @ColumnInfo(name = "entry_id")
-    val entryId: Long? = null,               // Monica PasswordEntry ID
+    val entryId: Long? = null,               // Monica PasswordEntry ID 或 SecureItem ID 或 PasskeyEntry ID
     
     @ColumnInfo(name = "bitwarden_cipher_id")
     val bitwardenCipherId: String? = null,   // Bitwarden Cipher UUID
+    
+    // === 数据类型 ===
+    @ColumnInfo(name = "item_type", defaultValue = "PASSWORD")
+    val itemType: String = ITEM_TYPE_PASSWORD,  // PASSWORD, TOTP, CARD, NOTE, DOCUMENT, PASSKEY
     
     // === 操作信息 ===
     @ColumnInfo(name = "operation_type")
@@ -196,6 +201,14 @@ data class BitwardenPendingOperation(
         // 目标类型
         const val TARGET_CIPHER = "CIPHER"
         const val TARGET_FOLDER = "FOLDER"
+        
+        // 数据项类型 (对应 Monica 数据模型)
+        const val ITEM_TYPE_PASSWORD = "PASSWORD"   // PasswordEntry -> Login
+        const val ITEM_TYPE_TOTP = "TOTP"           // SecureItem TOTP -> Login with totp
+        const val ITEM_TYPE_CARD = "CARD"           // SecureItem BANK_CARD -> Card
+        const val ITEM_TYPE_NOTE = "NOTE"           // SecureItem NOTE -> SecureNote
+        const val ITEM_TYPE_DOCUMENT = "DOCUMENT"   // SecureItem DOCUMENT -> Identity
+        const val ITEM_TYPE_PASSKEY = "PASSKEY"     // PasskeyEntry -> Login (metadata only)
         
         // 状态
         const val STATUS_PENDING = "PENDING"

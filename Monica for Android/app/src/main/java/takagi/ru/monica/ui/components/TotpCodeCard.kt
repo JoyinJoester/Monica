@@ -49,6 +49,7 @@ import takagi.ru.monica.utils.SettingsManager
 import kotlin.math.PI
 import kotlin.math.sin
 import takagi.ru.monica.util.VibrationPatterns
+import takagi.ru.monica.bitwarden.sync.SyncStatus
 
 /**
  * TOTP验证码卡片
@@ -71,17 +72,14 @@ fun TotpCodeCard(
     onLongClick: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
+    boundPasswordSummary: String? = null,
     sharedTickSeconds: Long? = null,
     appSettings: AppSettings? = null
 ) {
     val context = LocalContext.current
     
-    // 共享设置，避免每张卡片单独读取 DataStore
-    val settings = appSettings ?: run {
-        val settingsManager = remember { SettingsManager(context) }
-        val state by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
-        state
-    }
+    // 使用传入的设置或默认值，避免创建多个 SettingsManager 实例
+    val settings = appSettings ?: AppSettings()
     
     // 解析TOTP数据
     val totpData = try {
@@ -267,6 +265,23 @@ fun TotpCodeCard(
                 }
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Bitwarden 同步状态指示器
+                    if (item.bitwardenVaultId != null) {
+                        val syncStatus = when (item.syncStatus) {
+                            "PENDING" -> SyncStatus.PENDING
+                            "SYNCING" -> SyncStatus.SYNCING
+                            "SYNCED" -> SyncStatus.SYNCED
+                            "FAILED" -> SyncStatus.FAILED
+                            "CONFLICT" -> SyncStatus.CONFLICT
+                            else -> if (item.bitwardenLocalModified) SyncStatus.PENDING else SyncStatus.SYNCED
+                        }
+                        SyncStatusIcon(
+                            status = syncStatus,
+                            size = 16.dp
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    
                     if (item.isFavorite) {
                         Icon(
                             Icons.Default.Favorite,
@@ -398,7 +413,7 @@ fun TotpCodeCard(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
             
             // 验证码显示

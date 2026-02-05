@@ -135,6 +135,13 @@ class PasskeyViewModel(
     fun getPasskeysByRpId(rpId: String): Flow<List<PasskeyEntry>> {
         return repository.getPasskeysByRpId(rpId)
     }
+
+    /**
+     * 获取绑定到指定密码的 Passkeys
+     */
+    fun getPasskeysByBoundPasswordId(passwordId: Long): Flow<List<PasskeyEntry>> {
+        return repository.getPasskeysByBoundPasswordId(passwordId)
+    }
     
     /**
      * 保存 Passkey
@@ -161,6 +168,19 @@ class PasskeyViewModel(
                 repository.updatePasskey(passkey)
             } catch (e: Exception) {
                 _errorMessage.value = "更新 Passkey 失败: ${e.message}"
+            }
+        }
+    }
+
+    /**
+     * 更新绑定密码
+     */
+    fun updateBoundPassword(credentialId: String, passwordId: Long?) {
+        viewModelScope.launch {
+            try {
+                repository.updateBoundPasswordId(credentialId, passwordId)
+            } catch (e: Exception) {
+                _errorMessage.value = "更新绑定失败: ${e.message}"
             }
         }
     }

@@ -161,4 +161,48 @@ interface PasskeyDao {
      */
     @Query("DELETE FROM passkeys")
     suspend fun deleteAll()
+    
+    // =============== Bitwarden 同步相关方法 ===============
+    
+    /**
+     * 根据 Bitwarden Cipher ID 获取 Passkey
+     */
+    @Query("SELECT * FROM passkeys WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
+    suspend fun getByBitwardenCipherId(cipherId: String): PasskeyEntry?
+    
+    /**
+     * 获取指定 Vault 的所有 Passkeys
+     */
+    @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId")
+    suspend fun getByBitwardenVaultId(vaultId: Long): List<PasskeyEntry>
+
+    /**
+     * 获取绑定到指定密码的 Passkeys
+     */
+    @Query("SELECT * FROM passkeys WHERE bound_password_id = :passwordId ORDER BY last_used_at DESC")
+    fun getByBoundPasswordId(passwordId: Long): Flow<List<PasskeyEntry>>
+
+    /**
+     * 更新绑定的密码 ID
+     */
+    @Query("UPDATE passkeys SET bound_password_id = :passwordId WHERE credential_id = :credentialId")
+    suspend fun updateBoundPasswordId(credentialId: String, passwordId: Long?)
+    
+    /**
+     * 获取待上传到 Bitwarden 的 Passkeys
+     */
+    @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL")
+    suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<PasskeyEntry>
+
+    /**
+     * 标记所有未关联 Bitwarden 的 Passkeys 为指定 Vault
+     */
+    @Query("UPDATE passkeys SET bitwarden_vault_id = :vaultId WHERE bitwarden_vault_id IS NULL")
+    suspend fun markAllForBitwarden(vaultId: Long)
+    
+    /**
+     * 标记 Passkey 为已同步
+     */
+    @Query("UPDATE passkeys SET sync_status = 'SYNCED', bitwarden_cipher_id = :cipherId WHERE credential_id = :credentialId")
+    suspend fun markSynced(credentialId: String, cipherId: String)
 }

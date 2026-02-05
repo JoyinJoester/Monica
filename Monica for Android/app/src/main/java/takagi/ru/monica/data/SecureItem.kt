@@ -41,7 +41,26 @@ data class SecureItem(
     @ColumnInfo(defaultValue = "0")
     val isDeleted: Boolean = false,     // 是否已删除（在回收站中）
     @ColumnInfo(defaultValue = "NULL")
-    val deletedAt: Date? = null          // 删除时间（用于自动清空）
+    val deletedAt: Date? = null,         // 删除时间（用于自动清空）
+    
+    // Bitwarden 同步字段
+    @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")
+    val bitwardenVaultId: Long? = null,           // 关联的 Bitwarden Vault
+    
+    @ColumnInfo(name = "bitwarden_cipher_id", defaultValue = "NULL")
+    val bitwardenCipherId: String? = null,        // Bitwarden Cipher UUID
+    
+    @ColumnInfo(name = "bitwarden_folder_id", defaultValue = "NULL")
+    val bitwardenFolderId: String? = null,        // Bitwarden Folder UUID
+    
+    @ColumnInfo(name = "bitwarden_revision_date", defaultValue = "NULL")
+    val bitwardenRevisionDate: String? = null,    // 最后同步的服务器版本日期
+    
+    @ColumnInfo(name = "bitwarden_local_modified", defaultValue = "0")
+    val bitwardenLocalModified: Boolean = false,  // 本地是否有未同步的修改
+    
+    @ColumnInfo(name = "sync_status", defaultValue = "NONE")
+    val syncStatus: String = "NONE"               // 同步状态: NONE, PENDING, SYNCING, SYNCED, FAILED, CONFLICT
 )
 
 /**

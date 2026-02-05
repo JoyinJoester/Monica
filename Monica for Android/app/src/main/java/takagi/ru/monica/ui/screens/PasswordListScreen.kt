@@ -216,12 +216,14 @@ fun PasswordListScreen(
                         } else {
                             Text(
                                 text = when(currentFilter) {
-                                    is CategoryFilter.All -> context.getString(R.string.app_name)
+                                    is CategoryFilter.All -> context.getString(R.string.filter_all)
+                                    is CategoryFilter.Local -> context.getString(R.string.filter_monica)
                                     is CategoryFilter.Starred -> "标星"
                                     is CategoryFilter.Uncategorized -> "未分类"
                                     is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
                                     is CategoryFilter.KeePassDatabase -> "KeePass"
                                     is CategoryFilter.BitwardenVault -> "Bitwarden"
+                                    is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface

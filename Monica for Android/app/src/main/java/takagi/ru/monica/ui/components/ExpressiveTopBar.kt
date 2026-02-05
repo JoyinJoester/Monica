@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.SizeTransform
@@ -60,9 +61,18 @@ fun ExpressiveTopBar(
         label = "TitleAlpha"
     )
 
+    val isLongTitle = title.length > 10
+    val titleStyle = when {
+        title.length > 18 -> MaterialTheme.typography.bodyLarge
+        isLongTitle -> MaterialTheme.typography.titleMedium
+        else -> MaterialTheme.typography.headlineLarge
+    }
+    val pillReserve = if (isSearchExpanded) 0.dp else 180.dp
+
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 88.dp, max = 88.dp)
             .padding(horizontal = 24.dp, vertical = 16.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -70,7 +80,8 @@ fun ExpressiveTopBar(
         Row(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .graphicsLayer { alpha = titleAlpha },
+                .graphicsLayer { alpha = titleAlpha }
+                .padding(end = pillReserve),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -78,10 +89,11 @@ fun ExpressiveTopBar(
             
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineLarge,
+                style = titleStyle,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1
+                maxLines = if (isLongTitle) 2 else 1,
+                overflow = TextOverflow.Clip
             )
         }
 

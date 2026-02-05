@@ -141,6 +141,13 @@
     <string name="display_options_menu_title">Display &amp; grouping</string>
     <string name="group_mode_menu_title">Stacking style</string>
     <string name="group_mode_smart">Smart (notes > web > app > title)</string>
+    <string name="smart_deduplication">Smart Deduplication</string>
+    <string name="smart_deduplication_desc">Merge duplicate entries from different sources in \'All\' view</string>
+    <string name="filter_title">Filter</string>
+    <string name="filter_monica">Monica</string>
+    <string name="filter_bitwarden">Bitwarden</string>
+    <string name="filter_keepass">KeePass</string>
+    <string name="filter_all">All</string>
     <string name="group_mode_smart_desc">Prefer notes, then website, app, title</string>
     <string name="group_mode_note">Stack by notes</string>
     <string name="group_mode_note_desc">First non-empty note line</string>
@@ -1625,11 +1632,27 @@
     <string name="copy_next_code_when_expiring_description">When countdown is within 5 seconds, copy the next verification code</string>
 
     <!-- Sync &amp; Backup Page -->
-    <string name="sync_backup_title">Sync &amp; Backup</string>
-    <string name="sync_backup_description">Manage data import, export and cloud sync</string>
+    <string name="sync_backup_title">Database &amp; Backup</string>
+    <string name="sync_backup_description">Manage databases, folders and backups</string>
     <string name="sync_backup_local">Local Backup</string>
     <string name="sync_backup_cloud">Cloud Sync</string>
     <string name="sync_backup_plus_hint">Upgrade to Monica Plus to unlock WebDAV cloud sync</string>
+
+    <string name="database_folder_management_title">Database Folder Management</string>
+    <string name="folder_management_title">Folder Management</string>
+    <string name="folder_management_description">Manage local/KeePass folders and Bitwarden sync</string>
+    <string name="database_source_label">Database Source</string>
+    <string name="database_source_local">Monica Local</string>
+    <string name="database_source_keepass">KeePass Database</string>
+    <string name="bitwarden_vault_label">Bitwarden Vault</string>
+    <string name="sync_scope_section_title">Sync Scope</string>
+    <string name="bitwarden_upload_all">Upload all data to Bitwarden</string>
+    <string name="bitwarden_upload_all_desc">Ignore folder rules and sync everything to Bitwarden</string>
+    <string name="apply_upload_all">Apply to all data</string>
+    <string name="bitwarden_folder_section_title">Bitwarden Folders</string>
+    <string name="bitwarden_not_logged_in">Not logged in to Bitwarden</string>
+    <string name="bitwarden_folder_empty">No Bitwarden folders</string>
+    <string name="bitwarden_create_folder_not_supported">Creating folders is not supported yet</string>
     
     <!-- Local KeePass Database -->
     <string name="local_keepass_section_title">KeePass Database</string>
@@ -1740,7 +1763,8 @@
     <string name="associated_link">Associated Link</string>
     <string name="associated_app">Associated App</string>
     <string name="bind_password">Bind Password</string>
-    <string name="bound_password_change">Bound Password (Click to Change)</string>
+    <string name="bound_password_change">Change Binding</string>
+    <string name="passkey_bound_label">Bound Passkeys</string>
     <string name="unbind">Unbind</string>
     <string name="select_password_to_bind">Select Password to Bind</string>
     <string name="link_example">https://example.com</string>
@@ -1797,4 +1821,71 @@
     
     <!-- Quick Add -->
     <string name="quick_add_not_supported">Quick add is not available for this page</string>
+
+    <!-- V2 Folder Management -->
+    <string name="v2_folder_management_title">Folder Management</string>
+    <string name="v2_folder_management_subtitle">Organize and sync your folders</string>
+    <string name="v2_sync_all_title">Bitwarden Full Sync</string>
+    <string name="v2_sync_all_desc">Sync all data to Bitwarden cloud</string>
+    <string name="v2_apply_sync">Apply Now</string>
+    <string name="v2_select_database">Select Database</string>
+    <string name="v2_bitwarden_account">Bitwarden Account</string>
+    <string name="v2_bitwarden_not_connected">Bitwarden not connected</string>
+    <string name="v2_bitwarden_connect_hint">Login to enable cloud sync</string>
+    <string name="v2_local_folders">Local Folders</string>
+    <string name="v2_keepass_groups">KeePass Groups</string>
+    <string name="v2_bitwarden_folders">Bitwarden Folders</string>
+    <string name="v2_no_local_folders">No local folders</string>
+    <string name="v2_no_keepass_groups">No KeePass groups</string>
+    <string name="v2_no_bitwarden_folders">No Bitwarden folders</string>
+    <string name="v2_create_first_folder">Create first folder</string>
+    <string name="v2_create_folder">Create Folder</string>
+    <string name="v2_edit_folder">Edit Folder</string>
+    <string name="v2_delete_folder">Delete Folder</string>
+    <string name="v2_delete_folder_confirm">Are you sure you want to delete folder \"%1$s\"? This cannot be undone.</string>
+    <string name="v2_folder_name">Folder Name</string>
+    <string name="v2_not_synced">Not synced</string>
+    <string name="v2_link">Link</string>
+    <string name="v2_unlink">Unlink</string>
+    <string name="v2_edit">Edit</string>
+    <string name="v2_delete">Delete</string>
+    <string name="v2_link_to_bitwarden">Link to Bitwarden</string>
+    <string name="v2_select_vault">Select Vault</string>
+    <string name="v2_select_folder">Select Folder</string>
+    <string name="v2_create_new_folder">Create New Folder</string>
+    <string name="v2_no_folder_root">No folder (root)</string>
+
+    <!-- New Folder Management (M3E Design) -->
+    <string name="folder_management_subtitle">Organize and sync your folders</string>
+    <string name="sync_all_title">Bitwarden Full Sync</string>
+    <string name="sync_all_desc">Sync all data to Bitwarden cloud</string>
+    <string name="sync_apply_now">Apply Now</string>
+    <string name="bitwarden_account_label">Bitwarden Account</string>
+    <string name="bitwarden_not_connected">Bitwarden not connected</string>
+    <string name="bitwarden_connect_hint">Login to enable cloud sync</string>
+    <string name="folder_section_local">Monica Local Folders</string>
+    <string name="folder_section_keepass">KeePass Folders</string>
+    <string name="folder_section_bitwarden">Bitwarden Folders</string>
+    <string name="folder_empty_local">No local folders</string>
+    <string name="folder_empty_keepass">No KeePass groups</string>
+    <string name="folder_empty_bitwarden">No Bitwarden folders</string>
+    <string name="folder_create_first">Create first folder</string>
+    <string name="folder_create">Create Folder</string>
+    <string name="folder_edit">Edit Folder</string>
+    <string name="folder_delete">Delete Folder</string>
+    <string name="folder_delete_confirm">Are you sure you want to delete folder \"%1$s\"? This cannot be undone.</string>
+    <string name="folder_name_label">Folder Name</string>
+    <string name="folder_not_synced">Not synced</string>
+    <string name="folder_link">Link</string>
+    <string name="folder_unlink">Unlink</string>
+    <string name="folder_link_to_bitwarden">Link to Bitwarden</string>
+    <string name="folder_select_vault">Select Vault</string>
+    <string name="folder_select_folder">Select Folder</string>
+    <string name="folder_create_new">Create New Folder</string>
+    <string name="folder_no_folder_root">No folder (root)</string>
+    
+    <!-- Bitwarden Unlock -->
+    <string name="bitwarden_unlock_title">Unlock Bitwarden</string>
+    <string name="bitwarden_unlock_message">Enter master password to unlock %1$s</string>
+    <string name="bitwarden_master_password">Master Password</string>
 </resources>

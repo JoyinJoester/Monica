@@ -89,6 +89,18 @@ interface PasswordEntryDao {
     @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName WHERE title = :title AND title != ''")
     suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String)
 
+    /**
+     * 更新绑定的验证器密钥
+     */
+    @Query("UPDATE password_entries SET authenticatorKey = :authenticatorKey WHERE id = :id")
+    suspend fun updateAuthenticatorKey(id: Long, authenticatorKey: String)
+
+    /**
+     * 更新绑定的通行密钥元数据
+     */
+    @Query("UPDATE password_entries SET passkey_bindings = :passkeyBindings WHERE id = :id")
+    suspend fun updatePasskeyBindings(id: Long, passkeyBindings: String)
+
     
     @Query("UPDATE password_entries SET sortOrder = :sortOrder WHERE id = :id")
     suspend fun updateSortOrder(id: Long, sortOrder: Int)
@@ -232,6 +244,22 @@ interface PasswordEntryDao {
      */
     @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): PasswordEntry?
+
+        /**
+         * 查找本地重复条目（仅本地库）
+         * 用于 Bitwarden 同步时合并本地条目，避免重复
+         */
+        @Query("""
+                SELECT * FROM password_entries
+                WHERE bitwarden_vault_id IS NULL
+                    AND keepassDatabaseId IS NULL
+                    AND isDeleted = 0
+                    AND LOWER(title) = :title
+                    AND LOWER(username) = :username
+                    AND LOWER(website) = :website
+                LIMIT 1
+        """)
+        suspend fun findLocalDuplicateByKey(title: String, username: String, website: String): PasswordEntry?
     
     /**
      * 根据 Bitwarden Vault ID 获取所有条目
@@ -282,6 +310,9 @@ interface PasswordEntryDao {
     """)
     suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: Long)
     
+    @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
+    fun getByBitwardenFolderIdFlow(folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
+
     /**
      * 根据 Bitwarden Folder ID 获取条目
      */
@@ -376,6 +407,12 @@ interface PasswordEntryDao {
      */
     @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL AND isDeleted = 0")
     suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<PasswordEntry>
+
+    /**
+     * 标记所有未关联 Bitwarden 的条目为指定 Vault
+     */
+    @Query("UPDATE password_entries SET bitwarden_vault_id = :vaultId WHERE bitwarden_vault_id IS NULL AND isDeleted = 0")
+    suspend fun markAllForBitwarden(vaultId: Long)
     
     /**
      * 获取本地已修改但未同步的 Bitwarden 条目

@@ -22,16 +22,22 @@ import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.Date
+
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
 
 sealed class CategoryFilter {
     object All : CategoryFilter()
+    object Local : CategoryFilter() // Pure local view (Monica)
     object Starred : CategoryFilter()
     object Uncategorized : CategoryFilter()
     data class Custom(val categoryId: Long) : CategoryFilter()
     data class KeePassDatabase(val databaseId: Long) : CategoryFilter()
     data class BitwardenVault(val vaultId: Long) : CategoryFilter()
+    data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : CategoryFilter()
 }
 
 /**
@@ -54,10 +60,15 @@ class PasswordViewModel(
         null
     }
     
-    // 回收站设置
+    // Trash settings
     private val trashSettings = settingsManager?.settingsFlow?.map { 
         it.trashEnabled to it.trashAutoDeleteDays 
     }?.stateIn(viewModelScope, SharingStarted.Eagerly, true to 30)
+
+    // Smart Deduplication setting
+    private val smartDeduplicationEnabled = settingsManager?.settingsFlow?.map { 
+        it.smartDeduplicationEnabled 
+    }?.stateIn(viewModelScope, SharingStarted.Eagerly, true) ?: kotlinx.coroutines.flow.MutableStateFlow(true)
     
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -71,6 +82,10 @@ class PasswordViewModel(
     private val _isAuthenticated = MutableStateFlow(false)
     val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
     
+    fun getBitwardenFolders(vaultId: Long): Flow<List<BitwardenFolder>> {
+        return repository.getBitwardenFoldersByVaultId(vaultId)
+    }
+    
     val passwordEntries: StateFlow<List<PasswordEntry>> = combine(
         searchQuery,
         _categoryFilter
@@ -81,9 +96,8 @@ class PasswordViewModel(
         .distinctUntilChanged()
         .flatMapLatest { (query, filter) ->
             val baseFlow = if (query.isNotBlank()) {
-                // 扩展搜索：同时搜索基础字段和自定义字段
+                // Extended search
                 repository.searchPasswordEntries(query).map { baseResults ->
-                    // 获取通过自定义字段搜索匹配的条目ID
                     val customFieldMatchIds = try {
                         customFieldRepository?.searchEntryIdsByFieldContent(query) ?: emptyList()
                     } catch (e: Exception) {
@@ -94,14 +108,12 @@ class PasswordViewModel(
                     if (customFieldMatchIds.isEmpty()) {
                         baseResults
                     } else {
-                        // 合并结果：基础搜索结果 + 自定义字段匹配的条目
                         val baseIds = baseResults.map { it.id }.toSet()
                         val additionalIds = customFieldMatchIds.filter { it !in baseIds }
                         
                         if (additionalIds.isEmpty()) {
                             baseResults
                         } else {
-                            // 获取额外匹配的条目
                             val additionalEntries = try {
                                 repository.getPasswordsByIds(additionalIds)
                             } catch (e: Exception) {
@@ -113,20 +125,37 @@ class PasswordViewModel(
                     }
                 }
             } else {
+
                 when (filter) {
                     is CategoryFilter.All -> repository.getAllPasswordEntries()
+                    is CategoryFilter.Local -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
+                    }
                     is CategoryFilter.Starred -> repository.getFavoritePasswordEntries()
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
                     is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
                     is CategoryFilter.BitwardenVault -> repository.getPasswordEntriesByBitwardenVault(filter.vaultId)
+                    is CategoryFilter.BitwardenFolderFilter -> repository.getPasswordEntriesByBitwardenFolder(filter.folderId)
                 }
             }
-            baseFlow.map { entries ->
-                // 在搜索模式或"全部"视图时进行去重
-                // 搜索结果可能包含来自多个来源的重复条目
-                val filtered = if (query.isNotBlank() || filter is CategoryFilter.All) {
-                    dedupeForAll(entries)
+            // Combine with settings for smart deduplication logic
+            combine(baseFlow, smartDeduplicationEnabled) { entries, smartDedupe ->
+                // Dedupe logic:
+                // 1. If searching, or explicit Local/KeePass/Bitwarden filter -> NO dedupe (show raw data).
+                // 2. If "All" or other categories -> Apply Smart Dedupe if enabled.
+                val isExplicitSourceView = when (filter) {
+                    is CategoryFilter.BitwardenVault -> true
+                    is CategoryFilter.BitwardenFolderFilter -> true // Explicit folder view
+                    is CategoryFilter.KeePassDatabase -> true
+                    is CategoryFilter.Local -> true // Local view shows all local entries
+                    else -> false
+                }
+                
+                val shouldDedupe = !isExplicitSourceView && smartDedupe
+                
+                val filtered = if (shouldDedupe) {
+                    dedupeSmart(entries)
                 } else {
                     entries
                 }
@@ -155,18 +184,72 @@ class PasswordViewModel(
             initialValue = emptyList()
         )
 
-    private fun dedupeForAll(entries: List<PasswordEntry>): List<PasswordEntry> {
-        // 本地条目 (既不是 KeePass 也不是 Bitwarden)
-        val localKeys = entries
-            .filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
-            .map { buildDedupeKey(it) }
-            .toSet()
-        return entries.filter { entry ->
-            // 本地条目始终保留
-            // KeePass/Bitwarden 条目如果与本地重复则跳过
-            val isLocal = entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
-            isLocal || buildDedupeKey(entry) !in localKeys
+    /**
+     * Smart Deduplication Logic
+     * Merges entries that have identical Title, Username, Website AND Password.
+     * Prioritizes the "richest" entry (most metadata).
+     */
+    private fun dedupeSmart(entries: List<PasswordEntry>): List<PasswordEntry> {
+        // Group by visible business key
+        val groups = entries.groupBy { buildDedupeKey(it) }
+        
+        val result = mutableListOf<PasswordEntry>()
+        
+        for ((_, groupEntries) in groups) {
+            if (groupEntries.size <= 1) {
+                result.addAll(groupEntries)
+                continue
+            }
+            
+            // Allow multiple entries if passwords differ (decryption needed for comparison)
+            // But here we might not want to decrypt ALL passwords for performance?
+            // However, we need to know if they are "duplicates". 
+            // Assumption: If Title/User/Web match, we should check password match.
+            // Since we are inside the map { ... decrypt ... } block in the flow, 
+            // wait, we are BEFORE decryption in the flow transformation above?
+            // Let's check: "filtered.map { entry -> entry.copy(password = decrypt...) }"
+            // So 'entries' here has ENCRYPTED passwords.
+            
+            // To properly dedupe by password value without decrypting all, we rely on the fact that
+            // for "Smart Deduplication" to be safe, we usually only merge if we are reasonably sure.
+            // But Encrypted passwords will differ even for same plaintext.
+            // So we MUST decrypt to compare, OR we relax the "Same Password" requirement?
+            // The requirement says: "visually merge entries that share ... AND Password".
+            // So we really should compare passwords.
+            
+            // Performance Trade-off: Decrypting all candidates in a group.
+            // Groups are usually small (2-3 items). This is acceptable.
+            
+            val subgroups = groupEntries.groupBy { 
+                try {
+                    securityManager.decryptData(it.password)
+                } catch (e: Exception) {
+                    // Fallback for decryption failure: treat as unique
+                    it.password 
+                }
+            }
+            
+            for ((_, candidates) in subgroups) {
+                // Now we have candidates with Same Key AND Same Password.
+                // Pick the best one.
+                val best = candidates.maxWithOrNull(
+                    compareBy<PasswordEntry> { it.notes.length } // Prefer longer notes
+                        .thenBy { it.website.length }        // Prefer longer website URL (if trim matches but original differs?)
+                        .thenBy { if (it.isFavorite) 1 else 0 } // Prefer favorites
+                        .thenBy { if (it.keepassDatabaseId != null || it.bitwardenVaultId != null) 1 else 0 } // Prefer Remote? Or Local? 
+                        // Plan said "prioritize richer data". Usually Remote has more sync info. 
+                        // Let's stick to Note Length as primary proxy for richness.
+                )
+                if (best != null) {
+                    result.add(best)
+                }
+            }
         }
+        
+        // Restore sort order (optional, but good for stability)
+        // Original list might be sorted by something. 
+        // We can sort by title to be safe.
+        return result.sortedBy { it.title }
     }
 
     private fun buildDedupeKey(entry: PasswordEntry): String {
@@ -302,7 +385,8 @@ class PasswordViewModel(
     
     fun addPasswordEntry(entry: PasswordEntry, onResult: (Long) -> Unit = {}) {
         viewModelScope.launch {
-            val encryptedEntry = entry.copy(
+            val boundEntry = applyCategoryBinding(entry)
+            val encryptedEntry = boundEntry.copy(
                 password = securityManager.encryptData(entry.password),
                 createdAt = Date(),
                 updatedAt = Date()
@@ -374,13 +458,19 @@ class PasswordViewModel(
         viewModelScope.launch {
             // 获取旧数据用于对比
             val oldEntry = repository.getPasswordEntryById(entry.id)
+            
+            // 应用分类绑定
+            val boundEntry = applyCategoryBinding(entry)
+            // 如果 entry 被修改为 boundEntry，使用 boundEntry
+            val entryToUpdate = boundEntry
+            
             val oldPassword = oldEntry?.let { securityManager.decryptData(it.password) } ?: ""
             val service = keepassService
             val oldKeepassId = oldEntry?.keepassDatabaseId
-            val newKeepassId = entry.keepassDatabaseId
+            val newKeepassId = entryToUpdate.keepassDatabaseId
             if (service != null) {
                 if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                    val deleteResult = service.deletePasswordEntries(oldKeepassId, listOf(entry.copy(keepassDatabaseId = oldKeepassId)))
+                    val deleteResult = service.deletePasswordEntries(oldKeepassId, listOf(entryToUpdate.copy(keepassDatabaseId = oldKeepassId)))
                     if (deleteResult.isFailure) {
                         Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
                         return@launch
@@ -389,7 +479,7 @@ class PasswordViewModel(
                 if (newKeepassId != null) {
                     val updateResult = service.updatePasswordEntry(
                         databaseId = newKeepassId,
-                        entry = entry,
+                        entry = entryToUpdate,
                         resolvePassword = { it.password }
                     )
                     if (updateResult.isFailure) {
@@ -399,15 +489,15 @@ class PasswordViewModel(
                 }
             }
 
-            repository.updatePasswordEntry(entry.copy(
-                password = securityManager.encryptData(entry.password),
+            repository.updatePasswordEntry(entryToUpdate.copy(
+                password = securityManager.encryptData(entryToUpdate.password),
                 updatedAt = Date()
             ))
             
             // 记录更新操作
             val changes = takagi.ru.monica.utils.OperationLogger.compareAndGetChanges(
                 old = oldEntry,
-                new = entry,
+                new = entryToUpdate,
                 fields = listOf(
                     "用户名" to { it.username },
                     "网站" to { it.website },
@@ -416,27 +506,27 @@ class PasswordViewModel(
             )
 
             // 捕获密码变化（记录真实密码，在UI层隐藏显示）
-            if (oldEntry != null && oldPassword != entry.password) {
+            if (oldEntry != null && oldPassword != entryToUpdate.password) {
                 val updatedChanges = changes.toMutableList()
                 updatedChanges.add(
                     takagi.ru.monica.utils.FieldChange(
                         fieldName = "密码",
                         oldValue = oldPassword,
-                        newValue = entry.password
+                        newValue = entryToUpdate.password
                     )
                 )
                 takagi.ru.monica.utils.OperationLogger.logUpdate(
                     itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                    itemId = entry.id,
-                    itemTitle = entry.title,
+                    itemId = entryToUpdate.id,
+                    itemTitle = entryToUpdate.title,
                     changes = updatedChanges
                 )
                 return@launch
             }
             takagi.ru.monica.utils.OperationLogger.logUpdate(
                 itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                itemId = entry.id,
-                itemTitle = entry.title,
+                itemId = entryToUpdate.id,
+                itemTitle = entryToUpdate.title,
                 changes = changes
             )
         }
@@ -511,6 +601,24 @@ class PasswordViewModel(
     fun updateSortOrders(items: List<Pair<Long, Int>>) {
         viewModelScope.launch {
             repository.updateSortOrders(items)
+        }
+    }
+
+    /**
+     * 更新绑定的验证器密钥
+     */
+    fun updateAuthenticatorKey(id: Long, authenticatorKey: String) {
+        viewModelScope.launch {
+            repository.updateAuthenticatorKey(id, authenticatorKey)
+        }
+    }
+
+    /**
+     * 更新绑定的通行密钥元数据
+     */
+    fun updatePasskeyBindings(id: Long, passkeyBindings: String) {
+        viewModelScope.launch {
+            repository.updatePasskeyBindings(id, passkeyBindings)
         }
     }
     
@@ -662,8 +770,23 @@ class PasswordViewModel(
         return "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
     }
 
-    private fun isSameGroup(entry1: PasswordEntry, entry2: PasswordEntry): Boolean {
-        return getPasswordInfoKey(entry1) == getPasswordInfoKey(entry2)
+    private fun applyCategoryBinding(entry: PasswordEntry): PasswordEntry {
+        // 如果条目已指派到 Bitwarden Vault，且没有指定文件夹，尝试从分类继承
+        // 或者，如果条目是在本地创建（无 Vault），但分类绑定了 Bitwarden，则自动指派
+        
+        val categoryId = entry.categoryId ?: return entry
+        val category = categories.value.find { it.id == categoryId } ?: return entry
+        
+        // 分类未绑定 Bitwarden，无需处理
+        if (category.bitwardenFolderId == null) return entry
+        
+        // 自动绑定到分类关联的 Bitwarden 文件夹
+        return entry.copy(
+            bitwardenVaultId = category.bitwardenVaultId ?: entry.bitwardenVaultId,
+            bitwardenFolderId = category.bitwardenFolderId,
+            // 如果是已同步的条目，且文件夹改变了，标记为本地修改
+            bitwardenLocalModified = if (entry.bitwardenCipherId != null && entry.bitwardenFolderId != category.bitwardenFolderId) true else entry.bitwardenLocalModified
+        )
     }
 
     /**
@@ -682,20 +805,23 @@ class PasswordViewModel(
         viewModelScope.launch {
             var firstId: Long? = null
             
+            // 应用分类绑定规则
+            val boundCommonEntry = applyCategoryBinding(commonEntry)
+            
             // 1. Process each password
             passwords.forEachIndexed { index, password ->
                 if (index < originalIds.size) {
                     // Update existing
                     val id = originalIds[index]
                     if (index == 0) firstId = id
-                    val updatedEntry = commonEntry.copy(
+                    val updatedEntry = boundCommonEntry.copy(
                         id = id,
                         password = password
                     )
                     updatePasswordEntry(updatedEntry)
                 } else {
                     // Create new
-                    val newEntry = commonEntry.copy(
+                    val newEntry = boundCommonEntry.copy(
                         id = 0, // Reset ID for new entry
                         password = password
                     )

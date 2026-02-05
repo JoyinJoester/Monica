@@ -36,12 +36,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.model.PasskeyBinding
+import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.viewmodel.PasskeyViewModel
+import takagi.ru.monica.viewmodel.PasswordViewModel
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Passkey 列表屏幕
@@ -57,6 +63,8 @@ import takagi.ru.monica.viewmodel.PasskeyViewModel
 fun PasskeyListScreen(
     viewModel: PasskeyViewModel,
     onPasskeyClick: (PasskeyEntry) -> Unit = {},
+    passwordViewModel: PasswordViewModel? = null,
+    onNavigateToPasswordDetail: (Long) -> Unit = {},
     hideTopBar: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -69,6 +77,60 @@ fun PasskeyListScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val groupedPasskeys by viewModel.groupedPasskeys.collectAsState()
+
+    val passwords by (passwordViewModel?.allPasswords ?: flowOf(emptyList())).collectAsState(initial = emptyList())
+    val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
+
+    val bindingPasskeys = remember(passwords, searchQuery) {
+        val rawList = passwords.flatMap { password ->
+            val bindings = PasskeyBindingCodec.decodeList(password.passkeyBindings)
+            bindings.map { binding ->
+                PasskeyEntry(
+                    credentialId = binding.credentialId.ifBlank { "ref_${password.id}_${binding.rpId}" },
+                    rpId = binding.rpId,
+                    rpName = binding.rpName.ifBlank { binding.rpId },
+                    userId = "",
+                    userName = binding.userName,
+                    userDisplayName = binding.userDisplayName.ifBlank { binding.userName },
+                    publicKeyAlgorithm = PasskeyEntry.ALGORITHM_ES256,
+                    publicKey = "",
+                    privateKeyAlias = "",
+                    createdAt = System.currentTimeMillis(),
+                    lastUsedAt = System.currentTimeMillis(),
+                    useCount = 0,
+                    iconUrl = null,
+                    isDiscoverable = false,
+                    isUserVerificationRequired = true,
+                    transports = PasskeyEntry.TRANSPORT_INTERNAL,
+                    aaguid = "",
+                    signCount = 0,
+                    isBackedUp = true,
+                    notes = "",
+                    boundPasswordId = password.id,
+                    bitwardenVaultId = null,
+                    bitwardenCipherId = null,
+                    syncStatus = "REFERENCE"
+                )
+            }
+        }
+
+        if (searchQuery.isBlank()) {
+            rawList
+        } else {
+            rawList.filter { passkey ->
+                passkey.rpId.contains(searchQuery, ignoreCase = true) ||
+                    passkey.rpName.contains(searchQuery, ignoreCase = true) ||
+                    passkey.userName.contains(searchQuery, ignoreCase = true) ||
+                    passkey.userDisplayName.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    val combinedPasskeys = remember(passkeys, bindingPasskeys) {
+        if (bindingPasskeys.isEmpty()) return@remember passkeys
+        val existingIds = passkeys.map { it.credentialId }.toSet()
+        passkeys + bindingPasskeys.filterNot { it.credentialId in existingIds }
+    }
     
     // 是否完全支持 Passkey
     val isFullySupported = viewModel.isPasskeyFullySupported
@@ -78,6 +140,8 @@ fun PasskeyListScreen(
     
     // 搜索栏展开状态
     var isSearchExpanded by remember { mutableStateOf(false) }
+
+    var passkeyToBind by remember { mutableStateOf<PasskeyEntry?>(null) }
     
     // 下拉搜索相关
     var currentOffset by remember { mutableFloatStateOf(0f) }
@@ -201,7 +265,7 @@ fun PasskeyListScreen(
             ) {
                 CircularProgressIndicator()
             }
-        } else if (passkeys.isEmpty()) {
+        } else if (combinedPasskeys.isEmpty()) {
             // 空状态（与密码列表一致）
             Box(
                 modifier = Modifier
@@ -304,21 +368,191 @@ fun PasskeyListScreen(
             ) {
                 // 直接显示所有 Passkey，无分组标题
                 items(
-                    items = passkeys,
+                    items = combinedPasskeys,
                     key = { it.credentialId }
                 ) { passkey ->
+                    val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
                     PasskeyListItem(
                         passkey = passkey,
+                        boundPassword = boundPassword,
                         onClick = { onPasskeyClick(passkey) },
-                        onDelete = { viewModel.deletePasskey(passkey) },
+                        onDelete = {
+                            if (boundPassword != null && passwordViewModel != null) {
+                                val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
+                                passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
+                            }
+
+                            val isReferenceOnly = passkey.syncStatus == "REFERENCE" && passkey.privateKeyAlias.isBlank() && passkey.publicKey.isBlank()
+                            if (!isReferenceOnly) {
+                                viewModel.deletePasskey(passkey)
+                            }
+                        },
+                        onBindPassword = { passkeyToBind = passkey },
+                        onUnbindPassword = {
+                            if (boundPassword != null && passwordViewModel != null) {
+                                val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
+                                passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
+                            }
+                            if (passkey.syncStatus != "REFERENCE") {
+                                viewModel.updateBoundPassword(passkey.credentialId, null)
+                            }
+                        },
+                        onOpenBoundPassword = { passwordId -> onNavigateToPasswordDetail(passwordId) },
                         modifier = Modifier.animateItemPlacement()
                     )
                 }
             }
         }
     }
+
+    if (passkeyToBind != null) {
+        PasswordPickerDialog(
+            passwords = passwords,
+            onDismiss = { passkeyToBind = null },
+            onPasswordSelected = { password ->
+                val passkey = passkeyToBind!!
+                val previousPasswordId = passkey.boundPasswordId
+
+                if (passwordViewModel != null) {
+                    val newBinding = PasskeyBinding(
+                        credentialId = passkey.credentialId,
+                        rpId = passkey.rpId,
+                        rpName = passkey.rpName,
+                        userName = passkey.userName,
+                        userDisplayName = passkey.userDisplayName
+                    )
+
+                    val targetEntry = passwordMap[password.id]
+                    if (targetEntry != null) {
+                        val updatedBindings = PasskeyBindingCodec.addBinding(targetEntry.passkeyBindings, newBinding)
+                        passwordViewModel.updatePasskeyBindings(password.id, updatedBindings)
+                    }
+
+                    if (previousPasswordId != null && previousPasswordId != password.id) {
+                        val previousEntry = passwordMap[previousPasswordId]
+                        if (previousEntry != null) {
+                            val updatedBindings = PasskeyBindingCodec.removeBinding(previousEntry.passkeyBindings, passkey.credentialId)
+                            passwordViewModel.updatePasskeyBindings(previousPasswordId, updatedBindings)
+                        }
+                    }
+                }
+
+                if (passkey.syncStatus != "REFERENCE") {
+                    viewModel.updateBoundPassword(passkey.credentialId, password.id)
+                }
+                passkeyToBind = null
+            }
+        )
+    }
 }
 
+private fun formatPasswordSummary(entry: PasswordEntry): String {
+    val parts = listOf(entry.title, entry.username, entry.website).filter { it.isNotBlank() }
+    return if (parts.isEmpty()) entry.title else parts.joinToString(" · ")
+}
+
+@Composable
+private fun PasswordPickerDialog(
+    passwords: List<PasswordEntry>,
+    onDismiss: () -> Unit,
+    onPasswordSelected: (PasswordEntry) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredPasswords = remember(passwords, searchQuery) {
+        if (searchQuery.isBlank()) {
+            passwords
+        } else {
+            passwords.filter { entry ->
+                entry.title.contains(searchQuery, ignoreCase = true) ||
+                    entry.username.contains(searchQuery, ignoreCase = true) ||
+                    entry.website.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 600.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = stringResource(R.string.select_password_to_bind),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(stringResource(R.string.search)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null)
+                            }
+                        }
+                    } else null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.large
+                )
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    items(filteredPasswords) { password ->
+                        ListItem(
+                            headlineContent = { Text(password.title) },
+                            supportingContent = {
+                                val parts = listOf(password.username, password.website).filter { it.isNotBlank() }
+                                if (parts.isNotEmpty()) {
+                                    Text(parts.joinToString(" · "))
+                                }
+                            },
+                            leadingContent = {
+                                Surface(
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = password.title.firstOrNull()?.toString()?.uppercase() ?: "?",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .clickable { onPasswordSelected(password) }
+                                .fillMaxWidth()
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        }
+    }
+}
 /**
  * 版本警告横幅
  */
@@ -450,8 +684,12 @@ private fun PasskeyGroupHeader(
 @Composable
 private fun PasskeyListItem(
     passkey: PasskeyEntry,
+    boundPassword: PasswordEntry?,
     onClick: () -> Unit,
     onDelete: () -> Unit = {},
+    onBindPassword: () -> Unit = {},
+    onUnbindPassword: () -> Unit = {},
+    onOpenBoundPassword: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -626,6 +864,55 @@ private fun PasskeyListItem(
                             value = passkey.useCount.toString(),
                             icon = Icons.Default.Numbers
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 绑定密码
+                    if (boundPassword != null) {
+                        DetailRow(
+                            label = stringResource(R.string.bind_password),
+                            value = formatPasswordSummary(boundPassword),
+                            icon = Icons.Default.Lock
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { onOpenBoundPassword(boundPassword.id) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.details))
+                            }
+                            OutlinedButton(
+                                onClick = onBindPassword,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.bound_password_change))
+                            }
+                            OutlinedButton(
+                                onClick = onUnbindPassword,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Text(stringResource(R.string.unbind))
+                            }
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onBindPassword,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.bind_password))
+                        }
                     }
                     
                     Spacer(modifier = Modifier.height(12.dp))

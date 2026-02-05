@@ -160,4 +160,60 @@ interface SecureItemDao {
      */
     @Delete
     suspend fun delete(item: SecureItem)
+    
+    /**
+     * 插入项目
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: SecureItem): Long
+    
+    // =============== Bitwarden 同步相关方法 ===============
+    
+    /**
+     * 根据 Bitwarden Cipher ID 获取项目
+     */
+    @Query("SELECT * FROM secure_items WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
+    suspend fun getByBitwardenCipherId(cipherId: String): SecureItem?
+    
+    /**
+     * 获取指定 Vault 的所有项目
+     */
+    @Query("SELECT * FROM secure_items WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
+    suspend fun getByBitwardenVaultId(vaultId: Long): List<SecureItem>
+    
+    /**
+     * 获取待上传到 Bitwarden 的项目（有 vaultId 但没有 cipherId）
+     */
+    @Query("SELECT * FROM secure_items WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NULL AND isDeleted = 0")
+    suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<SecureItem>
+
+    /**
+     * 标记所有未关联 Bitwarden 的项目为指定 Vault
+     */
+    @Query("UPDATE secure_items SET bitwarden_vault_id = :vaultId WHERE bitwarden_vault_id IS NULL AND isDeleted = 0")
+    suspend fun markAllForBitwarden(vaultId: Long)
+    
+    /**
+     * 获取有本地修改需要同步的项目
+     */
+    @Query("SELECT * FROM secure_items WHERE bitwarden_vault_id = :vaultId AND bitwarden_local_modified = 1 AND isDeleted = 0")
+    suspend fun getLocalModifiedEntries(vaultId: Long): List<SecureItem>
+    
+    /**
+     * 获取指定 Vault 的项目数量
+     */
+    @Query("SELECT COUNT(*) FROM secure_items WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
+    suspend fun getBitwardenEntriesCount(vaultId: Long): Int
+    
+    /**
+     * 标记项目为已同步
+     */
+    @Query("UPDATE secure_items SET sync_status = 'SYNCED', bitwarden_local_modified = 0, bitwarden_revision_date = :revisionDate WHERE id = :id")
+    suspend fun markSynced(id: Long, revisionDate: String)
+    
+    /**
+     * 标记项目有本地修改
+     */
+    @Query("UPDATE secure_items SET bitwarden_local_modified = 1, sync_status = 'PENDING' WHERE id = :id")
+    suspend fun markLocalModified(id: Long)
 }

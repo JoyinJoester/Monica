@@ -7,6 +7,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
@@ -36,6 +37,7 @@ class BitwardenRepository(private val context: Context) {
         private const val KEY_AUTO_SYNC_ENABLED = "auto_sync_enabled"
         private const val KEY_SYNC_ON_WIFI_ONLY = "sync_on_wifi_only"
         private const val KEY_LAST_SYNC_TIME = "last_sync_time"
+        private const val KEY_NEVER_LOCK_BITWARDEN = "never_lock_bitwarden"
         
         @Volatile
         private var instance: BitwardenRepository? = null
@@ -396,8 +398,13 @@ class BitwardenRepository(private val context: Context) {
     
     /**
      * 锁定 Vault
+     * 如果开启了"永不锁定"选项，则不执行锁定
      */
     suspend fun lock(vaultId: Long) = withContext(Dispatchers.IO) {
+        if (isNeverLockEnabled) {
+            Log.d(TAG, "永不锁定已开启，跳过锁定 Vault: $vaultId")
+            return@withContext
+        }
         symmetricKeyCache.remove(vaultId)
         accessTokenCache.remove(vaultId)
         vaultDao.setLocked(vaultId, true)
@@ -405,9 +412,55 @@ class BitwardenRepository(private val context: Context) {
     }
     
     /**
+     * 尝试从存储中恢复解锁状态（无需主密码）
+     * 用于"永不锁定"模式下 App 重启后恢复
+     * 
+     * @return true 如果成功恢复解锁状态
+     */
+    suspend fun tryRestoreUnlockState(vaultId: Long): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val vault = vaultDao.getVaultById(vaultId) ?: return@withContext false
+            
+            // 尝试从存储中恢复密钥
+            val storedEncKey = vault.encryptedEncKey?.let { decryptFromStorage(it) }
+            val storedMacKey = vault.encryptedMacKey?.let { decryptFromStorage(it) }
+            
+            if (storedEncKey != null && storedMacKey != null) {
+                val encKeyBytes = Base64.decode(storedEncKey, Base64.NO_WRAP)
+                val macKeyBytes = Base64.decode(storedMacKey, Base64.NO_WRAP)
+                val symmetricKey = SymmetricCryptoKey(encKeyBytes, macKeyBytes)
+                
+                // 缓存密钥
+                symmetricKeyCache[vaultId] = symmetricKey
+                
+                // 尝试恢复访问令牌
+                vault.encryptedAccessToken?.let { 
+                    accessTokenCache[vaultId] = decryptFromStorage(it)
+                }
+                
+                // 更新状态
+                vaultDao.setLocked(vaultId, false)
+                
+                Log.d(TAG, "成功恢复 Vault 解锁状态: $vaultId")
+                return@withContext true
+            }
+            
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "恢复解锁状态失败", e)
+            false
+        }
+    }
+    
+    /**
      * 锁定所有 Vault
+     * 如果开启了"永不锁定"选项，则不执行锁定
      */
     suspend fun lockAll() = withContext(Dispatchers.IO) {
+        if (isNeverLockEnabled) {
+            Log.d(TAG, "永不锁定已开启，跳过锁定所有 Vault")
+            return@withContext
+        }
         symmetricKeyCache.clear()
         accessTokenCache.clear()
         getAllVaults().forEach { vault ->
@@ -649,8 +702,27 @@ class BitwardenRepository(private val context: Context) {
         get() = securePrefs.getBoolean(KEY_SYNC_ON_WIFI_ONLY, false)
         set(value) = securePrefs.edit().putBoolean(KEY_SYNC_ON_WIFI_ONLY, value).apply()
     
+    /**
+     * 是否永不锁定 Bitwarden
+     * 
+     * 开启后：
+     * - Bitwarden Vault 将保持解锁状态
+     * - 密钥会持久化保存在内存中
+     * - 适合安全环境下使用
+     */
+    var isNeverLockEnabled: Boolean
+        get() = securePrefs.getBoolean(KEY_NEVER_LOCK_BITWARDEN, false)
+        set(value) = securePrefs.edit().putBoolean(KEY_NEVER_LOCK_BITWARDEN, value).apply()
+    
     val lastSyncTime: Long
         get() = securePrefs.getLong(KEY_LAST_SYNC_TIME, 0)
+
+    /**
+     * 同步队列计数（实时）
+     */
+    fun getPendingSyncCountFlow(): Flow<Int> = pendingOpDao.getPendingCountFlow()
+
+    fun getFailedSyncCountFlow(): Flow<Int> = pendingOpDao.getFailedCountFlow()
     
     // ==================== 加密辅助 ====================
     

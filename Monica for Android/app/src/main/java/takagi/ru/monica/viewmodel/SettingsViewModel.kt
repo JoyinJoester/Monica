@@ -273,6 +273,18 @@ class SettingsViewModel(
             settingsManager.updateReduceAnimations(enabled)
         }
     }
+
+    fun updateSmartDeduplicationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateSmartDeduplicationEnabled(enabled)
+        }
+    }
+
+    fun updateBitwardenUploadAll(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateBitwardenUploadAll(enabled)
+        }
+    }
     
     // ==================== V2 多源密码库设置 ====================
     
