@@ -141,6 +141,13 @@
     <string name="display_options_menu_title">Display &amp; grouping</string>
     <string name="group_mode_menu_title">Stacking style</string>
     <string name="group_mode_smart">Smart (notes > web > app > title)</string>
+    <string name="smart_deduplication">Smart Deduplication</string>
+    <string name="smart_deduplication_desc">Merge duplicate entries from different sources in \'All\' view</string>
+    <string name="filter_title">Filter</string>
+    <string name="filter_monica">Monica</string>
+    <string name="filter_bitwarden">Bitwarden</string>
+    <string name="filter_keepass">KeePass</string>
+    <string name="filter_all">All</string>
     <string name="group_mode_smart_desc">Prefer notes, then website, app, title</string>
     <string name="group_mode_note">Stack by notes</string>
     <string name="group_mode_note_desc">First non-empty note line</string>

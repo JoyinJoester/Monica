@@ -84,6 +84,9 @@ class SettingsManager(private val context: Context) {
         // 减少动画 - 解决部分设备动画卡顿问题
         private val REDUCE_ANIMATIONS_KEY = booleanPreferencesKey("reduce_animations")
 
+        // 智能去重
+        private val SMART_DEDUPLICATION_ENABLED_KEY = booleanPreferencesKey("smart_deduplication_enabled")
+
         // Bitwarden 同步范围
         private val BITWARDEN_UPLOAD_ALL_KEY = booleanPreferencesKey("bitwarden_upload_all")
         
@@ -182,6 +185,7 @@ class SettingsManager(private val context: Context) {
                 paymentInfo = preferences[FIELD_PAYMENT_INFO_KEY] ?: true
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
+            smartDeduplicationEnabled = preferences[SMART_DEDUPLICATION_ENABLED_KEY] ?: true,
             bitwardenUploadAll = preferences[BITWARDEN_UPLOAD_ALL_KEY] ?: false,
             
             // V2 多源密码库设置
@@ -514,6 +518,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateReduceAnimations(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[REDUCE_ANIMATIONS_KEY] = enabled
+        }
+    }
+
+    suspend fun updateSmartDeduplicationEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[SMART_DEDUPLICATION_ENABLED_KEY] = enabled
         }
     }
     

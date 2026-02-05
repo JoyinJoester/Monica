@@ -339,6 +339,7 @@ data class AppSettings(
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
     val reduceAnimations: Boolean = false, // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题
+    val smartDeduplicationEnabled: Boolean = true, // 智能去重（在“所有”视图中合并显示相同密码）
 
     // Bitwarden 同步范围设置
     val bitwardenUploadAll: Boolean = false, // 一键上传所有数据到 Bitwarden

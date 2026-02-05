@@ -274,6 +274,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateSmartDeduplicationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateSmartDeduplicationEnabled(enabled)
+        }
+    }
+
     fun updateBitwardenUploadAll(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBitwardenUploadAll(enabled)

@@ -128,7 +128,11 @@ class MainActivity : BaseMonicaActivity() {
 
         // Initialize dependencies
         val database = PasswordDatabase.getDatabase(this)
-        val repository = PasswordRepository(database.passwordEntryDao(), database.categoryDao())
+        val repository = PasswordRepository(
+            database.passwordEntryDao(), 
+            database.categoryDao(),
+            database.bitwardenFolderDao()
+        )
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)
         val settingsManager = SettingsManager(this)

@@ -1800,13 +1800,15 @@ private fun PasswordListContent(
     Column {
         // M3E Top Bar with integrated search - 始终显示
         val currentFilter by viewModel.categoryFilter.collectAsState()
-        val title = when(currentFilter) {
-            is CategoryFilter.All -> stringResource(R.string.app_name)
+        val title = when(val filter = currentFilter) {
+            is CategoryFilter.All -> stringResource(R.string.filter_all)
+            is CategoryFilter.Local -> stringResource(R.string.filter_monica)
             is CategoryFilter.Starred -> "标星"
             is CategoryFilter.Uncategorized -> "未分类"
-            is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
-            is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == (currentFilter as CategoryFilter.KeePassDatabase).databaseId }?.name ?: "KeePass"
+            is CategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name ?: "未知分类"
+            is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
             is CategoryFilter.BitwardenVault -> "Bitwarden"
+            is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
         }
 
             ExpressiveTopBar(
@@ -1872,157 +1874,218 @@ private fun PasswordListContent(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                                 contentPadding = PaddingValues(bottom = 10.dp)
                            ) {
-                           item {
-                               val selected = currentFilter is CategoryFilter.All
-                               CategoryListItem(
-                                   title = stringResource(R.string.category_all),
+                            item {
+                                val selected = currentFilter is CategoryFilter.All
+                                CategoryListItem(
+                                    title = stringResource(R.string.category_all),
                                     icon = Icons.Default.List,
-                                   selected = selected,
-                                   onClick = {
-                                       viewModel.setCategoryFilter(CategoryFilter.All)
-                                   }
-                               )
-                           }
-                           item {
-                               val selected = currentFilter is CategoryFilter.Starred
-                               CategoryListItem(
-                                   title = "标星",
-                                   icon = Icons.Outlined.CheckCircle,
-                                   selected = selected,
-                                   onClick = {
-                                       viewModel.setCategoryFilter(CategoryFilter.Starred)
-                                   }
-                               )
-                           }
-                           item {
-                               val selected = currentFilter is CategoryFilter.Uncategorized
-                               CategoryListItem(
-                                   title = "未分类",
-                                   icon = Icons.Default.FolderOff,
-                                   selected = selected,
-                                   onClick = {
-                                       viewModel.setCategoryFilter(CategoryFilter.Uncategorized)
-                                   }
-                               )
-                           }
-                           
-                           // KeePass 数据库部分
-                           if (keepassDatabases.isNotEmpty()) {
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                                   Text(
-                                       text = stringResource(R.string.local_keepass_database),
-                                       style = MaterialTheme.typography.labelLarge,
-                                       color = MaterialTheme.colorScheme.primary,
-                                       modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                   )
-                               }
-                               
-                               items(keepassDatabases, key = { "keepass_${it.id}" }) { database ->
-                                   val selected = currentFilter is CategoryFilter.KeePassDatabase && 
-                                       (currentFilter as CategoryFilter.KeePassDatabase).databaseId == database.id
-                                   CategoryListItem(
-                                       title = database.name,
-                                       icon = Icons.Default.Key,
-                                       selected = selected,
-                                       onClick = {
-                                           viewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(database.id))
-                                       },
-                                       badge = {
-                                           Text(
-                                               text = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
-                                                   stringResource(R.string.external_storage) 
-                                               else 
-                                                   stringResource(R.string.internal_storage),
-                                               style = MaterialTheme.typography.labelSmall,
-                                               color = MaterialTheme.colorScheme.onSurfaceVariant
-                                           )
-                                       }
-                                   )
-                               }
-                               
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                               }
-                           }
-                           
-                           // Bitwarden 保险库部分
-                           if (bitwardenVaults.isNotEmpty()) {
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                                   Text(
-                                       text = "Bitwarden",
-                                       style = MaterialTheme.typography.labelLarge,
-                                       color = MaterialTheme.colorScheme.primary,
-                                       modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                   )
-                               }
-                               
-                               items(bitwardenVaults, key = { "bitwarden_${it.id}" }) { vault ->
-                                   val selected = currentFilter is CategoryFilter.BitwardenVault && 
-                                       (currentFilter as CategoryFilter.BitwardenVault).vaultId == vault.id
-                                   CategoryListItem(
-                                       title = vault.email,
-                                       icon = Icons.Default.CloudSync,
-                                       selected = selected,
-                                       onClick = {
-                                           viewModel.setCategoryFilter(CategoryFilter.BitwardenVault(vault.id))
-                                       },
-                                       badge = {
-                                           if (vault.isDefault) {
-                                               Text(
-                                                   text = "默认",
-                                                   style = MaterialTheme.typography.labelSmall,
-                                                   color = MaterialTheme.colorScheme.primary
-                                               )
-                                           }
-                                       }
-                                   )
-                               }
-                               
-                               item {
-                                   Spacer(modifier = Modifier.height(8.dp))
-                               }
-                           }
-                           
-                           items(categoryList, key = { it.id }) { category ->
-                               val selected = currentFilter is CategoryFilter.Custom && (currentFilter as CategoryFilter.Custom).categoryId == category.id
-                               CategoryListItem(
-                                   title = category.name,
-                                   icon = Icons.Default.Folder,
-                                   selected = selected,
-                                   onClick = {
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.All)
+                                    }
+                                )
+                            }
+                            item {
+                                val selected = currentFilter is CategoryFilter.Starred
+                                CategoryListItem(
+                                    title = "标星",
+                                    icon = Icons.Outlined.CheckCircle,
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.Starred)
+                                    }
+                                )
+                            }
+                            item {
+                                val selected = currentFilter is CategoryFilter.Uncategorized
+                                CategoryListItem(
+                                    title = "未分类",
+                                    icon = Icons.Default.FolderOff,
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.Uncategorized)
+                                    }
+                                )
+                            }
+
+                            // Monica Section
+                            item {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Monica",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                            item {
+                                val selected = currentFilter is CategoryFilter.Local
+                                CategoryListItem(
+                                    title = stringResource(R.string.filter_monica),
+                                    icon = androidx.compose.material.icons.Icons.Default.Smartphone,
+                                    selected = selected,
+                                    onClick = {
+                                        viewModel.setCategoryFilter(CategoryFilter.Local)
+                                    }
+                                )
+                            }
+                            items(categoryList, key = { it.id }) { category ->
+                                val selected = currentFilter is CategoryFilter.Custom && 
+                                    (currentFilter as CategoryFilter.Custom).categoryId == category.id
+                                CategoryListItem(
+                                    title = category.name,
+                                    icon = Icons.Default.Folder,
+                                    selected = selected,
+                                    onClick = {
                                         viewModel.setCategoryFilter(CategoryFilter.Custom(category.id))
-                                   },
-                                   menu = {
-                                       IconButton(onClick = { expandedMenuId = category.id }) {
-                                           Icon(Icons.Default.MoreVert, contentDescription = null)
-                                       }
-                                       DropdownMenu(
-                                           expanded = expandedMenuId == category.id,
-                                           onDismissRequest = { expandedMenuId = null },
-                                           modifier = Modifier.clip(RoundedCornerShape(18.dp))
-                                       ) {
-                                           DropdownMenuItem(
-                                               text = { Text("重命名") },
-                                               leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                               onClick = {
-                                                   expandedMenuId = null
-                                                   onRenameCategory(category)
-                                               }
-                                           )
-                                           DropdownMenuItem(
-                                               text = { Text("删除") },
-                                               leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                                               onClick = {
-                                                   expandedMenuId = null
-                                                   onDeleteCategory(category)
-                                               }
-                                           )
-                                       }
-                                   }
-                               )
-                           }
+                                    },
+                                    menu = {
+                                        IconButton(onClick = { expandedMenuId = category.id }) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = null)
+                                        }
+                                        DropdownMenu(
+                                            expanded = expandedMenuId == category.id,
+                                            onDismissRequest = { expandedMenuId = null },
+                                            modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("重命名") },
+                                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                                onClick = {
+                                                    expandedMenuId = null
+                                                    onRenameCategory(category)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("删除") },
+                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                                onClick = {
+                                                    expandedMenuId = null
+                                                    onDeleteCategory(category)
+                                                }
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+
+                            // Bitwarden Section
+                            if (bitwardenVaults.isNotEmpty()) {
+                                item {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = "Bitwarden",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                
+                                items(bitwardenVaults, key = { "bitwarden_${it.id}" }) { vault ->
+                                    val selected = currentFilter is CategoryFilter.BitwardenVault && 
+                                        (currentFilter as CategoryFilter.BitwardenVault).vaultId == vault.id
+                                    
+                                    // State for expansion
+                                    var expanded by remember { mutableStateOf(false) }
+                                    // Fetch folders
+                                    val foldersState = viewModel.getBitwardenFolders(vault.id).collectAsState(initial = emptyList())
+                                    val folders = foldersState.value
+                                    
+                                    // Auto-expand if a folder in this vault is currently selected
+                                    // Capture currentFilter to local variable for smart cast safety
+                                    val activeFilter = currentFilter
+                                    LaunchedEffect(activeFilter) {
+                                        if (activeFilter is CategoryFilter.BitwardenFolderFilter && activeFilter.vaultId == vault.id) {
+                                            expanded = true
+                                        }
+                                    }
+
+                                    Column {
+                                        CategoryListItem(
+                                            title = vault.email,
+                                            icon = Icons.Default.CloudSync,
+                                            selected = selected,
+                                            onClick = {
+                                                viewModel.setCategoryFilter(CategoryFilter.BitwardenVault(vault.id))
+                                            },
+                                            badge = {
+                                                if (vault.isDefault) {
+                                                    Text(
+                                                        text = "默认",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            },
+                                            menu = {
+                                                if (folders.isNotEmpty()) {
+                                                    IconButton(onClick = { expanded = !expanded }) {
+                                                        Icon(
+                                                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                            contentDescription = "Expand"
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        )
+                                        
+                                        if (expanded) {
+                                            folders.forEach { folder ->
+                                                val folderSelected = activeFilter is CategoryFilter.BitwardenFolderFilter && 
+                                                    activeFilter.folderId == folder.bitwardenFolderId
+                                                
+                                                Box(modifier = Modifier.padding(start = 32.dp)) {
+                                                    CategoryListItem(
+                                                        title = folder.name,
+                                                        icon = Icons.Default.Folder,
+                                                        selected = folderSelected,
+                                                        onClick = {
+                                                            viewModel.setCategoryFilter(CategoryFilter.BitwardenFolderFilter(folder.bitwardenFolderId, vault.id))
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // KeePass Section
+                            if (keepassDatabases.isNotEmpty()) {
+                                item {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = stringResource(R.string.local_keepass_database),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                
+                                items(keepassDatabases, key = { "keepass_${it.id}" }) { database ->
+                                    val selected = currentFilter is CategoryFilter.KeePassDatabase && 
+                                        (currentFilter as CategoryFilter.KeePassDatabase).databaseId == database.id
+                                    CategoryListItem(
+                                        title = database.name,
+                                        icon = Icons.Default.Key,
+                                        selected = selected,
+                                        onClick = {
+                                            viewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(database.id))
+                                        },
+                                        badge = {
+                                            Text(
+                                                text = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL) 
+                                                    stringResource(R.string.external_storage) 
+                                                else 
+                                                    stringResource(R.string.internal_storage),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
                             item {
                                 Spacer(modifier = Modifier.height(18.dp))
 

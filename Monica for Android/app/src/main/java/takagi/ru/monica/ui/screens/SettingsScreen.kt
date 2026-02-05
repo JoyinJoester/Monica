@@ -285,6 +285,19 @@ fun SettingsScreen(
                 }
             }
             
+            // Display & Grouping
+            SettingsSection(
+                title = context.getString(R.string.display_options_menu_title)
+            ) {
+                 SettingsItemWithSwitch(
+                    icon = Icons.Default.CallMerge,
+                    title = context.getString(R.string.smart_deduplication),
+                    subtitle = context.getString(R.string.smart_deduplication_desc),
+                    checked = settings.smartDeduplicationEnabled,
+                    onCheckedChange = { viewModel.updateSmartDeduplicationEnabled(it) }
+                )
+            }
+
             // Security Settings
             SettingsSection(
                 title = context.getString(R.string.security)

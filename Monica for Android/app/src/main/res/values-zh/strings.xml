@@ -597,6 +597,11 @@
     <string name="v2_no_items">密码库为空</string>
     <string name="v2_connect_bitwarden">连接 Bitwarden</string>
     
+    <string name="filter_monica">Monica</string>
+    <string name="filter_bitwarden">Bitwarden</string>
+    <string name="filter_keepass">KeePass</string>
+    <string name="filter_all">全部</string>
+    
     <!-- Passkey Screen -->
     <string name="passkey_title">通行密钥</string>
     <string name="passkey_count">%1$d 个通行密钥</string>

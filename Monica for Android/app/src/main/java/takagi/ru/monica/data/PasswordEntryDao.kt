@@ -310,6 +310,9 @@ interface PasswordEntryDao {
     """)
     suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: Long)
     
+    @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
+    fun getByBitwardenFolderIdFlow(folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
+
     /**
      * 根据 Bitwarden Folder ID 获取条目
      */
