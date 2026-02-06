@@ -62,6 +62,9 @@ interface PasswordEntryDao {
     
     @Query("UPDATE password_entries SET isFavorite = :isFavorite WHERE id = :id")
     suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean)
+
+    @Query("UPDATE password_entries SET updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateUpdatedAt(id: Long, updatedAt: java.util.Date)
     
     @Query("UPDATE password_entries SET isGroupCover = :isGroupCover WHERE id = :id")
     suspend fun updateGroupCoverStatus(id: Long, isGroupCover: Boolean)

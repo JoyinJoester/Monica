@@ -100,6 +100,10 @@ class PasswordRepository(
     suspend fun updatePasswordEntry(entry: PasswordEntry) {
         passwordEntryDao.updatePasswordEntry(entry)
     }
+
+    suspend fun updatePasswordUpdatedAt(id: Long, updatedAt: java.util.Date) {
+        passwordEntryDao.updateUpdatedAt(id, updatedAt)
+    }
     
     suspend fun deletePasswordEntry(entry: PasswordEntry) {
         passwordEntryDao.deletePasswordEntry(entry)

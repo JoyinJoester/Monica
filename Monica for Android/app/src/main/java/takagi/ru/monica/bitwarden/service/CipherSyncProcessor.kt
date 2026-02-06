@@ -153,9 +153,11 @@ class CipherSyncProcessor(
             return CipherSyncResult.Added
         } else {
             // 更新现有条目
-            if (existing.bitwardenLocalModified && 
-                existing.bitwardenRevisionDate != cipher.revisionDate) {
-                return CipherSyncResult.Conflict
+            if (existing.bitwardenLocalModified) {
+                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
+                    return CipherSyncResult.Conflict
+                }
+                return CipherSyncResult.Skipped("Local changes pending upload")
             }
             
             val updated = existing.copy(
@@ -227,9 +229,11 @@ class CipherSyncProcessor(
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
-            if (existing.bitwardenLocalModified == true &&
-                existing.bitwardenRevisionDate != cipher.revisionDate) {
-                return CipherSyncResult.Conflict
+            if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
+                    return CipherSyncResult.Conflict
+                }
+                return CipherSyncResult.Skipped("Local changes pending upload")
             }
             
             val updated = existing.copy(
@@ -285,9 +289,11 @@ class CipherSyncProcessor(
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
-            if (existing.bitwardenLocalModified == true &&
-                existing.bitwardenRevisionDate != cipher.revisionDate) {
-                return CipherSyncResult.Conflict
+            if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
+                    return CipherSyncResult.Conflict
+                }
+                return CipherSyncResult.Skipped("Local changes pending upload")
             }
             
             val updated = existing.copy(
@@ -359,9 +365,11 @@ class CipherSyncProcessor(
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
-            if (existing.bitwardenLocalModified == true &&
-                existing.bitwardenRevisionDate != cipher.revisionDate) {
-                return CipherSyncResult.Conflict
+            if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
+                    return CipherSyncResult.Conflict
+                }
+                return CipherSyncResult.Skipped("Local changes pending upload")
             }
             
             val updated = existing.copy(
@@ -434,9 +442,11 @@ class CipherSyncProcessor(
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
-            if (existing.bitwardenLocalModified == true &&
-                existing.bitwardenRevisionDate != cipher.revisionDate) {
-                return CipherSyncResult.Conflict
+            if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
+                    return CipherSyncResult.Conflict
+                }
+                return CipherSyncResult.Skipped("Local changes pending upload")
             }
             
             val updated = existing.copy(

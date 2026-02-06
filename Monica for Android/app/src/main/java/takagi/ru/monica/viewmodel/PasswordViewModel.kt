@@ -466,80 +466,88 @@ class PasswordViewModel(
     
     fun updatePasswordEntry(entry: PasswordEntry) {
         viewModelScope.launch {
-            // 获取旧数据用于对比
-            val oldEntry = repository.getPasswordEntryById(entry.id)
-            
-            // 应用分类绑定
-            val boundEntry = applyCategoryBinding(entry)
-            // 如果 entry 被修改为 boundEntry，使用 boundEntry
-            val entryToUpdate = boundEntry
-            
-            val oldPassword = oldEntry?.let { decryptForDisplay(it.password) } ?: ""
-            val service = keepassService
-            val oldKeepassId = oldEntry?.keepassDatabaseId
-            val newKeepassId = entryToUpdate.keepassDatabaseId
-            if (service != null) {
-                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                    val deleteResult = service.deletePasswordEntries(oldKeepassId, listOf(entryToUpdate.copy(keepassDatabaseId = oldKeepassId)))
-                    if (deleteResult.isFailure) {
-                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                        return@launch
-                    }
-                }
-                if (newKeepassId != null) {
-                    val updateResult = service.updatePasswordEntry(
-                        databaseId = newKeepassId,
-                        entry = entryToUpdate,
-                        resolvePassword = { it.password }
-                    )
-                    if (updateResult.isFailure) {
-                        Log.e("PasswordViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
-                        return@launch
-                    }
-                }
-            }
+            updatePasswordEntryInternal(entry)
+        }
+    }
 
-            repository.updatePasswordEntry(entryToUpdate.copy(
+    private suspend fun updatePasswordEntryInternal(entry: PasswordEntry): Boolean {
+        // 获取旧数据用于对比
+        val oldEntry = repository.getPasswordEntryById(entry.id)
+        
+        // 应用分类绑定
+        val boundEntry = applyCategoryBinding(entry)
+        val entryToUpdate = if (boundEntry.bitwardenVaultId != null) {
+            boundEntry.copy(bitwardenLocalModified = true)
+        } else {
+            boundEntry
+        }
+        
+        val oldPassword = oldEntry?.let { decryptForDisplay(it.password) } ?: ""
+        repository.updatePasswordEntry(
+            entryToUpdate.copy(
                 password = securityManager.encryptData(entryToUpdate.password),
                 updatedAt = Date()
-            ))
-            
-            // 记录更新操作
-            val changes = takagi.ru.monica.utils.OperationLogger.compareAndGetChanges(
-                old = oldEntry,
-                new = entryToUpdate,
-                fields = listOf(
-                    "用户名" to { it.username },
-                    "网站" to { it.website },
-                    "备注" to { it.notes }
+            )
+        )
+
+        val service = keepassService
+        val oldKeepassId = oldEntry?.keepassDatabaseId
+        val newKeepassId = entryToUpdate.keepassDatabaseId
+        if (service != null) {
+            if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                val deleteResult = service.deletePasswordEntries(oldKeepassId, listOf(entryToUpdate.copy(keepassDatabaseId = oldKeepassId)))
+                if (deleteResult.isFailure) {
+                    Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                }
+            }
+            if (newKeepassId != null) {
+                val updateResult = service.updatePasswordEntry(
+                    databaseId = newKeepassId,
+                    entry = entryToUpdate,
+                    resolvePassword = { it.password }
+                )
+                if (updateResult.isFailure) {
+                    Log.e("PasswordViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                }
+            }
+        }
+        
+        // 记录更新操作
+        val changes = takagi.ru.monica.utils.OperationLogger.compareAndGetChanges(
+            old = oldEntry,
+            new = entryToUpdate,
+            fields = listOf(
+                "用户名" to { it.username },
+                "网站" to { it.website },
+                "备注" to { it.notes }
+            )
+        )
+
+        // 捕获密码变化（记录真实密码，在UI层隐藏显示）
+        if (oldEntry != null && oldPassword != entryToUpdate.password) {
+            val updatedChanges = changes.toMutableList()
+            updatedChanges.add(
+                takagi.ru.monica.utils.FieldChange(
+                    fieldName = "密码",
+                    oldValue = oldPassword,
+                    newValue = entryToUpdate.password
                 )
             )
-
-            // 捕获密码变化（记录真实密码，在UI层隐藏显示）
-            if (oldEntry != null && oldPassword != entryToUpdate.password) {
-                val updatedChanges = changes.toMutableList()
-                updatedChanges.add(
-                    takagi.ru.monica.utils.FieldChange(
-                        fieldName = "密码",
-                        oldValue = oldPassword,
-                        newValue = entryToUpdate.password
-                    )
-                )
-                takagi.ru.monica.utils.OperationLogger.logUpdate(
-                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                    itemId = entryToUpdate.id,
-                    itemTitle = entryToUpdate.title,
-                    changes = updatedChanges
-                )
-                return@launch
-            }
             takagi.ru.monica.utils.OperationLogger.logUpdate(
                 itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
                 itemId = entryToUpdate.id,
                 itemTitle = entryToUpdate.title,
-                changes = changes
+                changes = updatedChanges
             )
+            return true
         }
+        takagi.ru.monica.utils.OperationLogger.logUpdate(
+            itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+            itemId = entryToUpdate.id,
+            itemTitle = entryToUpdate.title,
+            changes = changes
+        )
+        return true
     }
     
     fun deletePasswordEntry(entry: PasswordEntry) {
@@ -824,11 +832,41 @@ class PasswordViewModel(
                     // Update existing
                     val id = originalIds[index]
                     if (index == 0) firstId = id
-                    val updatedEntry = boundCommonEntry.copy(
+                    val draftEntry = boundCommonEntry.copy(
                         id = id,
                         password = password
                     )
-                    updatePasswordEntry(updatedEntry)
+                    val existingEntry = repository.getPasswordEntryById(id)
+                    val updatedEntry = existingEntry?.copy(
+                        title = draftEntry.title,
+                        website = draftEntry.website,
+                        username = draftEntry.username,
+                        password = draftEntry.password,
+                        notes = draftEntry.notes,
+                        isFavorite = draftEntry.isFavorite,
+                        appPackageName = draftEntry.appPackageName,
+                        appName = draftEntry.appName,
+                        email = draftEntry.email,
+                        phone = draftEntry.phone,
+                        addressLine = draftEntry.addressLine,
+                        city = draftEntry.city,
+                        state = draftEntry.state,
+                        zipCode = draftEntry.zipCode,
+                        country = draftEntry.country,
+                        creditCardNumber = draftEntry.creditCardNumber,
+                        creditCardHolder = draftEntry.creditCardHolder,
+                        creditCardExpiry = draftEntry.creditCardExpiry,
+                        creditCardCVV = draftEntry.creditCardCVV,
+                        categoryId = draftEntry.categoryId,
+                        keepassDatabaseId = draftEntry.keepassDatabaseId,
+                        authenticatorKey = draftEntry.authenticatorKey,
+                        passkeyBindings = draftEntry.passkeyBindings,
+                        loginType = draftEntry.loginType,
+                        ssoProvider = draftEntry.ssoProvider,
+                        ssoRefEntryId = draftEntry.ssoRefEntryId,
+                        bitwardenVaultId = draftEntry.bitwardenVaultId
+                    ) ?: draftEntry
+                    updatePasswordEntryInternal(updatedEntry)
                 } else {
                     // Create new
                     val newEntry = boundCommonEntry.copy(
@@ -892,9 +930,7 @@ class PasswordViewModel(
         customFieldRepository?.saveFieldsForEntry(entryId, fields)
         
         // 更新密码条目的 updatedAt 以确保 WebDAV 同步能检测到自定义字段的变化
-        repository.getPasswordEntryById(entryId)?.let { entry ->
-            repository.updatePasswordEntry(entry.copy(updatedAt = java.util.Date()))
-        }
+        repository.updatePasswordUpdatedAt(entryId, java.util.Date())
     }
     
     /**

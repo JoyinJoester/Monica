@@ -53,6 +53,7 @@ import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CancellationException
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
@@ -227,6 +228,8 @@ fun PasswordDetailScreen(
                 // 加载自定义字段 (添加错误处理)
                 try {
                     customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
+                } catch (_: CancellationException) {
+                    // Ignore cancellation when leaving composition.
                 } catch (e: Exception) {
                     android.util.Log.e("PasswordDetailScreen", "Error loading custom fields", e)
                     customFields = emptyList()

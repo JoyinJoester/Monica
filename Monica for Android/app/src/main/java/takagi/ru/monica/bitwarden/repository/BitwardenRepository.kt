@@ -546,8 +546,15 @@ class BitwardenRepository(private val context: Context) {
                 is takagi.ru.monica.bitwarden.service.UploadResult.Success -> uploadResult.uploaded
                 else -> 0
             }
+
+            // 2. 再上传本地已修改的条目到服务器
+            val modifiedUploadResult = syncService.uploadModifiedEntries(vault, accessToken, symmetricKey)
+            val modifiedUploadedCount = when (modifiedUploadResult) {
+                is takagi.ru.monica.bitwarden.service.UploadResult.Success -> modifiedUploadResult.uploaded
+                else -> 0
+            }
             
-            // 2. 执行同步（从服务器拉取）
+            // 3. 执行同步（从服务器拉取）
             val result = syncService.fullSync(vault, accessToken, symmetricKey)
             
             // 更新最后同步时间
@@ -556,7 +563,7 @@ class BitwardenRepository(private val context: Context) {
             when (result) {
                 is ServiceSyncResult.Success -> {
                     SyncResult.Success(
-                        syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount,
+                        syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount,
                         conflictCount = result.conflictsDetected
                     )
                 }

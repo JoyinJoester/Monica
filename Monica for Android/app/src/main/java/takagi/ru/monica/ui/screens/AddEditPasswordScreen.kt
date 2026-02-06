@@ -271,6 +271,7 @@ fun AddEditPasswordScreen(
                     creditCardCVV = entry.creditCardCVV
                     categoryId = entry.categoryId
                     keepassDatabaseId = entry.keepassDatabaseId
+                    bitwardenVaultId = entry.bitwardenVaultId
                     authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
                     originalAuthenticatorKey = entry.authenticatorKey
                     passkeyBindings = entry.passkeyBindings

@@ -614,6 +614,54 @@ class BitwardenSyncService(
         android.util.Log.i(TAG, "Upload complete: $uploaded uploaded, $failed failed")
         UploadResult.Success(uploaded = uploaded, failed = failed)
     }
+
+    /**
+     * 上传本地已修改的 Bitwarden 条目（已有 cipherId）
+     * 用于处理在 Monica 中编辑过的 Bitwarden 密码条目
+     */
+    suspend fun uploadModifiedEntries(
+        vault: BitwardenVault,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): UploadResult = withContext(Dispatchers.IO) {
+        android.util.Log.i(TAG, "Checking for modified entries to upload for vault ${vault.id}")
+
+        val modifiedEntries = passwordEntryDao
+            .getEntriesWithPendingBitwardenSync(vault.id)
+            .filter { !it.bitwardenCipherId.isNullOrBlank() }
+
+        if (modifiedEntries.isEmpty()) {
+            android.util.Log.d(TAG, "No modified entries pending upload")
+            return@withContext UploadResult.Success(uploaded = 0, failed = 0)
+        }
+
+        android.util.Log.i(TAG, "Found ${modifiedEntries.size} modified entries to upload")
+
+        var uploaded = 0
+        var failed = 0
+
+        for (entry in modifiedEntries) {
+            try {
+                val cipherId = entry.bitwardenCipherId
+                if (cipherId.isNullOrBlank()) {
+                    failed++
+                    continue
+                }
+                val success = updateRemoteCipher(vault, entry, cipherId, accessToken, symmetricKey)
+                if (success) {
+                    uploaded++
+                } else {
+                    failed++
+                }
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Failed to upload modified entry ${entry.id}: ${e.message}")
+                failed++
+            }
+        }
+
+        android.util.Log.i(TAG, "Modified upload complete: $uploaded uploaded, $failed failed")
+        UploadResult.Success(uploaded = uploaded, failed = failed)
+    }
     
     /**
      * 上传单个本地条目到 Bitwarden
