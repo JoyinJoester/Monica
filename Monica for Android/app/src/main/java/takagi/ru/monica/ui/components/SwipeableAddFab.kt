@@ -64,6 +64,7 @@ fun SwipeableAddFab(
     fabContent: @Composable (expand: () -> Unit) -> Unit,
     expandedContent: @Composable (onCollapse: () -> Unit) -> Unit,
     fabBottomOffset: androidx.compose.ui.unit.Dp = 0.dp, // 新增参数：FAB 距离底部的额外偏移
+    onFabClickOverride: (() -> Unit)? = null,
     onExpandStateChanged: (Boolean) -> Unit = {}
 ) {
     // 状态定义
@@ -214,7 +215,11 @@ fun SwipeableAddFab(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) { 
-                    expandAction()
+                    if (onFabClickOverride != null) {
+                        onFabClickOverride()
+                    } else {
+                        expandAction()
+                    }
                 }
         ) {
             // 内容容器
@@ -228,8 +233,11 @@ fun SwipeableAddFab(
                 // 只有在未完全展开时才显示 FAB 内容，避免点击穿透问题
                 if (expandProgress.value < 0.8f) {
                     fabContent {
-                         // 兼容旧接口，虽然现在是点击触发
-                         expandAction()
+                        if (onFabClickOverride != null) {
+                            onFabClickOverride()
+                        } else {
+                            expandAction()
+                        }
                     }
                 }
             }

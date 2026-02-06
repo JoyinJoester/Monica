@@ -2,43 +2,48 @@ package takagi.ru.monica.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,7 +58,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,14 +77,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.bitwarden.BitwardenSend
+import takagi.ru.monica.ui.components.ExpressiveTopBar
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SendScreen(
     modifier: Modifier = Modifier,
+    createRequestKey: Int = 0,
+    onCreateRequestConsumed: () -> Unit = {},
     bitwardenViewModel: BitwardenViewModel = viewModel()
 ) {
     val sends by bitwardenViewModel.sends.collectAsState()
@@ -90,13 +97,46 @@ fun SendScreen(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val listState = rememberLazyListState()
+    val canCreateSend = activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked
 
     var showCreateSheet by remember { mutableStateOf(false) }
     var deletingSend by remember { mutableStateOf<BitwardenSend?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchExpanded by remember { mutableStateOf(false) }
+
+    val filteredSends = remember(sends, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) {
+            sends
+        } else {
+            sends.filter { send ->
+                send.name.contains(query, ignoreCase = true) ||
+                    send.shareUrl.contains(query, ignoreCase = true) ||
+                    (send.textContent?.contains(query, ignoreCase = true) == true) ||
+                    (send.fileName?.contains(query, ignoreCase = true) == true) ||
+                    send.notes.contains(query, ignoreCase = true)
+            }
+        }
+    }
+
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        searchQuery = ""
+    }
 
     LaunchedEffect(activeVault?.id, unlockState) {
-        if (activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked) {
+        if (canCreateSend) {
             bitwardenViewModel.loadSends(forceRemoteSync = true)
+        }
+    }
+
+    LaunchedEffect(createRequestKey) {
+        if (createRequestKey != 0) {
+            if (canCreateSend) {
+                showCreateSheet = true
+            }
+            onCreateRequestConsumed()
         }
     }
 
@@ -113,119 +153,129 @@ fun SendScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("安全发送", fontWeight = FontWeight.Bold)
-                        Text(
-                            text = "Bitwarden Send",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            ExpressiveTopBar(
+                title = "安全发送",
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
+                isSearchExpanded = isSearchExpanded,
+                onSearchExpandedChange = { expanded ->
+                    isSearchExpanded = expanded
+                    if (!expanded) {
+                        searchQuery = ""
                     }
                 },
+                searchHint = "搜索 Send",
                 actions = {
                     IconButton(
                         onClick = { bitwardenViewModel.loadSends(forceRemoteSync = true) },
-                        enabled = unlockState == BitwardenViewModel.UnlockState.Unlocked &&
+                        enabled = canCreateSend &&
                             sendState !is BitwardenViewModel.SendState.Syncing
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = "刷新")
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
-        floatingActionButton = {
-            if (activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked) {
-                FloatingActionButton(onClick = { showCreateSheet = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "创建 Send")
+                    IconButton(onClick = { isSearchExpanded = true }) {
+                        Icon(Icons.Default.Search, contentDescription = "搜索")
+                    }
                 }
-            }
+            )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp)
         ) {
-            SendHeroCard(
-                sendCount = sends.size,
-                textCount = sends.count { it.isTextType },
-                fileCount = sends.count { it.isFileType }
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+            ) {
+                SendHeroCard(
+                    sendCount = sends.size,
+                    textCount = sends.count { it.isTextType },
+                    fileCount = sends.count { it.isFileType }
+                )
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            when (sendState) {
-                is BitwardenViewModel.SendState.Syncing -> {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                is BitwardenViewModel.SendState.Warning -> {
-                    StateBanner((sendState as BitwardenViewModel.SendState.Warning).message)
-                }
-                is BitwardenViewModel.SendState.Error -> {
-                    StateBanner((sendState as BitwardenViewModel.SendState.Error).message)
-                }
-                else -> Unit
-            }
-
-            when {
-                activeVault == null -> {
-                    EmptyStateCard(
-                        title = "未连接 Bitwarden",
-                        message = "请先在设置中登录并连接 Bitwarden，之后即可创建和管理 Send。"
-                    )
-                }
-                unlockState != BitwardenViewModel.UnlockState.Unlocked -> {
-                    EmptyStateCard(
-                        title = "Vault 已锁定",
-                        message = "请先在 Bitwarden 设置页解锁 Vault，然后即可使用 Send。"
-                    )
-                }
-                sends.isEmpty() && sendState == BitwardenViewModel.SendState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
+                when (sendState) {
+                    is BitwardenViewModel.SendState.Syncing -> {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
+                    is BitwardenViewModel.SendState.Warning -> {
+                        StateBanner((sendState as BitwardenViewModel.SendState.Warning).message)
+                    }
+                    is BitwardenViewModel.SendState.Error -> {
+                        StateBanner((sendState as BitwardenViewModel.SendState.Error).message)
+                    }
+                    else -> Unit
                 }
-                sends.isEmpty() -> {
-                    EmptyStateCard(
-                        title = "暂无 Send",
-                        message = "点击右下角按钮创建第一个文本 Send，可设置访问次数、到期时间和访问密码。"
-                    )
-                }
-                else -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        sends.forEach { send ->
-                            SendItemCard(
-                                send = send,
-                                onCopyLink = {
-                                    clipboardManager.setText(AnnotatedString(send.shareUrl))
-                                },
-                                onOpenLink = {
-                                    runCatching {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(send.shareUrl))
-                                        context.startActivity(intent)
-                                    }
-                                },
-                                onDelete = { deletingSend = send }
-                            )
+
+                when {
+                    activeVault == null -> {
+                        EmptyStateCard(
+                            title = "未连接 Bitwarden",
+                            message = "请先在设置中登录并连接 Bitwarden，之后即可创建和管理 Send。"
+                        )
+                    }
+                    unlockState != BitwardenViewModel.UnlockState.Unlocked -> {
+                        EmptyStateCard(
+                            title = "Vault 已锁定",
+                            message = "请先在 Bitwarden 设置页解锁 Vault，然后即可使用 Send。"
+                        )
+                    }
+                    sends.isEmpty() && sendState == BitwardenViewModel.SendState.Loading -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
                         }
-                        Spacer(modifier = Modifier.height(96.dp))
+                    }
+                    sends.isEmpty() -> {
+                        EmptyStateCard(
+                            title = "暂无 Send",
+                            message = "点击右下角按钮创建第一个文本 Send，可设置访问次数、到期时间和访问密码。"
+                        )
+                    }
+                    filteredSends.isEmpty() -> {
+                        EmptyStateCard(
+                            title = "未找到匹配 Send",
+                            message = "换个关键词试试，或清空搜索后查看全部结果。"
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 96.dp)
+                        ) {
+                            items(
+                                items = filteredSends,
+                                key = { it.bitwardenSendId }
+                            ) { send ->
+                                SendItemCard(
+                                    send = send,
+                                    onCopyLink = {
+                                        clipboardManager.setText(AnnotatedString(send.shareUrl))
+                                    },
+                                    onOpenLink = {
+                                        runCatching {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(send.shareUrl))
+                                            context.startActivity(intent)
+                                        }
+                                    },
+                                    onDelete = { deletingSend = send }
+                                )
+                            }
+                        }
                     }
                 }
             }

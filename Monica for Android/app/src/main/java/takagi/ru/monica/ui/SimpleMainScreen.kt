@@ -399,6 +399,8 @@ fun SimpleMainScreen(
     // 检测是否有任何选择模式处于激活状态
     var isNoteSelectionMode by remember { mutableStateOf(false) }
     val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || isDocumentSelectionMode || isBankCardSelectionMode || isNoteSelectionMode
+    var sendCreateRequestKey by remember { mutableIntStateOf(0) }
+    var generatorRefreshRequestKey by remember { mutableIntStateOf(0) }
     
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -421,7 +423,9 @@ fun SimpleMainScreen(
                 val tab = currentTabState.value
                 if (tab == BottomNavItem.Passwords || 
                     tab == BottomNavItem.Authenticator || 
-                    tab == BottomNavItem.CardWallet) {
+                    tab == BottomNavItem.CardWallet ||
+                    tab == BottomNavItem.Generator ||
+                    tab == BottomNavItem.Send) {
                     
                     // consumed.y < 0 表示内容向上滚动（手指上滑，查看下方内容） -> 隐藏
                     if (consumed.y < -15f) {
@@ -732,7 +736,10 @@ fun SimpleMainScreen(
                             GeneratorScreen(
                                 onNavigateBack = {},
                                 viewModel = generatorViewModel,
-                                passwordViewModel = passwordViewModel
+                                passwordViewModel = passwordViewModel,
+                                externalRefreshRequestKey = generatorRefreshRequestKey,
+                                onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
+                                useExternalRefreshFab = true
                             )
                         }
                         BottomNavItem.Notes -> {
@@ -758,7 +765,11 @@ fun SimpleMainScreen(
                             )
                         }
                         BottomNavItem.Send -> {
-                            SendScreen(bitwardenViewModel = bitwardenViewModel)
+                            SendScreen(
+                                createRequestKey = sendCreateRequestKey,
+                                onCreateRequestConsumed = { sendCreateRequestKey = 0 },
+                                bitwardenViewModel = bitwardenViewModel
+                            )
                         }
                         BottomNavItem.Settings -> {
                             SettingsScreen(
@@ -963,7 +974,10 @@ fun SimpleMainScreen(
                     GeneratorScreen(
                         onNavigateBack = {}, // 在主屏幕中不需要返回
                         viewModel = generatorViewModel, // 传递ViewModel
-                        passwordViewModel = passwordViewModel // 传递 PasswordViewModel
+                        passwordViewModel = passwordViewModel, // 传递 PasswordViewModel
+                        externalRefreshRequestKey = generatorRefreshRequestKey,
+                        onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
+                        useExternalRefreshFab = true
                     )
                 }
                 BottomNavItem.Notes -> {
@@ -993,7 +1007,11 @@ fun SimpleMainScreen(
                 }
                 BottomNavItem.Send -> {
                     // V2 发送页面
-                    SendScreen(bitwardenViewModel = bitwardenViewModel)
+                    SendScreen(
+                        createRequestKey = sendCreateRequestKey,
+                        onCreateRequestConsumed = { sendCreateRequestKey = 0 },
+                        bitwardenViewModel = bitwardenViewModel
+                    )
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -1076,7 +1094,14 @@ fun SimpleMainScreen(
     // 全局 FAB Overlay
     // 放在最外层 Box 中，覆盖在 Scaffold 之上，确保能展开到全屏
     // 仅在特定 Tab 显示，并且不在多选模式下显示
-    val showFab = (currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.Authenticator || currentTab == BottomNavItem.CardWallet || currentTab == BottomNavItem.Notes) && !isAnySelectionMode
+    val showFab = (
+        currentTab == BottomNavItem.Passwords ||
+            currentTab == BottomNavItem.Authenticator ||
+            currentTab == BottomNavItem.CardWallet ||
+            currentTab == BottomNavItem.Generator ||
+            currentTab == BottomNavItem.Notes ||
+            currentTab == BottomNavItem.Send
+        ) && !isAnySelectionMode
     
     AnimatedVisibility(
         visible = showFab && isFabVisible,
@@ -1089,16 +1114,29 @@ fun SimpleMainScreen(
             // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
             fabBottomOffset = 116.dp,
             modifier = Modifier,
+            onFabClickOverride = when (currentTab) {
+                BottomNavItem.Send -> ({ sendCreateRequestKey++ })
+                BottomNavItem.Generator -> ({ generatorRefreshRequestKey++ })
+                else -> null
+            },
             onExpandStateChanged = { expanded -> isFabExpanded = expanded },
             fabContent = { expand ->
             when (currentTab) {
                 BottomNavItem.Passwords,
                 BottomNavItem.Authenticator,
                 BottomNavItem.CardWallet,
-                BottomNavItem.Notes -> {
+                BottomNavItem.Notes,
+                BottomNavItem.Send -> {
                      Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(R.string.add),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                BottomNavItem.Generator -> {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.regenerate),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
@@ -1172,6 +1210,12 @@ fun SimpleMainScreen(
                             onNavigateBack = collapse,
                             viewModel = noteViewModel
                         )
+                    }
+                    BottomNavItem.Send -> {
+                        // Send 使用全局 FAB 点击回调触发 BottomSheet，不走展开页面。
+                    }
+                    BottomNavItem.Generator -> {
+                        // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
                     }
                     else -> { /* Should not happen */ }
                 }
@@ -5938,12 +5982,18 @@ private fun V2NavScaffold(
     var onDeleteSelectedDocuments by remember { mutableStateOf({}) }
     
     var cardWalletSubTab by remember { mutableStateOf(CardWalletTab.BANK_CARDS) }
+    var sendCreateRequestKey by remember { mutableIntStateOf(0) }
+    var generatorRefreshRequestKey by remember { mutableIntStateOf(0) }
     
     val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || 
         isBankCardSelectionMode || isDocumentSelectionMode
     
-    // FAB：位置1（动态内容）且不在选择模式时显示
-    val showFab = selectedPosition == V2NavPosition.DYNAMIC && dynamicContent != null && !isAnySelectionMode
+    // FAB：动态页和发送页都由统一来源控制
+    val showFab = (
+        (selectedPosition == V2NavPosition.DYNAMIC && dynamicContent != null) ||
+            selectedPosition == V2NavPosition.SEND ||
+            selectedPosition == V2NavPosition.GENERATOR
+        ) && !isAnySelectionMode
     
     Scaffold(
         bottomBar = {
@@ -5954,35 +6004,45 @@ private fun V2NavScaffold(
             )
         },
         floatingActionButton = {
-            if (showFab && dynamicContent != null) {
-                when (dynamicContent) {
-                    RecentSubPage.PASSWORDS -> {
-                        FloatingActionButton(onClick = { onNavigateToAddPassword(null) }) {
-                            Icon(Icons.Default.Add, contentDescription = "添加密码")
-                        }
+            if (showFab) {
+                if (selectedPosition == V2NavPosition.SEND) {
+                    FloatingActionButton(onClick = { sendCreateRequestKey++ }) {
+                        Icon(Icons.Default.Add, contentDescription = "创建 Send")
                     }
-                    RecentSubPage.AUTHENTICATOR -> {
-                        FloatingActionButton(onClick = onNavigateToQuickTotpScan) {
-                            Icon(Icons.Default.Add, contentDescription = "添加验证器")
-                        }
+                } else if (selectedPosition == V2NavPosition.GENERATOR) {
+                    FloatingActionButton(onClick = { generatorRefreshRequestKey++ }) {
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.regenerate))
                     }
-                    RecentSubPage.CARD_WALLET -> {
-                        if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-                            FloatingActionButton(onClick = { onNavigateToAddBankCard(null) }) {
-                                Icon(Icons.Default.Add, contentDescription = "添加卡片")
-                            }
-                        } else {
-                            FloatingActionButton(onClick = { onNavigateToAddDocument(null) }) {
-                                Icon(Icons.Default.Add, contentDescription = "添加证件")
+                } else if (dynamicContent != null) {
+                    when (dynamicContent) {
+                        RecentSubPage.PASSWORDS -> {
+                            FloatingActionButton(onClick = { onNavigateToAddPassword(null) }) {
+                                Icon(Icons.Default.Add, contentDescription = "添加密码")
                             }
                         }
-                    }
-                    RecentSubPage.NOTES -> {
-                        FloatingActionButton(onClick = { onNavigateToAddNote(null) }) {
-                            Icon(Icons.Default.Add, contentDescription = "添加笔记")
+                        RecentSubPage.AUTHENTICATOR -> {
+                            FloatingActionButton(onClick = onNavigateToQuickTotpScan) {
+                                Icon(Icons.Default.Add, contentDescription = "添加验证器")
+                            }
                         }
+                        RecentSubPage.CARD_WALLET -> {
+                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+                                FloatingActionButton(onClick = { onNavigateToAddBankCard(null) }) {
+                                    Icon(Icons.Default.Add, contentDescription = "添加卡片")
+                                }
+                            } else {
+                                FloatingActionButton(onClick = { onNavigateToAddDocument(null) }) {
+                                    Icon(Icons.Default.Add, contentDescription = "添加证件")
+                                }
+                            }
+                        }
+                        RecentSubPage.NOTES -> {
+                            FloatingActionButton(onClick = { onNavigateToAddNote(null) }) {
+                                Icon(Icons.Default.Add, contentDescription = "添加笔记")
+                            }
+                        }
+                        else -> {}
                     }
-                    else -> {}
                 }
             }
         }
@@ -6100,13 +6160,19 @@ private fun V2NavScaffold(
                     }
                 }
                 V2NavPosition.SEND -> {
-                    SendScreen()
+                    SendScreen(
+                        createRequestKey = sendCreateRequestKey,
+                        onCreateRequestConsumed = { sendCreateRequestKey = 0 }
+                    )
                 }
                 V2NavPosition.GENERATOR -> {
                     GeneratorScreen(
                         onNavigateBack = {},
                         viewModel = generatorViewModel,
-                        passwordViewModel = passwordViewModel
+                        passwordViewModel = passwordViewModel,
+                        externalRefreshRequestKey = generatorRefreshRequestKey,
+                        onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
+                        useExternalRefreshFab = true
                     )
                 }
                 V2NavPosition.SETTINGS -> {
