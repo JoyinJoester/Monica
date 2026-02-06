@@ -624,6 +624,9 @@ class WebDavHelper(
             
             // 添加更详细的错误信息
             val detailedMessage = when {
+                e.message?.contains("CLEARTEXT", ignoreCase = true) == true ||
+                e.message?.contains("cleartext", ignoreCase = true) == true ->
+                    "检测到 HTTP 明文传输被系统限制。请升级到最新版应用后重试，或改用 https:// WebDAV 地址。"
                 e.message?.contains("Network is unreachable") == true -> 
                     "网络不可达，请检查网络连接"
                 e.message?.contains("Connection timed out") == true -> 
