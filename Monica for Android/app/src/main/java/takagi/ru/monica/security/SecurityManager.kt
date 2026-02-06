@@ -597,32 +597,34 @@ class SecurityManager(private val context: Context) {
     }
 
     private fun decryptDataV1(encryptedData: String): String {
-        return try {
-            val combined = android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
-            if (combined.size <= 12) {
-                // If the array is empty, it might be just an empty/invalid string that wasn't caught by isEmpty()
-                if (combined.isNotEmpty()) {
-                    android.util.Log.e("SecurityManager", "Decryption failed: payload too short (len=${combined.size})")
-                }
-                return encryptedData
-            }
+        if (encryptedData.isEmpty()) return ""
 
-            // Extract IV and encrypted data
-            val iv = combined.copyOfRange(0, 12) // GCM IV is 12 bytes
+        val combined = try {
+            android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
+        } catch (_: IllegalArgumentException) {
+            // Not a Base64 payload, likely plain text.
+            return encryptedData
+        }
+
+        // Legacy payload format is: 12-byte IV + ciphertext(>=1) + 16-byte GCM tag.
+        if (combined.size <= 28) {
+            return encryptedData
+        }
+
+        return try {
+            val iv = combined.copyOfRange(0, 12)
             val encrypted = combined.copyOfRange(12, combined.size)
 
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             val keyBytes = masterKey.toString().toByteArray().copyOf(32)
             val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
-            
             val gcmSpec = GCMParameterSpec(128, iv)
             cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
-            
+
             val decryptedBytes = cipher.doFinal(encrypted)
             String(decryptedBytes, kotlin.text.Charsets.UTF_8)
-        } catch (e: Exception) {
-            android.util.Log.e("SecurityManager", "Decryption failed", e)
-            // Fallback to original data if decryption fails
+        } catch (_: Exception) {
+            // Fallback to original data if decryption fails.
             encryptedData
         }
     }

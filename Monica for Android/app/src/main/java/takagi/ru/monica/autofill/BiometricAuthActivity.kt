@@ -14,12 +14,14 @@ import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.SettingsManager
 
 /**
  * Phase 8: 生物识别认证Activity
@@ -46,23 +48,22 @@ class BiometricAuthActivity : AppCompatActivity() {
         setContentView(R.layout.activity_transparent)
         
         biometricHelper = BiometricHelper(this)
-        
-        // 检查生物识别是否可用
-        if (!biometricHelper.isBiometricAvailable()) {
-            Toast.makeText(
-                this,
-                R.string.biometric_not_available,
-                Toast.LENGTH_SHORT
-            ).show()
-            
-            // 如果生物识别不可用，直接返回取消
-            setResult(Activity.RESULT_CANCELED)
-            finish()
-            return
+        val settingsManager = SettingsManager(this)
+
+        lifecycleScope.launch {
+            val biometricEnabled = settingsManager.settingsFlow.first().biometricEnabled
+            if (!biometricEnabled || !biometricHelper.isBiometricAvailable()) {
+                Toast.makeText(
+                    this@BiometricAuthActivity,
+                    R.string.biometric_not_available,
+                    Toast.LENGTH_SHORT
+                ).show()
+                setResult(Activity.RESULT_CANCELED)
+                finish()
+                return@launch
+            }
+            startBiometricAuthentication()
         }
-        
-        // 启动生物识别验证
-        startBiometricAuthentication()
     }
     
     /**

@@ -6,11 +6,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
+import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.sync.EmptyVaultProtection
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.*
+import takagi.ru.monica.security.SecurityManager
 import java.util.Date
 
 /**
@@ -39,9 +41,11 @@ class BitwardenSyncService(
     private val database = PasswordDatabase.getDatabase(context)
     private val vaultDao = database.bitwardenVaultDao()
     private val folderDao = database.bitwardenFolderDao()
+    private val sendDao = database.bitwardenSendDao()
     private val conflictDao = database.bitwardenConflictBackupDao()
     private val pendingOpDao = database.bitwardenPendingOperationDao()
     private val passwordEntryDao = database.passwordEntryDao()
+    private val securityManager = SecurityManager(context)
     
     // 多类型 Cipher 同步处理器
     private val cipherSyncProcessor = CipherSyncProcessor(context)
@@ -155,6 +159,7 @@ class BitwardenSyncService(
         var ciphersAdded = 0
         var ciphersUpdated = 0
         var conflictsDetected = 0
+        var sendsSynced = 0
         
         // 1. 同步文件夹
         response.folders.forEach { folderApi ->
@@ -212,6 +217,30 @@ class BitwardenSyncService(
         // 3. 清理已删除的文件夹 (服务器上不存在的)
         val serverFolderIds = response.folders.map { it.id }
         folderDao.deleteNotIn(vault.id, serverFolderIds)
+
+        // 4. 同步 Sends
+        response.sends?.forEach { sendApi ->
+            try {
+                val synced = syncSend(vault, sendApi, symmetricKey)
+                if (synced) {
+                    sendsSynced++
+                }
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Failed to sync send ${sendApi.id}: ${e.message}")
+            }
+        }
+        response.sends?.let { sends ->
+            val serverSendIds = sends.map { it.id }
+            if (serverSendIds.isEmpty()) {
+                sendDao.deleteByVault(vault.id)
+            } else {
+                sendDao.deleteNotIn(vault.id, serverSendIds)
+            }
+        }
+
+        if (sendsSynced > 0) {
+            android.util.Log.i(TAG, "Sends synced: $sendsSynced")
+        }
         
         return SyncResult.Success(
             foldersAdded = foldersAdded,
@@ -219,6 +248,38 @@ class BitwardenSyncService(
             ciphersUpdated = ciphersUpdated,
             conflictsDetected = conflictsDetected
         )
+    }
+
+    private suspend fun syncSend(
+        vault: BitwardenVault,
+        sendApi: SendApiResponse,
+        symmetricKey: SymmetricCryptoKey
+    ): Boolean {
+        val mapped = BitwardenSendMapper.mapApiToEntity(
+            vaultId = vault.id,
+            serverUrl = vault.serverUrl,
+            api = sendApi,
+            vaultKey = symmetricKey
+        ) ?: return false
+
+        val existing = sendDao.getBySendId(vault.id, mapped.bitwardenSendId)
+        val now = System.currentTimeMillis()
+        val entity = if (existing == null) {
+            mapped.copy(
+                createdAt = now,
+                updatedAt = now,
+                lastSyncedAt = now
+            )
+        } else {
+            mapped.copy(
+                id = existing.id,
+                createdAt = existing.createdAt,
+                updatedAt = now,
+                lastSyncedAt = now
+            )
+        }
+        sendDao.upsert(entity)
+        return true
     }
     
     /**
@@ -300,12 +361,13 @@ class BitwardenSyncService(
             val primaryUri = login.uris?.firstOrNull()?.let { 
                 decryptString(it.uri, symmetricKey) 
             } ?: ""
+            val encryptedPassword = securityManager.encryptData(password)
             
             return PasswordEntry(
                 title = name,
                 website = primaryUri,
                 username = username,
-                password = password,
+                password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
                 isFavorite = cipher.favorite,
@@ -338,7 +400,8 @@ class BitwardenSyncService(
             
             val name = decryptString(cipher.name, symmetricKey) ?: entry.title
             val username = decryptString(login.username, symmetricKey) ?: entry.username
-            val password = decryptString(login.password, symmetricKey) ?: entry.password
+            val decryptedPassword = decryptString(login.password, symmetricKey)
+            val encryptedPassword = decryptedPassword?.let { securityManager.encryptData(it) } ?: entry.password
             val notes = decryptString(cipher.notes, symmetricKey) ?: entry.notes
             val totp = decryptString(login.totp, symmetricKey) ?: entry.authenticatorKey
             val primaryUri = login.uris?.firstOrNull()?.let {
@@ -349,7 +412,7 @@ class BitwardenSyncService(
                 title = name,
                 website = primaryUri,
                 username = username,
-                password = password,
+                password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
                 isFavorite = cipher.favorite,

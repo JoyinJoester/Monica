@@ -225,6 +225,43 @@ interface BitwardenFolderDao {
 }
 
 /**
+ * Bitwarden Send DAO
+ */
+@Dao
+interface BitwardenSendDao {
+
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId ORDER BY updated_at DESC")
+    fun getSendsByVaultFlow(vaultId: Long): Flow<List<BitwardenSend>>
+
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId ORDER BY updated_at DESC")
+    suspend fun getSendsByVault(vaultId: Long): List<BitwardenSend>
+
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id = :sendId LIMIT 1")
+    suspend fun getBySendId(vaultId: Long, sendId: String): BitwardenSend?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(send: BitwardenSend): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(sends: List<BitwardenSend>)
+
+    @Update
+    suspend fun update(send: BitwardenSend)
+
+    @Delete
+    suspend fun delete(send: BitwardenSend)
+
+    @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId")
+    suspend fun deleteByVault(vaultId: Long)
+
+    @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id = :sendId")
+    suspend fun deleteBySendId(vaultId: Long, sendId: String)
+
+    @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id NOT IN (:keepIds)")
+    suspend fun deleteNotIn(vaultId: Long, keepIds: List<String>)
+}
+
+/**
  * Bitwarden 冲突备份 DAO
  */
 @Dao

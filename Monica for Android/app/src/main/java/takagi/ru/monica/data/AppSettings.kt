@@ -310,7 +310,7 @@ data class AppSettings(
     val customSecondaryColor: Long = 0xFF625b71, // 默认紫色灰色
     val customTertiaryColor: Long = 0xFF7D5260, // 默认粉色
     val language: Language = Language.SYSTEM,
-    val biometricEnabled: Boolean = true, // 生物识别认证默认开启(改为true)
+    val biometricEnabled: Boolean = false, // 生物识别认证默认关闭
     val autoLockMinutes: Int = 5, // Auto lock after X minutes of inactivity
     val screenshotProtectionEnabled: Boolean = false, // Prevent screenshots by default
     val dynamicColorEnabled: Boolean = true, // 动态颜色默认开启

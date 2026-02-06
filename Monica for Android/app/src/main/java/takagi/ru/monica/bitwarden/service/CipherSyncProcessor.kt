@@ -8,6 +8,7 @@ import takagi.ru.monica.bitwarden.mapper.*
 import takagi.ru.monica.bitwarden.sync.SyncItemType
 import takagi.ru.monica.data.*
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.security.SecurityManager
 import java.util.Date
 
 /**
@@ -30,6 +31,7 @@ class CipherSyncProcessor(
     private val passwordEntryDao = database.passwordEntryDao()
     private val secureItemDao = database.secureItemDao()
     private val passkeyDao = database.passkeyDao()
+    private val securityManager = SecurityManager(context)
     
     /**
      * 处理从服务器同步的 Cipher
@@ -96,6 +98,7 @@ class CipherSyncProcessor(
         val primaryUri = login.uris?.firstOrNull()?.let { 
             decryptString(it.uri, symmetricKey) 
         } ?: ""
+        val encryptedPassword = securityManager.encryptData(password)
         
         // 查找本地是否存在
         val existing = passwordEntryDao.getByBitwardenCipherId(cipher.id)
@@ -112,7 +115,7 @@ class CipherSyncProcessor(
                     title = name,
                     website = primaryUri,
                     username = username,
-                    password = password,
+                    password = encryptedPassword,
                     notes = notes,
                     authenticatorKey = totp,
                     isFavorite = cipher.favorite == true,
@@ -133,7 +136,7 @@ class CipherSyncProcessor(
                 title = name,
                 website = primaryUri,
                 username = username,
-                password = password,
+                password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
                 isFavorite = cipher.favorite == true,
@@ -159,7 +162,7 @@ class CipherSyncProcessor(
                 title = name,
                 website = primaryUri,
                 username = username,
-                password = password,
+                password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
                 isFavorite = cipher.favorite == true,

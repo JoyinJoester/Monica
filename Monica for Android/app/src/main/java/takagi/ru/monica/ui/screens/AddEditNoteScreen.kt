@@ -42,6 +42,8 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.utils.SettingsManager
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -53,6 +55,10 @@ fun AddEditNoteScreen(
     val context = LocalContext.current
     val biometricHelper = remember { BiometricHelper(context) }
     val securityManager = remember { SecurityManager(context) }
+    val settingsManager = remember { SettingsManager(context) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(
+        initial = AppSettings(biometricEnabled = false)
+    )
 
     var content by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
@@ -230,7 +236,7 @@ fun AddEditNoteScreen(
                         placeholder = { Text(stringResource(R.string.enter_master_password_confirm)) },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    if (activity != null) {
+                    if (activity != null && appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()) {
                         TextButton(onClick = {
                             biometricHelper.authenticate(
                                 activity = activity,

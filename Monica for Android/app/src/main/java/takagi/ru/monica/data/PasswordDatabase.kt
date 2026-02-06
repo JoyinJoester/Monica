@@ -23,10 +23,11 @@ import takagi.ru.monica.data.bitwarden.*
         // Bitwarden 集成表
         BitwardenVault::class,
         BitwardenFolder::class,
+        BitwardenSend::class,
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 34,
+    version = 35,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -44,6 +45,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     // Bitwarden DAOs
     abstract fun bitwardenVaultDao(): BitwardenVaultDao
     abstract fun bitwardenFolderDao(): BitwardenFolderDao
+    abstract fun bitwardenSendDao(): BitwardenSendDao
     abstract fun bitwardenConflictBackupDao(): BitwardenConflictBackupDao
     abstract fun bitwardenPendingOperationDao(): BitwardenPendingOperationDao
     
@@ -870,6 +872,55 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 34 -> 35: 添加 Bitwarden Send 本地缓存表
+         */
+        private val MIGRATION_34_35 = object : androidx.room.migration.Migration(34, 35) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 34→35: bitwarden sends cache")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS bitwarden_sends (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            vault_id INTEGER NOT NULL,
+                            bitwarden_send_id TEXT NOT NULL,
+                            access_id TEXT NOT NULL,
+                            key_base64 TEXT,
+                            type INTEGER NOT NULL DEFAULT 0,
+                            name TEXT NOT NULL,
+                            notes TEXT NOT NULL DEFAULT '',
+                            text_content TEXT,
+                            is_text_hidden INTEGER NOT NULL DEFAULT 0,
+                            file_name TEXT,
+                            file_size TEXT,
+                            access_count INTEGER NOT NULL DEFAULT 0,
+                            max_access_count INTEGER,
+                            has_password INTEGER NOT NULL DEFAULT 0,
+                            disabled INTEGER NOT NULL DEFAULT 0,
+                            hide_email INTEGER NOT NULL DEFAULT 0,
+                            revision_date TEXT NOT NULL DEFAULT '',
+                            expiration_date TEXT,
+                            deletion_date TEXT,
+                            share_url TEXT NOT NULL DEFAULT '',
+                            last_synced_at INTEGER NOT NULL,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY(vault_id) REFERENCES bitwarden_vaults(id) ON DELETE NO ACTION ON UPDATE NO ACTION
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_sends_vault_id ON bitwarden_sends(vault_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_sends_bitwarden_send_id ON bitwarden_sends(bitwarden_send_id)")
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_bitwarden_sends_vault_id_bitwarden_send_id ON bitwarden_sends(vault_id, bitwarden_send_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_sends_updated_at ON bitwarden_sends(updated_at)")
+                    android.util.Log.i("PasswordDatabase", "Migration 34→35 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 34→35 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -910,7 +961,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_30_31,  // Bitwarden 多类型同步支持
                         MIGRATION_31_32,  // Passkey 绑定密码
                         MIGRATION_32_33,  // Password 绑定通行密钥元数据
-                        MIGRATION_33_34   // KeePass 组同步配置
+                        MIGRATION_33_34,  // KeePass 组同步配置
+                        MIGRATION_34_35   // Bitwarden Send 本地缓存
                     )
                     .build()
                 INSTANCE = instance

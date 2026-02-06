@@ -160,7 +160,7 @@ class PasswordViewModel(
                     entries
                 }
                 filtered.map { entry ->
-                    entry.copy(password = securityManager.decryptData(entry.password))
+                    entry.copy(password = decryptForDisplay(entry.password))
                 }
             }
         }
@@ -174,7 +174,7 @@ class PasswordViewModel(
     val allPasswords: StateFlow<List<PasswordEntry>> = repository.getAllPasswordEntries()
         .map { entries ->
             entries.map { entry ->
-                entry.copy(password = securityManager.decryptData(entry.password))
+                entry.copy(password = decryptForDisplay(entry.password))
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
@@ -257,6 +257,16 @@ class PasswordViewModel(
         val username = entry.username.trim().lowercase()
         val website = entry.website.trim().lowercase()
         return "$title|$username|$website"
+    }
+
+    private fun decryptForDisplay(encryptedPassword: String): String {
+        if (encryptedPassword.isEmpty()) return ""
+        return runCatching {
+            securityManager.decryptData(encryptedPassword)
+        }.getOrElse { error ->
+            Log.w("PasswordViewModel", "Skip decrypt due to auth/key state: ${error.message}")
+            ""
+        }
     }
 
     private fun syncKeePassDatabase(databaseId: Long) {
@@ -464,7 +474,7 @@ class PasswordViewModel(
             // 如果 entry 被修改为 boundEntry，使用 boundEntry
             val entryToUpdate = boundEntry
             
-            val oldPassword = oldEntry?.let { securityManager.decryptData(it.password) } ?: ""
+            val oldPassword = oldEntry?.let { decryptForDisplay(it.password) } ?: ""
             val service = keepassService
             val oldKeepassId = oldEntry?.keepassDatabaseId
             val newKeepassId = entryToUpdate.keepassDatabaseId
@@ -624,7 +634,7 @@ class PasswordViewModel(
     
     suspend fun getPasswordEntryById(id: Long): PasswordEntry? {
         return repository.getPasswordEntryById(id)?.let { entry ->
-            entry.copy(password = securityManager.decryptData(entry.password))
+            entry.copy(password = decryptForDisplay(entry.password))
         }
     }
 
@@ -716,7 +726,7 @@ class PasswordViewModel(
             
             // 3. 使用当前密码解密所有数据
             val decryptedPasswords = allPasswords.map { entry ->
-                entry.copy(password = securityManager.decryptData(entry.password))
+                entry.copy(password = decryptForDisplay(entry.password))
             }
             
             // 4. 设置新密码

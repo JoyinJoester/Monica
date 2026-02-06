@@ -85,6 +85,7 @@ fun NoteListScreen(
     
     val context = LocalContext.current
     val biometricHelper = remember { BiometricHelper(context) }
+    val canUseBiometric = settings.biometricEnabled && biometricHelper.isBiometricAvailable()
     
     val notes by viewModel.allNotes.collectAsState(initial = emptyList())
     
@@ -215,7 +216,7 @@ fun NoteListScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                         val activity = context as? FragmentActivity
-                        if (activity != null) {
+                        if (activity != null && canUseBiometric) {
                             TextButton(onClick = {
                                 biometricHelper.authenticate(
                                     activity = activity,

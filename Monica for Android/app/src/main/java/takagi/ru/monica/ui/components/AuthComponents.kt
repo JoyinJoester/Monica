@@ -33,7 +33,7 @@ fun PasswordVerificationContent(
     isFirstTime: Boolean = false,
     isConfirmingPassword: Boolean = false,
     disablePasswordVerification: Boolean = false,
-    biometricEnabled: Boolean = true,
+    biometricEnabled: Boolean = false,
     onVerifyPassword: (String) -> Boolean,
     onSetPassword: (String) -> Unit = {},
     onSuccess: () -> Unit,
@@ -54,10 +54,12 @@ fun PasswordVerificationContent(
     // 生物识别帮助类
     val biometricHelper = remember { BiometricAuthHelper(context) }
     val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
+    var autoBiometricTried by remember { mutableStateOf(false) }
     
     // 自动触发生物识别
-    LaunchedEffect(Unit) {
-        if (!isFirstTime && isBiometricAvailable && biometricEnabled && activity != null) {
+    LaunchedEffect(isFirstTime, isBiometricAvailable, biometricEnabled, activity) {
+        if (!autoBiometricTried && !isFirstTime && isBiometricAvailable && biometricEnabled && activity != null) {
+            autoBiometricTried = true
             biometricHelper.authenticate(
                 activity = activity,
                 onSuccess = {

@@ -838,6 +838,7 @@ fun MonicaContent(
                         passkeyViewModel = passkeyViewModel,
                         passwordId = passwordId,
                         disablePasswordVerification = settings.disablePasswordVerification,
+                        biometricEnabled = settings.biometricEnabled,
                         onNavigateBack = {
                             navController.popBackStack()
                         },

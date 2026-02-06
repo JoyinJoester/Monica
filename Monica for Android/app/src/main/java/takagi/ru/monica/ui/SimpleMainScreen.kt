@@ -758,7 +758,7 @@ fun SimpleMainScreen(
                             )
                         }
                         BottomNavItem.Send -> {
-                            SendScreen()
+                            SendScreen(bitwardenViewModel = bitwardenViewModel)
                         }
                         BottomNavItem.Settings -> {
                             SettingsScreen(
@@ -993,7 +993,7 @@ fun SimpleMainScreen(
                 }
                 BottomNavItem.Send -> {
                     // V2 发送页面
-                    SendScreen()
+                    SendScreen(bitwardenViewModel = bitwardenViewModel)
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -2628,6 +2628,7 @@ private fun PasswordListContent(
         DeleteConfirmDialog(
             itemTitle = item.title,
             itemType = "密码",
+            biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
                 deletedItemIds = deletedItemIds - item.id
@@ -3191,6 +3192,7 @@ private fun TotpListContent(
         DeleteConfirmDialog(
             itemTitle = item.title,
             itemType = "验证器",
+            biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
                 deletedItemIds = deletedItemIds - item.id
@@ -3408,6 +3410,10 @@ private fun BankCardListContent(
     var showPasswordDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(
+        initial = takagi.ru.monica.data.AppSettings(biometricEnabled = false)
+    )
     
     val cards by viewModel.allCards.collectAsState(initial = emptyList())
     
@@ -3642,6 +3648,7 @@ private fun BankCardListContent(
         DeleteConfirmDialog(
             itemTitle = item.title,
             itemType = "银行卡",
+            biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
                 deletedItemIds = deletedItemIds - item.id
@@ -3736,6 +3743,10 @@ private fun DocumentListContent(
     var showPasswordDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(
+        initial = takagi.ru.monica.data.AppSettings(biometricEnabled = false)
+    )
     val haptic = rememberHapticFeedback()
     
     val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
@@ -3957,6 +3968,7 @@ private fun DocumentListContent(
         DeleteConfirmDialog(
             itemTitle = item.title,
             itemType = "证件",
+            biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
                 deletedItemIds = deletedItemIds - item.id
@@ -5682,6 +5694,7 @@ private fun indexToDefaultTabKey(index: Int): String = when (index) {
 private fun DeleteConfirmDialog(
     itemTitle: String,
     itemType: String = "项目",
+    biometricEnabled: Boolean,
     onDismiss: () -> Unit,
     onConfirmWithPassword: (String) -> Unit,
     onConfirmWithBiometric: () -> Unit
@@ -5690,7 +5703,9 @@ private fun DeleteConfirmDialog(
     val activity = context as? FragmentActivity
     var passwordInput by remember { mutableStateOf("") }
     val biometricHelper = remember { BiometricHelper(context) }
-    val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
+    val isBiometricAvailable = remember(biometricEnabled) {
+        biometricEnabled && biometricHelper.isBiometricAvailable()
+    }
     
     AlertDialog(
         onDismissRequest = onDismiss,

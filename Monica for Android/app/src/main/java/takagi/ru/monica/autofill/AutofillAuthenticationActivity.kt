@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ThemeMode
@@ -117,13 +120,15 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
         Log.d(TAG, "Username: $usernameValue")
         Log.d(TAG, "Autofill IDs count: ${autofillIds?.size}")
         Log.d(TAG, "Field types: $fieldTypes")
-        
-        // 检查是否支持生物识别
-        if (biometricAuthHelper.isBiometricAvailable()) {
-            showBiometricAuthentication()
-        } else {
-            // 降级到密码验证
-            showPasswordAuthentication()
+
+        lifecycleScope.launch {
+            val biometricEnabled = settingsManager.settingsFlow.first().biometricEnabled
+            if (biometricEnabled && biometricAuthHelper.isBiometricAvailable()) {
+                showBiometricAuthentication()
+            } else {
+                // 降级到密码验证
+                showPasswordAuthentication()
+            }
         }
     }
     
@@ -172,22 +177,12 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
             }
         )
         
-        val biometricManager = BiometricManager.from(this)
-        val allowedAuthenticators = if (
-            biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
-            BiometricManager.BIOMETRIC_SUCCESS
-        ) {
-            BiometricManager.Authenticators.BIOMETRIC_STRONG
-        } else {
-            BiometricManager.Authenticators.BIOMETRIC_WEAK
-        }
-
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(getString(R.string.autofill_auth_title))
             .setSubtitle(getString(R.string.autofill_auth_subtitle))
             .setDescription(getString(R.string.autofill_auth_description))
             .setNegativeButtonText(getString(R.string.use_password))
-            .setAllowedAuthenticators(allowedAuthenticators)
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setConfirmationRequired(false)
             .build()
         
@@ -284,7 +279,7 @@ private fun AutofillPasswordAuthScreen(
     onSuccess: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val settings by settingsFlow.collectAsState(initial = AppSettings())
+    val settings by settingsFlow.collectAsState(initial = AppSettings(biometricEnabled = false))
     val systemDarkTheme = isSystemInDarkTheme()
     val darkTheme = when (settings.themeMode) {
         ThemeMode.SYSTEM -> systemDarkTheme

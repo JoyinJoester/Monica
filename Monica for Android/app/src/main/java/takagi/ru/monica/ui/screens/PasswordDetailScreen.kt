@@ -88,6 +88,7 @@ fun PasswordDetailScreen(
     passkeyViewModel: PasskeyViewModel? = null,
     passwordId: Long,
     disablePasswordVerification: Boolean,
+    biometricEnabled: Boolean,
     onNavigateBack: () -> Unit,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
@@ -152,7 +153,7 @@ fun PasswordDetailScreen(
             executeDeletion()
             return
         }
-        if (biometricHelper.isBiometricAvailable()) {
+        if (biometricEnabled && biometricHelper.isBiometricAvailable()) {
             (context as? FragmentActivity)?.let { activity ->
                 biometricHelper.authenticate(
                     activity = activity,
