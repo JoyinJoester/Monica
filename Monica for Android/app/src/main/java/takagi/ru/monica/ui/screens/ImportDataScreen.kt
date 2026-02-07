@@ -125,7 +125,8 @@ fun ImportDataScreen(
     onImportSteamMaFile: suspend (Uri) -> Result<Int>,  // Steam maFile导入
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
     onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("未实现")) },  // KDBX导入
-    onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("未实现")) }  // KeePass CSV导入
+    onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("未实现")) },  // KeePass CSV导入
+    onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("未实现")) }  // Bitwarden CSV导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -137,6 +138,7 @@ fun ImportDataScreen(
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isImporting by remember { mutableStateOf(false) }
     var importType by remember { mutableStateOf("monica_zip") } // 默认选择 ZIP 备份
+    var csvImportType by remember { mutableStateOf("normal") } // CSV子类型
     var showPasswordDialog by remember { mutableStateOf(false) }
     var aegisPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
@@ -164,17 +166,10 @@ fun ImportDataScreen(
                 fileHint = "选择 .kdbx 文件"
             ),
             ImportTypeInfo(
-                key = "keepass_csv",
-                icon = Icons.Default.Description,
-                title = "KeePass CSV",
-                description = "导入 KeePass 导出的 CSV 文件",
-                fileHint = "选择 .csv 文件"
-            ),
-            ImportTypeInfo(
-                key = "normal",
+                key = "csv_group",
                 icon = Icons.Default.TableChart,
                 title = "CSV 数据",
-                description = "导入应用导出的 CSV 文件",
+                description = "导入 Monica / KeePass / Bitwarden 的 CSV 文件",
                 fileHint = "选择 .csv 文件"
             ),
             ImportTypeInfo(
@@ -193,9 +188,41 @@ fun ImportDataScreen(
             )
         )
     }
+
+    val csvImportTypes = remember {
+        listOf(
+            ImportTypeInfo(
+                key = "normal",
+                icon = Icons.Default.TableChart,
+                title = "Monica CSV",
+                description = "导入 Monica 应用导出的 CSV 文件",
+                fileHint = "选择 Monica .csv 文件"
+            ),
+            ImportTypeInfo(
+                key = "keepass_csv",
+                icon = Icons.Default.Description,
+                title = "KeePass CSV",
+                description = "导入 KeePass 导出的 CSV 文件",
+                fileHint = "选择 KeePass .csv 文件"
+            ),
+            ImportTypeInfo(
+                key = "bitwarden_csv",
+                icon = Icons.Default.Lock,
+                title = "Bitwarden CSV",
+                description = "导入 Bitwarden 导出的 CSV 文件",
+                fileHint = "选择 Bitwarden .csv 文件"
+            )
+        )
+    }
+
+    val effectiveImportType = if (importType == "csv_group") csvImportType else importType
     
-    val currentTypeInfo = remember(importType) {
-        importTypes.find { it.key == importType } ?: importTypes[0]
+    val currentTypeInfo = remember(importType, csvImportType) {
+        if (importType == "csv_group") {
+            csvImportTypes.find { it.key == csvImportType } ?: csvImportTypes[0]
+        } else {
+            importTypes.find { it.key == importType } ?: importTypes[0]
+        }
     }
     
     // 设置文件操作回调
@@ -269,11 +296,11 @@ fun ImportDataScreen(
                                 scope.launch {
                                     isImporting = true
                                     try {
-                                        when (importType) {
+                                        when (effectiveImportType) {
                                             "monica_zip" -> {
                                                 val result = onImportZip(uri, null)
                                                 result.onSuccess { count ->
-                                                    handleImportResult(Result.success(count), context, snackbarHostState, importType, onNavigateBack)
+                                                    handleImportResult(Result.success(count), context, snackbarHostState, effectiveImportType, onNavigateBack)
                                                 }.onFailure { error ->
                                                     if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
                                                         isImporting = false
@@ -281,7 +308,7 @@ fun ImportDataScreen(
                                                         passwordError = null
                                                         aegisPassword = ""
                                                     } else {
-                                                        handleImportResult(Result.failure(error), context, snackbarHostState, importType, onNavigateBack)
+                                                        handleImportResult(Result.failure(error), context, snackbarHostState, effectiveImportType, onNavigateBack)
                                                     }
                                                 }
                                             }
@@ -299,13 +326,13 @@ fun ImportDataScreen(
                                                 } else {
                                                     // 不是加密文件，直接导入
                                                     val result = onImportAegis(uri)
-                                                    handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
                                                 }
                                             }
                                             "steam" -> {
                                                 // Steam maFile导入
                                                 val result = onImportSteamMaFile(uri)
-                                                handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
                                             }
                                             "kdbx" -> {
                                                 // KDBX 导入需要密码
@@ -315,12 +342,16 @@ fun ImportDataScreen(
                                             }
                                             "keepass_csv" -> {
                                                 val result = onImportKeePassCsv(uri)
-                                                handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                            }
+                                            "bitwarden_csv" -> {
+                                                val result = onImportBitwardenCsv(uri)
+                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
                                             }
                                             else -> {
                                                 // 普通CSV导入
                                                 val result = onImport(uri)
-                                                handleImportResult(result, context, snackbarHostState, importType, onNavigateBack)
+                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -411,6 +442,38 @@ fun ImportDataScreen(
                     )
                 }
             }
+
+            if (importType == "csv_group") {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "选择 CSV 来源",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        csvImportTypes.forEach { csvTypeInfo ->
+                            ImportTypeCard(
+                                info = csvTypeInfo,
+                                selected = csvImportType == csvTypeInfo.key,
+                                onClick = {
+                                    csvImportType = csvTypeInfo.key
+                                    selectedFileUri = null
+                                    selectedFileName = null
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             
@@ -427,10 +490,11 @@ fun ImportDataScreen(
                 onClick = { 
                     activity?.let { act ->
                         // 根据导入类型选择不同的文件过滤器
-                        when (importType) {
+                        when (effectiveImportType) {
                             "monica_zip" -> FileOperationHelper.importFromZip(act)
                             "kdbx" -> FileOperationHelper.importFromKdbx(act)
                             "keepass_csv" -> FileOperationHelper.importFromCsv(act)
+                            "bitwarden_csv" -> FileOperationHelper.importFromCsv(act)
                             "aegis" -> FileOperationHelper.importFromJson(act)
                             "steam" -> FileOperationHelper.importFromMaFile(act)
                             else -> FileOperationHelper.importFromCsv(act)

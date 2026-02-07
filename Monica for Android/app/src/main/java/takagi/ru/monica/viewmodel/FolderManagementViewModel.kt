@@ -59,8 +59,6 @@ class FolderManagementViewModel(application: Application) : AndroidViewModel(app
     private val keepassGroupDao: KeepassGroupSyncConfigDao = database.keepassGroupSyncConfigDao()
     private val bitwardenFolderDao = database.bitwardenFolderDao()
     private val passwordEntryDao = database.passwordEntryDao()
-    private val secureItemDao = database.secureItemDao()
-    private val passkeyDao = database.passkeyDao()
     private val settingsManager = SettingsManager(application)
     private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val apiManager = BitwardenApiManager()
@@ -164,12 +162,29 @@ class FolderManagementViewModel(application: Application) : AndroidViewModel(app
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
-                passwordEntryDao.markAllForBitwarden(vaultId)
-                secureItemDao.markAllForBitwarden(vaultId)
-                passkeyDao.markAllForBitwarden(vaultId)
+                val linkedCategories = categoryDao
+                    .getBitwardenLinkedCategoriesSync()
+                    .filter { it.bitwardenVaultId == vaultId && !it.bitwardenFolderId.isNullOrBlank() }
+
+                var affectedCategories = 0
+                linkedCategories.forEach { category ->
+                    val folderId = requireNotNull(category.bitwardenFolderId)
+                    passwordEntryDao.bindCategoryToBitwarden(
+                        categoryId = category.id,
+                        vaultId = vaultId,
+                        folderId = folderId
+                    )
+                    affectedCategories++
+                }
+
+                val message = if (affectedCategories > 0) {
+                    "已按分类规则应用到 $affectedCategories 个 Bitwarden 关联分类"
+                } else {
+                    "未找到可应用的 Bitwarden 关联分类"
+                }
                 _operationResult.value = FolderOperationResult(
                     success = true,
-                    message = "已将所有数据标记为同步到 Bitwarden"
+                    message = message
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to apply upload all", e)

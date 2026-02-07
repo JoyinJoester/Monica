@@ -73,8 +73,24 @@ class PasswordRepository(
         categoryDao?.updateSortOrder(id, sortOrder)
     }
 
+    suspend fun getCategoryById(id: Long): Category? {
+        return categoryDao?.getCategoryById(id)
+    }
+
     suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?) {
         passwordEntryDao.updateCategoryForPasswords(ids, categoryId)
+    }
+
+    suspend fun bindPasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String) {
+        passwordEntryDao.bindPasswordsToBitwardenFolder(ids, vaultId, folderId)
+    }
+
+    suspend fun clearPendingBitwardenBinding(ids: List<Long>) {
+        passwordEntryDao.clearPendingBitwardenBinding(ids)
+    }
+
+    suspend fun bindCategoryToBitwarden(categoryId: Long, vaultId: Long, folderId: String) {
+        passwordEntryDao.bindCategoryToBitwarden(categoryId, vaultId, folderId)
     }
     
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?) {

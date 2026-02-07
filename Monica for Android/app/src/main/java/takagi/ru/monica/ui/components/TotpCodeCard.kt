@@ -233,15 +233,6 @@ fun TotpCodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 添加复选框（选择模式）
-                if (isSelectionMode) {
-                    Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,
@@ -282,7 +273,7 @@ fun TotpCodeCard(
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     
-                    if (item.isFavorite) {
+                    if (!isSelectionMode && item.isFavorite) {
                         Icon(
                             Icons.Default.Favorite,
                             contentDescription = "收藏",
@@ -291,9 +282,14 @@ fun TotpCodeCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    
-                    // 菜单按钮
-                    if (onDelete != null) {
+
+                    if (isSelectionMode) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onToggleSelect?.invoke() }
+                        )
+                    } else if (onDelete != null) {
+                        // 菜单按钮
                         var expanded by remember { mutableStateOf(false) }
                         
                         Box {

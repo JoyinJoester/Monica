@@ -230,6 +230,13 @@ class DataExportImportViewModel(
     suspend fun importKeePassCsv(inputUri: Uri): Result<Int> {
         return importData(inputUri, DataExportImportManager.CsvFormat.KEEPASS_PASSWORD)
     }
+
+    /**
+     * 导入Bitwarden CSV文件
+     */
+    suspend fun importBitwardenCsv(inputUri: Uri): Result<Int> {
+        return importData(inputUri, DataExportImportManager.CsvFormat.BITWARDEN_PASSWORD)
+    }
     
     /**
      * 解析密码数据字符串

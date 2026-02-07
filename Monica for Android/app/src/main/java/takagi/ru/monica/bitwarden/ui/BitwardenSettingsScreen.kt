@@ -49,6 +49,8 @@ fun BitwardenSettingsScreen(
     val unlockState by viewModel.unlockState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
     val isNeverLockEnabled by viewModel.isNeverLockEnabledFlow.collectAsState()
+    val isAutoSyncEnabled by viewModel.isAutoSyncEnabledFlow.collectAsState()
+    val isSyncOnWifiOnly by viewModel.isSyncOnWifiOnlyFlow.collectAsState()
     val pendingCount by viewModel.pendingSyncCount.collectAsState()
     val failedCount by viewModel.failedSyncCount.collectAsState()
     
@@ -181,9 +183,9 @@ fun BitwardenSettingsScreen(
             
             item {
                 SyncSettingsCard(
-                    isAutoSyncEnabled = viewModel.isAutoSyncEnabled,
+                    isAutoSyncEnabled = isAutoSyncEnabled,
                     onAutoSyncChanged = { viewModel.isAutoSyncEnabled = it },
-                    isSyncOnWifiOnly = viewModel.isSyncOnWifiOnly,
+                    isSyncOnWifiOnly = isSyncOnWifiOnly,
                     onSyncOnWifiOnlyChanged = { viewModel.isSyncOnWifiOnly = it },
                     isNeverLockEnabled = isNeverLockEnabled,
                     onNeverLockChanged = { enabled ->

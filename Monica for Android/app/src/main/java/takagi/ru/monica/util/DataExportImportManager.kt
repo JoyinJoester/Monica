@@ -153,21 +153,11 @@ class DataExportImportManager(private val context: Context) {
                     android.util.Log.d("DataImport", "检测到格式: $csvFormat")
                     
                     // 如果第一行是标题，跳过它
-                    val isHeader = when (csvFormat) {
-                        CsvFormat.APP_EXPORT -> firstLine.contains("Type") && 
-                                               firstLine.contains("Title") && 
-                                               firstLine.contains("Data")
-                        CsvFormat.CHROME_PASSWORD -> firstLine.contains("name") && 
-                                                    firstLine.contains("url") && 
-                                                    firstLine.contains("username") &&
-                                                    firstLine.contains("password")
-                        CsvFormat.KEEPASS_PASSWORD -> true
-                        else -> false
-                    }
+                    val isHeader = isHeaderLine(firstLine, csvFormat)
                     
                     android.util.Log.d("DataImport", "是否为标题行: $isHeader")
                     
-                    if (isHeader && csvFormat == CsvFormat.KEEPASS_PASSWORD) {
+                    if (isHeader && (csvFormat == CsvFormat.KEEPASS_PASSWORD || csvFormat == CsvFormat.BITWARDEN_PASSWORD)) {
                         val headers = parseCsvLine(firstLine)
                         headerIndexMap = buildHeaderIndexMap(headers)
                     }
@@ -258,6 +248,7 @@ class DataExportImportManager(private val context: Context) {
         APP_EXPORT,        // 应用导出格式 (9个字段)
         CHROME_PASSWORD,   // Chrome密码格式 (name,url,username,password,note)
         KEEPASS_PASSWORD,  // KeePass CSV 格式
+        BITWARDEN_PASSWORD, // Bitwarden CSV 格式
         ALIPAY_TRANSACTION, // 支付宝交易明细格式
         UNKNOWN
     }
@@ -276,6 +267,10 @@ class DataExportImportManager(private val context: Context) {
             lowerLine.contains("name") && lowerLine.contains("url") && 
             lowerLine.contains("username") && lowerLine.contains("password") -> 
                 CsvFormat.CHROME_PASSWORD
+
+            lowerLine.contains("login_username") &&
+            lowerLine.contains("login_password") ->
+                CsvFormat.BITWARDEN_PASSWORD
             
             lowerLine.contains("title") && 
             (lowerLine.contains("user name") || lowerLine.contains("username")) &&
@@ -290,7 +285,7 @@ class DataExportImportManager(private val context: Context) {
                 // 根据字段数量推测
                 val fields = parseCsvLine(firstLine)
                 when {
-                    fields.size >= 9 -> CsvFormat.APP_EXPORT
+                    fields.size >= 9 && fields.firstOrNull()?.trim()?.toLongOrNull() != null -> CsvFormat.APP_EXPORT
                     fields.size == 5 -> CsvFormat.CHROME_PASSWORD
                     fields.size >= 12 -> CsvFormat.ALIPAY_TRANSACTION
                     else -> CsvFormat.UNKNOWN
@@ -356,11 +351,11 @@ class DataExportImportManager(private val context: Context) {
                     if (fields.size >= 3) {
                         val title = getFieldValue(fields, headerIndexMap, listOf("title", "标题", "account", "账户", "name", "名称")) 
                             ?: fields.getOrNull(0)?.trim().orEmpty()
-                        val username = getFieldValue(fields, headerIndexMap, listOf("user name", "username", "user_name", "login name", "login", "用户名", "账号", "登录名"))
+                        val username = getFieldValue(fields, headerIndexMap, listOf("user name", "username", "user_name", "login name", "login", "login_username", "用户名", "账号", "登录名"))
                             ?: fields.getOrNull(1)?.trim().orEmpty()
-                        val password = getFieldValue(fields, headerIndexMap, listOf("password", "pass", "pwd", "密码", "口令"))
+                        val password = getFieldValue(fields, headerIndexMap, listOf("password", "pass", "pwd", "login_password", "密码", "口令"))
                             ?: fields.getOrNull(2)?.trim().orEmpty()
-                        val url = getFieldValue(fields, headerIndexMap, listOf("url", "website", "web site", "web_site", "location", "address", "网址", "链接", "地址"))
+                        val url = getFieldValue(fields, headerIndexMap, listOf("url", "website", "web site", "web_site", "location", "address", "login_uri", "网址", "链接", "地址"))
                             ?: fields.getOrNull(3)?.trim().orEmpty()
                         val note = getFieldValue(fields, headerIndexMap, listOf("notes", "note", "comment", "comments", "description", "备注", "注释", "描述"))
                             ?: fields.getOrNull(4)?.trim().orEmpty()
@@ -384,6 +379,55 @@ class DataExportImportManager(private val context: Context) {
                             itemData = passwordData,
                             notes = note,
                             isFavorite = false,
+                            imagePaths = "",
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } else null
+                }
+
+                CsvFormat.BITWARDEN_PASSWORD -> {
+                    if (fields.size >= 4) {
+                        val type = getFieldValue(fields, headerIndexMap, listOf("type"))
+                            ?: fields.getOrNull(2)?.trim().orEmpty()
+                        if (type.isNotBlank() && type.lowercase() != "login") {
+                            return null
+                        }
+
+                        val title = getFieldValue(fields, headerIndexMap, listOf("name", "title", "标题"))
+                            ?: fields.getOrNull(3)?.trim().orEmpty()
+                        val username = getFieldValue(fields, headerIndexMap, listOf("login_username", "username", "user name", "user_name"))
+                            ?: fields.getOrNull(8)?.trim().orEmpty()
+                        val password = getFieldValue(fields, headerIndexMap, listOf("login_password", "password", "pass", "pwd"))
+                            ?: fields.getOrNull(9)?.trim().orEmpty()
+                        val url = getFieldValue(fields, headerIndexMap, listOf("login_uri", "url", "website", "web site", "web_site"))
+                            ?: fields.getOrNull(7)?.trim().orEmpty()
+                        val note = getFieldValue(fields, headerIndexMap, listOf("notes", "note", "comment", "comments", "description"))
+                            ?: fields.getOrNull(4)?.trim().orEmpty()
+                        val isFavorite = parseBooleanLike(
+                            getFieldValue(fields, headerIndexMap, listOf("favorite", "favourite", "isfavorite"))
+                                ?: fields.getOrNull(1)?.trim().orEmpty()
+                        )
+
+                        if (title.isBlank() && username.isBlank() && password.isBlank() && url.isBlank()) {
+                            return null
+                        }
+
+                        val passwordData = buildString {
+                            append("username:$username;")
+                            append("password:$password")
+                            if (url.isNotEmpty()) {
+                                append(";website:$url")
+                            }
+                        }
+
+                        ExportItem(
+                            id = 0,
+                            itemType = "PASSWORD",
+                            title = title.ifBlank { url.ifBlank { username } },
+                            itemData = passwordData,
+                            notes = note,
+                            isFavorite = isFavorite,
                             imagePaths = "",
                             createdAt = System.currentTimeMillis(),
                             updatedAt = System.currentTimeMillis()
@@ -421,6 +465,36 @@ class DataExportImportManager(private val context: Context) {
             headerIndexMap[key]
         } ?: return null
         return fields.getOrNull(index)?.trim()
+    }
+
+    private fun isHeaderLine(firstLine: String, format: CsvFormat): Boolean {
+        return when (format) {
+            CsvFormat.APP_EXPORT -> firstLine.contains("Type") &&
+                firstLine.contains("Title") &&
+                firstLine.contains("Data")
+            CsvFormat.CHROME_PASSWORD -> firstLine.contains("name") &&
+                firstLine.contains("url") &&
+                firstLine.contains("username") &&
+                firstLine.contains("password")
+            CsvFormat.KEEPASS_PASSWORD -> {
+                val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
+                val knownHeaders = setOf("title", "user name", "username", "password", "url", "notes", "name", "account")
+                headers.intersect(knownHeaders).size >= 2
+            }
+            CsvFormat.BITWARDEN_PASSWORD -> {
+                val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
+                headers.contains("login_username") && headers.contains("login_password")
+            }
+            CsvFormat.ALIPAY_TRANSACTION,
+            CsvFormat.UNKNOWN -> false
+        }
+    }
+
+    private fun parseBooleanLike(value: String): Boolean {
+        return when (value.trim().lowercase()) {
+            "1", "true", "yes", "y" -> true
+            else -> false
+        }
     }
 
     /**

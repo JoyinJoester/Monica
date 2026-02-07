@@ -1826,7 +1826,7 @@
     <string name="v2_folder_management_title">Folder Management</string>
     <string name="v2_folder_management_subtitle">Organize and sync your folders</string>
     <string name="v2_sync_all_title">Bitwarden Full Sync</string>
-    <string name="v2_sync_all_desc">Sync all data to Bitwarden cloud</string>
+    <string name="v2_sync_all_desc">Sync linked categories to Bitwarden cloud</string>
     <string name="v2_apply_sync">Apply Now</string>
     <string name="v2_select_database">Select Database</string>
     <string name="v2_bitwarden_account">Bitwarden Account</string>
@@ -1858,7 +1858,7 @@
     <!-- New Folder Management (M3E Design) -->
     <string name="folder_management_subtitle">Organize and sync your folders</string>
     <string name="sync_all_title">Bitwarden Full Sync</string>
-    <string name="sync_all_desc">Sync all data to Bitwarden cloud</string>
+    <string name="sync_all_desc">Sync linked categories to Bitwarden cloud</string>
     <string name="sync_apply_now">Apply Now</string>
     <string name="bitwarden_account_label">Bitwarden Account</string>
     <string name="bitwarden_not_connected">Bitwarden not connected</string>

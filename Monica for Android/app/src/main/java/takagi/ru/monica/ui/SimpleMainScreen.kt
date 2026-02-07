@@ -3678,7 +3678,16 @@ private fun BankCardListContent(
                                     nextItem.id to index
                                 ))
                             }
-                        } else null
+                        } else null,
+                        onLongClick = {
+                            haptic.performLongPress()
+                            if (!isSelectionMode) {
+                                isSelectionMode = true
+                                selectedItems = setOf(card.id)
+                            }
+                        },
+                        isSelectionMode = isSelectionMode,
+                        isSelected = selectedItems.contains(card.id)
                     )
                 }
             }
@@ -3759,7 +3768,10 @@ private fun BankCardItemCard(
     onDelete: (() -> Unit)? = null,
     onToggleFavorite: ((Long, Boolean) -> Unit)? = null,
     onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null
+    onMoveDown: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false
 ) {
     takagi.ru.monica.ui.components.BankCardCard(
         item = item,
@@ -3767,7 +3779,10 @@ private fun BankCardItemCard(
         onDelete = onDelete,
         onToggleFavorite = onToggleFavorite,
         onMoveUp = onMoveUp,
-        onMoveDown = onMoveDown
+        onMoveDown = onMoveDown,
+        onLongClick = onLongClick,
+        isSelectionMode = isSelectionMode,
+        isSelected = isSelected
     )
 }
 
@@ -4406,14 +4421,6 @@ private fun StackedPasswordGroup(
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (isSelectionMode) {
-                                    androidx.compose.material3.Checkbox(
-                                        checked = isSelected,
-                                        onCheckedChange = { onGroupSwipeRight(passwords) }
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                }
-                                
                                 Column(modifier = Modifier.weight(1f)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -4475,28 +4482,25 @@ private fun StackedPasswordGroup(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            if (!isSelectionMode && isGroupFavorited) {
-                                                Icon(
-                                                    Icons.Default.Favorite,
-                                                    contentDescription = "已收藏",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(20.dp)
+                                            if (isSelectionMode) {
+                                                androidx.compose.material3.Checkbox(
+                                                    checked = isSelected,
+                                                    onCheckedChange = { onGroupSwipeRight(passwords) }
                                                 )
-                                            }
-                                            
-                                            if (!isSelectionMode) {
+                                            } else {
+                                                if (isGroupFavorited) {
+                                                    Icon(
+                                                        Icons.Default.Favorite,
+                                                        contentDescription = "已收藏",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
                                                 Icon(
                                                     Icons.Default.ExpandMore,
                                                     contentDescription = "展开",
                                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     modifier = Modifier.size(22.dp)
-                                                )
-                                            } else if (isGroupFavorited) {
-                                                Icon(
-                                                    Icons.Default.Favorite,
-                                                    contentDescription = "已收藏",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(20.dp)
                                                 )
                                             }
                                         }
@@ -4781,6 +4785,23 @@ private fun MultiPasswordEntryCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // 数据来源标识 - Bitwarden / KeePass
+                    if (firstEntry.isBitwardenEntry()) {
+                        Icon(
+                            Icons.Default.CloudSync,
+                            contentDescription = "Bitwarden",
+                            tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else if (firstEntry.isKeePassEntry()) {
+                        Icon(
+                            Icons.Default.VpnKey,
+                            contentDescription = "KeePass",
+                            tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
                     // 封面星星图标
                     if (!isSelectionMode && onToggleGroupCover != null) {
                         passwords.forEach { entry ->
@@ -4837,23 +4858,6 @@ private fun MultiPasswordEntryCard(
                             contentDescription = stringResource(R.string.favorite),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    
-                    // 数据来源标识 - Bitwarden / KeePass
-                    if (firstEntry.isBitwardenEntry()) {
-                        Icon(
-                            Icons.Default.CloudSync,
-                            contentDescription = "Bitwarden",
-                            tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    } else if (firstEntry.isKeePassEntry()) {
-                        Icon(
-                            Icons.Default.VpnKey,
-                            contentDescription = "KeePass",
-                            tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -5115,15 +5119,6 @@ private fun PasswordEntryCard(
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 复选框
-            if (isSelectionMode) {
-                androidx.compose.material3.Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = null
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-            }
-            
             // Icon - only show if enabled
             if (iconCardsEnabled) {
                 val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
@@ -5201,6 +5196,27 @@ private fun PasswordEntryCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 数据来源标识 - Bitwarden / KeePass
+                        if (entry.isBitwardenEntry()) {
+                            // Bitwarden 同步状态标识
+                            val syncStatus = when {
+                                entry.hasPendingBitwardenSync() -> SyncStatus.PENDING
+                                else -> SyncStatus.SYNCED
+                            }
+                            SyncStatusIcon(
+                                status = syncStatus,
+                                size = 16.dp
+                            )
+                        } else if (entry.isKeePassEntry()) {
+                            // KeePass 密钥标识
+                            Icon(
+                                Icons.Default.VpnKey,
+                                contentDescription = "KeePass",
+                                tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
                         // 封面星星图标 - 仅在组内且非选择模式下显示
                         if (!isSelectionMode && onToggleGroupCover != null) {
                             IconButton(
@@ -5221,14 +5237,6 @@ private fun PasswordEntryCard(
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
-                        } else if (isSelectionMode && entry.isGroupCover) {
-                            // 选择模式下只显示封面图标
-                            Icon(
-                                Icons.Default.Star,
-                                contentDescription = "封面",
-                                tint = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.size(20.dp)
-                            )
                         }
                         
                         // 收藏心形图标 - 非选择模式下可点击
@@ -5244,34 +5252,12 @@ private fun PasswordEntryCard(
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
-                        } else if (isSelectionMode && entry.isFavorite) {
-                            // 选择模式下只显示,不可点击
-                            Icon(
-                                Icons.Default.Favorite,
-                                contentDescription = stringResource(R.string.favorite),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
                         }
-                        
-                        // 数据来源标识 - Bitwarden / KeePass
-                        if (entry.isBitwardenEntry()) {
-                            // Bitwarden 同步状态标识
-                            val syncStatus = when {
-                                entry.hasPendingBitwardenSync() -> SyncStatus.PENDING
-                                else -> SyncStatus.SYNCED
-                            }
-                            SyncStatusIcon(
-                                status = syncStatus,
-                                size = 16.dp
-                            )
-                        } else if (entry.isKeePassEntry()) {
-                            // KeePass 密钥标识
-                            Icon(
-                                Icons.Default.VpnKey,
-                                contentDescription = "KeePass",
-                                tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
-                                modifier = Modifier.size(16.dp)
+
+                        if (isSelectionMode) {
+                            androidx.compose.material3.Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { onClick() }
                             )
                         }
                     }

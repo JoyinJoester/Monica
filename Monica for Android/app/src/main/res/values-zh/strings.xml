@@ -1655,7 +1655,7 @@
     <string name="v2_folder_management_title">文件夹管理</string>
     <string name="v2_folder_management_subtitle">整理并同步你的文件夹</string>
     <string name="v2_sync_all_title">Bitwarden 全量同步</string>
-    <string name="v2_sync_all_desc">将所有数据同步到 Bitwarden 云端</string>
+    <string name="v2_sync_all_desc">按已关联分类同步到 Bitwarden 云端</string>
     <string name="v2_apply_sync">立即应用</string>
     <string name="v2_select_database">选择数据库</string>
     <string name="v2_bitwarden_account">Bitwarden 账户</string>
@@ -1687,7 +1687,7 @@
     <!-- New Folder Management (M3E Design) -->
     <string name="folder_management_subtitle">整理并同步你的文件夹</string>
     <string name="sync_all_title">Bitwarden 全量同步</string>
-    <string name="sync_all_desc">将所有数据同步到 Bitwarden 云端</string>
+    <string name="sync_all_desc">按已关联分类同步到 Bitwarden 云端</string>
     <string name="sync_apply_now">立即应用</string>
     <string name="bitwarden_account_label">Bitwarden 账户</string>
     <string name="bitwarden_not_connected">Bitwarden 未连接</string>

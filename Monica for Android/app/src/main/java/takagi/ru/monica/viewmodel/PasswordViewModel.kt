@@ -360,6 +360,20 @@ class PasswordViewModel(
     fun movePasswordsToCategory(ids: List<Long>, categoryId: Long?) {
         viewModelScope.launch {
             repository.updateCategoryForPasswords(ids, categoryId)
+            val targetCategory = categoryId?.let { repository.getCategoryById(it) }
+            val targetVaultId = targetCategory?.bitwardenVaultId
+            val targetFolderId = targetCategory?.bitwardenFolderId
+
+            if (targetVaultId != null && !targetFolderId.isNullOrBlank()) {
+                repository.bindPasswordsToBitwardenFolder(
+                    ids = ids,
+                    vaultId = targetVaultId,
+                    folderId = targetFolderId
+                )
+            } else {
+                // 仅清理尚未上传（无 cipherId）的待绑定条目，避免误改已同步条目
+                repository.clearPendingBitwardenBinding(ids)
+            }
         }
     }
     
@@ -794,13 +808,26 @@ class PasswordViewModel(
         
         val categoryId = entry.categoryId ?: return entry
         val category = categories.value.find { it.id == categoryId } ?: return entry
-        
-        // 分类未绑定 Bitwarden，无需处理
-        if (category.bitwardenFolderId == null) return entry
+
+        // KeePass 条目保持独立，不参与 Bitwarden 自动绑定
+        if (entry.keepassDatabaseId != null) return entry
+
+        // 分类未绑定 Bitwarden：清理“待上传”绑定（已同步条目保持映射不动）
+        if (category.bitwardenVaultId == null || category.bitwardenFolderId == null) {
+            return if (entry.bitwardenCipherId == null) {
+                entry.copy(
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenLocalModified = false
+                )
+            } else {
+                entry
+            }
+        }
         
         // 自动绑定到分类关联的 Bitwarden 文件夹
         return entry.copy(
-            bitwardenVaultId = category.bitwardenVaultId ?: entry.bitwardenVaultId,
+            bitwardenVaultId = category.bitwardenVaultId,
             bitwardenFolderId = category.bitwardenFolderId,
             // 如果是已同步的条目，且文件夹改变了，标记为本地修改
             bitwardenLocalModified = if (entry.bitwardenCipherId != null && entry.bitwardenFolderId != category.bitwardenFolderId) true else entry.bitwardenLocalModified

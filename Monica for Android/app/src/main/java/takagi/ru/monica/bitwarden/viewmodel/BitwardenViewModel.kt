@@ -98,6 +98,13 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // 永不锁定设置状态
     private val _isNeverLockEnabled = MutableStateFlow(false)
     val isNeverLockEnabledFlow: StateFlow<Boolean> = _isNeverLockEnabled.asStateFlow()
+
+    // 同步设置状态（用于界面实时更新）
+    private val _isAutoSyncEnabled = MutableStateFlow(false)
+    val isAutoSyncEnabledFlow: StateFlow<Boolean> = _isAutoSyncEnabled.asStateFlow()
+
+    private val _isSyncOnWifiOnly = MutableStateFlow(false)
+    val isSyncOnWifiOnlyFlow: StateFlow<Boolean> = _isSyncOnWifiOnly.asStateFlow()
     
     // 一次性事件
     private val _events = MutableSharedFlow<BitwardenEvent>()
@@ -106,6 +113,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     init {
         // 加载永不锁定设置
         _isNeverLockEnabled.value = repository.isNeverLockEnabled
+        _isAutoSyncEnabled.value = repository.isAutoSyncEnabled
+        _isSyncOnWifiOnly.value = repository.isSyncOnWifiOnly
         loadVaults()
     }
     
@@ -616,12 +625,22 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // ==================== 设置相关 ====================
     
     var isAutoSyncEnabled: Boolean
-        get() = repository.isAutoSyncEnabled
-        set(value) { repository.isAutoSyncEnabled = value }
+        get() = _isAutoSyncEnabled.value
+        set(value) {
+            repository.isAutoSyncEnabled = value
+            _isAutoSyncEnabled.value = value
+            if (!value) {
+                repository.isSyncOnWifiOnly = false
+                _isSyncOnWifiOnly.value = false
+            }
+        }
     
     var isSyncOnWifiOnly: Boolean
-        get() = repository.isSyncOnWifiOnly
-        set(value) { repository.isSyncOnWifiOnly = value }
+        get() = _isSyncOnWifiOnly.value
+        set(value) {
+            repository.isSyncOnWifiOnly = value
+            _isSyncOnWifiOnly.value = value
+        }
     
     /**
      * 是否永不锁定 Bitwarden

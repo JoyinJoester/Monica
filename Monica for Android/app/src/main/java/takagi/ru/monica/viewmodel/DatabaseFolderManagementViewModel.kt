@@ -48,8 +48,6 @@ class DatabaseFolderManagementViewModel(application: Application) : AndroidViewM
     private val keepassDao = database.localKeePassDatabaseDao()
     private val keepassGroupDao: KeepassGroupSyncConfigDao = database.keepassGroupSyncConfigDao()
     private val passwordEntryDao = database.passwordEntryDao()
-    private val secureItemDao = database.secureItemDao()
-    private val passkeyDao = database.passkeyDao()
     private val settingsManager = SettingsManager(application)
     private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val keePassService = KeePassKdbxService(
@@ -129,9 +127,18 @@ class DatabaseFolderManagementViewModel(application: Application) : AndroidViewM
 
     fun applyUploadAll(vaultId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            passwordEntryDao.markAllForBitwarden(vaultId)
-            secureItemDao.markAllForBitwarden(vaultId)
-            passkeyDao.markAllForBitwarden(vaultId)
+            val linkedCategories = categoryDao
+                .getBitwardenLinkedCategoriesSync()
+                .filter { it.bitwardenVaultId == vaultId && !it.bitwardenFolderId.isNullOrBlank() }
+
+            linkedCategories.forEach { category ->
+                val folderId = category.bitwardenFolderId ?: return@forEach
+                passwordEntryDao.bindCategoryToBitwarden(
+                    categoryId = category.id,
+                    vaultId = vaultId,
+                    folderId = folderId
+                )
+            }
         }
     }
 

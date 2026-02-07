@@ -74,6 +74,56 @@ interface PasswordEntryDao {
     
     @Query("UPDATE password_entries SET categoryId = :categoryId WHERE id IN (:ids)")
     suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?)
+
+    /**
+     * 将指定条目绑定到 Bitwarden 文件夹
+     * 仅作用于非 KeePass 条目，避免跨数据源污染。
+     */
+    @Query("""
+        UPDATE password_entries
+        SET bitwarden_vault_id = :vaultId,
+            bitwarden_folder_id = :folderId,
+            bitwarden_local_modified = CASE
+                WHEN bitwarden_cipher_id IS NOT NULL AND COALESCE(bitwarden_folder_id, '') != :folderId THEN 1
+                ELSE bitwarden_local_modified
+            END
+        WHERE id IN (:ids)
+          AND keepassDatabaseId IS NULL
+          AND isDeleted = 0
+    """)
+    suspend fun bindPasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String)
+
+    /**
+     * 清理未上传条目的 Bitwarden 绑定
+     * 仅清理还没有 cipherId 的本地待上传条目，避免破坏已同步映射。
+     */
+    @Query("""
+        UPDATE password_entries
+        SET bitwarden_vault_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_local_modified = 0
+        WHERE id IN (:ids)
+          AND bitwarden_cipher_id IS NULL
+          AND isDeleted = 0
+    """)
+    suspend fun clearPendingBitwardenBinding(ids: List<Long>)
+
+    /**
+     * 按分类批量绑定到 Bitwarden（用于“立即应用”）
+     */
+    @Query("""
+        UPDATE password_entries
+        SET bitwarden_vault_id = :vaultId,
+            bitwarden_folder_id = :folderId,
+            bitwarden_local_modified = CASE
+                WHEN bitwarden_cipher_id IS NOT NULL AND COALESCE(bitwarden_folder_id, '') != :folderId THEN 1
+                ELSE bitwarden_local_modified
+            END
+        WHERE categoryId = :categoryId
+          AND keepassDatabaseId IS NULL
+          AND isDeleted = 0
+    """)
+    suspend fun bindCategoryToBitwarden(categoryId: Long, vaultId: Long, folderId: String)
     
     @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId WHERE id IN (:ids)")
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?)
