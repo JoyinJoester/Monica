@@ -286,17 +286,6 @@ class SettingsViewModel(
         }
     }
     
-    // ==================== V2 多源密码库设置 ====================
-    
-    /**
-     * 更新默认密码库视图（V1 经典 / V2 多源）
-     */
-    fun updateDefaultVaultView(view: takagi.ru.monica.data.VaultViewMode) {
-        viewModelScope.launch {
-            settingsManager.updateDefaultVaultView(view)
-        }
-    }
-    
     /**
      * 更新自动填充数据源
      */
@@ -315,12 +304,4 @@ class SettingsViewModel(
         }
     }
     
-    /**
-     * 更新导航栏版本
-     */
-    fun updateNavBarVersion(version: takagi.ru.monica.data.NavBarVersion) {
-        viewModelScope.launch {
-            settingsManager.updateNavBarVersion(version)
-        }
-    }
 }

@@ -50,13 +50,12 @@ enum class UnifiedProgressBarMode {
  * 用于经典本地密码库模式
  */
 enum class BottomNavContentTab {
-    // VAULT,        // V2 密码库（多源统一视图） - Removed
     PASSWORDS,
     AUTHENTICATOR,
     CARD_WALLET,
     GENERATOR,
     NOTES,
-    SEND,         // V2 发送（安全分享）
+    SEND,         // 发送（安全分享）
     TIMELINE,
     PASSKEY;  // 通行密钥
 
@@ -89,33 +88,13 @@ enum class BottomNavContentTab {
     }
 }
 
-/**
- * V2 底部导航内容标签页
- * 用于多源密码库模式（Bitwarden 风格）
- */
-enum class V2BottomNavTab {
-    // VAULT,      // 密码库（统一视图，支持多后端） - Removed
-    SEND,       // Send（安全分享）
-    SYNC,       // 同步中心
-    GENERATOR;  // 生成器
-
-    companion object {
-        val DEFAULT_ORDER: List<V2BottomNavTab> = listOf(
-            SEND,
-            SYNC,
-            GENERATOR
-        )
-    }
-}
-
 data class BottomNavVisibility(
-    // val vault: Boolean = true,        // V2 密码库默认开启 - Removed
     val passwords: Boolean = true,
     val authenticator: Boolean = true,
     val cardWallet: Boolean = true,
     val generator: Boolean = false,   // 生成器功能默认关闭
     val notes: Boolean = true,        // 笔记功能默认开启
-    val send: Boolean = false,        // V2 发送功能默认关闭
+    val send: Boolean = false,        // 发送功能默认关闭
     val timeline: Boolean = false,    // 时间线功能默认关闭
     val passkey: Boolean = true       // 通行密钥功能默认开启
 ) {
@@ -343,14 +322,8 @@ data class AppSettings(
 
     // Bitwarden 同步范围设置
     val bitwardenUploadAll: Boolean = false, // 一键上传所有数据到 Bitwarden
-    
-    // V2 多源密码库设置
-    val defaultVaultView: VaultViewMode = VaultViewMode.V1, // 默认密码库视图
     val autofillSources: Set<AutofillSource> = setOf(AutofillSource.V1_LOCAL), // 自动填充数据源
-    val autofillPriority: List<AutofillSource> = listOf(AutofillSource.V1_LOCAL), // 自动填充优先级
-    
-    // 导航栏版本设置
-    val navBarVersion: NavBarVersion = NavBarVersion.V1 // 导航栏版本（V1经典/V2简洁）
+    val autofillPriority: List<AutofillSource> = listOf(AutofillSource.V1_LOCAL) // 自动填充优先级
 )
 
 /**
@@ -360,26 +333,6 @@ enum class PasswordCardDisplayMode {
     SHOW_ALL,       // 显示所有信息（默认）
     TITLE_USERNAME, // 仅显示标题和用户名
     TITLE_ONLY      // 仅显示标题
-}
-
-/**
- * 密码库视图模式
- * V1 = Monica 经典本地库（卡包/证件/密码/TOTP）
- * V2 = 多源密码库（Bitwarden/KeePass 等后端）
- */
-enum class VaultViewMode {
-    V1,  // 经典本地库
-    V2   // 多源密码库
-}
-
-/**
- * 导航栏版本
- * V1 = 经典底部导航栏（可自定义顺序和显示项）
- * V2 = 简洁导航栏（固定4项：库、发送、生成、设置）+ 最近页面动态显示
- */
-enum class NavBarVersion {
-    V1,  // 经典导航栏
-    V2   // 简洁动态导航栏
 }
 
 /**

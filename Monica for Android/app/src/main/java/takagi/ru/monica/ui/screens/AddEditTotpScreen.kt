@@ -121,6 +121,27 @@ fun AddEditTotpScreen(
     
     val isEditing = totpId != null && totpId > 0
     val canSave = title.isNotBlank() && secret.isNotBlank()
+    val save: () -> Unit = saveAction@{
+        if (!canSave || isSaving) return@saveAction
+        isSaving = true // 防止重复点击
+        val totpData = TotpData(
+            secret = secret.trim(),
+            issuer = issuer.trim(),
+            accountName = accountName.trim(),
+            period = period.toIntOrNull() ?: 30,
+            digits = digits.toIntOrNull() ?: 6,
+            algorithm = "SHA1",
+            otpType = selectedOtpType,
+            counter = counter.toLongOrNull() ?: 0L,
+            pin = pin.trim(),
+            link = link.trim(),
+            associatedApp = associatedApp.trim(),
+            boundPasswordId = boundPasswordId,
+            categoryId = selectedCategoryId,
+            keepassDatabaseId = keepassDatabaseId
+        )
+        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId)
+    }
     
     Scaffold(
         topBar = {
@@ -131,36 +152,39 @@ fun AddEditTotpScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
-                actions = {
-                    TextButton(
-                        onClick = {
-                            if (canSave && !isSaving) {
-                                isSaving = true // 防止重复点击
-                                val totpData = TotpData(
-                                    secret = secret.trim(),
-                                    issuer = issuer.trim(),
-                                    accountName = accountName.trim(),
-                                    period = period.toIntOrNull() ?: 30,
-                                    digits = digits.toIntOrNull() ?: 6,
-                                    algorithm = "SHA1",
-                                    otpType = selectedOtpType,
-                                    counter = counter.toLongOrNull() ?: 0L,
-                                    pin = pin.trim(),
-                                    link = link.trim(),
-                                    associatedApp = associatedApp.trim(),
-                                    boundPasswordId = boundPasswordId,
-                                    categoryId = selectedCategoryId,
-                                    keepassDatabaseId = keepassDatabaseId
-                                )
-                                onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId)
-                            }
-                        },
-                        enabled = canSave && !isSaving
-                    ) {
-                        Text(stringResource(R.string.save), fontWeight = FontWeight.Bold)
-                    }
-                }
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = save,
+                containerColor = if (canSave && !isSaving) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave && !isSaving) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(R.string.save)
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         LazyColumn(

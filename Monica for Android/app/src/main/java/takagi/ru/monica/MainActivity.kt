@@ -1395,6 +1395,10 @@ fun MonicaContent(
                 onIconCardsEnabledChange = { enabled ->
                     settingsViewModel.updateIconCardsEnabled(enabled)
                 },
+                smartDeduplicationEnabled = settings.smartDeduplicationEnabled,
+                onSmartDeduplicationEnabledChange = { enabled ->
+                    settingsViewModel.updateSmartDeduplicationEnabled(enabled)
+                },
                 passwordCardDisplayMode = settings.passwordCardDisplayMode,
                 onPasswordCardDisplayModeChange = { mode ->
                     settingsViewModel.updatePasswordCardDisplayMode(mode)

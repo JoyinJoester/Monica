@@ -358,13 +358,113 @@ fun AddEditPasswordScreen(
         }
     }
 
+    val canSave = title.isNotEmpty() && !isSaving
+    val handleSave: () -> Unit = {
+        if (title.isNotEmpty() && !isSaving) {
+            isSaving = true // 防止重复点击
+            // Capture values before async call
+            val currentAuthKey = authenticatorKey
+            val currentTitle = title
+            val currentUsername = username
+            val currentAppPackageName = appPackageName
+            val currentAppName = appName
+            val currentWebsite = website
+            val currentBindWebsite = bindWebsite
+            val currentBindTitle = bindTitle
+
+            // Create common entry without password
+            val commonEntry = PasswordEntry(
+                id = 0, // Will be ignored by saveGroupedPasswords logic for new items
+                title = title,
+                website = website,
+                username = username,
+                password = "", // Placeholder
+                notes = notes,
+                isFavorite = isFavorite,
+                appPackageName = appPackageName,
+                appName = appName,
+                email = emails.filter { it.isNotBlank() }.joinToString("|"),
+                phone = phones.filter { it.isNotBlank() }.joinToString("|"),
+                addressLine = addressLine,
+                city = city,
+                state = state,
+                zipCode = zipCode,
+                country = country,
+                creditCardNumber = creditCardNumber,
+                creditCardHolder = creditCardHolder,
+                creditCardExpiry = creditCardExpiry,
+                creditCardCVV = creditCardCVV,
+                categoryId = categoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
+                authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
+                passkeyBindings = passkeyBindings,
+                loginType = loginType,
+                ssoProvider = ssoProvider,
+                ssoRefEntryId = ssoRefEntryId
+            )
+
+            // 快照自定义字段
+            val currentCustomFields = customFields.toList()
+
+            viewModel.saveGroupedPasswords(
+                originalIds = originalIds,
+                commonEntry = commonEntry,
+                passwords = passwords.toList(), // Snapshot
+                customFields = currentCustomFields, // 保存自定义字段
+                onComplete = { firstPasswordId ->
+                    // Save TOTP if authenticatorKey is provided
+                    if (currentAuthKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
+                        // 检查是否已有相同密钥的验证器
+                        val existingTotp = totpViewModel.findTotpBySecret(currentAuthKey)
+                        val totpIdToSave = existingTotp?.id ?: existingTotpId // 优先选择相同密钥的，其次是原本绑定的
+
+                        val totpData = TotpData(
+                            secret = currentAuthKey,
+                            issuer = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).issuer } ?: currentTitle,
+                            accountName = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).accountName } ?: currentUsername,
+                            boundPasswordId = firstPasswordId,
+                            otpType = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).otpType } ?: takagi.ru.monica.data.model.OtpType.TOTP,
+                            digits = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).digits } ?: 6,
+                            period = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).period } ?: 30,
+                            algorithm = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).algorithm } ?: "SHA1",
+                            counter = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).counter } ?: 0
+                        )
+
+                        totpViewModel.saveTotpItem(
+                            id = totpIdToSave,
+                            title = existingTotp?.title ?: currentTitle,
+                            notes = existingTotp?.notes ?: "",
+                            totpData = totpData,
+                            isFavorite = existingTotp?.isFavorite ?: false
+                        )
+                    } else if (currentAuthKey.isEmpty() && originalAuthenticatorKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
+                        // 密码页清空密钥：只取消验证器绑定，不删除验证器
+                        totpViewModel.unbindTotpFromPassword(firstPasswordId, originalAuthenticatorKey)
+                    }
+
+                    if (currentAppPackageName.isNotEmpty()) {
+                        if (currentBindWebsite && currentWebsite.isNotEmpty()) {
+                            viewModel.updateAppAssociationByWebsite(currentWebsite, currentAppPackageName, currentAppName)
+                        }
+                        if (currentBindTitle && currentTitle.isNotEmpty()) {
+                            viewModel.updateAppAssociationByTitle(currentTitle, currentAppPackageName, currentAppName)
+                        }
+                    }
+                    onNavigateBack()
+                }
+            )
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         stringResource(if (isEditing) R.string.edit_password_title else R.string.add_password_title),
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1
                     )
                 },
                 navigationIcon = {
@@ -380,110 +480,40 @@ fun AddEditPasswordScreen(
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
                         )
                     }
-                    TextButton(
-                        onClick = {
-                            if (title.isNotEmpty() && !isSaving) {
-                                isSaving = true // 防止重复点击
-                                // Capture values before async call
-                                val currentAuthKey = authenticatorKey
-                                val currentTitle = title
-                                val currentUsername = username
-                                val currentAppPackageName = appPackageName
-                                val currentAppName = appName
-                                val currentWebsite = website
-                                val currentBindWebsite = bindWebsite
-                                val currentBindTitle = bindTitle
-                                
-                                // Create common entry without password
-                                val commonEntry = PasswordEntry(
-                                    id = 0, // Will be ignored by saveGroupedPasswords logic for new items
-                                    title = title,
-                                    website = website,
-                                    username = username,
-                                    password = "", // Placeholder
-                                    notes = notes,
-                                    isFavorite = isFavorite,
-                                    appPackageName = appPackageName,
-                                    appName = appName,
-                                    email = emails.filter { it.isNotBlank() }.joinToString("|"),
-                                    phone = phones.filter { it.isNotBlank() }.joinToString("|"),
-                                    addressLine = addressLine,
-                                    city = city,
-                                    state = state,
-                                    zipCode = zipCode,
-                                    country = country,
-                                    creditCardNumber = creditCardNumber,
-                                    creditCardHolder = creditCardHolder,
-                                    creditCardExpiry = creditCardExpiry,
-                                    creditCardCVV = creditCardCVV,
-                                    categoryId = categoryId,
-                                    keepassDatabaseId = keepassDatabaseId,
-                                    bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
-                                    authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
-                                    passkeyBindings = passkeyBindings,
-                                    loginType = loginType,
-                                    ssoProvider = ssoProvider,
-                                    ssoRefEntryId = ssoRefEntryId
-                                )
-                                
-                                // 快照自定义字段
-                                val currentCustomFields = customFields.toList()
-                                
-                                viewModel.saveGroupedPasswords(
-                                    originalIds = originalIds,
-                                    commonEntry = commonEntry,
-                                    passwords = passwords.toList(), // Snapshot
-                                    customFields = currentCustomFields, // 保存自定义字段
-                                    onComplete = { firstPasswordId ->
-                                        // Save TOTP if authenticatorKey is provided
-                                        if (currentAuthKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
-                                            // 检查是否已有相同密钥的验证器
-                                            val existingTotp = totpViewModel.findTotpBySecret(currentAuthKey)
-                                            val totpIdToSave = existingTotp?.id ?: existingTotpId // 优先选择相同密钥的，其次是原本绑定的
-
-                                            val totpData = TotpData(
-                                                secret = currentAuthKey,
-                                                issuer = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).issuer } ?: currentTitle,
-                                                accountName = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).accountName } ?: currentUsername,
-                                                boundPasswordId = firstPasswordId,
-                                                otpType = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).otpType } ?: takagi.ru.monica.data.model.OtpType.TOTP,
-                                                digits = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).digits } ?: 6,
-                                                period = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).period } ?: 30,
-                                                algorithm = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).algorithm } ?: "SHA1",
-                                                counter = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).counter } ?: 0
-                                            )
-                                            
-                                            totpViewModel.saveTotpItem(
-                                                id = totpIdToSave,
-                                                title = existingTotp?.title ?: currentTitle,
-                                                notes = existingTotp?.notes ?: "",
-                                                totpData = totpData,
-                                                isFavorite = existingTotp?.isFavorite ?: false
-                                            )
-                                        } else if (currentAuthKey.isEmpty() && originalAuthenticatorKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
-                                            // 密码页清空密钥：只取消验证器绑定，不删除验证器
-                                            totpViewModel.unbindTotpFromPassword(firstPasswordId, originalAuthenticatorKey)
-                                        }
-                                        
-                                        if (currentAppPackageName.isNotEmpty()) {
-                                            if (currentBindWebsite && currentWebsite.isNotEmpty()) {
-                                                viewModel.updateAppAssociationByWebsite(currentWebsite, currentAppPackageName, currentAppName)
-                                            }
-                                            if (currentBindTitle && currentTitle.isNotEmpty()) {
-                                                viewModel.updateAppAssociationByTitle(currentTitle, currentAppPackageName, currentAppName)
-                                            }
-                                        }
-                                        onNavigateBack()
-                                    }
-                                )
-                            }
-                        },
-                        enabled = title.isNotEmpty() && !isSaving
-                    ) {
-                        Text(stringResource(R.string.save), fontWeight = FontWeight.Bold)
-                    }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = handleSave,
+                containerColor = if (canSave) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(R.string.save)
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         LazyColumn(
@@ -1806,8 +1836,7 @@ private fun VaultSelector(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
             // M3E 风格图标容器
             Surface(
@@ -1831,6 +1860,8 @@ private fun VaultSelector(
                     )
                 }
             }
+            
+            Spacer(modifier = Modifier.width(16.dp))
             
             // 文字区域
             Column(modifier = Modifier.weight(1f)) {

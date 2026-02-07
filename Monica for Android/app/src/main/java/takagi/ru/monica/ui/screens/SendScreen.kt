@@ -3,7 +3,9 @@ package takagi.ru.monica.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,7 +31,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -44,12 +49,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -58,6 +63,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -68,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -86,8 +94,9 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun SendScreen(
     modifier: Modifier = Modifier,
-    createRequestKey: Int = 0,
-    onCreateRequestConsumed: () -> Unit = {},
+    onSendClick: (BitwardenSend) -> Unit = {},
+    selectedSendId: String? = null,
+    showTopBar: Boolean = true,
     bitwardenViewModel: BitwardenViewModel = viewModel()
 ) {
     val sends by bitwardenViewModel.sends.collectAsState()
@@ -100,7 +109,6 @@ fun SendScreen(
     val listState = rememberLazyListState()
     val canCreateSend = activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked
 
-    var showCreateSheet by remember { mutableStateOf(false) }
     var deletingSend by remember { mutableStateOf<BitwardenSend?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -131,15 +139,6 @@ fun SendScreen(
         }
     }
 
-    LaunchedEffect(createRequestKey) {
-        if (createRequestKey != 0) {
-            if (canCreateSend) {
-                showCreateSheet = true
-            }
-            onCreateRequestConsumed()
-        }
-    }
-
     LaunchedEffect(Unit) {
         bitwardenViewModel.events.collect { event ->
             when (event) {
@@ -155,31 +154,33 @@ fun SendScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0.dp),
         topBar = {
-            ExpressiveTopBar(
-                title = "安全发送",
-                searchQuery = searchQuery,
-                onSearchQueryChange = { searchQuery = it },
-                isSearchExpanded = isSearchExpanded,
-                onSearchExpandedChange = { expanded ->
-                    isSearchExpanded = expanded
-                    if (!expanded) {
-                        searchQuery = ""
+            if (showTopBar) {
+                ExpressiveTopBar(
+                    title = "安全发送",
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    isSearchExpanded = isSearchExpanded,
+                    onSearchExpandedChange = { expanded ->
+                        isSearchExpanded = expanded
+                        if (!expanded) {
+                            searchQuery = ""
+                        }
+                    },
+                    searchHint = "搜索 Send",
+                    actions = {
+                        IconButton(
+                            onClick = { bitwardenViewModel.loadSends(forceRemoteSync = true) },
+                            enabled = canCreateSend &&
+                                sendState !is BitwardenViewModel.SendState.Syncing
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                        }
+                        IconButton(onClick = { isSearchExpanded = true }) {
+                            Icon(Icons.Default.Search, contentDescription = "搜索")
+                        }
                     }
-                },
-                searchHint = "搜索 Send",
-                actions = {
-                    IconButton(
-                        onClick = { bitwardenViewModel.loadSends(forceRemoteSync = true) },
-                        enabled = canCreateSend &&
-                            sendState !is BitwardenViewModel.SendState.Syncing
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
-                    }
-                    IconButton(onClick = { isSearchExpanded = true }) {
-                        Icon(Icons.Default.Search, contentDescription = "搜索")
-                    }
-                }
-            )
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
@@ -263,6 +264,8 @@ fun SendScreen(
                             ) { send ->
                                 SendItemCard(
                                     send = send,
+                                    selected = selectedSendId == send.bitwardenSendId,
+                                    onClick = { onSendClick(send) },
                                     onCopyLink = {
                                         clipboardManager.setText(AnnotatedString(send.shareUrl))
                                     },
@@ -280,26 +283,6 @@ fun SendScreen(
                 }
             }
         }
-    }
-
-    if (showCreateSheet) {
-        CreateTextSendSheet(
-            sendState = sendState,
-            onDismiss = { showCreateSheet = false },
-            onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
-                bitwardenViewModel.createTextSend(
-                    title = title,
-                    text = text,
-                    notes = notes,
-                    password = password,
-                    maxAccessCount = maxAccessCount,
-                    hideEmail = hideEmail,
-                    hiddenText = hiddenText,
-                    expireInDays = expireInDays
-                )
-                showCreateSheet = false
-            }
-        )
     }
 
     if (deletingSend != null) {
@@ -400,15 +383,28 @@ private fun HeroChip(label: String) {
 @Composable
 private fun SendItemCard(
     send: BitwardenSend,
+    selected: Boolean,
+    onClick: () -> Unit,
     onCopyLink: () -> Unit,
     onOpenLink: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
+        ),
+        border = if (selected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+        } else {
+            null
+        }
     ) {
         Column(
             modifier = Modifier
@@ -532,9 +528,10 @@ private fun MetaTag(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CreateTextSendSheet(
+fun AddEditSendScreen(
+    modifier: Modifier = Modifier,
     sendState: BitwardenViewModel.SendState,
-    onDismiss: () -> Unit,
+    onNavigateBack: () -> Unit,
     onCreate: (
         title: String,
         text: String,
@@ -556,18 +553,76 @@ private fun CreateTextSendSheet(
     var hiddenText by remember { mutableStateOf(false) }
 
     val creating = sendState is BitwardenViewModel.SendState.Creating
+    val canSave = !creating && title.isNotBlank() && text.isNotBlank()
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text("创建 Send") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    if (!canSave) return@FloatingActionButton
+                    onCreate(
+                        title.trim(),
+                        text.trim(),
+                        notes.takeIf { it.isNotBlank() }?.trim(),
+                        password.takeIf { it.isNotBlank() }?.trim(),
+                        maxAccessCount.toIntOrNull(),
+                        hideEmail,
+                        hiddenText,
+                        expireDaysText.toIntOrNull()?.coerceIn(1, 30) ?: 7
+                    )
+                },
+                containerColor = if (canSave) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                if (creating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Check, contentDescription = "保存")
+                }
+            }
+        }
+    ) { paddingValues ->
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .padding(paddingValues)
+                .imePadding()
                 .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp),
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = "创建文本 Send",
+                text = "文本发送",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -577,6 +632,7 @@ private fun CreateTextSendSheet(
                 onValueChange = { title = it },
                 label = { Text("标题") },
                 singleLine = true,
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -584,6 +640,7 @@ private fun CreateTextSendSheet(
                 value = text,
                 onValueChange = { text = it },
                 label = { Text("发送内容") },
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(130.dp)
@@ -593,6 +650,7 @@ private fun CreateTextSendSheet(
                 value = notes,
                 onValueChange = { notes = it },
                 label = { Text("备注（可选）") },
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -601,6 +659,7 @@ private fun CreateTextSendSheet(
                 onValueChange = { password = it },
                 label = { Text("访问密码（可选）") },
                 singleLine = true,
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -610,6 +669,7 @@ private fun CreateTextSendSheet(
                     onValueChange = { maxAccessCount = it.filter(Char::isDigit) },
                     label = { Text("最大访问次数") },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
@@ -617,6 +677,7 @@ private fun CreateTextSendSheet(
                     onValueChange = { expireDaysText = it.filter(Char::isDigit) },
                     label = { Text("有效天数(1-30)") },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -655,32 +716,6 @@ private fun CreateTextSendSheet(
                     checked = hiddenText,
                     onCheckedChange = { hiddenText = it }
                 )
-            }
-
-            Button(
-                onClick = {
-                    onCreate(
-                        title.trim(),
-                        text.trim(),
-                        notes.takeIf { it.isNotBlank() }?.trim(),
-                        password.takeIf { it.isNotBlank() }?.trim(),
-                        maxAccessCount.toIntOrNull(),
-                        hideEmail,
-                        hiddenText,
-                        expireDaysText.toIntOrNull()?.coerceIn(1, 30) ?: 7
-                    )
-                },
-                enabled = !creating && title.isNotBlank() && text.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (creating) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text("创建并生成链接")
-                }
             }
         }
     }

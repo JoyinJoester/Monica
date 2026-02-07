@@ -119,8 +119,56 @@ sealed class TimelineDisplayItem {
 @Composable
 fun TimelineScreen(
     viewModel: TimelineViewModel = viewModel(),
-    trashViewModel: TrashViewModel = viewModel()
+    trashViewModel: TrashViewModel = viewModel(),
+    onLogSelected: (TimelineEvent.StandardLog) -> Unit = {},
+    splitPaneMode: Boolean = false
 ) {
+    if (splitPaneMode) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                SplitPaneHeader(
+                    title = "时间线",
+                    subtitle = "操作历史",
+                    icon = Icons.Default.History
+                )
+                TimelineContent(
+                    viewModel = viewModel,
+                    onLogSelected = onLogSelected
+                )
+            }
+
+            VerticalDivider(
+                modifier = Modifier.fillMaxHeight(),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                SplitPaneHeader(
+                    title = "回收站",
+                    subtitle = "已删除项目",
+                    icon = Icons.Default.Delete
+                )
+                TrashContent(
+                    viewModel = trashViewModel,
+                    embeddedInSplitPane = true
+                )
+            }
+        }
+        return
+    }
+
     var currentTab by rememberSaveable { mutableStateOf(HistoryTab.TIMELINE) }
     
     Column(
@@ -144,10 +192,68 @@ fun TimelineScreen(
             modifier = Modifier.weight(1f)
         ) { targetTab ->
             when (targetTab) {
-                HistoryTab.TIMELINE -> TimelineContent(viewModel = viewModel)
+                HistoryTab.TIMELINE -> TimelineContent(
+                    viewModel = viewModel,
+                    onLogSelected = onLogSelected
+                )
                 HistoryTab.TRASH -> TrashContent(viewModel = trashViewModel)
             }
         }
+    }
+}
+
+@Composable
+private fun SplitPaneHeader(
+    title: String,
+    icon: ImageVector,
+    subtitle: String? = null
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        )
     }
 }
 
@@ -345,7 +451,8 @@ private fun groupAndAggregateEvents(events: List<TimelineEvent>): List<TimelineG
  */
 @Composable
 private fun TimelineContent(
-    viewModel: TimelineViewModel
+    viewModel: TimelineViewModel,
+    onLogSelected: (TimelineEvent.StandardLog) -> Unit
 ) {
     val timelineEvents by viewModel.timelineEvents.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -395,13 +502,19 @@ private fun TimelineContent(
                             is TimelineDisplayItem.Single -> {
                                 ModernLogItem(
                                     log = item.event,
-                                    onClick = { selectedLog = item.event }
+                                    onClick = {
+                                        selectedLog = item.event
+                                        onLogSelected(item.event)
+                                    }
                                 )
                             }
                             is TimelineDisplayItem.Aggregated -> {
                                 AggregatedLogItem(
                                     aggregated = item,
-                                    onItemClick = { selectedLog = it }
+                                    onItemClick = {
+                                        selectedLog = it
+                                        onLogSelected(it)
+                                    }
                                 )
                             }
                             is TimelineDisplayItem.Conflict -> {
@@ -1486,7 +1599,8 @@ private fun TimelineAxis(
  */
 @Composable
 private fun TrashContent(
-    viewModel: TrashViewModel
+    viewModel: TrashViewModel,
+    embeddedInSplitPane: Boolean = false
 ) {
     val trashCategories by viewModel.trashCategories.collectAsState()
     val trashSettings by viewModel.trashSettings.collectAsState()
@@ -1572,6 +1686,7 @@ private fun TrashContent(
                     autoDeleteDays = trashSettings.autoDeleteDays,
                     isSelectionMode = isSelectionMode,
                     selectedCount = selectedItems.size,
+                    embeddedInSplitPane = embeddedInSplitPane,
                     onSettingsClick = { showSettingsDialog = true },
                     onEmptyTrashClick = { showEmptyTrashDialog = true },
                     onSelectAll = { toggleSelectAll() },
@@ -1697,75 +1812,74 @@ private fun TrashHeaderBar(
     autoDeleteDays: Int,
     isSelectionMode: Boolean,
     selectedCount: Int,
+    embeddedInSplitPane: Boolean,
     onSettingsClick: () -> Unit,
     onEmptyTrashClick: () -> Unit,
     onSelectAll: () -> Unit,
     onExitSelection: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = colorScheme.surfaceContainerLow
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = 16.dp,
+                vertical = if (embeddedInSplitPane) 8.dp else 12.dp
+            ),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isSelectionMode) {
-                // 选择模式
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    IconButton(onClick = onExitSelection) {
-                        Icon(Icons.Default.Close, contentDescription = "退出选择")
-                    }
-                    Text(
-                        text = "已选择 $selectedCount 项",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium
+        if (isSelectionMode) {
+            // 选择模式
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(onClick = onExitSelection) {
+                    Icon(Icons.Default.Close, contentDescription = "退出选择")
+                }
+                Text(
+                    text = "已选择 $selectedCount 项",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            TextButton(onClick = onSelectAll) {
+                Text("全选")
+            }
+        } else {
+            // 普通模式
+            Column {
+                Text(
+                    text = "$totalCount 个已删除条目",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = colorScheme.onSurface
+                )
+                Text(
+                    text = if (autoDeleteDays > 0) "${autoDeleteDays} 天后自动清空" else "不会自动清空",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colorScheme.onSurfaceVariant
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "设置",
+                        tint = colorScheme.onSurfaceVariant
                     )
                 }
-                
-                TextButton(onClick = onSelectAll) {
-                    Text("全选")
-                }
-            } else {
-                // 普通模式
-                Column {
-                    Text(
-                        text = "$totalCount 个已删除条目",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (autoDeleteDays > 0) "${autoDeleteDays} 天后自动清空" else "不会自动清空",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colorScheme.onSurfaceVariant
-                    )
-                }
-                
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onSettingsClick) {
+                if (totalCount > 0) {
+                    IconButton(onClick = onEmptyTrashClick) {
                         Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "设置",
-                            tint = colorScheme.onSurfaceVariant
+                            Icons.Default.DeleteSweep,
+                            contentDescription = "清空",
+                            tint = colorScheme.error
                         )
-                    }
-                    if (totalCount > 0) {
-                        IconButton(onClick = onEmptyTrashClick) {
-                            Icon(
-                                Icons.Default.DeleteSweep,
-                                contentDescription = "清空",
-                                tint = colorScheme.error
-                            )
-                        }
                     }
                 }
             }

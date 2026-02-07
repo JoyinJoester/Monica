@@ -1,5 +1,8 @@
 package takagi.ru.monica.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.SizeTransform
@@ -40,6 +43,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -53,6 +57,9 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -68,6 +75,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
@@ -81,8 +89,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
-import takagi.ru.monica.data.V2BottomNavTab
-import takagi.ru.monica.data.VaultViewMode
+import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -92,20 +101,28 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
+import takagi.ru.monica.viewmodel.GeneratorType
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
+import takagi.ru.monica.viewmodel.TimelineViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.screens.NoteListScreen
 import takagi.ru.monica.ui.screens.NoteListContent
+import takagi.ru.monica.ui.screens.PasswordDetailScreen
 import takagi.ru.monica.ui.screens.SendScreen
 import takagi.ru.monica.ui.screens.CardWalletScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
+import takagi.ru.monica.ui.screens.BankCardDetailScreen
+import takagi.ru.monica.ui.screens.DocumentDetailScreen
 import takagi.ru.monica.ui.screens.TimelineScreen
 import takagi.ru.monica.ui.screens.PasskeyListScreen
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 import takagi.ru.monica.ui.components.QrCodeDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
@@ -114,11 +131,8 @@ import takagi.ru.monica.ui.components.SwipeableAddFab
 import takagi.ru.monica.ui.components.DraggableNavItem
 import takagi.ru.monica.ui.components.QuickActionItem
 import takagi.ru.monica.ui.components.QuickAddCallback
-import takagi.ru.monica.ui.components.V2NavigationBar
-import takagi.ru.monica.ui.components.V2NavItem
-import takagi.ru.monica.ui.components.V2NavPosition
-import takagi.ru.monica.ui.components.RecentSubPage  // Now from MonicaNavigationBar.kt
 import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
 import sh.calvin.reorderable.ReorderableItem
@@ -128,6 +142,8 @@ import takagi.ru.monica.ui.screens.AddEditTotpScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditNoteScreen
+import takagi.ru.monica.ui.screens.AddEditSendScreen
+import takagi.ru.monica.ui.theme.MonicaTheme
 
 @Composable
 private fun SelectionActionBar(
@@ -222,10 +238,447 @@ private fun ActionIcon(icon: ImageVector, contentDescription: String, onClick: (
     }
 }
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+@Composable
+private fun ListPane(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = modifier, content = content)
+}
+
+@Composable
+private fun DetailPane(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit = {}
+) {
+    Box(modifier = modifier, content = content)
+}
+
+@Composable
+private fun InspectorRow(
+    label: String,
+    value: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+
+@Composable
+private fun PasskeyOverviewPane(
+    totalPasskeys: Int,
+    boundPasskeys: Int,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 1.dp,
+            modifier = Modifier.padding(horizontal = 32.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "通行秘钥检查器",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "从左侧选择一条通行秘钥以查看详情和执行操作。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("总数 $totalPasskeys") }
+                    )
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("已绑定 $boundPasskeys") }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PasskeyDetailPane(
+    passkey: PasskeyEntry,
+    boundPasswordTitle: String?,
+    totalPasskeys: Int,
+    boundPasskeys: Int,
+    onOpenBoundPassword: (() -> Unit)?,
+    onUnbindPassword: (() -> Unit)?,
+    onDeletePasskey: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val createdTime = remember(passkey.createdAt) {
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(passkey.createdAt))
+    }
+    val transports = remember(passkey.transports) {
+        passkey.getTransportsList().joinToString(", ").ifBlank { "-" }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = passkey.rpName.ifBlank { passkey.rpId },
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = passkey.rpId,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = {}, label = { Text("总数 $totalPasskeys") })
+                AssistChip(onClick = {}, label = { Text("绑定 $boundPasskeys") })
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                InspectorRow("用户显示名", passkey.userDisplayName.ifBlank { "-" })
+                InspectorRow("用户名", passkey.userName.ifBlank { "-" })
+                InspectorRow("创建时间", createdTime)
+                InspectorRow("最近使用", passkey.getLastUsedFormatted())
+                InspectorRow("使用次数", passkey.useCount.toString())
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "安全属性",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                InspectorRow("算法", passkey.getAlgorithmName())
+                InspectorRow("传输方式", transports)
+                InspectorRow("可发现凭据", if (passkey.isDiscoverable) "是" else "否")
+                InspectorRow("需要用户验证", if (passkey.isUserVerificationRequired) "是" else "否")
+                InspectorRow("已备份", if (passkey.isBackedUp) "是" else "否")
+                InspectorRow("同步状态", passkey.syncStatus)
+                SelectionContainer {
+                    InspectorRow("凭据 ID", passkey.credentialId)
+                }
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "绑定关系",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = boundPasswordTitle ?: "未绑定密码条目",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FilledTonalButton(
+                        onClick = { onOpenBoundPassword?.invoke() },
+                        enabled = onOpenBoundPassword != null
+                    ) {
+                        Text("打开绑定条目")
+                    }
+                    OutlinedButton(
+                        onClick = { onUnbindPassword?.invoke() },
+                        enabled = onUnbindPassword != null
+                    ) {
+                        Text("解除绑定")
+                    }
+                }
+            }
+        }
+
+        if (passkey.notes.isNotBlank()) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "备注",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = passkey.notes,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "危险操作",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = "删除后将无法在本设备继续使用该通行秘钥。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = onDeletePasskey,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    Text("删除通行秘钥")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SendDetailPane(
+    send: BitwardenSend,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = send.name,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        Text(
+            text = send.shareUrl,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                val previewText = when {
+                    send.isTextType && !send.textContent.isNullOrBlank() -> send.textContent
+                    send.isFileType -> send.fileName ?: "文件 Send"
+                    else -> send.notes.ifBlank { "-" }
+                }
+                Text(
+                    text = previewText,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+
+                Text(
+                    text = "访问次数：${send.accessCount}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                send.maxAccessCount?.let { max ->
+                    Text(
+                        text = "访问上限：$max",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                send.expirationDate?.let { expiration ->
+                    Text(
+                        text = "过期时间：$expiration",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GeneratorDetailPane(
+    selectedGenerator: GeneratorType,
+    generatedValue: String,
+    modifier: Modifier = Modifier
+) {
+    val generatorLabel = when (selectedGenerator) {
+        GeneratorType.SYMBOL -> "随机字符"
+        GeneratorType.PASSWORD -> "可读密码"
+        GeneratorType.PASSPHRASE -> "密码短语"
+        GeneratorType.PIN -> "PIN 码"
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "生成结果预览",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = generatorLabel,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            SelectionContainer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = generatedValue.ifBlank { "等待生成..." },
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineDetailPane(
+    selectedLog: TimelineEvent.StandardLog,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "历史详情",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = selectedLog.summary,
+            style = MaterialTheme.typography.titleMedium
+        )
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("类型：${selectedLog.itemType.ifBlank { "-" }}")
+                Text("操作：${selectedLog.operationType.ifBlank { "-" }}")
+                Text(
+                    text = "时间戳：${selectedLog.timestamp}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 /**
  * 带有底部导航的主屏幕
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterial3WindowSizeClassApi::class,
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class
+)
 @Composable
 fun SimpleMainScreen(
     passwordViewModel: PasswordViewModel,
@@ -266,6 +719,7 @@ fun SimpleMainScreen(
 
     // Bitwarden ViewModel
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val timelineViewModel: TimelineViewModel = viewModel()
     
     // 双击返回退出相关状态
     var backPressedOnce by remember { mutableStateOf(false) }
@@ -378,6 +832,37 @@ fun SimpleMainScreen(
 
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
     val currentTabLabel = stringResource(currentTab.fullLabelRes())
+    var selectedPasswordId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var inlinePasswordEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var isAddingPasswordInline by rememberSaveable { mutableStateOf(false) }
+    var selectedTotpId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var isAddingTotpInline by rememberSaveable { mutableStateOf(false) }
+    var selectedBankCardId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var inlineBankCardEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var isAddingBankCardInline by rememberSaveable { mutableStateOf(false) }
+    var selectedDocumentId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var inlineDocumentEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var isAddingDocumentInline by rememberSaveable { mutableStateOf(false) }
+    var inlineNoteEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var isAddingNoteInline by rememberSaveable { mutableStateOf(false) }
+    var isAddingSendInline by rememberSaveable { mutableStateOf(false) }
+    var selectedPasskey by remember { mutableStateOf<PasskeyEntry?>(null) }
+    var pendingPasskeyDelete by remember { mutableStateOf<PasskeyEntry?>(null) }
+    var selectedSend by remember { mutableStateOf<BitwardenSend?>(null) }
+    var selectedTimelineLog by remember { mutableStateOf<TimelineEvent.StandardLog?>(null) }
+    val sendState by bitwardenViewModel.sendState.collectAsState()
+
+    val selectedGeneratorType by generatorViewModel.selectedGenerator.collectAsState()
+    val symbolGeneratorResult by generatorViewModel.symbolResult.collectAsState()
+    val passwordGeneratorResult by generatorViewModel.passwordResult.collectAsState()
+    val passphraseGeneratorResult by generatorViewModel.passphraseResult.collectAsState()
+    val pinGeneratorResult by generatorViewModel.pinResult.collectAsState()
+    val currentGeneratorResult = when (selectedGeneratorType) {
+        GeneratorType.SYMBOL -> symbolGeneratorResult
+        GeneratorType.PASSWORD -> passwordGeneratorResult
+        GeneratorType.PASSPHRASE -> passphraseGeneratorResult
+        GeneratorType.PIN -> pinGeneratorResult
+    }
 
     // 监听滚动以隐藏/显示 FAB
     var isFabVisible by remember { mutableStateOf(true) }
@@ -399,7 +884,6 @@ fun SimpleMainScreen(
     // 检测是否有任何选择模式处于激活状态
     var isNoteSelectionMode by remember { mutableStateOf(false) }
     val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || isDocumentSelectionMode || isBankCardSelectionMode || isNoteSelectionMode
-    var sendCreateRequestKey by remember { mutableIntStateOf(0) }
     var generatorRefreshRequestKey by remember { mutableIntStateOf(0) }
     
     val nestedScrollConnection = remember {
@@ -446,6 +930,11 @@ fun SimpleMainScreen(
 
     val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
+    val allPasswords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())
+    val localPasskeys by passkeyViewModel.allPasskeys.collectAsState(initial = emptyList())
+    val passkeyTotalCount = localPasskeys.size
+    val passkeyBoundCount = localPasskeys.count { it.boundPasswordId != null }
+    val passwordById = remember(allPasswords) { allPasswords.associateBy { it.id } }
     val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
     val bitwardenVaults by bitwardenViewModel.vaults.collectAsState()
     
@@ -454,25 +943,6 @@ fun SimpleMainScreen(
     var categoryNameInput by remember { mutableStateOf("") }
     // 可拖拽导航栏模式开关 (将来可从设置中读取)
     val useDraggableNav = appSettings.useDraggableBottomNav
-    
-    // V2 导航栏版本
-    val useV2Nav = appSettings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V2
-    
-    // V2 导航栏状态
-    val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
-    val v2DynamicContentKey by settingsManager.v2LastSubPageFlow.collectAsState(initial = "")
-    val coroutineScope = rememberCoroutineScope()
-    
-    // 当前选中的位置（0-4）
-    var v2SelectedPosition by remember { mutableStateOf(takagi.ru.monica.ui.components.V2NavPosition.DYNAMIC) }
-    // 底栏第2项显示的动态内容（持久化）
-    val v2DynamicContent = remember(v2DynamicContentKey) {
-        if (v2DynamicContentKey.isNotEmpty()) {
-            takagi.ru.monica.ui.components.RecentSubPage.entries.find { it.key == v2DynamicContentKey }
-        } else {
-            null
-        }
-    }
     
     // 构建导航项列表 (用于可拖拽导航栏)
     val draggableNavItems = remember(tabs, currentTab) {
@@ -564,6 +1034,266 @@ fun SimpleMainScreen(
             )
         )
     }
+
+    val activity = LocalContext.current.findActivity()
+    val widthSizeClass = activity?.let { calculateWindowSizeClass(it).widthSizeClass }
+    val isCompactWidth = widthSizeClass == null || widthSizeClass == WindowWidthSizeClass.Compact
+    val wideListPaneWidth = 400.dp
+    val wideNavigationRailWidth = 80.dp
+    val wideFabHostWidth = wideNavigationRailWidth + wideListPaneWidth
+
+    val handlePasswordAddOpen: () -> Unit = {
+        if (isCompactWidth) {
+            onNavigateToAddPassword(null)
+        } else {
+            isAddingPasswordInline = true
+            inlinePasswordEditorId = null
+            selectedPasswordId = null
+        }
+    }
+    val handlePasswordEditOpen: (Long) -> Unit = { passwordId ->
+        if (isCompactWidth) {
+            onNavigateToAddPassword(passwordId)
+        } else {
+            isAddingPasswordInline = false
+            inlinePasswordEditorId = passwordId
+        }
+    }
+    val handleInlinePasswordEditorBack: () -> Unit = {
+        isAddingPasswordInline = false
+        inlinePasswordEditorId = null
+    }
+    val handleTotpAddOpen: () -> Unit = {
+        if (isCompactWidth) {
+            onNavigateToAddTotp(null)
+        } else {
+            isAddingTotpInline = true
+            selectedTotpId = null
+        }
+    }
+    val handleInlineTotpEditorBack: () -> Unit = {
+        isAddingTotpInline = false
+        selectedTotpId = null
+    }
+    val handleBankCardAddOpen: () -> Unit = {
+        if (isCompactWidth) {
+            onNavigateToAddBankCard(null)
+        } else {
+            isAddingBankCardInline = true
+            inlineBankCardEditorId = null
+            selectedBankCardId = null
+        }
+    }
+    val handleBankCardEditOpen: (Long) -> Unit = { cardId ->
+        if (isCompactWidth) {
+            onNavigateToAddBankCard(cardId)
+        } else {
+            isAddingBankCardInline = false
+            inlineBankCardEditorId = cardId
+            selectedBankCardId = null
+        }
+    }
+    val handleInlineBankCardEditorBack: () -> Unit = {
+        isAddingBankCardInline = false
+        inlineBankCardEditorId = null
+    }
+    val handleDocumentAddOpen: () -> Unit = {
+        if (isCompactWidth) {
+            onNavigateToAddDocument(null)
+        } else {
+            isAddingDocumentInline = true
+            inlineDocumentEditorId = null
+            selectedDocumentId = null
+        }
+    }
+    val handleDocumentEditOpen: (Long) -> Unit = { documentId ->
+        if (isCompactWidth) {
+            onNavigateToAddDocument(documentId)
+        } else {
+            isAddingDocumentInline = false
+            inlineDocumentEditorId = documentId
+            selectedDocumentId = null
+        }
+    }
+    val handleInlineDocumentEditorBack: () -> Unit = {
+        isAddingDocumentInline = false
+        inlineDocumentEditorId = null
+    }
+    val handleNoteOpen: (Long?) -> Unit = { noteId ->
+        if (isCompactWidth) {
+            onNavigateToAddNote(noteId)
+        } else {
+            if (noteId == null) {
+                isAddingNoteInline = true
+                inlineNoteEditorId = null
+            } else {
+                isAddingNoteInline = false
+                inlineNoteEditorId = noteId
+            }
+        }
+    }
+    val handleInlineNoteEditorBack: () -> Unit = {
+        isAddingNoteInline = false
+        inlineNoteEditorId = null
+    }
+
+    val handlePasswordDetailOpen: (Long) -> Unit = { passwordId ->
+        if (isCompactWidth) {
+            onNavigateToPasswordDetail(passwordId)
+        } else {
+            isAddingPasswordInline = false
+            inlinePasswordEditorId = null
+            selectedPasswordId = passwordId
+        }
+    }
+    val handleTotpOpen: (Long) -> Unit = { totpId ->
+        if (isCompactWidth) {
+            onNavigateToAddTotp(totpId)
+        } else {
+            isAddingTotpInline = false
+            selectedTotpId = totpId
+        }
+    }
+    val handleBankCardOpen: (Long) -> Unit = { cardId ->
+        if (isCompactWidth) {
+            onNavigateToBankCardDetail(cardId)
+        } else {
+            isAddingBankCardInline = false
+            inlineBankCardEditorId = null
+            selectedBankCardId = cardId
+        }
+    }
+    val handleDocumentOpen: (Long) -> Unit = { documentId ->
+        if (isCompactWidth) {
+            onNavigateToDocumentDetail(documentId)
+        } else {
+            isAddingDocumentInline = false
+            inlineDocumentEditorId = null
+            selectedDocumentId = documentId
+        }
+    }
+    val handlePasskeyOpen: (PasskeyEntry) -> Unit = { passkey ->
+        if (!isCompactWidth) {
+            selectedPasskey = passkey
+        }
+    }
+    val handlePasskeyUnbind: (PasskeyEntry) -> Unit = { passkey ->
+        val boundId = passkey.boundPasswordId
+        if (boundId != null) {
+            passwordById[boundId]?.let { entry ->
+                val updatedBindings = PasskeyBindingCodec.removeBinding(
+                    entry.passkeyBindings,
+                    passkey.credentialId
+                )
+                passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
+            }
+        }
+        if (passkey.syncStatus != "REFERENCE") {
+            passkeyViewModel.updateBoundPassword(passkey.credentialId, null)
+        }
+        if (selectedPasskey?.credentialId == passkey.credentialId) {
+            selectedPasskey = selectedPasskey?.copy(boundPasswordId = null)
+        }
+    }
+    val confirmPasskeyDelete: () -> Unit = {
+        val passkey = pendingPasskeyDelete
+        if (passkey != null) {
+            val boundId = passkey.boundPasswordId
+            if (boundId != null) {
+                passwordById[boundId]?.let { entry ->
+                    val updatedBindings = PasskeyBindingCodec.removeBinding(
+                        entry.passkeyBindings,
+                        passkey.credentialId
+                    )
+                    passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
+                }
+            }
+            val isReferenceOnly = passkey.syncStatus == "REFERENCE" &&
+                passkey.privateKeyAlias.isBlank() &&
+                passkey.publicKey.isBlank()
+            if (!isReferenceOnly) {
+                passkeyViewModel.deletePasskey(passkey)
+            }
+            if (selectedPasskey?.credentialId == passkey.credentialId) {
+                selectedPasskey = null
+            }
+        }
+        pendingPasskeyDelete = null
+    }
+    val handleSendOpen: (BitwardenSend) -> Unit = { send ->
+        if (!isCompactWidth) {
+            isAddingSendInline = false
+            selectedSend = send
+        }
+    }
+    val handleSendAddOpen: () -> Unit = {
+        if (!isCompactWidth) {
+            selectedSend = null
+            isAddingSendInline = true
+        }
+    }
+    val handleInlineSendEditorBack: () -> Unit = {
+        isAddingSendInline = false
+    }
+    val handleTimelineLogOpen: (TimelineEvent.StandardLog) -> Unit = { log ->
+        if (!isCompactWidth) {
+            selectedTimelineLog = log
+        }
+    }
+
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Passwords) {
+            selectedPasswordId = null
+            inlinePasswordEditorId = null
+            isAddingPasswordInline = false
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Authenticator) {
+            selectedTotpId = null
+            isAddingTotpInline = false
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth, cardWalletSubTab) {
+        if (isCompactWidth || currentTab != BottomNavItem.CardWallet) {
+            selectedBankCardId = null
+            selectedDocumentId = null
+            inlineBankCardEditorId = null
+            isAddingBankCardInline = false
+            inlineDocumentEditorId = null
+            isAddingDocumentInline = false
+        } else if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+            selectedDocumentId = null
+            inlineDocumentEditorId = null
+            isAddingDocumentInline = false
+        } else {
+            selectedBankCardId = null
+            inlineBankCardEditorId = null
+            isAddingBankCardInline = false
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Notes) {
+            inlineNoteEditorId = null
+            isAddingNoteInline = false
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Passkey) {
+            selectedPasskey = null
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Send) {
+            selectedSend = null
+            isAddingSendInline = false
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Timeline) {
+            selectedTimelineLog = null
+        }
+    }
     
     // 根据设置选择导航模式
     Box(
@@ -571,55 +1301,7 @@ fun SimpleMainScreen(
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
     ) {
-        if (useV2Nav) {
-            // V2 简洁动态导航栏
-            V2NavScaffold(
-                selectedPosition = v2SelectedPosition,
-                dynamicContent = v2DynamicContent,
-                onPositionSelected = { position: V2NavPosition ->
-                    v2SelectedPosition = position
-                },
-                onNavigateToDynamicContent = { content: RecentSubPage ->
-                    // 从库首页点击某项时：更新动态内容并选中位置1
-                    coroutineScope.launch {
-                        settingsManager.updateV2LastSubPage(content.key)
-                    }
-                    v2SelectedPosition = V2NavPosition.DYNAMIC
-                },
-                passwordViewModel = passwordViewModel,
-                settingsViewModel = settingsViewModel,
-                totpViewModel = totpViewModel,
-                bankCardViewModel = bankCardViewModel,
-                documentViewModel = documentViewModel,
-                generatorViewModel = generatorViewModel,
-                noteViewModel = noteViewModel,
-                passkeyViewModel = passkeyViewModel,
-                localKeePassViewModel = localKeePassViewModel,
-                securityManager = securityManager,
-                onNavigateToAddPassword = onNavigateToAddPassword,
-                onNavigateToAddTotp = onNavigateToAddTotp,
-                onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
-                onNavigateToAddBankCard = onNavigateToAddBankCard,
-                onNavigateToAddDocument = onNavigateToAddDocument,
-                onNavigateToAddNote = onNavigateToAddNote,
-                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                onNavigateToDocumentDetail = onNavigateToDocumentDetail,
-                onNavigateToChangePassword = onNavigateToChangePassword,
-                onNavigateToSecurityQuestion = onNavigateToSecurityQuestion,
-                onNavigateToSyncBackup = onNavigateToSyncBackup,
-                onNavigateToAutofill = onNavigateToAutofill,
-                onNavigateToPasskeySettings = onNavigateToPasskeySettings,
-                onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
-                onNavigateToColorScheme = onNavigateToColorScheme,
-                onSecurityAnalysis = onSecurityAnalysis,
-                onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
-                onNavigateToPermissionManagement = onNavigateToPermissionManagement,
-                onNavigateToMonicaPlus = onNavigateToMonicaPlus,
-                onNavigateToExtensions = onNavigateToExtensions,
-                onClearAllData = onClearAllData
-            )
-        } else if (useDraggableNav) {
+        if (useDraggableNav && isCompactWidth) {
         // 使用可拖拽底部导航栏
         DraggableBottomNavScaffold(
             navItems = draggableNavItems,
@@ -668,11 +1350,9 @@ fun SimpleMainScreen(
                                     passwordViewModel.deleteCategory(category)
                                 },
                                 onPasswordClick = { password ->
-                                    onNavigateToAddPassword(password.id)
+                                    handlePasswordDetailOpen(password.id)
                                 },
-                                onNavigateToAddPassword = onNavigateToAddPassword,
-                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
                                     isPasswordSelectionMode = isSelectionMode
                                     selectedPasswordCount = count
                                     onExitPasswordSelection = onExit
@@ -688,7 +1368,7 @@ fun SimpleMainScreen(
                                 viewModel = totpViewModel,
                                 passwordViewModel = passwordViewModel,
                                 onTotpClick = { totpId ->
-                                    onNavigateToAddTotp(totpId)
+                                    handleTotpOpen(totpId)
                                 },
                                 onDeleteTotp = { totp ->
                                     totpViewModel.deleteTotpItem(totp)
@@ -710,10 +1390,10 @@ fun SimpleMainScreen(
                                 currentTab = cardWalletSubTab,
                                 onTabSelected = { cardWalletSubTab = it },
                                 onCardClick = { cardId ->
-                                    onNavigateToBankCardDetail(cardId)
+                                    handleBankCardOpen(cardId)
                                 },
                                 onDocumentClick = { documentId ->
-                                    onNavigateToDocumentDetail(documentId)
+                                    handleDocumentOpen(documentId)
                                 },
                                 onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
                                     isDocumentSelectionMode = isSelectionMode
@@ -746,7 +1426,7 @@ fun SimpleMainScreen(
                             NoteListScreen(
                                 viewModel = noteViewModel,
                                 settingsViewModel = settingsViewModel,
-                                onNavigateToAddNote = onNavigateToAddNote,
+                                onNavigateToAddNote = handleNoteOpen,
                                 securityManager = securityManager,
                                 onSelectionModeChange = { isSelectionMode ->
                                     isNoteSelectionMode = isSelectionMode
@@ -754,20 +1434,21 @@ fun SimpleMainScreen(
                             )
                         }
                         BottomNavItem.Timeline -> {
-                            TimelineScreen()
+                            TimelineScreen(
+                                viewModel = timelineViewModel,
+                                splitPaneMode = false
+                            )
                         }
                         BottomNavItem.Passkey -> {
                             PasskeyListScreen(
                                 viewModel = passkeyViewModel,
                                 passwordViewModel = passwordViewModel,
                                 onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                onPasskeyClick = { /* TODO: 导航到详情页 */ }
+                                onPasskeyClick = {}
                             )
                         }
                         BottomNavItem.Send -> {
                             SendScreen(
-                                createRequestKey = sendCreateRequestKey,
-                                onCreateRequestConsumed = { sendCreateRequestKey = 0 },
                                 bitwardenViewModel = bitwardenViewModel
                             )
                         }
@@ -852,166 +1533,596 @@ fun SimpleMainScreen(
         topBar = {
             // 顶部栏由各自页面内部控制（如 ExpressiveTopBar），这里保持为空以避免叠加
         },
+        contentWindowInsets = if (isCompactWidth) {
+            ScaffoldDefaults.contentWindowInsets
+        } else {
+            WindowInsets(0, 0, 0, 0)
+        },
         bottomBar = {
-            NavigationBar(
-                tonalElevation = 0.dp,
-                containerColor = MaterialTheme.colorScheme.surface
-            ) {
-                tabs.forEach { item ->
-                    val label = stringResource(item.shortLabelRes())
-                    NavigationBarItem(
-                        icon = { 
-                            Icon(item.icon, contentDescription = label) 
-                        },
-                        label = { 
-                            Text(label) 
-                        },
-                        selected = item.key == currentTab.key,
-                        onClick = { selectedTabKey = item.key }
-                    )
+            if (isCompactWidth) {
+                NavigationBar(
+                    tonalElevation = 0.dp,
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    tabs.forEach { item ->
+                        val label = stringResource(item.shortLabelRes())
+                        NavigationBarItem(
+                            icon = {
+                                Icon(item.icon, contentDescription = label)
+                            },
+                            label = {
+                                Text(label)
+                            },
+                            selected = item.key == currentTab.key,
+                            onClick = { selectedTabKey = item.key }
+                        )
+                    }
                 }
             }
         },
         floatingActionButton = {} // FAB 移至外层 Overlay
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
+        val scaffoldBody: @Composable BoxScope.() -> Unit = {
             when (currentTab) {
                 BottomNavItem.Passwords -> {
-                    // 密码页面 - 使用现有的密码列表
-                    PasswordListContent(
-                        viewModel = passwordViewModel,
-                        settingsViewModel = settingsViewModel, // Pass SettingsViewModel
-                        securityManager = securityManager,
-                        keepassDatabases = keepassDatabases,
-                        bitwardenVaults = bitwardenVaults,
-                        localKeePassViewModel = localKeePassViewModel,
-                        groupMode = passwordGroupMode,
-                        stackCardMode = stackCardMode,
-                        onCreateCategory = {
-                            categoryNameInput = ""
-                            showAddCategoryDialog = true
-                        },
-                        onRenameCategory = { category ->
-                            categoryNameInput = category.name
-                            showEditCategoryDialog = category
-                        },
-                        onDeleteCategory = { category ->
-                            passwordViewModel.deleteCategory(category)
-                        },
-                        onPasswordClick = { password ->
-                            onNavigateToAddPassword(password.id)
-                        },
-                        onNavigateToAddPassword = onNavigateToAddPassword,
-                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
-                            isPasswordSelectionMode = isSelectionMode
-                            selectedPasswordCount = count
-                            onExitPasswordSelection = onExit
-                            onSelectAllPasswords = onSelectAll
-                            onFavoriteSelectedPasswords = onFavorite
-                            onMoveToCategoryPasswords = onMoveToCategory
-                            onDeleteSelectedPasswords = onDelete
+                    val listPaneContent: @Composable ColumnScope.() -> Unit = {
+                        PasswordListContent(
+                            viewModel = passwordViewModel,
+                            settingsViewModel = settingsViewModel, // Pass SettingsViewModel
+                            securityManager = securityManager,
+                            keepassDatabases = keepassDatabases,
+                            bitwardenVaults = bitwardenVaults,
+                            localKeePassViewModel = localKeePassViewModel,
+                            groupMode = passwordGroupMode,
+                            stackCardMode = stackCardMode,
+                            onCreateCategory = {
+                                categoryNameInput = ""
+                                showAddCategoryDialog = true
+                            },
+                            onRenameCategory = { category ->
+                                categoryNameInput = category.name
+                                showEditCategoryDialog = category
+                            },
+                            onDeleteCategory = { category ->
+                                passwordViewModel.deleteCategory(category)
+                            },
+                            onPasswordClick = { password ->
+                                handlePasswordDetailOpen(password.id)
+                            },
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
+                                isPasswordSelectionMode = isSelectionMode
+                                selectedPasswordCount = count
+                                onExitPasswordSelection = onExit
+                                onSelectAllPasswords = onSelectAll
+                                onFavoriteSelectedPasswords = onFavorite
+                                onMoveToCategoryPasswords = onMoveToCategory
+                                onDeleteSelectedPasswords = onDelete
+                            }
+                        )
+                    }
+
+                    if (isCompactWidth) {
+                        ListPane(
+                            modifier = Modifier.fillMaxSize(),
+                            content = listPaneContent
+                        )
+                    } else {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            ListPane(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(wideListPaneWidth),
+                                content = listPaneContent
+                            )
+                            DetailPane(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                if (isAddingPasswordInline || inlinePasswordEditorId != null) {
+                                    AddEditPasswordScreen(
+                                        viewModel = passwordViewModel,
+                                        totpViewModel = totpViewModel,
+                                        bankCardViewModel = bankCardViewModel,
+                                        localKeePassViewModel = localKeePassViewModel,
+                                        passwordId = inlinePasswordEditorId,
+                                        onNavigateBack = handleInlinePasswordEditorBack
+                                    )
+                                } else if (selectedPasswordId == null) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Select an item to view details",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    CompositionLocalProvider(
+                                        LocalSharedTransitionScope provides null,
+                                        LocalAnimatedVisibilityScope provides null
+                                    ) {
+                                        PasswordDetailScreen(
+                                            viewModel = passwordViewModel,
+                                            passkeyViewModel = passkeyViewModel,
+                                            passwordId = selectedPasswordId!!,
+                                            disablePasswordVerification = appSettings.disablePasswordVerification,
+                                            biometricEnabled = appSettings.biometricEnabled,
+                                            onNavigateBack = { selectedPasswordId = null },
+                                            onEditPassword = handlePasswordEditOpen,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    )
+                    }
                 }
                 BottomNavItem.Authenticator -> {
-                    // TOTP验证器页面
-                    TotpListContent(
-                        viewModel = totpViewModel,
-                        passwordViewModel = passwordViewModel,
-                        onTotpClick = { totpId ->
-                            onNavigateToAddTotp(totpId)
-                        },
-                        onDeleteTotp = { totp ->
-                            totpViewModel.deleteTotpItem(totp)
-                        },
-                        onQuickScanTotp = onNavigateToQuickTotpScan,
-                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
-                            isTotpSelectionMode = isSelectionMode
-                            selectedTotpCount = count
-                            onExitTotpSelection = onExit
-                            onSelectAllTotp = onSelectAll
-                            onDeleteSelectedTotp = onDelete
+                    val listPaneContent: @Composable ColumnScope.() -> Unit = {
+                        TotpListContent(
+                            viewModel = totpViewModel,
+                            passwordViewModel = passwordViewModel,
+                            onTotpClick = { totpId ->
+                                handleTotpOpen(totpId)
+                            },
+                            onDeleteTotp = { totp ->
+                                totpViewModel.deleteTotpItem(totp)
+                            },
+                            onQuickScanTotp = onNavigateToQuickTotpScan,
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                isTotpSelectionMode = isSelectionMode
+                                selectedTotpCount = count
+                                onExitTotpSelection = onExit
+                                onSelectAllTotp = onSelectAll
+                                onDeleteSelectedTotp = onDelete
+                            }
+                        )
+                    }
+
+                    if (isCompactWidth) {
+                        ListPane(
+                            modifier = Modifier.fillMaxSize(),
+                            content = listPaneContent
+                        )
+                    } else {
+                        val totpItems by totpViewModel.totpItems.collectAsState()
+                        val selectedTotpItem = remember(selectedTotpId, totpItems) {
+                            selectedTotpId?.let { selectedId ->
+                                totpItems.firstOrNull { it.id == selectedId }
+                            }
                         }
-                    )
+                        val selectedTotpData = remember(selectedTotpItem?.itemData) {
+                            selectedTotpItem?.itemData?.let { itemData ->
+                                runCatching {
+                                    kotlinx.serialization.json.Json.decodeFromString<takagi.ru.monica.data.model.TotpData>(itemData)
+                                }.getOrNull()
+                            }
+                        }
+                        val totpCategories by totpViewModel.categories.collectAsState()
+
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            ListPane(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(wideListPaneWidth),
+                                content = listPaneContent
+                            )
+                            DetailPane(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                if (isAddingTotpInline) {
+                                    AddEditTotpScreen(
+                                        totpId = null,
+                                        initialData = null,
+                                        initialTitle = "",
+                                        initialNotes = "",
+                                        categories = totpCategories,
+                                        passwordViewModel = passwordViewModel,
+                                        localKeePassViewModel = localKeePassViewModel,
+                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId ->
+                                            totpViewModel.saveTotpItem(
+                                                id = null,
+                                                title = title,
+                                                notes = notes,
+                                                totpData = totpData,
+                                                categoryId = categoryId,
+                                                keepassDatabaseId = keepassDatabaseId
+                                            )
+                                            handleInlineTotpEditorBack()
+                                        },
+                                        onNavigateBack = handleInlineTotpEditorBack,
+                                        onScanQrCode = onNavigateToQuickTotpScan,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else if (selectedTotpId == null) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Select an item to view details",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else if (selectedTotpItem == null || selectedTotpItem.id <= 0L || selectedTotpData == null) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "This item is not available for inline editing",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    AddEditTotpScreen(
+                                        totpId = selectedTotpItem.id,
+                                        initialData = selectedTotpData,
+                                        initialTitle = selectedTotpItem.title,
+                                        initialNotes = selectedTotpItem.notes,
+                                        initialCategoryId = selectedTotpData.categoryId,
+                                        categories = totpCategories,
+                                        passwordViewModel = passwordViewModel,
+                                        localKeePassViewModel = localKeePassViewModel,
+                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId ->
+                                            totpViewModel.saveTotpItem(
+                                                id = selectedTotpItem.id,
+                                                title = title,
+                                                notes = notes,
+                                                totpData = totpData,
+                                                categoryId = categoryId,
+                                                keepassDatabaseId = keepassDatabaseId
+                                            )
+                                        },
+                                        onNavigateBack = handleInlineTotpEditorBack,
+                                        onScanQrCode = onNavigateToQuickTotpScan,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 BottomNavItem.CardWallet -> {
-                    // 卡包页面
-                    CardWalletScreen(
-                        bankCardViewModel = bankCardViewModel,
-                        documentViewModel = documentViewModel,
-                        currentTab = cardWalletSubTab,
-                        onTabSelected = { cardWalletSubTab = it },
-                        onCardClick = { cardId ->
-                            onNavigateToBankCardDetail(cardId)
-                        },
-                        onDocumentClick = { documentId ->
-                            onNavigateToDocumentDetail(documentId)
-                        },
-                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
-                            isDocumentSelectionMode = isSelectionMode
-                            selectedDocumentCount = count
-                            onExitDocumentSelection = onExit
-                            onSelectAllDocuments = onSelectAll
-                            onDeleteSelectedDocuments = onDelete
-                        },
-                        onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
-                            isBankCardSelectionMode = isSelectionMode
-                            selectedBankCardCount = count
-                            onExitBankCardSelection = onExit
-                            onSelectAllBankCards = onSelectAll
-                            onDeleteSelectedBankCards = onDelete
-                            onFavoriteBankCards = onFavorite
+                    val listPaneContent: @Composable ColumnScope.() -> Unit = {
+                        CardWalletScreen(
+                            bankCardViewModel = bankCardViewModel,
+                            documentViewModel = documentViewModel,
+                            currentTab = cardWalletSubTab,
+                            onTabSelected = { cardWalletSubTab = it },
+                            onCardClick = { cardId ->
+                                handleBankCardOpen(cardId)
+                            },
+                            onDocumentClick = { documentId ->
+                                handleDocumentOpen(documentId)
+                            },
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                isDocumentSelectionMode = isSelectionMode
+                                selectedDocumentCount = count
+                                onExitDocumentSelection = onExit
+                                onSelectAllDocuments = onSelectAll
+                                onDeleteSelectedDocuments = onDelete
+                            },
+                            onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
+                                isBankCardSelectionMode = isSelectionMode
+                                selectedBankCardCount = count
+                                onExitBankCardSelection = onExit
+                                onSelectAllBankCards = onSelectAll
+                                onDeleteSelectedBankCards = onDelete
+                                onFavoriteBankCards = onFavorite
+                            }
+                        )
+                    }
+
+                    if (isCompactWidth) {
+                        ListPane(
+                            modifier = Modifier.fillMaxSize(),
+                            content = listPaneContent
+                        )
+                    } else {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            ListPane(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(wideListPaneWidth),
+                                content = listPaneContent
+                            )
+                            DetailPane(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+                                    if (isAddingBankCardInline || inlineBankCardEditorId != null) {
+                                        AddEditBankCardScreen(
+                                            viewModel = bankCardViewModel,
+                                            cardId = inlineBankCardEditorId,
+                                            onNavigateBack = handleInlineBankCardEditorBack,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else if (selectedBankCardId == null) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Select a card to view details",
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    } else {
+                                        BankCardDetailScreen(
+                                            viewModel = bankCardViewModel,
+                                            cardId = selectedBankCardId!!,
+                                            onNavigateBack = { selectedBankCardId = null },
+                                            onEditCard = handleBankCardEditOpen,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                } else {
+                                    if (isAddingDocumentInline || inlineDocumentEditorId != null) {
+                                        AddEditDocumentScreen(
+                                            viewModel = documentViewModel,
+                                            documentId = inlineDocumentEditorId,
+                                            onNavigateBack = handleInlineDocumentEditorBack,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else if (selectedDocumentId == null) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Select a document to view details",
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    } else {
+                                        DocumentDetailScreen(
+                                            viewModel = documentViewModel,
+                                            documentId = selectedDocumentId!!,
+                                            onNavigateBack = { selectedDocumentId = null },
+                                            onEditDocument = handleDocumentEditOpen,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    )
+                    }
                 }
                 BottomNavItem.Generator -> {
-                    // 生成器页面
-                    GeneratorScreen(
-                        onNavigateBack = {}, // 在主屏幕中不需要返回
-                        viewModel = generatorViewModel, // 传递ViewModel
-                        passwordViewModel = passwordViewModel, // 传递 PasswordViewModel
-                        externalRefreshRequestKey = generatorRefreshRequestKey,
-                        onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
-                        useExternalRefreshFab = true
-                    )
+                    if (isCompactWidth) {
+                        GeneratorScreen(
+                            onNavigateBack = {},
+                            viewModel = generatorViewModel,
+                            passwordViewModel = passwordViewModel,
+                            externalRefreshRequestKey = generatorRefreshRequestKey,
+                            onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
+                            useExternalRefreshFab = true
+                        )
+                    } else {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            ListPane(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(wideListPaneWidth)
+                            ) {
+                                GeneratorScreen(
+                                    onNavigateBack = {},
+                                    viewModel = generatorViewModel,
+                                    passwordViewModel = passwordViewModel,
+                                    externalRefreshRequestKey = generatorRefreshRequestKey,
+                                    onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
+                                    useExternalRefreshFab = true
+                                )
+                            }
+                            DetailPane(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                GeneratorDetailPane(
+                                    selectedGenerator = selectedGeneratorType,
+                                    generatedValue = currentGeneratorResult,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                    }
                 }
                 BottomNavItem.Notes -> {
-                    // 笔记页面
-                    NoteListScreen(
-                        viewModel = noteViewModel,
-                        settingsViewModel = settingsViewModel,
-                        onNavigateToAddNote = onNavigateToAddNote,
-                        securityManager = securityManager,
-                        onSelectionModeChange = { isSelectionMode ->
-                            isNoteSelectionMode = isSelectionMode
+                    if (isCompactWidth) {
+                        NoteListScreen(
+                            viewModel = noteViewModel,
+                            settingsViewModel = settingsViewModel,
+                            onNavigateToAddNote = handleNoteOpen,
+                            securityManager = securityManager,
+                            onSelectionModeChange = { isSelectionMode ->
+                                isNoteSelectionMode = isSelectionMode
+                            }
+                        )
+                    } else {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            ListPane(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(wideListPaneWidth)
+                            ) {
+                                NoteListScreen(
+                                    viewModel = noteViewModel,
+                                    settingsViewModel = settingsViewModel,
+                                    onNavigateToAddNote = handleNoteOpen,
+                                    securityManager = securityManager,
+                                    onSelectionModeChange = { isSelectionMode ->
+                                        isNoteSelectionMode = isSelectionMode
+                                    }
+                                )
+                            }
+
+                            DetailPane(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                if (isAddingNoteInline || inlineNoteEditorId != null) {
+                                    AddEditNoteScreen(
+                                        noteId = inlineNoteEditorId ?: -1L,
+                                        onNavigateBack = handleInlineNoteEditorBack,
+                                        viewModel = noteViewModel
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Select a note to view or edit",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    )
+                    }
                 }
                 BottomNavItem.Timeline -> {
-                    // 时间线页面
-                    TimelineScreen()
+                    TimelineScreen(
+                        viewModel = timelineViewModel,
+                        onLogSelected = handleTimelineLogOpen,
+                        splitPaneMode = !isCompactWidth
+                    )
                 }
                 BottomNavItem.Passkey -> {
-                    // 通行密钥页面
-                    PasskeyListScreen(
-                        viewModel = passkeyViewModel,
-                        passwordViewModel = passwordViewModel,
-                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                        onPasskeyClick = { /* TODO: 导航到详情页 */ }
-                    )
+                    if (isCompactWidth) {
+                        PasskeyListScreen(
+                            viewModel = passkeyViewModel,
+                            passwordViewModel = passwordViewModel,
+                            onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                            onPasskeyClick = {}
+                        )
+                    } else {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            ListPane(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(wideListPaneWidth)
+                            ) {
+                                PasskeyListScreen(
+                                    viewModel = passkeyViewModel,
+                                    passwordViewModel = passwordViewModel,
+                                    onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                                    onPasskeyClick = handlePasskeyOpen
+                                )
+                            }
+                            DetailPane(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                val passkey = selectedPasskey
+                                if (passkey == null) {
+                                    PasskeyOverviewPane(
+                                        totalPasskeys = passkeyTotalCount,
+                                        boundPasskeys = passkeyBoundCount,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    val boundPasswordTitle = passkey.boundPasswordId
+                                        ?.let { passwordById[it]?.title }
+                                    PasskeyDetailPane(
+                                        passkey = passkey,
+                                        boundPasswordTitle = boundPasswordTitle,
+                                        totalPasskeys = passkeyTotalCount,
+                                        boundPasskeys = passkeyBoundCount,
+                                        onOpenBoundPassword = passkey.boundPasswordId?.let { boundId ->
+                                            { handlePasswordDetailOpen(boundId) }
+                                        },
+                                        onUnbindPassword = if (passkey.boundPasswordId != null) {
+                                            { handlePasskeyUnbind(passkey) }
+                                        } else {
+                                            null
+                                        },
+                                        onDeletePasskey = { pendingPasskeyDelete = passkey },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 BottomNavItem.Send -> {
-                    // V2 发送页面
-                    SendScreen(
-                        createRequestKey = sendCreateRequestKey,
-                        onCreateRequestConsumed = { sendCreateRequestKey = 0 },
-                        bitwardenViewModel = bitwardenViewModel
-                    )
+                    if (isCompactWidth) {
+                        SendScreen(
+                            bitwardenViewModel = bitwardenViewModel
+                        )
+                    } else {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            ListPane(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(wideListPaneWidth)
+                            ) {
+                                SendScreen(
+                                    onSendClick = handleSendOpen,
+                                    selectedSendId = selectedSend?.bitwardenSendId,
+                                    bitwardenViewModel = bitwardenViewModel
+                                )
+                            }
+                            DetailPane(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                if (isAddingSendInline) {
+                                    AddEditSendScreen(
+                                        sendState = sendState,
+                                        onNavigateBack = handleInlineSendEditorBack,
+                                        onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                            bitwardenViewModel.createTextSend(
+                                                title = title,
+                                                text = text,
+                                                notes = notes,
+                                                password = password,
+                                                maxAccessCount = maxAccessCount,
+                                                hideEmail = hideEmail,
+                                                hiddenText = hiddenText,
+                                                expireInDays = expireInDays
+                                            )
+                                            handleInlineSendEditorBack()
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else if (selectedSend == null) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Select an item to preview",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    SendDetailPane(
+                                        send = selectedSend!!,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 BottomNavItem.Settings -> {
                     // 设置页面 - 使用完整的SettingsScreen
@@ -1022,6 +2133,7 @@ fun SimpleMainScreen(
                         onSecurityQuestions = onNavigateToSecurityQuestion,
                         onNavigateToSyncBackup = onNavigateToSyncBackup,
                         onNavigateToAutofill = onNavigateToAutofill,
+                        onNavigateToPasskeySettings = onNavigateToPasskeySettings,
                         onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
                         onNavigateToColorScheme = onNavigateToColorScheme,
                         onSecurityAnalysis = onSecurityAnalysis,
@@ -1088,12 +2200,79 @@ fun SimpleMainScreen(
                 }
             }
         }
+
+        if (isCompactWidth) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                content = scaffoldBody
+            )
+        } else {
+            val railTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val railBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                NavigationRail(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(wideNavigationRailWidth),
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(
+                                top = railTopInset + 8.dp,
+                                bottom = railBottomInset + 8.dp
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        tabs.forEach { item ->
+                            val label = stringResource(item.shortLabelRes())
+                            NavigationRailItem(
+                                selected = item.key == currentTab.key,
+                                onClick = { selectedTabKey = item.key },
+                                icon = { Icon(item.icon, contentDescription = label) },
+                                label = { Text(label) },
+                                alwaysShowLabel = true
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    content = scaffoldBody
+                )
+            }
+        }
     }
     }
 
     // 全局 FAB Overlay
     // 放在最外层 Box 中，覆盖在 Scaffold 之上，确保能展开到全屏
     // 仅在特定 Tab 显示，并且不在多选模式下显示
+    val hasWideDetailSelection = !isCompactWidth && when (currentTab) {
+        BottomNavItem.Passwords -> isAddingPasswordInline || inlinePasswordEditorId != null
+        BottomNavItem.Authenticator -> isAddingTotpInline || selectedTotpId != null
+        BottomNavItem.CardWallet -> {
+            (cardWalletSubTab == CardWalletTab.BANK_CARDS &&
+                (isAddingBankCardInline || inlineBankCardEditorId != null || selectedBankCardId != null)) ||
+                (cardWalletSubTab == CardWalletTab.DOCUMENTS &&
+                    (isAddingDocumentInline || inlineDocumentEditorId != null || selectedDocumentId != null))
+        }
+        BottomNavItem.Notes -> isAddingNoteInline || inlineNoteEditorId != null
+        BottomNavItem.Send -> isAddingSendInline
+        else -> false
+    }
+
     val showFab = (
         currentTab == BottomNavItem.Passwords ||
             currentTab == BottomNavItem.Authenticator ||
@@ -1101,21 +2280,41 @@ fun SimpleMainScreen(
             currentTab == BottomNavItem.Generator ||
             currentTab == BottomNavItem.Notes ||
             currentTab == BottomNavItem.Send
-        ) && !isAnySelectionMode
+        ) && !isAnySelectionMode && !hasWideDetailSelection
+
+    val fabOverlayModifier = if (isCompactWidth) {
+        Modifier.fillMaxSize().zIndex(5f)
+    } else {
+        Modifier
+            .fillMaxHeight()
+            .width(wideFabHostWidth)
+            .align(Alignment.TopStart)
+            .zIndex(5f)
+    }
     
     AnimatedVisibility(
         visible = showFab && isFabVisible,
         enter = slideInHorizontally(initialOffsetX = { it * 2 }) + fadeIn(),
         exit = slideOutHorizontally(targetOffsetX = { it * 2 }) + fadeOut(),
-        modifier = Modifier.fillMaxSize().zIndex(5f) // 确保 FAB 在最上层且能全屏展开
+        modifier = fabOverlayModifier
     ) {
         SwipeableAddFab(
             // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
             // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
-            fabBottomOffset = 116.dp,
+            fabBottomOffset = if (isCompactWidth) 116.dp else 24.dp,
             modifier = Modifier,
             onFabClickOverride = when (currentTab) {
-                BottomNavItem.Send -> ({ sendCreateRequestKey++ })
+                BottomNavItem.Passwords -> if (isCompactWidth) null else ({ handlePasswordAddOpen() })
+                BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ handleTotpAddOpen() })
+                BottomNavItem.CardWallet -> if (isCompactWidth) null else ({
+                    if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
+                        handleBankCardAddOpen()
+                    } else {
+                        handleDocumentAddOpen()
+                    }
+                })
+                BottomNavItem.Notes -> if (isCompactWidth) null else ({ handleNoteOpen(null) })
+                BottomNavItem.Send -> if (isCompactWidth) null else ({ handleSendAddOpen() })
                 BottomNavItem.Generator -> ({ generatorRefreshRequestKey++ })
                 else -> null
             },
@@ -1148,7 +2347,6 @@ fun SimpleMainScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surface)
-                    .statusBarsPadding() // FIX: 防止内容被状态栏遮挡
             ) {
                when (currentTab) {
                     BottomNavItem.Passwords -> {
@@ -1212,7 +2410,23 @@ fun SimpleMainScreen(
                         )
                     }
                     BottomNavItem.Send -> {
-                        // Send 使用全局 FAB 点击回调触发 BottomSheet，不走展开页面。
+                        AddEditSendScreen(
+                            sendState = sendState,
+                            onNavigateBack = collapse,
+                            onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                bitwardenViewModel.createTextSend(
+                                    title = title,
+                                    text = text,
+                                    notes = notes,
+                                    password = password,
+                                    maxAccessCount = maxAccessCount,
+                                    hideEmail = hideEmail,
+                                    hiddenText = hiddenText,
+                                    expireInDays = expireInDays
+                                )
+                                collapse()
+                            }
+                        )
                     }
                     BottomNavItem.Generator -> {
                         // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
@@ -1224,6 +2438,29 @@ fun SimpleMainScreen(
     )
     } // End if (showFab)
     } // End Outer Box
+
+    if (pendingPasskeyDelete != null) {
+        val passkey = pendingPasskeyDelete!!
+        AlertDialog(
+            onDismissRequest = { pendingPasskeyDelete = null },
+            title = { Text("删除通行秘钥") },
+            text = {
+                Text(
+                    "确定删除「${passkey.rpName.ifBlank { passkey.rpId }}」的通行秘钥吗？删除后该设备上的凭据将不可恢复。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = confirmPasskeyDelete) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPasskeyDelete = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 
     if (showAddCategoryDialog) {
         AlertDialog(
@@ -1306,8 +2543,6 @@ private fun PasswordListContent(
     onRenameCategory: (Category) -> Unit,
     onDeleteCategory: (Category) -> Unit,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
-    onNavigateToAddPassword: (Long?) -> Unit,
-    onNavigateToPasswordDetail: (Long) -> Unit,
     onSelectionModeChange: (
         isSelectionMode: Boolean,
         selectedCount: Int,
@@ -2434,7 +3669,7 @@ private fun PasswordListContent(
                                 }
                             } else {
                                 // 普通模式：显示详情页面
-                                onNavigateToPasswordDetail(password.id)
+                                onPasswordClick(password)
                             }
                         },
                         onSwipeLeft = { password ->
@@ -2547,7 +3782,7 @@ private fun PasswordListContent(
                         },
                         onOpenMultiPasswordDialog = { passwords ->
                             // 导航到详情页面 (现在详情页面支持多密码)
-                            onNavigateToPasswordDetail(passwords.first().id)
+                            onPasswordClick(passwords.first())
                         },
                         onLongClick = { password ->
                             // 长按进入多选模式
@@ -5616,55 +6851,18 @@ sealed class BottomNavItem(
 ) {
     val key: String = contentTab?.name ?: SETTINGS_TAB_KEY
 
-    // object Vault : BottomNavItem(BottomNavContentTab.VAULT, Icons.Default.Shield)  // V2 密码库 - Removed
     object Passwords : BottomNavItem(BottomNavContentTab.PASSWORDS, Icons.Default.Lock)
     object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
     object CardWallet : BottomNavItem(BottomNavContentTab.CARD_WALLET, Icons.Default.Wallet)
     object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)
     object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
-    object Send : BottomNavItem(BottomNavContentTab.SEND, Icons.Default.Send)  // V2 发送
+    object Send : BottomNavItem(BottomNavContentTab.SEND, Icons.Default.Send)
     object Timeline : BottomNavItem(BottomNavContentTab.TIMELINE, Icons.Default.AccountTree)
     object Passkey : BottomNavItem(BottomNavContentTab.PASSKEY, Icons.Default.Key)
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
 
-/**
- * V2 底部导航项（多源密码库模式）
- * 采用 Bitwarden 风格的导航结构
- */
-sealed class V2BottomNavItem(
-    val v2Tab: takagi.ru.monica.data.V2BottomNavTab?,
-    val icon: ImageVector
-) {
-    val key: String = v2Tab?.name ?: V2_SETTINGS_TAB_KEY
-    
-    // object Vault : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.VAULT, Icons.Default.Shield) - Removed
-    object Send : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SEND, Icons.Default.Send)
-    object Sync : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.SYNC, Icons.Default.Sync)
-    object Generator : V2BottomNavItem(takagi.ru.monica.data.V2BottomNavTab.GENERATOR, Icons.Default.AutoAwesome)
-    object Settings : V2BottomNavItem(null, Icons.Default.Settings)
-}
-
-private const val V2_SETTINGS_TAB_KEY = "V2_SETTINGS"
-
-private fun V2BottomNavItem.fullLabelRes(): Int = when (this) {
-    // V2BottomNavItem.Vault -> R.string.nav_v2_vault
-    V2BottomNavItem.Send -> R.string.nav_v2_send
-    V2BottomNavItem.Sync -> R.string.nav_v2_sync
-    V2BottomNavItem.Generator -> R.string.nav_generator
-    V2BottomNavItem.Settings -> R.string.nav_settings
-}
-
-private fun V2BottomNavItem.shortLabelRes(): Int = when (this) {
-    // V2BottomNavItem.Vault -> R.string.nav_v2_vault_short
-    V2BottomNavItem.Send -> R.string.nav_v2_send_short
-    V2BottomNavItem.Sync -> R.string.nav_v2_sync_short
-    V2BottomNavItem.Generator -> R.string.nav_generator_short
-    V2BottomNavItem.Settings -> R.string.nav_settings_short
-}
-
 private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
-    // BottomNavContentTab.VAULT -> BottomNavItem.Vault
     BottomNavContentTab.PASSWORDS -> BottomNavItem.Passwords
     BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
     BottomNavContentTab.CARD_WALLET -> BottomNavItem.CardWallet
@@ -5676,7 +6874,6 @@ private fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
 }
 
 private fun BottomNavItem.fullLabelRes(): Int = when (this) {
-    // BottomNavItem.Vault -> R.string.nav_v2_vault
     BottomNavItem.Passwords -> R.string.nav_passwords
     BottomNavItem.Authenticator -> R.string.nav_authenticator
     BottomNavItem.CardWallet -> R.string.nav_card_wallet
@@ -5689,7 +6886,6 @@ private fun BottomNavItem.fullLabelRes(): Int = when (this) {
 }
 
 private fun BottomNavItem.shortLabelRes(): Int = when (this) {
-    // BottomNavItem.Vault -> R.string.nav_v2_vault_short
     BottomNavItem.Passwords -> R.string.nav_passwords_short
     BottomNavItem.Authenticator -> R.string.nav_authenticator_short
     BottomNavItem.CardWallet -> R.string.nav_card_wallet_short
@@ -5894,352 +7090,258 @@ private fun getGroupKeyForMode(entry: takagi.ru.monica.data.PasswordEntry, mode:
 private fun getPasswordGroupTitle(entry: takagi.ru.monica.data.PasswordEntry): String =
     getGroupKeyForMode(entry, "smart")
 
-/**
- * V2 导航栏 Scaffold
- * 底栏5个位置：库、[动态内容]、发送、生成、设置
- * 第2项是动态的，显示上次访问的库内页面
- */
-@OptIn(ExperimentalMaterial3Api::class)
+private enum class StackCardMode {
+    AUTO,
+    ALWAYS_EXPANDED
+}
+
 @Composable
-private fun V2NavScaffold(
-    selectedPosition: V2NavPosition,
-    dynamicContent: RecentSubPage?,
-    onPositionSelected: (V2NavPosition) -> Unit,
-    onNavigateToDynamicContent: (RecentSubPage) -> Unit,
-    passwordViewModel: PasswordViewModel,
-    settingsViewModel: SettingsViewModel,
-    totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
-    bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
-    documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
-    generatorViewModel: GeneratorViewModel,
-    noteViewModel: NoteViewModel,
-    passkeyViewModel: PasskeyViewModel,
-    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
-    securityManager: SecurityManager,
-    onNavigateToAddPassword: (Long?) -> Unit,
-    onNavigateToAddTotp: (Long?) -> Unit,
-    onNavigateToQuickTotpScan: () -> Unit,
-    onNavigateToAddBankCard: (Long?) -> Unit,
-    onNavigateToAddDocument: (Long?) -> Unit,
-    onNavigateToAddNote: (Long?) -> Unit,
-    onNavigateToPasswordDetail: (Long) -> Unit,
-    onNavigateToBankCardDetail: (Long) -> Unit,
-    onNavigateToDocumentDetail: (Long) -> Unit,
-    onNavigateToChangePassword: () -> Unit,
-    onNavigateToSecurityQuestion: () -> Unit,
-    onNavigateToSyncBackup: () -> Unit,
-    onNavigateToAutofill: () -> Unit,
-    onNavigateToPasskeySettings: () -> Unit,
-    onNavigateToBottomNavSettings: () -> Unit,
-    onNavigateToColorScheme: () -> Unit,
-    onSecurityAnalysis: () -> Unit,
-    onNavigateToDeveloperSettings: () -> Unit,
-    onNavigateToPermissionManagement: () -> Unit,
-    onNavigateToMonicaPlus: () -> Unit,
-    onNavigateToExtensions: () -> Unit,
-    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit
+private fun AdaptiveMainScaffold(
+    isCompactWidth: Boolean,
+    tabs: List<BottomNavItem>,
+    currentTab: BottomNavItem,
+    onTabSelected: (BottomNavItem) -> Unit,
+    content: @Composable (PaddingValues) -> Unit
 ) {
-    // ========== 选择模式状态（与V1完全一致）==========
-    var isPasswordSelectionMode by remember { mutableStateOf(false) }
-    var selectedPasswordCount by remember { mutableIntStateOf(0) }
-    var onExitPasswordSelection by remember { mutableStateOf({}) }
-    var onSelectAllPasswords by remember { mutableStateOf({}) }
-    var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
-    var onMoveToCategoryPasswords by remember { mutableStateOf({}) }
-    var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
-    
-    var isTotpSelectionMode by remember { mutableStateOf(false) }
-    var selectedTotpCount by remember { mutableIntStateOf(0) }
-    var onExitTotpSelection by remember { mutableStateOf({}) }
-    var onSelectAllTotp by remember { mutableStateOf({}) }
-    var onDeleteSelectedTotp by remember { mutableStateOf({}) }
-    
-    var isBankCardSelectionMode by remember { mutableStateOf(false) }
-    var selectedBankCardCount by remember { mutableIntStateOf(0) }
-    var onExitBankCardSelection by remember { mutableStateOf({}) }
-    var onSelectAllBankCards by remember { mutableStateOf({}) }
-    var onDeleteSelectedBankCards by remember { mutableStateOf({}) }
-    var onFavoriteBankCards by remember { mutableStateOf({}) }
-    
-    var isDocumentSelectionMode by remember { mutableStateOf(false) }
-    var selectedDocumentCount by remember { mutableIntStateOf(0) }
-    var onExitDocumentSelection by remember { mutableStateOf({}) }
-    var onSelectAllDocuments by remember { mutableStateOf({}) }
-    var onDeleteSelectedDocuments by remember { mutableStateOf({}) }
-    
-    var cardWalletSubTab by remember { mutableStateOf(CardWalletTab.BANK_CARDS) }
-    var sendCreateRequestKey by remember { mutableIntStateOf(0) }
-    var generatorRefreshRequestKey by remember { mutableIntStateOf(0) }
-    
-    val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || 
-        isBankCardSelectionMode || isDocumentSelectionMode
-    
-    // FAB：动态页和发送页都由统一来源控制
-    val showFab = (
-        (selectedPosition == V2NavPosition.DYNAMIC && dynamicContent != null) ||
-            selectedPosition == V2NavPosition.SEND ||
-            selectedPosition == V2NavPosition.GENERATOR
-        ) && !isAnySelectionMode
-    
     Scaffold(
         bottomBar = {
-            V2NavigationBar(
-                selectedPosition = selectedPosition,
-                dynamicContent = dynamicContent,
-                onPositionSelected = onPositionSelected
-            )
+            if (isCompactWidth) {
+                NavigationBar(
+                    tonalElevation = 0.dp,
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    tabs.forEach { item ->
+                        val label = stringResource(item.shortLabelRes())
+                        NavigationBarItem(
+                            selected = item.key == currentTab.key,
+                            onClick = { onTabSelected(item) },
+                            icon = { Icon(item.icon, contentDescription = label) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
         },
-        floatingActionButton = {
-            if (showFab) {
-                if (selectedPosition == V2NavPosition.SEND) {
-                    FloatingActionButton(onClick = { sendCreateRequestKey++ }) {
-                        Icon(Icons.Default.Add, contentDescription = "创建 Send")
-                    }
-                } else if (selectedPosition == V2NavPosition.GENERATOR) {
-                    FloatingActionButton(onClick = { generatorRefreshRequestKey++ }) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.regenerate))
-                    }
-                } else if (dynamicContent != null) {
-                    when (dynamicContent) {
-                        RecentSubPage.PASSWORDS -> {
-                            FloatingActionButton(onClick = { onNavigateToAddPassword(null) }) {
-                                Icon(Icons.Default.Add, contentDescription = "添加密码")
-                            }
-                        }
-                        RecentSubPage.AUTHENTICATOR -> {
-                            FloatingActionButton(onClick = onNavigateToQuickTotpScan) {
-                                Icon(Icons.Default.Add, contentDescription = "添加验证器")
-                            }
-                        }
-                        RecentSubPage.CARD_WALLET -> {
-                            if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-                                FloatingActionButton(onClick = { onNavigateToAddBankCard(null) }) {
-                                    Icon(Icons.Default.Add, contentDescription = "添加卡片")
-                                }
-                            } else {
-                                FloatingActionButton(onClick = { onNavigateToAddDocument(null) }) {
-                                    Icon(Icons.Default.Add, contentDescription = "添加证件")
-                                }
-                            }
-                        }
-                        RecentSubPage.NOTES -> {
-                            FloatingActionButton(onClick = { onNavigateToAddNote(null) }) {
-                                Icon(Icons.Default.Add, contentDescription = "添加笔记")
-                            }
-                        }
-                        else -> {}
-                    }
-                }
-            }
-        }
+        floatingActionButton = {}
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // 根据位置显示内容
-            // 根据位置显示内容
-            when (selectedPosition) {
-                V2NavPosition.DYNAMIC -> {
-                    // 位置1：动态内容 - 使用 Crossfade 平滑切换，避免 key() 导致的崩溃
-                    if (dynamicContent != null) {
-                        androidx.compose.animation.Crossfade(
-                            targetState = dynamicContent,
-                            animationSpec = tween(200),
-                            label = "DynamicContentCrossfade"
-                        ) { currentContent ->
-                            when (currentContent) {
-                                RecentSubPage.PASSWORDS -> {
-                                    PasswordListContent(
-                                        viewModel = passwordViewModel,
-                                        settingsViewModel = settingsViewModel,
-                                        securityManager = securityManager,
-                                        keepassDatabases = emptyList(),
-                                        bitwardenVaults = emptyList(),
-                                        localKeePassViewModel = localKeePassViewModel,
-                                        groupMode = "none",
-                                        stackCardMode = StackCardMode.AUTO,
-                                        onCreateCategory = {},
-                                        onRenameCategory = {},
-                                        onDeleteCategory = {},
-                                        onPasswordClick = { password -> onNavigateToAddPassword(password.id) },
-                                        onNavigateToAddPassword = onNavigateToAddPassword,
-                                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
-                                            isPasswordSelectionMode = isSelectionMode
-                                            selectedPasswordCount = count
-                                            onExitPasswordSelection = onExit
-                                            onSelectAllPasswords = onSelectAll
-                                            onFavoriteSelectedPasswords = onFavorite
-                                            onMoveToCategoryPasswords = onMoveToCategory
-                                            onDeleteSelectedPasswords = onDelete
-                                        }
-                                    )
-                                }
-                                RecentSubPage.AUTHENTICATOR -> {
-                                    TotpListContent(
-                                        viewModel = totpViewModel,
-                                        passwordViewModel = passwordViewModel,
-                                        onTotpClick = { totpId -> onNavigateToAddTotp(totpId) },
-                                        onDeleteTotp = { totp -> totpViewModel.deleteTotpItem(totp) },
-                                        onQuickScanTotp = onNavigateToQuickTotpScan,
-                                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
-                                            isTotpSelectionMode = isSelectionMode
-                                            selectedTotpCount = count
-                                            onExitTotpSelection = onExit
-                                            onSelectAllTotp = onSelectAll
-                                            onDeleteSelectedTotp = onDelete
-                                        }
-                                    )
-                                }
-                                RecentSubPage.CARD_WALLET -> {
-                                    CardWalletScreen(
-                                        bankCardViewModel = bankCardViewModel,
-                                        documentViewModel = documentViewModel,
-                                        onCardClick = onNavigateToBankCardDetail,
-                                        onDocumentClick = onNavigateToDocumentDetail,
-                                        currentTab = cardWalletSubTab,
-                                        onTabSelected = { cardWalletSubTab = it },
-                                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
-                                            isDocumentSelectionMode = isSelectionMode
-                                            selectedDocumentCount = count
-                                            onExitDocumentSelection = onExit
-                                            onSelectAllDocuments = onSelectAll
-                                            onDeleteSelectedDocuments = onDelete
-                                        },
-                                        onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onDelete ->
-                                            isBankCardSelectionMode = isSelectionMode
-                                            selectedBankCardCount = count
-                                            onExitBankCardSelection = onExit
-                                            onSelectAllBankCards = onSelectAll
-                                            onFavoriteBankCards = onFavorite
-                                            onDeleteSelectedBankCards = onDelete
-                                        }
-                                    )
-                                }
-                                RecentSubPage.NOTES -> {
-                                    NoteListScreen(
-                                        viewModel = noteViewModel,
-                                        settingsViewModel = settingsViewModel,
-                                        onNavigateToAddNote = onNavigateToAddNote,
-                                        securityManager = securityManager,
-                                        onSelectionModeChange = {}
-                                    )
-                                }
-                                RecentSubPage.PASSKEY -> {
-                                    PasskeyListScreen(
-                                        viewModel = passkeyViewModel,
-                                        passwordViewModel = passwordViewModel,
-                                        onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                        onPasskeyClick = {}
-                                    )
-                                }
-                                RecentSubPage.TIMELINE -> {
-                                    TimelineScreen()
-                                }
-                            }
+        if (isCompactWidth) {
+            content(paddingValues)
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                NavigationRail(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        tabs.forEach { item ->
+                            val label = stringResource(item.shortLabelRes())
+                            NavigationRailItem(
+                                selected = item.key == currentTab.key,
+                                onClick = { onTabSelected(item) },
+                                icon = { Icon(item.icon, contentDescription = label) },
+                                label = { Text(label) },
+                                alwaysShowLabel = true
+                            )
                         }
-                    } else {
-                        // 如果没有动态内容，默认显示密码列表
-                        onNavigateToDynamicContent(RecentSubPage.PASSWORDS)
                     }
                 }
-                V2NavPosition.SEND -> {
-                    SendScreen(
-                        createRequestKey = sendCreateRequestKey,
-                        onCreateRequestConsumed = { sendCreateRequestKey = 0 }
-                    )
-                }
-                V2NavPosition.GENERATOR -> {
-                    GeneratorScreen(
-                        onNavigateBack = {},
-                        viewModel = generatorViewModel,
-                        passwordViewModel = passwordViewModel,
-                        externalRefreshRequestKey = generatorRefreshRequestKey,
-                        onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
-                        useExternalRefreshFab = true
-                    )
-                }
-                V2NavPosition.SETTINGS -> {
-                    SettingsScreen(
-                        viewModel = settingsViewModel,
-                        onNavigateBack = {},
-                        onResetPassword = onNavigateToChangePassword,
-                        onSecurityQuestions = onNavigateToSecurityQuestion,
-                        onNavigateToSyncBackup = onNavigateToSyncBackup,
-                        onNavigateToAutofill = onNavigateToAutofill,
-                        onNavigateToPasskeySettings = onNavigateToPasskeySettings,
-                        onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
-                        onNavigateToColorScheme = onNavigateToColorScheme,
-                        onSecurityAnalysis = onSecurityAnalysis,
-                        onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
-                        onNavigateToPermissionManagement = onNavigateToPermissionManagement,
-                        onNavigateToMonicaPlus = onNavigateToMonicaPlus,
-                        onNavigateToExtensions = onNavigateToExtensions,
-                        onClearAllData = onClearAllData,
-                        showTopBar = false
-                    )
-                }
-            }
-            
-            // ========== 多选工具栏 ==========
-            if (selectedPosition == V2NavPosition.DYNAMIC && dynamicContent != null) {
-                when {
-                    dynamicContent == RecentSubPage.PASSWORDS && isPasswordSelectionMode -> {
-                        SelectionActionBar(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 16.dp, bottom = 20.dp),
-                            selectedCount = selectedPasswordCount,
-                            onExit = onExitPasswordSelection,
-                            onSelectAll = onSelectAllPasswords,
-                            onFavorite = onFavoriteSelectedPasswords,
-                            onMoveToCategory = onMoveToCategoryPasswords,
-                            onDelete = onDeleteSelectedPasswords
-                        )
-                    }
-                    dynamicContent == RecentSubPage.AUTHENTICATOR && isTotpSelectionMode -> {
-                        SelectionActionBar(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 16.dp, bottom = 20.dp),
-                            selectedCount = selectedTotpCount,
-                            onExit = onExitTotpSelection,
-                            onSelectAll = onSelectAllTotp,
-                            onDelete = onDeleteSelectedTotp
-                        )
-                    }
-                    dynamicContent == RecentSubPage.CARD_WALLET && cardWalletSubTab == CardWalletTab.BANK_CARDS && isBankCardSelectionMode -> {
-                        SelectionActionBar(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 16.dp, bottom = 20.dp),
-                            selectedCount = selectedBankCardCount,
-                            onExit = onExitBankCardSelection,
-                            onSelectAll = onSelectAllBankCards,
-                            onFavorite = onFavoriteBankCards,
-                            onDelete = onDeleteSelectedBankCards
-                        )
-                    }
-                    dynamicContent == RecentSubPage.CARD_WALLET && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
-                        SelectionActionBar(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 16.dp, bottom = 20.dp),
-                            selectedCount = selectedDocumentCount,
-                            onExit = onExitDocumentSelection,
-                            onSelectAll = onSelectAllDocuments,
-                            onDelete = onDeleteSelectedDocuments
-                        )
-                    }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    content(PaddingValues())
                 }
             }
         }
     }
 }
 
-private enum class StackCardMode {
-    AUTO,
-    ALWAYS_EXPANDED
+private val adaptivePreviewTabs = listOf(
+    BottomNavItem.Passwords,
+    BottomNavItem.Authenticator,
+    BottomNavItem.CardWallet,
+    BottomNavItem.Generator,
+    BottomNavItem.Notes,
+    BottomNavItem.Send,
+    BottomNavItem.Timeline,
+    BottomNavItem.Passkey,
+    BottomNavItem.Settings
+)
+
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true, name = "Adaptive Phone")
+@Composable
+private fun AdaptiveMainScaffoldPhonePreview() {
+    MonicaTheme {
+        AdaptiveMainScaffold(
+            isCompactWidth = true,
+            tabs = adaptivePreviewTabs,
+            currentTab = BottomNavItem.Passwords,
+            onTabSelected = {}
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Phone Content")
+            }
+        }
+    }
+}
+
+@Preview(
+    device = "spec:width=1280dp,height=800dp,dpi=240",
+    showBackground = true,
+    name = "Adaptive Tablet"
+)
+@Composable
+private fun AdaptiveMainScaffoldTabletPreview() {
+    MonicaTheme {
+        AdaptiveMainScaffold(
+            isCompactWidth = false,
+            tabs = adaptivePreviewTabs,
+            currentTab = BottomNavItem.Passwords,
+            onTabSelected = {}
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Tablet Content")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListPanePreviewContent(modifier: Modifier = Modifier) {
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchExpanded by remember { mutableStateOf(false) }
+
+    ListPane(modifier = modifier) {
+        ExpressiveTopBar(
+            title = "Passwords",
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
+            isSearchExpanded = isSearchExpanded,
+            onSearchExpandedChange = { isSearchExpanded = it },
+            searchHint = "Search..."
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(12) { index ->
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Text(
+                        text = "Sample Item ${index + 1}",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true, name = "Stage2 ListPane Phone")
+@Composable
+private fun Stage2ListPanePhonePreview() {
+    MonicaTheme {
+        ListPanePreviewContent(modifier = Modifier.fillMaxSize())
+    }
+}
+
+@Preview(
+    device = "spec:width=1280dp,height=800dp,dpi=240",
+    showBackground = true,
+    name = "Stage2 TwoPane Tablet"
+)
+@Composable
+private fun Stage2TwoPaneTabletPreview() {
+    MonicaTheme {
+        Row(modifier = Modifier.fillMaxSize()) {
+            ListPanePreviewContent(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(400.dp)
+            )
+
+            DetailPane(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+            )
+        }
+    }
+}
+
+@Composable
+private fun Stage3TwoPanePreviewContent(selectedPasswordId: Long?) {
+    Row(modifier = Modifier.fillMaxSize()) {
+        ListPanePreviewContent(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(400.dp)
+        )
+
+        DetailPane(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = selectedPasswordId?.let { "Selected ID: $it" } ?: "Select an item to view details",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Preview(
+    device = "spec:width=1280dp,height=800dp,dpi=240",
+    showBackground = true,
+    name = "Stage3 TwoPane Empty Detail"
+)
+@Composable
+private fun Stage3TwoPaneEmptyDetailPreview() {
+    MonicaTheme {
+        Stage3TwoPanePreviewContent(selectedPasswordId = null)
+    }
+}
+
+@Preview(
+    device = "spec:width=1280dp,height=800dp,dpi=240",
+    showBackground = true,
+    name = "Stage3 TwoPane Selected Detail"
+)
+@Composable
+private fun Stage3TwoPaneSelectedDetailPreview() {
+    MonicaTheme {
+        Stage3TwoPanePreviewContent(selectedPasswordId = 42L)
+    }
 }

@@ -285,19 +285,6 @@ fun SettingsScreen(
                 }
             }
             
-            // Display & Grouping
-            SettingsSection(
-                title = context.getString(R.string.display_options_menu_title)
-            ) {
-                 SettingsItemWithSwitch(
-                    icon = Icons.Default.CallMerge,
-                    title = context.getString(R.string.smart_deduplication),
-                    subtitle = context.getString(R.string.smart_deduplication_desc),
-                    checked = settings.smartDeduplicationEnabled,
-                    onCheckedChange = { viewModel.updateSmartDeduplicationEnabled(it) }
-                )
-            }
-
             // Security Settings
             SettingsSection(
                 title = context.getString(R.string.security)
@@ -461,16 +448,14 @@ fun SettingsScreen(
                     onClick = { showLanguageDialog = true }
                 )
                 
-                // 2. 底部导航栏设置（仅V1模式可用）
-                if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) {
-                    SettingsItem(
-                        icon = Icons.Default.ViewWeek,
-                        title = context.getString(R.string.bottom_nav_settings),
-                        subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
-                        onClick = onNavigateToBottomNavSettings,
-                        modifier = getSharedModifier("bottom_nav_settings_card")
-                    )
-                }
+                // 2. 底部导航栏设置
+                SettingsItem(
+                    icon = Icons.Default.ViewWeek,
+                    title = context.getString(R.string.bottom_nav_settings),
+                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
+                    onClick = onNavigateToBottomNavSettings,
+                    modifier = getSharedModifier("bottom_nav_settings_card")
+                )
                 
                 // 3. 功能扩展入口
                 SettingsItem(
@@ -1589,7 +1574,6 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
-    // BottomNavContentTab.VAULT -> Icons.Default.Dataset
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
 }
 
@@ -1601,7 +1585,6 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.TIMELINE -> R.string.nav_timeline
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
-    // BottomNavContentTab.VAULT -> R.string.nav_v2_vault
     BottomNavContentTab.SEND -> R.string.nav_v2_send
 }
 

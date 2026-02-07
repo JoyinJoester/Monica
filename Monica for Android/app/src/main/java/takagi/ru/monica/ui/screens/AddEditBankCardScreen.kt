@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -110,6 +111,54 @@ fun AddEditBankCardScreen(
         }
     }
     
+    val canSave = cardNumber.isNotBlank() && !isSaving
+    val save: () -> Unit = saveAction@{
+        if (isSaving || cardNumber.isBlank()) return@saveAction
+        isSaving = true // 防止重复点击
+
+        val billingAddressJson = if (hasBillingAddress && !billingAddress.isEmpty()) {
+            Json.encodeToString(billingAddress)
+        } else {
+            ""
+        }
+        val cardData = BankCardData(
+            cardNumber = cardNumber,
+            cardholderName = cardholderName,
+            expiryMonth = expiryMonth,
+            expiryYear = expiryYear,
+            cvv = cvv,
+            bankName = bankName,
+            cardType = cardType,
+            billingAddress = billingAddressJson
+        )
+
+        val imagePathsList = listOf(
+            frontImageFileName ?: "",
+            backImageFileName ?: ""
+        )
+        val imagePathsJson = Json.encodeToString(imagePathsList)
+
+        if (cardId == null) {
+            viewModel.addCard(
+                title = title.ifBlank { "银行卡" },
+                cardData = cardData,
+                notes = notes,
+                isFavorite = isFavorite,
+                imagePaths = imagePathsJson
+            )
+        } else {
+            viewModel.updateCard(
+                id = cardId,
+                title = title.ifBlank { "银行卡" },
+                cardData = cardData,
+                notes = notes,
+                isFavorite = isFavorite,
+                imagePaths = imagePathsJson
+            )
+        }
+        onNavigateBack()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -120,7 +169,6 @@ fun AddEditBankCardScreen(
                     }
                 },
                 actions = {
-                    // 收藏按钮
                     IconButton(onClick = { isFavorite = !isFavorite }) {
                         Icon(
                             if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -128,61 +176,37 @@ fun AddEditBankCardScreen(
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
                         )
                     }
-                    
-                    // 保存按钮
-                    IconButton(
-                        onClick = {
-                            if (isSaving) return@IconButton
-                            isSaving = true // 防止重复点击
-                            
-                            val billingAddressJson = if (hasBillingAddress && !billingAddress.isEmpty()) {
-                                Json.encodeToString(billingAddress)
-                            } else {
-                                ""
-                            }
-                            val cardData = BankCardData(
-                                cardNumber = cardNumber,
-                                cardholderName = cardholderName,
-                                expiryMonth = expiryMonth,
-                                expiryYear = expiryYear,
-                                cvv = cvv,
-                                bankName = bankName,
-                                cardType = cardType,
-                                billingAddress = billingAddressJson
-                            )
-                            
-                            val imagePathsList = listOf(
-                                frontImageFileName ?: "",
-                                backImageFileName ?: ""
-                            )
-                            val imagePathsJson = Json.encodeToString(imagePathsList)
-                            
-                            if (cardId == null) {
-                                viewModel.addCard(
-                                    title = title.ifBlank { "银行卡" },
-                                    cardData = cardData,
-                                    notes = notes,
-                                    isFavorite = isFavorite,
-                                    imagePaths = imagePathsJson
-                                )
-                            } else {
-                                viewModel.updateCard(
-                                    id = cardId,
-                                    title = title.ifBlank { "银行卡" },
-                                    cardData = cardData,
-                                    notes = notes,
-                                    isFavorite = isFavorite,
-                                    imagePaths = imagePathsJson
-                                )
-                            }
-                            onNavigateBack()
-                        },
-                        enabled = cardNumber.isNotBlank() && !isSaving
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = "保存")
-                    }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = save,
+                containerColor = if (canSave) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
+                }
+            }
         }
     ) { paddingValues ->
         Column(

@@ -43,6 +43,8 @@ fun ExtensionsScreen(
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
     iconCardsEnabled: Boolean = false,
     onIconCardsEnabledChange: (Boolean) -> Unit = {},
+    smartDeduplicationEnabled: Boolean = false,
+    onSmartDeduplicationEnabledChange: (Boolean) -> Unit = {},
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
     onPasswordCardDisplayModeChange: (takagi.ru.monica.data.PasswordCardDisplayMode) -> Unit = {},
     validatorUnifiedProgressBar: takagi.ru.monica.data.UnifiedProgressBarMode = takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED,
@@ -250,7 +252,18 @@ fun ExtensionsScreen(
                     )
                 }
             }
-            
+
+            Spacer(modifier = Modifier.height(8.dp))
+            ExtensionSection(title = stringResource(R.string.display_options_menu_title)) {
+                ExtensionSwitchItem(
+                    icon = Icons.Default.CallMerge,
+                    title = stringResource(R.string.smart_deduplication),
+                    description = stringResource(R.string.smart_deduplication_desc),
+                    checked = smartDeduplicationEnabled,
+                    onCheckedChange = onSmartDeduplicationEnabledChange
+                )
+            }
+             
             // 验证器设置（需要 Plus）
             if (isPlusActivated) {
                 Spacer(modifier = Modifier.height(8.dp))

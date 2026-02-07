@@ -57,12 +57,16 @@ class NoteViewModel(
         } else {
             content
         }
-        addNote(content = fullContent)
+        addNote(
+            content = fullContent,
+            title = title.takeIf { it.isNotBlank() }
+        )
     }
     
     // 添加笔记
     fun addNote(
         content: String,
+        title: String? = null,
         tags: List<String> = emptyList(),
         isFavorite: Boolean = false
     ) {
@@ -73,17 +77,21 @@ class NoteViewModel(
                 isMarkdown = false
             )
             
-            // 自动生成标题：取前20个字符，如果内容超过20个字符则添加省略号
-            val title = if (content.length > 20) {
-                content.take(20) + "..."
+            // 显式标题优先；为空时保持旧逻辑自动生成标题
+            val resolvedTitle = if (!title.isNullOrBlank()) {
+                title.trim()
             } else {
-                content.ifEmpty { "New Note" }
+                if (content.length > 20) {
+                    content.take(20) + "..."
+                } else {
+                    content.ifEmpty { "New Note" }
+                }
             }
             
             val item = SecureItem(
                 id = 0,
                 itemType = ItemType.NOTE,
-                title = title,
+                title = resolvedTitle,
                 notes = content, // 将内容同时也保存在 notes 字段以便搜索
                 itemData = Json.encodeToString(noteData),
                 isFavorite = isFavorite,
@@ -96,7 +104,7 @@ class NoteViewModel(
             OperationLogger.logCreate(
                 itemType = OperationLogItemType.NOTE,
                 itemId = newId,
-                itemTitle = title
+                itemTitle = resolvedTitle
             )
         }
     }
@@ -105,6 +113,7 @@ class NoteViewModel(
     fun updateNote(
         id: Long,
         content: String,
+        title: String? = null,
         tags: List<String> = emptyList(),
         isFavorite: Boolean,
         createdAt: Date
@@ -119,17 +128,21 @@ class NoteViewModel(
                 isMarkdown = false
             )
             
-            // 自动生成标题
-            val title = if (content.length > 20) {
-                content.take(20) + "..."
+            // 显式标题优先；为空时保持旧逻辑自动生成标题
+            val resolvedTitle = if (!title.isNullOrBlank()) {
+                title.trim()
             } else {
-                content.ifEmpty { "New Note" }
+                if (content.length > 20) {
+                    content.take(20) + "..."
+                } else {
+                    content.ifEmpty { "New Note" }
+                }
             }
             
             val item = SecureItem(
                 id = id,
                 itemType = ItemType.NOTE,
-                title = title,
+                title = resolvedTitle,
                 notes = content,
                 itemData = Json.encodeToString(noteData),
                 isFavorite = isFavorite,
@@ -145,15 +158,15 @@ class NoteViewModel(
                     changes.add(FieldChange("内容", oldItem.notes, content))
                 }
                 // 检测标题变化
-                if (oldItem.title != title) {
-                    changes.add(FieldChange("标题", oldItem.title, title))
+                if (oldItem.title != resolvedTitle) {
+                    changes.add(FieldChange("标题", oldItem.title, resolvedTitle))
                 }
             }
             // 即使没有变更也记录更新操作，以便追踪编辑行为
             OperationLogger.logUpdate(
                 itemType = OperationLogItemType.NOTE,
                 itemId = id,
-                itemTitle = title,
+                itemTitle = resolvedTitle,
                 changes = if (changes.isEmpty()) listOf(FieldChange("更新", "编辑于", java.text.SimpleDateFormat("HH:mm").format(Date()))) else changes
             )
         }

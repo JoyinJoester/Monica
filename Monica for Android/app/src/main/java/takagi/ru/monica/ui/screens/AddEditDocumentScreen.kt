@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -92,6 +93,64 @@ fun AddEditDocumentScreen(
         }
     }
     
+    val canSave = documentNumber.isNotBlank() && !isSaving
+    val save: () -> Unit = saveAction@{
+        if (isSaving || documentNumber.isBlank()) return@saveAction
+        isSaving = true // 防止重复点击
+
+        val documentData = DocumentData(
+            documentNumber = documentNumber,
+            fullName = fullName,
+            issuedDate = issuedDate,
+            expiryDate = expiryDate,
+            issuedBy = issuedBy,
+            nationality = nationality, // 保存国籍信息
+            documentType = documentType
+        )
+
+        val imagePathsList = listOf(
+            frontImageFileName ?: "",
+            backImageFileName ?: ""
+        )
+        val imagePathsJson = Json.encodeToString(imagePathsList)
+
+        if (documentId == null) {
+            viewModel.addDocument(
+                title = title.ifBlank {
+                    when (documentType) {
+                        DocumentType.ID_CARD -> context.getString(R.string.id_card)
+                        DocumentType.PASSPORT -> context.getString(R.string.passport)
+                        DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
+                        DocumentType.SOCIAL_SECURITY -> context.getString(R.string.social_security_card)
+                        DocumentType.OTHER -> context.getString(R.string.other_document)
+                    }
+                },
+                documentData = documentData,
+                notes = notes,
+                isFavorite = isFavorite,
+                imagePaths = imagePathsJson
+            )
+        } else {
+            viewModel.updateDocument(
+                id = documentId,
+                title = title.ifBlank {
+                    when (documentType) {
+                        DocumentType.ID_CARD -> context.getString(R.string.id_card)
+                        DocumentType.PASSPORT -> context.getString(R.string.passport)
+                        DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
+                        DocumentType.SOCIAL_SECURITY -> context.getString(R.string.social_security_card)
+                        DocumentType.OTHER -> context.getString(R.string.other_document)
+                    }
+                },
+                documentData = documentData,
+                notes = notes,
+                isFavorite = isFavorite,
+                imagePaths = imagePathsJson
+            )
+        }
+        onNavigateBack()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -102,7 +161,6 @@ fun AddEditDocumentScreen(
                     }
                 },
                 actions = {
-                    // 收藏按钮
                     IconButton(onClick = { isFavorite = !isFavorite }) {
                         Icon(
                             if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -110,71 +168,37 @@ fun AddEditDocumentScreen(
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
                         )
                     }
-                    
-                    // 保存按钮
-                    IconButton(
-                        onClick = {
-                            if (isSaving) return@IconButton
-                            isSaving = true // 防止重复点击
-                            
-                            val documentData = DocumentData(
-                                documentNumber = documentNumber,
-                                fullName = fullName,
-                                issuedDate = issuedDate,
-                                expiryDate = expiryDate,
-                                issuedBy = issuedBy,
-                                nationality = nationality, // 保存国籍信息
-                                documentType = documentType
-                            )
-                            
-                            val imagePathsList = listOf(
-                                frontImageFileName ?: "",
-                                backImageFileName ?: ""
-                            )
-                            val imagePathsJson = Json.encodeToString(imagePathsList)
-                            
-                            if (documentId == null) {
-                                viewModel.addDocument(
-                                    title = title.ifBlank { 
-                                        when (documentType) {
-                                            DocumentType.ID_CARD -> context.getString(R.string.id_card)
-                                            DocumentType.PASSPORT -> context.getString(R.string.passport)
-                                            DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
-                                            DocumentType.SOCIAL_SECURITY -> context.getString(R.string.social_security_card)
-                                            DocumentType.OTHER -> context.getString(R.string.other_document)
-                                        }
-                                    },
-                                    documentData = documentData,
-                                    notes = notes,
-                                    isFavorite = isFavorite,
-                                    imagePaths = imagePathsJson
-                                )
-                            } else {
-                                viewModel.updateDocument(
-                                    id = documentId,
-                                    title = title.ifBlank { 
-                                        when (documentType) {
-                                            DocumentType.ID_CARD -> context.getString(R.string.id_card)
-                                            DocumentType.PASSPORT -> context.getString(R.string.passport)
-                                            DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
-                                            DocumentType.SOCIAL_SECURITY -> context.getString(R.string.social_security_card)
-                                            DocumentType.OTHER -> context.getString(R.string.other_document)
-                                        }
-                                    },
-                                    documentData = documentData,
-                                    notes = notes,
-                                    isFavorite = isFavorite,
-                                    imagePaths = imagePathsJson
-                                )
-                            }
-                            onNavigateBack()
-                        },
-                        enabled = documentNumber.isNotBlank() && !isSaving
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = "保存")
-                    }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = save,
+                containerColor = if (canSave) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
+                }
+            }
         }
     ) { paddingValues ->
         Column(
