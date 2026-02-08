@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui.screens
 
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -40,7 +41,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
@@ -71,6 +74,7 @@ fun PasskeyListScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val database = remember(context) { PasswordDatabase.getDatabase(context) }
     
     // 收集状态
     val passkeys by viewModel.filteredPasskeys.collectAsState()
@@ -80,6 +84,8 @@ fun PasskeyListScreen(
 
     val passwords by (passwordViewModel?.allPasswords ?: flowOf(emptyList())).collectAsState(initial = emptyList())
     val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
+    val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
+    val categoryMap = remember(categories) { categories.associateBy { it.id } }
 
     val bindingPasskeys = remember(passwords, searchQuery) {
         val rawList = passwords.flatMap { password ->
@@ -107,6 +113,7 @@ fun PasskeyListScreen(
                     isBackedUp = true,
                     notes = "",
                     boundPasswordId = password.id,
+                    categoryId = password.categoryId,
                     bitwardenVaultId = null,
                     bitwardenCipherId = null,
                     syncStatus = "REFERENCE"
@@ -142,6 +149,7 @@ fun PasskeyListScreen(
     var isSearchExpanded by remember { mutableStateOf(false) }
 
     var passkeyToBind by remember { mutableStateOf<PasskeyEntry?>(null) }
+    var passkeyToMoveCategory by remember { mutableStateOf<PasskeyEntry?>(null) }
     
     // 下拉搜索相关
     var currentOffset by remember { mutableFloatStateOf(0f) }
@@ -372,9 +380,14 @@ fun PasskeyListScreen(
                     key = { it.credentialId }
                 ) { passkey ->
                     val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
+                    val categoryName = passkey.categoryId
+                        ?.let { categoryMap[it]?.name }
+                        ?: context.getString(R.string.category_none)
                     PasskeyListItem(
                         passkey = passkey,
                         boundPassword = boundPassword,
+                        currentCategoryName = categoryName,
+                        isCategoryLocked = passkey.syncStatus == "REFERENCE",
                         onClick = { onPasskeyClick(passkey) },
                         onDelete = {
                             if (boundPassword != null && passwordViewModel != null) {
@@ -398,6 +411,11 @@ fun PasskeyListScreen(
                             }
                         },
                         onOpenBoundPassword = { passwordId -> onNavigateToPasswordDetail(passwordId) },
+                        onChangeCategory = if (passkey.syncStatus == "REFERENCE") {
+                            null
+                        } else {
+                            { passkeyToMoveCategory = passkey }
+                        },
                         modifier = Modifier.animateItemPlacement()
                     )
                 }
@@ -438,9 +456,37 @@ fun PasskeyListScreen(
                 }
 
                 if (passkey.syncStatus != "REFERENCE") {
-                    viewModel.updateBoundPassword(passkey.credentialId, password.id)
+                    viewModel.updatePasskey(
+                        passkey.copy(
+                            boundPasswordId = password.id,
+                            categoryId = password.categoryId
+                        )
+                    )
                 }
                 passkeyToBind = null
+            }
+        )
+    }
+
+    if (passkeyToMoveCategory != null) {
+        PasskeyCategoryPickerDialog(
+            categories = categories,
+            selectedCategoryId = passkeyToMoveCategory?.categoryId,
+            onDismiss = { passkeyToMoveCategory = null },
+            onCategorySelected = { categoryId ->
+                val passkey = passkeyToMoveCategory ?: return@PasskeyCategoryPickerDialog
+                if (passkey.categoryId != categoryId) {
+                    viewModel.updatePasskey(passkey.copy(categoryId = categoryId))
+                    val categoryLabel = categoryId
+                        ?.let { id -> categoryMap[id]?.name }
+                        ?: context.getString(R.string.category_none)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.passkey_category_updated, categoryLabel),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                passkeyToMoveCategory = null
             }
         )
     }
@@ -536,6 +582,111 @@ private fun PasswordPickerDialog(
                             modifier = Modifier
                                 .clickable { onPasswordSelected(password) }
                                 .fillMaxWidth()
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PasskeyCategoryPickerDialog(
+    categories: List<Category>,
+    selectedCategoryId: Long?,
+    onDismiss: () -> Unit,
+    onCategorySelected: (Long?) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = stringResource(R.string.move_to_category),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text(stringResource(R.string.category_none)) },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOff,
+                                    contentDescription = null
+                                )
+                            },
+                            trailingContent = if (selectedCategoryId == null) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onCategorySelected(null) }
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+
+                    if (categories.isEmpty()) {
+                        item {
+                            Text(
+                                text = stringResource(R.string.passkey_category_empty),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp)
+                            )
+                        }
+                    }
+
+                    items(categories) { category ->
+                        ListItem(
+                            headlineContent = { Text(category.name) },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null
+                                )
+                            },
+                            trailingContent = if (selectedCategoryId == category.id) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onCategorySelected(category.id) }
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
@@ -685,16 +836,18 @@ private fun PasskeyGroupHeader(
 private fun PasskeyListItem(
     passkey: PasskeyEntry,
     boundPassword: PasswordEntry?,
+    currentCategoryName: String,
+    isCategoryLocked: Boolean = false,
     onClick: () -> Unit,
     onDelete: () -> Unit = {},
     onBindPassword: () -> Unit = {},
     onUnbindPassword: () -> Unit = {},
     onOpenBoundPassword: (Long) -> Unit = {},
+    onChangeCategory: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     
     // 删除确认对话框
     if (showDeleteDialog) {
@@ -868,6 +1021,33 @@ private fun PasskeyListItem(
                             value = passkey.useCount.toString(),
                             icon = Icons.Default.Numbers
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    DetailRow(
+                        label = stringResource(R.string.category),
+                        value = currentCategoryName,
+                        icon = Icons.Default.Folder
+                    )
+
+                    if (isCategoryLocked) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.passkey_category_follow_binding),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (onChangeCategory != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onChangeCategory,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.move_to_category))
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

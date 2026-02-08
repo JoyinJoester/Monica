@@ -36,6 +36,7 @@ sealed class CategoryFilter {
     object Uncategorized : CategoryFilter()
     data class Custom(val categoryId: Long) : CategoryFilter()
     data class KeePassDatabase(val databaseId: Long) : CategoryFilter()
+    data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : CategoryFilter()
     data class BitwardenVault(val vaultId: Long) : CategoryFilter()
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : CategoryFilter()
 }
@@ -135,6 +136,7 @@ class PasswordViewModel(
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
                     is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
+                    is CategoryFilter.KeePassGroupFilter -> repository.getPasswordEntriesByKeePassGroup(filter.databaseId, filter.groupPath)
                     is CategoryFilter.BitwardenVault -> repository.getPasswordEntriesByBitwardenVault(filter.vaultId)
                     is CategoryFilter.BitwardenFolderFilter -> repository.getPasswordEntriesByBitwardenFolder(filter.folderId)
                 }
@@ -148,6 +150,7 @@ class PasswordViewModel(
                     is CategoryFilter.BitwardenVault -> true
                     is CategoryFilter.BitwardenFolderFilter -> true // Explicit folder view
                     is CategoryFilter.KeePassDatabase -> true
+                    is CategoryFilter.KeePassGroupFilter -> true
                     is CategoryFilter.Local -> true // Local view shows all local entries
                     else -> false
                 }
@@ -295,6 +298,7 @@ class PasswordViewModel(
                     website = item.url,
                     notes = item.notes,
                     keepassDatabaseId = databaseId,
+                    keepassGroupPath = item.groupPath,
                     isDeleted = false,
                     deletedAt = null,
                     updatedAt = Date()
@@ -309,7 +313,8 @@ class PasswordViewModel(
                     notes = item.notes,
                     createdAt = Date(),
                     updatedAt = Date(),
-                    keepassDatabaseId = databaseId
+                    keepassDatabaseId = databaseId,
+                    keepassGroupPath = item.groupPath
                 )
                 repository.insertPasswordEntry(newEntry)
             }
@@ -322,8 +327,10 @@ class PasswordViewModel(
 
     fun setCategoryFilter(filter: CategoryFilter) {
         _categoryFilter.value = filter
-        if (filter is CategoryFilter.KeePassDatabase) {
-            syncKeePassDatabase(filter.databaseId)
+        when (filter) {
+            is CategoryFilter.KeePassDatabase -> syncKeePassDatabase(filter.databaseId)
+            is CategoryFilter.KeePassGroupFilter -> syncKeePassDatabase(filter.databaseId)
+            else -> Unit
         }
     }
 

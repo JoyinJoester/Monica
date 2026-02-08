@@ -61,7 +61,10 @@ class BankCardViewModel(
         cardData: BankCardData,
         notes: String = "",
         isFavorite: Boolean = false,
-        imagePaths: String = ""
+        imagePaths: String = "",
+        categoryId: Long? = null,
+        keepassDatabaseId: Long? = null,
+        bitwardenVaultId: Long? = null
     ) {
         viewModelScope.launch {
             val item = SecureItem(
@@ -71,6 +74,10 @@ class BankCardViewModel(
                 itemData = Json.encodeToString(cardData),
                 notes = notes,
                 isFavorite = isFavorite,
+                categoryId = categoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId,
+                syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                 createdAt = Date(),
                 updatedAt = Date(),
                 imagePaths = imagePaths
@@ -93,7 +100,10 @@ class BankCardViewModel(
         cardData: BankCardData,
         notes: String = "",
         isFavorite: Boolean = false,
-        imagePaths: String = ""
+        imagePaths: String = "",
+        categoryId: Long? = null,
+        keepassDatabaseId: Long? = null,
+        bitwardenVaultId: Long? = null
     ) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { existingItem ->
@@ -126,6 +136,15 @@ class BankCardViewModel(
                     itemData = Json.encodeToString(cardData),
                     notes = notes,
                     isFavorite = isFavorite,
+                    categoryId = categoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
+                    syncStatus = if (bitwardenVaultId != null) {
+                        if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
+                    } else {
+                        "NONE"
+                    },
                     updatedAt = Date(),
                     imagePaths = imagePaths
                 )

@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.api.BitwardenApiManager
+import takagi.ru.monica.bitwarden.api.FolderCreateRequest
+import takagi.ru.monica.bitwarden.api.FolderUpdateRequest
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
@@ -121,6 +123,7 @@ class BitwardenRepository(private val context: Context) {
     private val conflictDao = database.bitwardenConflictBackupDao()
     private val pendingOpDao = database.bitwardenPendingOperationDao()
     private val passwordEntryDao = database.passwordEntryDao()
+    private val categoryDao = database.categoryDao()
     
     // Services
     private val apiManager = BitwardenApiManager()
@@ -620,6 +623,153 @@ class BitwardenRepository(private val context: Context) {
     
     suspend fun getFolders(vaultId: Long): List<BitwardenFolder> = withContext(Dispatchers.IO) {
         folderDao.getFoldersByVault(vaultId)
+    }
+
+    suspend fun createFolder(vaultId: Long, name: String): Result<BitwardenFolder> = withContext(Dispatchers.IO) {
+        try {
+            val trimmed = name.trim()
+            if (trimmed.isBlank()) return@withContext Result.failure(IllegalArgumentException("文件夹名称不能为空"))
+
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+            if (!isVaultUnlocked(vaultId)) {
+                return@withContext Result.failure(IllegalStateException("Vault 未解锁"))
+            }
+
+            val symmetricKey = symmetricKeyCache[vaultId]
+                ?: return@withContext Result.failure(IllegalStateException("密钥不可用"))
+            var accessToken = accessTokenCache[vaultId]
+                ?: return@withContext Result.failure(IllegalStateException("令牌不可用"))
+
+            val expiresAt = vault.accessTokenExpiresAt ?: 0
+            if (expiresAt <= System.currentTimeMillis() + 60000) {
+                val refreshed = refreshToken(vault)
+                if (refreshed != null) {
+                    accessToken = refreshed
+                    accessTokenCache[vaultId] = refreshed
+                } else {
+                    return@withContext Result.failure(IllegalStateException("Token 刷新失败，请重新登录"))
+                }
+            }
+
+            val encryptedName = BitwardenCrypto.encryptString(trimmed, symmetricKey)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.createFolder(
+                "Bearer $accessToken",
+                FolderCreateRequest(name = encryptedName)
+            )
+
+            if (!response.isSuccessful || response.body() == null) {
+                return@withContext Result.failure(
+                    IllegalStateException("创建失败: ${response.code()} ${response.message()}")
+                )
+            }
+
+            val created = response.body()!!
+            val folder = BitwardenFolder(
+                vaultId = vaultId,
+                bitwardenFolderId = created.id,
+                name = trimmed,
+                encryptedName = encryptedName,
+                revisionDate = created.revisionDate ?: "",
+                lastSyncedAt = System.currentTimeMillis()
+            )
+            folderDao.upsert(folder)
+            Result.success(folder)
+        } catch (e: Exception) {
+            Log.e(TAG, "创建 Bitwarden 文件夹失败", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun renameFolder(vaultId: Long, folderId: String, newName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val trimmed = newName.trim()
+            if (trimmed.isBlank()) return@withContext Result.failure(IllegalArgumentException("文件夹名称不能为空"))
+
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+            if (!isVaultUnlocked(vaultId)) {
+                return@withContext Result.failure(IllegalStateException("Vault 未解锁"))
+            }
+
+            val symmetricKey = symmetricKeyCache[vaultId]
+                ?: return@withContext Result.failure(IllegalStateException("密钥不可用"))
+            var accessToken = accessTokenCache[vaultId]
+                ?: return@withContext Result.failure(IllegalStateException("令牌不可用"))
+
+            val expiresAt = vault.accessTokenExpiresAt ?: 0
+            if (expiresAt <= System.currentTimeMillis() + 60000) {
+                val refreshed = refreshToken(vault)
+                if (refreshed != null) {
+                    accessToken = refreshed
+                    accessTokenCache[vaultId] = refreshed
+                } else {
+                    return@withContext Result.failure(IllegalStateException("Token 刷新失败，请重新登录"))
+                }
+            }
+
+            val encryptedName = BitwardenCrypto.encryptString(trimmed, symmetricKey)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.updateFolder(
+                "Bearer $accessToken",
+                folderId,
+                FolderUpdateRequest(name = encryptedName)
+            )
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    IllegalStateException("重命名失败: ${response.code()} ${response.message()}")
+                )
+            }
+
+            folderDao.updateName(folderId, trimmed, encryptedName)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "重命名 Bitwarden 文件夹失败", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteFolder(vaultId: Long, folderId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+            if (!isVaultUnlocked(vaultId)) {
+                return@withContext Result.failure(IllegalStateException("Vault 未解锁"))
+            }
+
+            var accessToken = accessTokenCache[vaultId]
+                ?: return@withContext Result.failure(IllegalStateException("令牌不可用"))
+
+            val expiresAt = vault.accessTokenExpiresAt ?: 0
+            if (expiresAt <= System.currentTimeMillis() + 60000) {
+                val refreshed = refreshToken(vault)
+                if (refreshed != null) {
+                    accessToken = refreshed
+                    accessTokenCache[vaultId] = refreshed
+                } else {
+                    return@withContext Result.failure(IllegalStateException("Token 刷新失败，请重新登录"))
+                }
+            }
+
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.deleteFolder("Bearer $accessToken", folderId)
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    IllegalStateException("删除失败: ${response.code()} ${response.message()}")
+                )
+            }
+
+            folderDao.deleteByBitwardenId(folderId)
+            categoryDao.unlinkByFolderId(folderId)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "删除 Bitwarden 文件夹失败", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun getSends(vaultId: Long): List<BitwardenSend> = withContext(Dispatchers.IO) {

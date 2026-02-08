@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,17 +14,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +44,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.Category
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.KeePassStorageLocation
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import java.text.SimpleDateFormat
@@ -45,7 +61,12 @@ import takagi.ru.monica.R
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -63,6 +84,9 @@ fun NoteListScreen(
     val isGridLayout = settings.noteGridLayout
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(setOf<Long>()) }
+    var isCategorySheetVisible by remember { mutableStateOf(false) }
+    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var categoryNameInput by rememberSaveable { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
@@ -82,19 +106,77 @@ fun NoteListScreen(
     }
     
     val context = LocalContext.current
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val scope = rememberCoroutineScope()
+    val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val keePassService = remember {
+        takagi.ru.monica.utils.KeePassKdbxService(
+            context,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
+    val keepassGroupFlows = remember {
+        mutableMapOf<Long, kotlinx.coroutines.flow.MutableStateFlow<List<takagi.ru.monica.utils.KeePassGroupInfo>>>()
+    }
+    val getKeePassGroups: (Long) -> kotlinx.coroutines.flow.Flow<List<takagi.ru.monica.utils.KeePassGroupInfo>> = remember {
+        { databaseId ->
+            val flow = keepassGroupFlows.getOrPut(databaseId) {
+                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            }
+            if (flow.value.isEmpty()) {
+                scope.launch {
+                    flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                }
+            }
+            flow
+        }
+    }
     val biometricHelper = remember { BiometricHelper(context) }
     val canUseBiometric = settings.biometricEnabled && biometricHelper.isBiometricAvailable()
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
     
     val notes by viewModel.allNotes.collectAsState(initial = emptyList())
+    var selectedCategoryFilter by remember { mutableStateOf<NoteCategoryFilter>(NoteCategoryFilter.All) }
+    val title = when (val filter = selectedCategoryFilter) {
+        NoteCategoryFilter.All -> stringResource(R.string.filter_all)
+        NoteCategoryFilter.Local -> stringResource(R.string.filter_monica)
+        NoteCategoryFilter.Starred -> stringResource(R.string.filter_starred)
+        NoteCategoryFilter.Uncategorized -> stringResource(R.string.filter_uncategorized)
+        is NoteCategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name
+            ?: stringResource(R.string.unknown_category)
+        is NoteCategoryFilter.BitwardenVault -> "Bitwarden"
+        is NoteCategoryFilter.BitwardenFolderFilter -> "Bitwarden"
+        is NoteCategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
+        is NoteCategoryFilter.KeePassGroupFilter -> filter.groupPath.substringAfterLast('/')
+    }
     
     // 过滤笔记
-    val filteredNotes = remember(notes, searchQuery) {
+    val filteredNotes = remember(notes, searchQuery, selectedCategoryFilter) {
+        val categoryFiltered = when (val filter = selectedCategoryFilter) {
+            NoteCategoryFilter.All -> notes
+            NoteCategoryFilter.Local -> notes.filter { it.bitwardenVaultId == null && it.keepassDatabaseId == null }
+            NoteCategoryFilter.Starred -> notes.filter { it.isFavorite }
+            NoteCategoryFilter.Uncategorized -> notes.filter { it.categoryId == null }
+            is NoteCategoryFilter.Custom -> notes.filter { it.categoryId == filter.categoryId }
+            is NoteCategoryFilter.BitwardenVault -> notes.filter { it.bitwardenVaultId == filter.vaultId }
+            is NoteCategoryFilter.BitwardenFolderFilter -> notes.filter { it.bitwardenFolderId == filter.folderId }
+            is NoteCategoryFilter.KeePassDatabase -> notes.filter { it.keepassDatabaseId == filter.databaseId }
+            is NoteCategoryFilter.KeePassGroupFilter -> notes.filter {
+                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
+            }
+        }
         if (searchQuery.isBlank()) {
-            notes
+            categoryFiltered
         } else {
-            notes.filter { 
-                it.notes.contains(searchQuery, ignoreCase = true) || 
-                it.title.contains(searchQuery, ignoreCase = true)
+            categoryFiltered.filter {
+                it.notes.contains(searchQuery, ignoreCase = true) ||
+                    it.title.contains(searchQuery, ignoreCase = true)
             }
         }
     }
@@ -115,13 +197,20 @@ fun NoteListScreen(
         topBar = {
             // M3E 风格顶栏（保持与其他页面一致）
             ExpressiveTopBar(
-                title = stringResource(R.string.nav_notes),
+                title = title,
                 searchQuery = searchQuery,
                 onSearchQueryChange = { searchQuery = it },
                 isSearchExpanded = isSearchExpanded,
                 onSearchExpandedChange = { isSearchExpanded = it },
                 searchHint = stringResource(R.string.search),
                 actions = {
+                    IconButton(onClick = { isCategorySheetVisible = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = stringResource(R.string.category),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     // 布局切换按钮
                     IconButton(onClick = { settingsViewModel.updateNoteGridLayout(!isGridLayout) }) {
                         Icon(
@@ -144,6 +233,110 @@ fun NoteListScreen(
                     }
                 }
             )
+
+            val selectedUnifiedFilter = when (val filter = selectedCategoryFilter) {
+                NoteCategoryFilter.All -> UnifiedCategoryFilterSelection.All
+                NoteCategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
+                NoteCategoryFilter.Starred -> UnifiedCategoryFilterSelection.Starred
+                NoteCategoryFilter.Uncategorized -> UnifiedCategoryFilterSelection.Uncategorized
+                is NoteCategoryFilter.Custom -> UnifiedCategoryFilterSelection.Custom(filter.categoryId)
+                is NoteCategoryFilter.BitwardenVault -> UnifiedCategoryFilterSelection.BitwardenVaultFilter(filter.vaultId)
+                is NoteCategoryFilter.BitwardenFolderFilter -> UnifiedCategoryFilterSelection.BitwardenFolderFilter(filter.vaultId, filter.folderId)
+                is NoteCategoryFilter.KeePassDatabase -> UnifiedCategoryFilterSelection.KeePassDatabaseFilter(filter.databaseId)
+                is NoteCategoryFilter.KeePassGroupFilter -> UnifiedCategoryFilterSelection.KeePassGroupFilter(filter.databaseId, filter.groupPath)
+            }
+            UnifiedCategoryFilterBottomSheet(
+                visible = isCategorySheetVisible,
+                onDismiss = { isCategorySheetVisible = false },
+                selected = selectedUnifiedFilter,
+                onSelect = { selection ->
+                    selectedCategoryFilter = when (selection) {
+                        is UnifiedCategoryFilterSelection.All -> NoteCategoryFilter.All
+                        is UnifiedCategoryFilterSelection.Local -> NoteCategoryFilter.Local
+                        is UnifiedCategoryFilterSelection.Starred -> NoteCategoryFilter.Starred
+                        is UnifiedCategoryFilterSelection.Uncategorized -> NoteCategoryFilter.Uncategorized
+                        is UnifiedCategoryFilterSelection.Custom -> NoteCategoryFilter.Custom(selection.categoryId)
+                        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> NoteCategoryFilter.BitwardenVault(selection.vaultId)
+                        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> NoteCategoryFilter.BitwardenFolderFilter(selection.folderId, selection.vaultId)
+                        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> NoteCategoryFilter.KeePassDatabase(selection.databaseId)
+                        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> NoteCategoryFilter.KeePassGroupFilter(selection.databaseId, selection.groupPath)
+                    }
+                    isCategorySheetVisible = false
+                },
+                categories = categories,
+                keepassDatabases = keepassDatabases,
+                bitwardenVaults = bitwardenVaults,
+                getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                getKeePassGroups = getKeePassGroups,
+                onCreateCategory = { showAddCategoryDialog = true },
+                onVerifyMasterPassword = { input ->
+                    securityManager.verifyMasterPassword(input)
+                },
+                onCreateCategoryWithName = { name ->
+                    scope.launch {
+                        database.categoryDao().insert(Category(name = name))
+                    }
+                },
+                onCreateBitwardenFolder = { vaultId, name ->
+                    scope.launch {
+                        bitwardenRepository.createFolder(vaultId, name)
+                    }
+                },
+                onRenameBitwardenFolder = { vaultId, folderId, newName ->
+                    scope.launch {
+                        bitwardenRepository.renameFolder(vaultId, folderId, newName)
+                    }
+                },
+                onDeleteBitwardenFolder = { vaultId, folderId ->
+                    scope.launch {
+                        bitwardenRepository.deleteFolder(vaultId, folderId)
+                    }
+                },
+                onCreateKeePassGroup = { databaseId, parentPath, name ->
+                    scope.launch {
+                        val result = keePassService.createGroup(
+                            databaseId = databaseId,
+                            groupName = name,
+                            parentPath = parentPath
+                        )
+                        if (result.isSuccess) {
+                            val flow = keepassGroupFlows.getOrPut(databaseId) {
+                                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+                            }
+                            flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                        }
+                    }
+                },
+                onRenameKeePassGroup = { databaseId, groupPath, newName ->
+                    scope.launch {
+                        val result = keePassService.renameGroup(
+                            databaseId = databaseId,
+                            groupPath = groupPath,
+                            newName = newName
+                        )
+                        if (result.isSuccess) {
+                            val flow = keepassGroupFlows.getOrPut(databaseId) {
+                                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+                            }
+                            flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                        }
+                    }
+                },
+                onDeleteKeePassGroup = { databaseId, groupPath ->
+                    scope.launch {
+                        val result = keePassService.deleteGroup(
+                            databaseId = databaseId,
+                            groupPath = groupPath
+                        )
+                        if (result.isSuccess) {
+                            val flow = keepassGroupFlows.getOrPut(databaseId) {
+                                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+                            }
+                            flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                        }
+                    }
+                }
+            )
         },
         bottomBar = {
             if (isSelectionMode) {
@@ -161,10 +354,10 @@ fun NoteListScreen(
                             selectedNoteIds = emptySet()
                         },
                         onSelectAll = {
-                            selectedNoteIds = if (selectedNoteIds.size == notes.size) {
+                            selectedNoteIds = if (selectedNoteIds.size == filteredNotes.size) {
                                 emptySet()
                             } else {
-                                notes.map { it.id }.toSet()
+                                filteredNotes.map { it.id }.toSet()
                             }
                         },
                         onDelete = { showDeleteDialog = true }
@@ -194,6 +387,39 @@ fun NoteListScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showDeleteDialog = false }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                }
+            )
+        }
+
+        if (showAddCategoryDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddCategoryDialog = false },
+                title = { Text(stringResource(R.string.new_category)) },
+                text = {
+                    OutlinedTextField(
+                        value = categoryNameInput,
+                        onValueChange = { categoryNameInput = it },
+                        label = { Text(stringResource(R.string.category_name)) },
+                        singleLine = true
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val name = categoryNameInput.trim()
+                            if (name.isBlank()) return@TextButton
+                            scope.launch {
+                                database.categoryDao().insert(Category(name = name))
+                                categoryNameInput = ""
+                                showAddCategoryDialog = false
+                            }
+                        }
+                    ) { Text(stringResource(R.string.confirm)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddCategoryDialog = false }) {
                         Text(stringResource(R.string.cancel))
                     }
                 }
@@ -447,6 +673,10 @@ fun ExpressiveNoteCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val hasImageAttachment = remember(note.imagePaths) {
+        hasNoteImageAttachment(note.imagePaths)
+    }
+
     val containerColor = if (isSelected) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
@@ -521,6 +751,44 @@ fun ExpressiveNoteCard(
                     color = contentColor,
                     modifier = Modifier.weight(1f)
                 )
+
+                if (hasImageAttachment) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        } else {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = stringResource(R.string.note_has_image),
+                                modifier = Modifier.size(12.dp),
+                                tint = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.section_photos),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                }
+                            )
+                        }
+                    }
+                }
             }
             
             // 内容预览
@@ -568,6 +836,17 @@ fun ExpressiveNoteCard(
                     }
                     
                     // 安全标识小图标
+                    if (hasImageAttachment) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = stringResource(R.string.note_has_image),
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    // 安全标识小图标
                     Icon(
                         imageVector = Icons.Default.Shield,
                         contentDescription = stringResource(R.string.encrypted_storage),
@@ -596,5 +875,70 @@ fun NoteCard(
         isGridMode = true,
         onClick = onClick,
         onLongClick = onLongClick
+    )
+}
+
+private fun hasNoteImageAttachment(imagePaths: String): Boolean {
+    if (imagePaths.isBlank()) return false
+    return try {
+        Json.decodeFromString<List<String>>(imagePaths).any { it.isNotBlank() }
+    } catch (_: Exception) {
+        imagePaths.isNotBlank()
+    }
+}
+
+private sealed interface NoteCategoryFilter {
+    data object All : NoteCategoryFilter
+    data object Local : NoteCategoryFilter
+    data object Starred : NoteCategoryFilter
+    data object Uncategorized : NoteCategoryFilter
+    data class Custom(val categoryId: Long) : NoteCategoryFilter
+    data class BitwardenVault(val vaultId: Long) : NoteCategoryFilter
+    data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : NoteCategoryFilter
+    data class KeePassDatabase(val databaseId: Long) : NoteCategoryFilter
+    data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : NoteCategoryFilter
+}
+
+@Composable
+private fun NoteFilterSheetItem(
+    title: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    badge: (@Composable () -> Unit)? = null,
+    trailingMenu: (@Composable () -> Unit)? = null
+) {
+    val containerColor = if (selected) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerLow
+    }
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    ListItem(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(
+            containerColor = containerColor,
+            headlineColor = contentColor,
+            leadingIconColor = contentColor,
+            trailingIconColor = contentColor
+        ),
+        headlineContent = { Text(title, style = MaterialTheme.typography.bodyLarge) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        supportingContent = badge,
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (selected) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = contentColor)
+                }
+                trailingMenu?.invoke()
+            }
+        }
     )
 }

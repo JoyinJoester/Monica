@@ -1044,6 +1044,7 @@ private fun BackupItem(
             val report = restoreResult.report
             val passwords: List<PasswordEntry> = content.passwords
             val secureItems: List<DataExportImportManager.ExportItem> = content.secureItems
+            val passkeys = content.passkeys
             
             // 注意：清除本地数据的逻辑已移动到 WebDavHelper.restoreFromBackupFile 中
             // 这样做是为了确保在恢复 Trash、Categories 等辅助数据之前执行清除操作
@@ -1053,6 +1054,7 @@ private fun BackupItem(
             android.util.Log.d("WebDavBackup", "===== 开始恢复 =====")
             android.util.Log.d("WebDavBackup", "备份中密码数量: ${passwords.size}")
             android.util.Log.d("WebDavBackup", "备份中安全项数量: ${secureItems.size}")
+            android.util.Log.d("WebDavBackup", "备份中通行密钥数量: ${passkeys.size}")
             android.util.Log.d("WebDavBackup", "报告: ${report.getSummary()}")
             
             // ID Mapping: Old ID -> New ID
@@ -1182,6 +1184,9 @@ private fun BackupItem(
             var secureItemSkipped = 0
             var secureItemFailed = 0
             val failedSecureItemDetails = mutableListOf<String>()
+            var passkeyCountImported = 0
+            var passkeySkipped = 0
+            var passkeyFailed = 0
             
             // JSON Parser for TOTP data
             val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
@@ -1227,7 +1232,8 @@ private fun BackupItem(
                             isFavorite = exportItem.isFavorite,
                             imagePaths = exportItem.imagePaths,
                             createdAt = java.util.Date(exportItem.createdAt),
-                            updatedAt = java.util.Date(exportItem.updatedAt)
+                            updatedAt = java.util.Date(exportItem.updatedAt),
+                            categoryId = exportItem.categoryId
                         )
                         secureItemRepository.insertItem(secureItem)
                         secureItemCount++
@@ -1241,6 +1247,37 @@ private fun BackupItem(
                     android.util.Log.e("WebDavBackup", "Failed to import secure item: $detail")
                 }
             }
+
+            if (passkeys.isNotEmpty()) {
+                val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                val passkeyDao = database.passkeyDao()
+
+                passkeys.forEach { passkey ->
+                    try {
+                        val existing = passkeyDao.getPasskeyById(passkey.credentialId)
+                        if (existing == null) {
+                            val mappedBoundPasswordId = passkey.boundPasswordId?.let { oldId ->
+                                passwordIdMap[oldId]
+                            }
+                            passkeyDao.insert(
+                                passkey.copy(
+                                    boundPasswordId = mappedBoundPasswordId
+                                )
+                            )
+                            passkeyCountImported++
+                        } else {
+                            passkeySkipped++
+                        }
+                    } catch (e: Exception) {
+                        passkeyFailed++
+                        android.util.Log.e(
+                            "WebDavBackup",
+                            "Failed to import passkey ${passkey.credentialId}: ${e.message}",
+                            e
+                        )
+                    }
+                }
+            }
             
             // 调试日志：记录导入统计
             android.util.Log.d("WebDavBackup", "===== 导入统计 =====")
@@ -1250,6 +1287,9 @@ private fun BackupItem(
             android.util.Log.d("WebDavBackup", "成功导入安全项: $secureItemCount")
             android.util.Log.d("WebDavBackup", "跳过重复安全项: $secureItemSkipped")
             android.util.Log.d("WebDavBackup", "导入失败安全项: $secureItemFailed")
+            android.util.Log.d("WebDavBackup", "成功导入通行密钥: $passkeyCountImported")
+            android.util.Log.d("WebDavBackup", "跳过重复通行密钥: $passkeySkipped")
+            android.util.Log.d("WebDavBackup", "导入失败通行密钥: $passkeyFailed")
             android.util.Log.d("WebDavBackup", "总计: ${passwordCount + passwordSkipped + passwordFailed} vs 备份中: ${passwords.size}")
             
             isRestoring = false
@@ -1263,6 +1303,9 @@ private fun BackupItem(
                     val summaryParts = mutableListOf<String>()
                     summaryParts += context.getString(R.string.webdav_restore_summary_part_passwords, passwordCount)
                     summaryParts += context.getString(R.string.webdav_restore_summary_part_other_data, secureItemCount)
+                    if (passkeyCountImported > 0) {
+                        summaryParts += "通行密钥 $passkeyCountImported"
+                    }
                     append(
                         context.getString(
                             R.string.webdav_restore_summary_success,
@@ -1294,6 +1337,12 @@ private fun BackupItem(
                             R.string.webdav_restore_summary_part_data_failed,
                             secureItemFailed
                         )
+                    }
+                    if (passkeySkipped > 0) {
+                        issuesParts += "重复通行密钥 $passkeySkipped"
+                    }
+                    if (passkeyFailed > 0) {
+                        issuesParts += "通行密钥失败 $passkeyFailed"
                     }
                     
                     if (issuesParts.isNotEmpty()) {

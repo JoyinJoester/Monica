@@ -233,6 +233,7 @@ fun PasswordListScreen(
                                     is CategoryFilter.Uncategorized -> context.getString(R.string.filter_uncategorized)
                                     is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: context.getString(R.string.unknown_category)
                                     is CategoryFilter.KeePassDatabase -> "KeePass"
+                                    is CategoryFilter.KeePassGroupFilter -> (currentFilter as CategoryFilter.KeePassGroupFilter).groupPath.substringAfterLast('/')
                                     is CategoryFilter.BitwardenVault -> "Bitwarden"
                                     is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
                                 },

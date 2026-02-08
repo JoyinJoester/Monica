@@ -683,6 +683,7 @@ fun MonicaContent(
             var initialData by remember { mutableStateOf<takagi.ru.monica.data.model.TotpData?>(null) }
             var initialTitle by remember { mutableStateOf("") }
             var initialNotes by remember { mutableStateOf("") }
+            var initialBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
             var isLoading by remember { mutableStateOf(true) }
 
             // 从QR扫描获取的数据
@@ -713,6 +714,7 @@ fun MonicaContent(
                     if (item != null) {
                         initialTitle = item.title
                         initialNotes = item.notes
+                        initialBitwardenVaultId = item.bitwardenVaultId
                         initialData = try {
                             kotlinx.serialization.json.Json.decodeFromString(item.itemData)
                         } catch (e: Exception) {
@@ -732,17 +734,19 @@ fun MonicaContent(
                     initialTitle = initialTitle,
                     initialNotes = initialNotes,
                     initialCategoryId = initialCategoryId,
+                    initialBitwardenVaultId = initialBitwardenVaultId,
                     categories = totpCategories,
                     passwordViewModel = viewModel,
                     localKeePassViewModel = localKeePassViewModel,
-                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId ->
+                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId ->
                         totpViewModel.saveTotpItem(
                             id = if (totpId > 0) totpId else null,
                             title = title,
                             notes = notes,
                             totpData = totpData,
                             categoryId = categoryId,
-                            keepassDatabaseId = keepassDatabaseId
+                            keepassDatabaseId = keepassDatabaseId,
+                            bitwardenVaultId = bitwardenVaultId
                         )
                         navController.popBackStack()
                     },

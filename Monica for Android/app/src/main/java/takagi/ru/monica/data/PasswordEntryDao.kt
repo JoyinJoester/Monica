@@ -21,6 +21,9 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesByKeePassDatabase(databaseId: Long): Flow<List<PasswordEntry>>
 
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId AND keepassGroupPath = :groupPath ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getPasswordEntriesByKeePassGroup(databaseId: Long, groupPath: String): Flow<List<PasswordEntry>>
+
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesWithoutKeePassDatabase(): Flow<List<PasswordEntry>>
 
@@ -125,7 +128,7 @@ interface PasswordEntryDao {
     """)
     suspend fun bindCategoryToBitwarden(categoryId: Long, vaultId: Long, folderId: String)
     
-    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId WHERE id IN (:ids)")
+    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = NULL WHERE id IN (:ids)")
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?)
 
     @Transaction

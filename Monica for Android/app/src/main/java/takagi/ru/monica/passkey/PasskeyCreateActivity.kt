@@ -15,8 +15,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,12 +45,17 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.repository.PasskeyRepository
+import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
 import java.security.KeyPairGenerator
@@ -101,6 +109,9 @@ class PasskeyCreateActivity : FragmentActivity() {
     private var pendingCallingAppInfo: CallingAppInfo? = null
     private var pendingClientDataHash: ByteArray? = null
     private var pendingBoundPasswordId: Long? = null
+    private var pendingCategoryId: Long? = null
+    private var pendingKeepassDatabaseId: Long? = null
+    private var pendingBitwardenVaultId: Long? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -177,21 +188,60 @@ class PasskeyCreateActivity : FragmentActivity() {
         setContent {
             MonicaTheme {
                 var showPasswordPicker by remember { mutableStateOf(false) }
+                var showCategoryPicker by remember { mutableStateOf(false) }
                 val passwords by database.passwordEntryDao().getAllPasswordEntries()
                     .collectAsState(initial = emptyList())
+                val categories by database.categoryDao().getAllCategories()
+                    .collectAsState(initial = emptyList())
+                val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases()
+                    .collectAsState(initial = emptyList())
+                var selectedCategoryId by remember { mutableStateOf<Long?>(pendingCategoryId) }
+                var selectedKeePassDatabaseId by remember { mutableStateOf<Long?>(pendingKeepassDatabaseId) }
+                var selectedBitwardenVaultId by remember { mutableStateOf<Long?>(pendingBitwardenVaultId) }
+                val context = LocalContext.current
+                val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+                var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+                val selectedCategoryName = remember(selectedCategoryId, categories) {
+                    selectedCategoryId?.let { id -> categories.find { it.id == id }?.name }
+                }
+                LaunchedEffect(Unit) {
+                    bitwardenVaults = bitwardenRepository.getAllVaults()
+                }
 
                 PasskeyCreateScreen(
                     rpId = rpId,
                     rpName = parseRpName(requestJson, rpId),
                     userName = userName,
                     userDisplayName = userDisplayName,
+                    keepassDatabases = keepassDatabases,
+                    selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+                    onKeePassDatabaseSelected = {
+                        selectedKeePassDatabaseId = it
+                        if (it != null) selectedBitwardenVaultId = null
+                    },
+                    bitwardenVaults = bitwardenVaults,
+                    selectedBitwardenVaultId = selectedBitwardenVaultId,
+                    onBitwardenVaultSelected = {
+                        selectedBitwardenVaultId = it
+                        if (it != null) selectedKeePassDatabaseId = null
+                    },
+                    categories = categories,
+                    selectedCategoryId = selectedCategoryId,
+                    onCategorySelected = { selectedCategoryId = it },
+                    selectedCategoryName = selectedCategoryName,
                     onCreateDirect = {
                         pendingBoundPasswordId = null
+                        pendingCategoryId = selectedCategoryId
+                        pendingKeepassDatabaseId = selectedKeePassDatabaseId
+                        pendingBitwardenVaultId = selectedBitwardenVaultId
                         // 触发生物识别验证
                         requestBiometricAuth()
                     },
                     onBindToPassword = {
                         showPasswordPicker = true
+                    },
+                    onPickCategory = {
+                        showCategoryPicker = true
                     },
                     onCancel = {
                         repository.logAudit("PASSKEY_CREATE_CANCELLED", rpId)
@@ -215,8 +265,31 @@ class PasskeyCreateActivity : FragmentActivity() {
                         },
                         onPasswordSelected = { password ->
                             pendingBoundPasswordId = password.id
+                            selectedCategoryId = password.categoryId
+                            selectedKeePassDatabaseId = password.keepassDatabaseId
+                            selectedBitwardenVaultId = if (password.keepassDatabaseId != null) {
+                                null
+                            } else {
+                                password.bitwardenVaultId
+                            }
+                            pendingCategoryId = selectedCategoryId
+                            pendingKeepassDatabaseId = selectedKeePassDatabaseId
+                            pendingBitwardenVaultId = selectedBitwardenVaultId
                             showPasswordPicker = false
                             requestBiometricAuth()
+                        }
+                    )
+                }
+
+                if (showCategoryPicker) {
+                    CategoryPickerDialog(
+                        categories = categories,
+                        selectedCategoryId = selectedCategoryId,
+                        onDismiss = { showCategoryPicker = false },
+                        onCategorySelected = { categoryId ->
+                            selectedCategoryId = categoryId
+                            pendingCategoryId = categoryId
+                            showCategoryPicker = false
                         }
                     )
                 }
@@ -367,7 +440,11 @@ class PasskeyCreateActivity : FragmentActivity() {
                 useCount = 0,
                 isDiscoverable = discoverable,
                 signCount = 0L,
-                boundPasswordId = pendingBoundPasswordId
+                boundPasswordId = pendingBoundPasswordId,
+                categoryId = pendingCategoryId,
+                keepassDatabaseId = pendingKeepassDatabaseId,
+                bitwardenVaultId = pendingBitwardenVaultId,
+                syncStatus = if (pendingBitwardenVaultId != null) "PENDING" else "NONE"
             )
             
             // 在协程中保存
@@ -706,8 +783,19 @@ private fun PasskeyCreateScreen(
     rpName: String,
     userName: String,
     userDisplayName: String,
+    keepassDatabases: List<LocalKeePassDatabase>,
+    selectedKeePassDatabaseId: Long?,
+    onKeePassDatabaseSelected: (Long?) -> Unit,
+    bitwardenVaults: List<BitwardenVault>,
+    selectedBitwardenVaultId: Long?,
+    onBitwardenVaultSelected: (Long?) -> Unit,
+    categories: List<Category>,
+    selectedCategoryId: Long?,
+    onCategorySelected: (Long?) -> Unit,
+    selectedCategoryName: String?,
     onCreateDirect: () -> Unit,
     onBindToPassword: () -> Unit,
+    onPickCategory: () -> Unit,
     onCancel: () -> Unit
 ) {
     var isCreating by remember { mutableStateOf(false) }
@@ -719,9 +807,10 @@ private fun PasskeyCreateScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 图标
             Box(
@@ -833,7 +922,39 @@ private fun PasskeyCreateScreen(
                 }
             }
             
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            StorageTargetSelectorCard(
+                keepassDatabases = keepassDatabases,
+                selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+                onKeePassDatabaseSelected = onKeePassDatabaseSelected,
+                bitwardenVaults = bitwardenVaults,
+                selectedBitwardenVaultId = selectedBitwardenVaultId,
+                onBitwardenVaultSelected = onBitwardenVaultSelected,
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = onCategorySelected
+            )
+
+            OutlinedButton(
+                onClick = onPickCategory,
+                enabled = !isCreating,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = selectedCategoryName?.let { "文件夹: $it" } ?: "选择文件夹（可选）"
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
             
             // 绑定密码按钮（先选择密码）
             Button(
@@ -887,6 +1008,74 @@ private fun PasskeyCreateScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text(stringResource(R.string.cancel))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryPickerDialog(
+    categories: List<Category>,
+    selectedCategoryId: Long?,
+    onDismiss: () -> Unit,
+    onCategorySelected: (Long?) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 520.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = "选择文件夹",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text(stringResource(R.string.category_none)) },
+                            leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
+                            trailingContent = {
+                                if (selectedCategoryId == null) {
+                                    Icon(Icons.Default.Check, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier
+                                .clickable { onCategorySelected(null) }
+                                .fillMaxWidth()
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+                    items(categories) { category ->
+                        ListItem(
+                            headlineContent = { Text(category.name) },
+                            leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
+                            trailingContent = {
+                                if (selectedCategoryId == category.id) {
+                                    Icon(Icons.Default.Check, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier
+                                .clickable { onCategorySelected(category.id) }
+                                .fillMaxWidth()
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         }
     }

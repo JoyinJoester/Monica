@@ -35,11 +35,14 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -55,10 +58,11 @@ fun AddEditTotpScreen(
     initialTitle: String,
     initialNotes: String,
     initialCategoryId: Long? = null,
+    initialBitwardenVaultId: Long? = null,
     categories: List<Category> = emptyList(),
     passwordViewModel: PasswordViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
-    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?) -> Unit,
+    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?, bitwardenVaultId: Long?) -> Unit,
     onNavigateBack: () -> Unit,
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
@@ -83,9 +87,15 @@ fun AddEditTotpScreen(
     // KeePass Database Selection
     var keepassDatabaseId by rememberSaveable { mutableStateOf(initialData?.keepassDatabaseId) }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
-
     val context = LocalContext.current
-    
+    var bitwardenVaultId by rememberSaveable { mutableStateOf(initialBitwardenVaultId) }
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
     // Resolve App Name if associatedApp is set but name is unknown
     LaunchedEffect(associatedApp) {
         if (associatedApp.isNotEmpty() && associatedAppName.isEmpty()) {
@@ -140,7 +150,7 @@ fun AddEditTotpScreen(
             categoryId = selectedCategoryId,
             keepassDatabaseId = keepassDatabaseId
         )
-        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId)
+        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, bitwardenVaultId)
     }
     
     Scaffold(
@@ -198,10 +208,22 @@ fun AddEditTotpScreen(
         ) {
             // Vault Selector
             item {
-                VaultSelector(
+                StorageTargetSelectorCard(
                     keepassDatabases = keepassDatabases,
-                    selectedDatabaseId = keepassDatabaseId,
-                    onDatabaseSelected = { keepassDatabaseId = it }
+                    selectedKeePassDatabaseId = keepassDatabaseId,
+                    onKeePassDatabaseSelected = {
+                        keepassDatabaseId = it
+                        if (it != null) bitwardenVaultId = null
+                    },
+                    bitwardenVaults = bitwardenVaults,
+                    selectedBitwardenVaultId = bitwardenVaultId,
+                    onBitwardenVaultSelected = {
+                        bitwardenVaultId = it
+                        if (it != null) keepassDatabaseId = null
+                    },
+                    categories = categories,
+                    selectedCategoryId = selectedCategoryId,
+                    onCategorySelected = { selectedCategoryId = it }
                 )
             }
 

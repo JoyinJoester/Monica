@@ -36,6 +36,12 @@ data class SecureItem(
     // 分类ID（用于验证器等支持分类的类型）
     @ColumnInfo(defaultValue = "NULL")
     val categoryId: Long? = null,
+
+    // 归属的 KeePass 数据库（用于统一目标存储选择）
+    @ColumnInfo(name = "keepass_database_id", defaultValue = "NULL")
+    val keepassDatabaseId: Long? = null,
+    @ColumnInfo(name = "keepass_group_path", defaultValue = "NULL")
+    val keepassGroupPath: String? = null,
     
     // 回收站功能 - 软删除字段
     @ColumnInfo(defaultValue = "0")

@@ -27,7 +27,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 35,
+    version = 38,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -921,6 +921,67 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 35 -> 36: 为 passkeys 添加 category_id 字段，接入统一文件夹体系
+         */
+        private val MIGRATION_35_36 = object : androidx.room.migration.Migration(35, 36) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 35→36: passkeys category_id")
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN category_id INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 35→36 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 35→36 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 36 -> 37:
+         * 1. 为 secure_items 添加 keepass_database_id（统一目标存储）
+         * 2. 为 passkeys 添加 keepass_database_id（通行密钥目标存储）
+         */
+        private val MIGRATION_36_37 = object : androidx.room.migration.Migration(36, 37) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 36→37: keepass_database_id for secure_items/passkeys")
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN keepass_database_id INTEGER DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN keepass_database_id INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 36→37 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 36→37 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 37 -> 38:
+         * 1. 为 password_entries 添加 keepassGroupPath（支持 KeePass 分组精确过滤）
+         * 2. 为 secure_items 添加 keepass_group_path（支持笔记/验证器分组精确过滤）
+         */
+        private val MIGRATION_37_38 = object : androidx.room.migration.Migration(37, 38) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 37→38: keepass group path")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN keepassGroupPath TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN keepass_group_path TEXT DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 37→38 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 37→38 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -962,7 +1023,10 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_31_32,  // Passkey 绑定密码
                         MIGRATION_32_33,  // Password 绑定通行密钥元数据
                         MIGRATION_33_34,  // KeePass 组同步配置
-                        MIGRATION_34_35   // Bitwarden Send 本地缓存
+                        MIGRATION_34_35,  // Bitwarden Send 本地缓存
+                        MIGRATION_35_36,  // Passkey 分类字段（统一文件夹）
+                        MIGRATION_36_37,  // secure_items/passkeys KeePass 归属字段
+                        MIGRATION_37_38   // keepass 分组路径字段
                     )
                     .build()
                 INSTANCE = instance

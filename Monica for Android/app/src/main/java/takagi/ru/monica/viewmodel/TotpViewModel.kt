@@ -22,9 +22,14 @@ import java.util.Date
  */
 sealed class TotpCategoryFilter {
     object All : TotpCategoryFilter()
+    object Local : TotpCategoryFilter()
     object Starred : TotpCategoryFilter()
     object Uncategorized : TotpCategoryFilter()
     data class Custom(val categoryId: Long) : TotpCategoryFilter()
+    data class KeePassDatabase(val databaseId: Long) : TotpCategoryFilter()
+    data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : TotpCategoryFilter()
+    data class BitwardenVault(val vaultId: Long) : TotpCategoryFilter()
+    data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : TotpCategoryFilter()
 }
 
 /**
@@ -86,7 +91,11 @@ class TotpViewModel(
                     createdAt = password.createdAt,
                     updatedAt = password.updatedAt,
                     imagePaths = "",
-                    categoryId = password.categoryId  // 继承密码的分类
+                    categoryId = password.categoryId,  // 继承密码的分类
+                    keepassDatabaseId = password.keepassDatabaseId,
+                    keepassGroupPath = password.keepassGroupPath,
+                    bitwardenVaultId = password.bitwardenVaultId,
+                    bitwardenFolderId = password.bitwardenFolderId
                 )
             }
         
@@ -96,6 +105,7 @@ class TotpViewModel(
         // 首先应用分类过滤
         val categoryFiltered = when (filter) {
             is TotpCategoryFilter.All -> allTotps
+            is TotpCategoryFilter.Local -> allTotps.filter { it.bitwardenVaultId == null && it.keepassDatabaseId == null }
             is TotpCategoryFilter.Starred -> allTotps.filter { it.isFavorite }
             is TotpCategoryFilter.Uncategorized -> allTotps.filter { 
                 it.categoryId == null && try {
@@ -107,6 +117,12 @@ class TotpViewModel(
                     Json.decodeFromString<TotpData>(item.itemData).categoryId == filter.categoryId
                 } catch (e: Exception) { false }
             }
+            is TotpCategoryFilter.KeePassDatabase -> allTotps.filter { it.keepassDatabaseId == filter.databaseId }
+            is TotpCategoryFilter.KeePassGroupFilter -> allTotps.filter {
+                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
+            }
+            is TotpCategoryFilter.BitwardenVault -> allTotps.filter { it.bitwardenVaultId == filter.vaultId }
+            is TotpCategoryFilter.BitwardenFolderFilter -> allTotps.filter { it.bitwardenFolderId == filter.folderId }
         }
         
         // 然后应用搜索过滤
@@ -194,7 +210,8 @@ class TotpViewModel(
         totpData: TotpData,
         isFavorite: Boolean = false,
         categoryId: Long? = null,
-        keepassDatabaseId: Long? = null
+        keepassDatabaseId: Long? = null,
+        bitwardenVaultId: Long? = null
     ) {
         viewModelScope.launch {
             try {
@@ -224,6 +241,14 @@ class TotpViewModel(
                         notes = notes,
                         itemData = itemDataJson,
                         categoryId = categoryId,
+                        keepassDatabaseId = keepassDatabaseId,
+                        bitwardenVaultId = bitwardenVaultId,
+                        bitwardenLocalModified = existing.bitwardenCipherId != null && bitwardenVaultId != null,
+                        syncStatus = if (bitwardenVaultId != null) {
+                            if (existing.bitwardenCipherId != null) "PENDING" else existing.syncStatus
+                        } else {
+                            "NONE"
+                        },
                         updatedAt = Date()
                     ) ?: return@launch
                 } else {
@@ -235,6 +260,9 @@ class TotpViewModel(
                         itemData = itemDataJson,
                         isFavorite = isFavorite,
                         categoryId = categoryId,
+                        keepassDatabaseId = keepassDatabaseId,
+                        bitwardenVaultId = bitwardenVaultId,
+                        syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                         createdAt = Date(),
                         updatedAt = Date(),
                         imagePaths = ""

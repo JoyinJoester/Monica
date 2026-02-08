@@ -1,6 +1,6 @@
 # Monica 本地密码库
 
-**中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md)
+**中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [伪中国語](README_PSEUDO_ZH.md)
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Browser-3DDC84)

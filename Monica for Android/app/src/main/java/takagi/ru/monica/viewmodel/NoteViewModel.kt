@@ -68,7 +68,12 @@ class NoteViewModel(
         content: String,
         title: String? = null,
         tags: List<String> = emptyList(),
-        isFavorite: Boolean = false
+        isFavorite: Boolean = false,
+        categoryId: Long? = null,
+        imagePaths: String = "",
+        keepassDatabaseId: Long? = null,
+        keepassGroupPath: String? = null,
+        bitwardenVaultId: Long? = null
     ) {
         viewModelScope.launch {
             val noteData = NoteData(
@@ -95,6 +100,12 @@ class NoteViewModel(
                 notes = content, // 将内容同时也保存在 notes 字段以便搜索
                 itemData = Json.encodeToString(noteData),
                 isFavorite = isFavorite,
+                imagePaths = imagePaths,
+                categoryId = categoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                keepassGroupPath = keepassGroupPath,
+                bitwardenVaultId = bitwardenVaultId,
+                syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                 createdAt = Date(),
                 updatedAt = Date()
             )
@@ -116,7 +127,12 @@ class NoteViewModel(
         title: String? = null,
         tags: List<String> = emptyList(),
         isFavorite: Boolean,
-        createdAt: Date
+        createdAt: Date,
+        categoryId: Long? = null,
+        imagePaths: String = "",
+        keepassDatabaseId: Long? = null,
+        keepassGroupPath: String? = null,
+        bitwardenVaultId: Long? = null
     ) {
         viewModelScope.launch {
             // 获取旧笔记以检测变化
@@ -146,6 +162,20 @@ class NoteViewModel(
                 notes = content,
                 itemData = Json.encodeToString(noteData),
                 isFavorite = isFavorite,
+                imagePaths = imagePaths,
+                categoryId = categoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                keepassGroupPath = keepassGroupPath ?: existingItem?.keepassGroupPath,
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenCipherId = existingItem?.bitwardenCipherId,
+                bitwardenFolderId = existingItem?.bitwardenFolderId,
+                bitwardenRevisionDate = existingItem?.bitwardenRevisionDate,
+                bitwardenLocalModified = existingItem?.bitwardenCipherId != null && bitwardenVaultId != null,
+                syncStatus = if (bitwardenVaultId != null) {
+                    if (existingItem?.bitwardenCipherId != null) "PENDING" else "NONE"
+                } else {
+                    "NONE"
+                },
                 createdAt = createdAt,
                 updatedAt = Date()
             )

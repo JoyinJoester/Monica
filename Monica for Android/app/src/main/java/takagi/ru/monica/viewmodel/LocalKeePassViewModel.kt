@@ -21,6 +21,7 @@ import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
 import java.io.File
 import java.io.FileOutputStream
@@ -57,8 +58,85 @@ class LocalKeePassViewModel(
     /** 当前选中的数据库 */
     private val _selectedDatabase = MutableStateFlow<LocalKeePassDatabase?>(null)
     val selectedDatabase: StateFlow<LocalKeePassDatabase?> = _selectedDatabase.asStateFlow()
+    
+    /** KeePass 分组缓存，按数据库 ID 组织 */
+    private val _groupsByDatabase = MutableStateFlow<Map<Long, List<KeePassGroupInfo>>>(emptyMap())
 
     private val kdbxService = KeePassKdbxService(context, dao, securityManager)
+
+    fun getGroups(databaseId: Long): Flow<List<KeePassGroupInfo>> {
+        return _groupsByDatabase
+            .map { cache -> cache[databaseId].orEmpty() }
+            .onStart { refreshGroups(databaseId) }
+    }
+
+    fun refreshGroups(databaseId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val groups = kdbxService.listGroups(databaseId).getOrDefault(emptyList())
+            _groupsByDatabase.update { current -> current + (databaseId to groups) }
+        }
+    }
+
+    fun createGroup(
+        databaseId: Long,
+        groupName: String,
+        parentPath: String? = null,
+        onResult: (Result<KeePassGroupInfo>) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = kdbxService.createGroup(
+                databaseId = databaseId,
+                groupName = groupName,
+                parentPath = parentPath
+            )
+            if (result.isSuccess) {
+                refreshGroups(databaseId)
+            }
+            withContext(Dispatchers.Main) {
+                onResult(result)
+            }
+        }
+    }
+
+    fun renameGroup(
+        databaseId: Long,
+        groupPath: String,
+        newName: String,
+        onResult: (Result<KeePassGroupInfo>) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = kdbxService.renameGroup(
+                databaseId = databaseId,
+                groupPath = groupPath,
+                newName = newName
+            )
+            if (result.isSuccess) {
+                refreshGroups(databaseId)
+            }
+            withContext(Dispatchers.Main) {
+                onResult(result)
+            }
+        }
+    }
+
+    fun deleteGroup(
+        databaseId: Long,
+        groupPath: String,
+        onResult: (Result<Unit>) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = kdbxService.deleteGroup(
+                databaseId = databaseId,
+                groupPath = groupPath
+            )
+            if (result.isSuccess) {
+                refreshGroups(databaseId)
+            }
+            withContext(Dispatchers.Main) {
+                onResult(result)
+            }
+        }
+    }
     
     /**
      * 创建新的 KeePass 数据库

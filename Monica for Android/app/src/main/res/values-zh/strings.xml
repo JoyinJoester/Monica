@@ -601,6 +601,7 @@
     
     <string name="filter_monica">Monica</string>
     <string name="filter_bitwarden">Bitwarden</string>
+    <string name="ledger_select_category">选择分类</string>
     <string name="filter_keepass">KeePass</string>
     <string name="filter_all">全部</string>
     
@@ -1967,6 +1968,13 @@
     <string name="bitwarden_folder_linked_by_other">已被其他分类关联</string>
     <string name="bitwarden_configure_sync_types_title">配置同步类型</string>
     <string name="bitwarden_sync_types_description">选择要同步到此文件夹的数据类型</string>
+    <string name="create_folder_dialog_title">新建分类/文件夹</string>
+    <string name="create_folder_dialog_subtitle">先选择目标，再创建，流程更清晰</string>
+    <string name="create_target_local">Monica 本地</string>
+    <string name="create_target_bitwarden">Bitwarden</string>
+    <string name="create_target_keepass">KeePass</string>
+    <string name="create_select_bitwarden_vault">选择 Bitwarden 账户</string>
+    <string name="create_select_keepass_database">选择 KeePass 数据库</string>
     <string name="bitwarden_all_types">全部类型</string>
     <string name="sync_type_note">笔记</string>
     <string name="sync_type_identity">身份信息</string>

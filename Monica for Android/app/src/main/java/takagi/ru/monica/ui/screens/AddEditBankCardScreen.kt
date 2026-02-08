@@ -22,12 +22,16 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.ui.components.DualPhotoPicker
+import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.viewmodel.BankCardViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,6 +67,18 @@ fun AddEditBankCardScreen(
     // 图片路径管理
     var frontImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var backImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
     
     // 如果是编辑模式，加载现有数据
     LaunchedEffect(cardId) {
@@ -71,6 +87,9 @@ fun AddEditBankCardScreen(
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
+                selectedCategoryId = item.categoryId
+                keepassDatabaseId = item.keepassDatabaseId
+                bitwardenVaultId = item.bitwardenVaultId
                 
                 // 解析图片路径
                 try {
@@ -144,7 +163,10 @@ fun AddEditBankCardScreen(
                 cardData = cardData,
                 notes = notes,
                 isFavorite = isFavorite,
-                imagePaths = imagePathsJson
+                imagePaths = imagePathsJson,
+                categoryId = selectedCategoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId
             )
         } else {
             viewModel.updateCard(
@@ -153,7 +175,10 @@ fun AddEditBankCardScreen(
                 cardData = cardData,
                 notes = notes,
                 isFavorite = isFavorite,
-                imagePaths = imagePathsJson
+                imagePaths = imagePathsJson,
+                categoryId = selectedCategoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId
             )
         }
         onNavigateBack()
@@ -218,6 +243,24 @@ fun AddEditBankCardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            StorageTargetSelectorCard(
+                keepassDatabases = keepassDatabases,
+                selectedKeePassDatabaseId = keepassDatabaseId,
+                onKeePassDatabaseSelected = {
+                    keepassDatabaseId = it
+                    if (it != null) bitwardenVaultId = null
+                },
+                bitwardenVaults = bitwardenVaults,
+                selectedBitwardenVaultId = bitwardenVaultId,
+                onBitwardenVaultSelected = {
+                    bitwardenVaultId = it
+                    if (it != null) keepassDatabaseId = null
+                },
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = { selectedCategoryId = it }
+            )
+
             // Basic Information
             InfoCard(title = stringResource(R.string.section_basic_info)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

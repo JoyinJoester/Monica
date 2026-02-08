@@ -684,6 +684,10 @@
     <string name="passkey_created_at">Created</string>
     <string name="passkey_last_used">Last Used</string>
     <string name="passkey_use_count">Use Count</string>
+    <string name="passkey_category_updated">Category updated: %1$s</string>
+    <string name="passkey_category_follow_binding">Category is inherited from the bound password.</string>
+    <string name="passkey_category_empty">No categories yet. You can create one in folder management.</string>
+    <string name="note_has_image">Has image attachment</string>
     
     <string name="dismiss">Dismiss</string>
     
@@ -2136,6 +2140,13 @@
     <string name="bitwarden_folder_linked_by_other">Already linked by another category</string>
     <string name="bitwarden_configure_sync_types_title">Configure sync types</string>
     <string name="bitwarden_sync_types_description">Choose which item types to sync to this folder</string>
+    <string name="create_folder_dialog_title">Create Folder</string>
+    <string name="create_folder_dialog_subtitle">Choose a target and create folder in one step</string>
+    <string name="create_target_local">Monica Local</string>
+    <string name="create_target_bitwarden">Bitwarden</string>
+    <string name="create_target_keepass">KeePass</string>
+    <string name="create_select_bitwarden_vault">Choose Bitwarden account</string>
+    <string name="create_select_keepass_database">Choose KeePass database</string>
     <string name="bitwarden_all_types">All types</string>
     <string name="sync_type_note">Note</string>
     <string name="sync_type_identity">Identity</string>

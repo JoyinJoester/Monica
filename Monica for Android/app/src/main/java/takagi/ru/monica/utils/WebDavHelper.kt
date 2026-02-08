@@ -85,7 +85,8 @@ private data class NoteBackupEntry(
     val isFavorite: Boolean = false,
     val imagePaths: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val categoryName: String? = null
 )
 
 @Serializable
@@ -109,7 +110,8 @@ private data class PasskeyBackupEntry(
     val aaguid: String = "",
     val signCount: Long = 0,
     val notes: String = "",
-    val boundPasswordId: Long? = null
+    val boundPasswordId: Long? = null,
+    val categoryName: String? = null
 )
 
 @Serializable
@@ -682,9 +684,7 @@ class WebDavHelper(
             val passwordsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_password.csv")
             val totpCsvFile = File(cacheBackupDir, "Monica_${timestamp}_totp.csv")
             val cardsDocsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_cards_docs.csv")
-            val notesDir = File(cacheBackupDir, "notes")
-            val passwordsDir = File(cacheBackupDir, "passwords")
-            val passkeysDir = File(cacheBackupDir, "passkeys")
+            val foldersRootDir = File(cacheBackupDir, "folders")
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
             val zipFile = File(context.cacheDir, "monica_backup_$timestamp.zip")
@@ -714,16 +714,17 @@ class WebDavHelper(
                 val cardsDocsItems = filteredSecureItems.filter { it.itemType == ItemType.BANK_CARD || it.itemType == ItemType.DOCUMENT }
                 val noteItems = filteredSecureItems.filter { it.itemType == ItemType.NOTE }
 
+                val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                val categoryDao = database.categoryDao()
+                val customFieldDao = database.customFieldDao()
+                val passkeyDao = database.passkeyDao()
+                val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
+                val categoryMap = allCategories.associateBy { it.id }
+                val passwordCategoryById = filteredPasswords.associate { it.id to it.categoryId }
+
                 // 4. 导出密码数据到JSON
                 if (preferences.includePasswords && filteredPasswords.isNotEmpty()) {
-                    if (!passwordsDir.exists()) passwordsDir.mkdirs()
                     val json = Json { prettyPrint = false }
-                    
-                    val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                    val categoryDao = database.categoryDao()
-                    val customFieldDao = database.customFieldDao()
-                    val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
-                    val categoryMap = allCategories.associateBy { it.id }
                     
                     // 收集所有自定义字段用于CSV导出
                     val allCustomFieldsMap = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
@@ -773,8 +774,11 @@ class WebDavHelper(
                                 // ✅ 自定义字段
                                 customFields = fields
                             )
+                            val folderKey = toFolderKey(categoryName)
+                            val targetDir = File(foldersRootDir, "$folderKey/passwords")
+                            if (!targetDir.exists()) targetDir.mkdirs()
                             val fileName = "password_${password.id}_${password.createdAt.time}.json"
-                            val target = File(passwordsDir, fileName)
+                            val target = File(targetDir, fileName)
                             target.writeText(json.encodeToString(PasswordBackupEntry.serializer(), backup), Charsets.UTF_8)
                             successPasswordCount++
                         } catch (e: Exception) {
@@ -826,10 +830,10 @@ class WebDavHelper(
 
                 // 6.5 导出笔记
                 if (noteItems.isNotEmpty()) {
-                    if (!notesDir.exists()) notesDir.mkdirs()
                     val json = Json { prettyPrint = false }
                     noteItems.forEach { item ->
                         try {
+                            val categoryName = item.categoryId?.let { id -> categoryMap[id]?.name }
                             val backup = NoteBackupEntry(
                                 id = item.id,
                                 title = item.title,
@@ -838,10 +842,14 @@ class WebDavHelper(
                                 isFavorite = item.isFavorite,
                                 imagePaths = item.imagePaths,
                                 createdAt = item.createdAt.time,
-                                updatedAt = item.updatedAt.time
+                                updatedAt = item.updatedAt.time,
+                                categoryName = categoryName
                             )
+                            val folderKey = toFolderKey(categoryName)
+                            val targetDir = File(foldersRootDir, "$folderKey/notes")
+                            if (!targetDir.exists()) targetDir.mkdirs()
                             val fileName = "note_${item.id}_${item.createdAt.time}.json"
-                            val target = File(notesDir, fileName)
+                            val target = File(targetDir, fileName)
                             target.writeText(json.encodeToString(NoteBackupEntry.serializer(), backup), Charsets.UTF_8)
                             successNoteCount++
                         } catch (e: Exception) {
@@ -859,13 +867,13 @@ class WebDavHelper(
                 // 6.8 导出 Passkeys
                 if (preferences.includePasskeys) {
                     try {
-                        val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                        val passkeyDao = database.passkeyDao()
                         val passkeys = passkeyDao.getAllPasskeysSync()
                         if (passkeys.isNotEmpty()) {
-                            if (!passkeysDir.exists()) passkeysDir.mkdirs()
                             val json = Json { prettyPrint = false }
                             passkeys.forEach { passkey ->
+                                val derivedCategoryId = passkey.categoryId
+                                    ?: passkey.boundPasswordId?.let { passwordCategoryById[it] }
+                                val categoryName = derivedCategoryId?.let { id -> categoryMap[id]?.name }
                                 val backup = PasskeyBackupEntry(
                                     credentialId = passkey.credentialId,
                                     rpId = passkey.rpId,
@@ -886,11 +894,15 @@ class WebDavHelper(
                                     aaguid = passkey.aaguid,
                                     signCount = passkey.signCount,
                                     notes = passkey.notes,
-                                    boundPasswordId = passkey.boundPasswordId
+                                    boundPasswordId = passkey.boundPasswordId,
+                                    categoryName = categoryName
                                 )
+                                val folderKey = toFolderKey(categoryName)
+                                val targetDir = File(foldersRootDir, "$folderKey/passkeys")
+                                if (!targetDir.exists()) targetDir.mkdirs()
                                 val safeId = passkey.credentialId.replace("/", "_")
                                 val fileName = "passkey_${safeId}.json"
-                                val target = File(passkeysDir, fileName)
+                                val target = File(targetDir, fileName)
                                 target.writeText(json.encodeToString(PasskeyBackupEntry.serializer(), backup), Charsets.UTF_8)
                             }
                         }
@@ -901,20 +913,14 @@ class WebDavHelper(
                 }
 
                 ZipOutputStream(FileOutputStream(zipFile)).use { zipOut ->
-                    if (passwordsDir.exists()) {
-                        passwordsDir.listFiles()?.forEach { addFileToZip(zipOut, it, "passwords/${it.name}") }
+                    if (foldersRootDir.exists()) {
+                        addDirectoryToZip(zipOut, foldersRootDir, "folders")
                     }
                     if (preferences.includePasswords && passwordsCsvFile.exists()) {
                         addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
                     }
                     if (totpCsvFile.exists()) addFileToZip(zipOut, totpCsvFile, totpCsvFile.name)
                     if (cardsDocsCsvFile.exists()) addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
-                    if (notesDir.exists()) {
-                        notesDir.listFiles()?.forEach { addFileToZip(zipOut, it, "notes/${it.name}") }
-                    }
-                    if (passkeysDir.exists()) {
-                        passkeysDir.listFiles()?.forEach { addFileToZip(zipOut, it, "passkeys/${it.name}") }
-                    }
                     if (preferences.includeGeneratorHistory) {
                         try {
                             val historyManager = PasswordHistoryManager(context)
@@ -1308,11 +1314,9 @@ class WebDavHelper(
                 passwordsCsvFile.delete()
                 totpCsvFile.delete()
                 cardsDocsCsvFile.delete()
-                notesDir.deleteRecursively()
+                foldersRootDir.deleteRecursively()
                 historyJsonFile.delete()
                 if (finalFile != zipFile) zipFile.delete()
-                passwordsDir.deleteRecursively()
-                passkeysDir.deleteRecursively()
                 cacheBackupDir.deleteRecursively()
             }
         } catch (e: Exception) {
@@ -1584,8 +1588,11 @@ class WebDavHelper(
             
             try {
                 val passwordsWithMetadata = mutableListOf<Pair<PasswordEntry, String?>>()  // ✅ 存储密码和分类名称
+                val notesWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
+                val passkeysWithMetadata = mutableListOf<Pair<PasskeyEntry, String?>>()
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
+                val passkeys = mutableListOf<PasskeyEntry>()
                 
                 // 临时存储CSV文件路径，延后处理
                 var passwordsCsvFile: File? = null
@@ -1662,7 +1669,7 @@ class WebDavHelper(
                                     backupNoteCount++
                                     val noteItem = restoreNoteFromJson(tempFile)
                                     if (noteItem != null) {
-                                        secureItems.add(noteItem)
+                                        notesWithMetadata.add(noteItem)
                                         restoredNoteCount++
                                     } else {
                                         failedItems.add(FailedItem(
@@ -1677,18 +1684,8 @@ class WebDavHelper(
                                     backupPasskeyCount++
                                     val passkey = restorePasskeyFromJson(tempFile)
                                     if (passkey != null) {
-                                        try {
-                                            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                                            database.passkeyDao().insert(passkey)
-                                            restoredPasskeyCount++
-                                        } catch (e: Exception) {
-                                            failedItems.add(FailedItem(
-                                                id = 0,
-                                                type = "通行密钥",
-                                                title = entryName,
-                                                reason = "写入数据库失败: ${e.message}"
-                                            ))
-                                        }
+                                        passkeysWithMetadata.add(passkey)
+                                        restoredPasskeyCount++
                                     } else {
                                         failedItems.add(FailedItem(
                                             id = 0,
@@ -2137,8 +2134,8 @@ class WebDavHelper(
                     }
                 }
                 
-                // ✅ 解析分类并创建缺失的分类，同时处理TOTP关联
-                if (passwordsWithMetadata.isNotEmpty()) {
+                // ✅ 解析分类并创建缺失的分类，同时处理跨类型文件夹归属
+                if (passwordsWithMetadata.isNotEmpty() || notesWithMetadata.isNotEmpty() || passkeysWithMetadata.isNotEmpty()) {
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                     val categoryDao = database.categoryDao()
                     
@@ -2147,8 +2144,9 @@ class WebDavHelper(
                     val categoryByName = existingCategories.associateBy { it.name }.toMutableMap()
                     
                     // 收集需要创建的分类名称
-                    val categoryNamesToCreate = passwordsWithMetadata
-                        .mapNotNull { it.second }
+                    val categoryNamesToCreate = (passwordsWithMetadata.mapNotNull { it.second } +
+                        notesWithMetadata.mapNotNull { it.second } +
+                        passkeysWithMetadata.mapNotNull { it.second })
                         .distinct()
                         .filter { it.isNotBlank() && !categoryByName.containsKey(it) }
                     
@@ -2169,16 +2167,36 @@ class WebDavHelper(
                         }
                     }
                     
-                    // ✅ 存储密码和分类名称（authenticatorKey已经在PasswordEntry中）
-                    
                     // 将密码与分类关联
                     passwordsWithMetadata.forEach { (entry, categoryName) ->
                         val categoryId = categoryName?.let { categoryByName[it]?.id }
                         val passwordEntry = entry.copy(categoryId = categoryId)
                         passwords.add(passwordEntry)
                     }
+
+                    // 将笔记与分类关联
+                    notesWithMetadata.forEach { (entry, categoryName) ->
+                        val categoryId = categoryName?.let { categoryByName[it]?.id }
+                        secureItems.add(entry.copy(categoryId = categoryId))
+                    }
+
+                    // 将通行密钥与分类关联
+                    passkeysWithMetadata.forEach { (entry, categoryName) ->
+                        val categoryId = categoryName?.let { categoryByName[it]?.id }
+                        passkeys.add(entry.copy(categoryId = categoryId))
+                    }
                     
-                    android.util.Log.d("WebDavHelper", "Resolved ${passwords.size} passwords with categories")
+                    android.util.Log.d(
+                        "WebDavHelper",
+                        "Resolved categories for passwords=${passwords.size}, notes=${secureItems.size}, passkeys=${passkeys.size}"
+                    )
+                }
+
+                if (notesWithMetadata.isNotEmpty() && secureItems.isEmpty()) {
+                    secureItems.addAll(notesWithMetadata.map { it.first })
+                }
+                if (passkeysWithMetadata.isNotEmpty() && passkeys.isEmpty()) {
+                    passkeys.addAll(passkeysWithMetadata.map { it.first })
                 }
                 
                 // 5. 向后兼容：如果没有JSON密码，使用CSV（支持旧版本备份）
@@ -2241,6 +2259,7 @@ class WebDavHelper(
                     content = BackupContent(
                         passwords = passwords,
                         secureItems = secureItems,
+                        passkeys = passkeys,
                         customFieldsMap = pendingCustomFields.toMap()
                     ),
                     report = report
@@ -2463,12 +2482,13 @@ class WebDavHelper(
     // 临时存储待恢复的自定义字段（原始ID -> 字段列表）
     private val pendingCustomFields = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
 
-    private fun restoreNoteFromJson(file: File): DataExportImportManager.ExportItem? {
+    private fun restoreNoteFromJson(file: File): Pair<DataExportImportManager.ExportItem, String?>? {
         return try {
             val json = Json { ignoreUnknownKeys = true }
             val text = file.readText(Charsets.UTF_8)
             val entry = json.decodeFromString(NoteBackupEntry.serializer(), text)
-            DataExportImportManager.ExportItem(
+            Pair(
+                DataExportImportManager.ExportItem(
                 id = entry.id,
                 itemType = ItemType.NOTE.name,
                 title = entry.title,
@@ -2477,7 +2497,9 @@ class WebDavHelper(
                 isFavorite = entry.isFavorite,
                 imagePaths = entry.imagePaths,
                 createdAt = entry.createdAt,
-                updatedAt = entry.updatedAt
+                    updatedAt = entry.updatedAt
+                ),
+                entry.categoryName
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore note from ${file.name}: ${e.message}")
@@ -2485,12 +2507,13 @@ class WebDavHelper(
         }
     }
 
-    private fun restorePasskeyFromJson(file: File): PasskeyEntry? {
+    private fun restorePasskeyFromJson(file: File): Pair<PasskeyEntry, String?>? {
         return try {
             val json = Json { ignoreUnknownKeys = true }
             val text = file.readText(Charsets.UTF_8)
             val backup = json.decodeFromString(PasskeyBackupEntry.serializer(), text)
-            PasskeyEntry(
+            Pair(
+                PasskeyEntry(
                 credentialId = backup.credentialId,
                 rpId = backup.rpId,
                 rpName = backup.rpName,
@@ -2512,6 +2535,8 @@ class WebDavHelper(
                 isBackedUp = true,
                 notes = backup.notes,
                 boundPasswordId = backup.boundPasswordId
+                ),
+                backup.categoryName
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore passkey from ${file.name}: ${e.message}")
@@ -2710,6 +2735,32 @@ class WebDavHelper(
             fileIn.copyTo(zipOut)
             zipOut.closeEntry()
         }
+    }
+
+    private fun addDirectoryToZip(zipOut: ZipOutputStream, directory: File, basePath: String) {
+        directory.walkTopDown()
+            .filter { it.isFile }
+            .forEach { file ->
+                val relativePath = file.relativeTo(directory).invariantSeparatorsPath
+                addFileToZip(zipOut, file, "$basePath/$relativePath")
+            }
+    }
+
+    private fun toFolderKey(categoryName: String?): String {
+        val normalized = categoryName?.trim().orEmpty()
+        if (normalized.isEmpty()) return "_root"
+        return buildString {
+            normalized.forEach { ch ->
+                append(
+                    when {
+                        ch.isLetterOrDigit() -> ch
+                        ch == '-' || ch == '_' -> ch
+                        ch.isWhitespace() -> '_'
+                        else -> '_'
+                    }
+                )
+            }
+        }.trim('_').ifEmpty { "_root" }
     }
     
     /**
@@ -3012,6 +3063,7 @@ data class BackupFile(
 data class BackupContent(
     val passwords: List<PasswordEntry>,
     val secureItems: List<DataExportImportManager.ExportItem>,
+    val passkeys: List<PasskeyEntry> = emptyList(),
     val customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap()
 )
 
