@@ -50,7 +50,7 @@ private fun ContentTypeSwitch(
             )
             if (count != null) {
                 Text(
-                    text = "$count 项",
+                    text = stringResource(R.string.common_count_items, count),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (enabled) 
                         MaterialTheme.colorScheme.onSurfaceVariant

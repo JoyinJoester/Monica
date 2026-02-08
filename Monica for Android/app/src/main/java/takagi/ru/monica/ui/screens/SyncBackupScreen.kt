@@ -111,7 +111,7 @@ fun SyncBackupScreen(
             }
             
             // 常用同步区块（高频）
-            SyncBackupSection(title = "常用同步") {
+            SyncBackupSection(title = stringResource(R.string.sync_backup_common_sync)) {
                 SyncBackupItem(
                     icon = Icons.Default.Cloud,
                     title = stringResource(R.string.webdav_backup),
@@ -128,8 +128,8 @@ fun SyncBackupScreen(
 
                 SyncBackupItem(
                     icon = Icons.Default.CloudSync,
-                    title = "Bitwarden 同步",
-                    description = "连接 Bitwarden 服务器，同步您的密码与卡片等数据",
+                    title = stringResource(R.string.sync_backup_bitwarden_sync_title),
+                    description = stringResource(R.string.sync_backup_bitwarden_sync_desc),
                     onClick = onNavigateToBitwarden,
                     enabled = isPlusActivated,
                     badge = if (!isPlusActivated) "Plus" else null
@@ -151,7 +151,7 @@ fun SyncBackupScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // KeePass 相关区块（中低频）
-            SyncBackupSection(title = "KeePass 工具") {
+            SyncBackupSection(title = stringResource(R.string.sync_backup_keepass_tools)) {
                 SyncBackupItem(
                     icon = Icons.Default.Key,
                     title = stringResource(R.string.local_keepass_database),
@@ -166,8 +166,8 @@ fun SyncBackupScreen(
 
                 SyncBackupItem(
                     icon = Icons.Default.Sync,
-                    title = "KeePass WebDAV",
-                    description = "通过 WebDAV 与 KeePass (.kdbx) 同步数据",
+                    title = stringResource(R.string.sync_backup_keepass_webdav_title),
+                    description = stringResource(R.string.sync_backup_keepass_webdav_desc),
                     onClick = onNavigateToKeePass,
                     enabled = isPlusActivated,
                     badge = if (!isPlusActivated) "Plus" else null
@@ -177,7 +177,7 @@ fun SyncBackupScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // 导入导出区块（低频）
-            SyncBackupSection(title = "导入导出（低频）") {
+            SyncBackupSection(title = stringResource(R.string.sync_backup_import_export_low_freq)) {
                 SyncBackupItem(
                     icon = Icons.Default.Download,
                     title = stringResource(R.string.export_data),

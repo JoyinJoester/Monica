@@ -332,13 +332,13 @@ fun DocumentDetailScreen(
                             if (paths.isNotEmpty() && paths[0].isNotBlank()) {
                                 val success = imageManager.saveImageToGallery(paths[0], "Document_${item.title}_Front")
                                 if (success) {
-                                    Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.saved_to_gallery), Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
                                 }
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.photo_process_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -359,13 +359,13 @@ fun DocumentDetailScreen(
                             if (paths.size > 1 && paths[1].isNotBlank()) {
                                 val success = imageManager.saveImageToGallery(paths[1], "Document_${item.title}_Back")
                                 if (success) {
-                                    Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.saved_to_gallery), Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
                                 }
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(context, "保存出错: ${e.message}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.photo_process_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -398,12 +398,13 @@ fun DocumentDetailScreen(
     }
 }
 
+@Composable
 private fun getDocumentTypeName(type: DocumentType): String {
     return when (type) {
-        DocumentType.ID_CARD -> "身份证"
-        DocumentType.PASSPORT -> "护照"
-        DocumentType.DRIVER_LICENSE -> "驾驶证"
-        DocumentType.SOCIAL_SECURITY -> "社保卡"
-        DocumentType.OTHER -> "其他证件"
+        DocumentType.ID_CARD -> stringResource(R.string.id_card)
+        DocumentType.PASSPORT -> stringResource(R.string.passport)
+        DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+        DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
+        DocumentType.OTHER -> stringResource(R.string.other_document)
     }
 }

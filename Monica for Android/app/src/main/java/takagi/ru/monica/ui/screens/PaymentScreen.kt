@@ -152,7 +152,7 @@ fun PaymentScreen(
                     
                     // Afdian Link
                     PaymentLinkButton(
-                        platform = "爱发电",
+                        platform = stringResource(R.string.payment_platform_afdian),
                         url = "https://afdian.com/a/JoyinJoester/plan",
                         icon = Icons.Default.Favorite,
                         context = context,

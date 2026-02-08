@@ -12,7 +12,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 
 /**
  * 自动填充搜索栏组件
@@ -32,7 +34,7 @@ fun AutofillSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = "搜索..."
+    placeholder: String = stringResource(R.string.search_passwords)
 ) {
     OutlinedTextField(
         value = query,
@@ -47,7 +49,7 @@ fun AutofillSearchBar(
         leadingIcon = {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "搜索",
+                contentDescription = stringResource(R.string.search),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
@@ -61,7 +63,7 @@ fun AutofillSearchBar(
                 IconButton(onClick = { onQueryChange("") }) {
                     Icon(
                         imageVector = Icons.Default.Clear,
-                        contentDescription = "清除",
+                        contentDescription = stringResource(R.string.clear),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

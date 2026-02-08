@@ -272,7 +272,7 @@ fun SavePasswordDialog(
                         IconButton(onClick = { 
                             // TODO: 调用密码生成器
                         }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "生成密码")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
                         }
                     }
                 },
@@ -471,14 +471,14 @@ private fun SavePasswordHeader(
         // 捕获的凭据信息预览
         if (username.isNotEmpty()) {
             SaveInfoRow(
-                title = "用户名",
+                title = stringResource(R.string.autofill_username),
                 value = username
             )
         }
         
         if (password.isNotEmpty()) {
             SaveInfoRow(
-                title = "密码",
+                title = stringResource(R.string.autofill_password),
                 value = takagi.ru.monica.autofill.ui.colorizePasswordString(password)
             )
         }
@@ -489,7 +489,7 @@ private fun SavePasswordHeader(
             
             if (packageName.isNotEmpty()) {
                 SaveInfoRow(
-                    title = "App",
+                    title = stringResource(R.string.associated_app),
                     value = packageName,
                     isSecondary = true
                 )
@@ -497,7 +497,7 @@ private fun SavePasswordHeader(
             
             if (website.isNotEmpty()) {
                 SaveInfoRow(
-                    title = "Website",
+                    title = stringResource(R.string.autofill_website_app),
                     value = website,
                     isSecondary = true
                 )

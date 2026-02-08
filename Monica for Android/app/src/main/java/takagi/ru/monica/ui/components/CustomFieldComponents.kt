@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.CustomFieldDraft
 
@@ -55,7 +57,7 @@ fun CustomFieldSectionHeader(
                 modifier = Modifier.size(22.dp)
             )
             Text(
-                text = "自定义字段",
+                text = stringResource(R.string.custom_field_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
@@ -67,7 +69,7 @@ fun CustomFieldSectionHeader(
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = "添加自定义字段",
+                contentDescription = stringResource(R.string.custom_field_add),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -95,7 +97,7 @@ fun CustomFieldEditCard(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     
     // 动态标题
-    val displayTitle = field.title.ifBlank { "新字段" }
+    val displayTitle = field.title.ifBlank { stringResource(R.string.custom_field_new_field) }
     
     // 删除确认对话框
     if (showDeleteConfirm) {
@@ -108,8 +110,8 @@ fun CustomFieldEditCard(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("删除自定义字段") },
-            text = { Text("确定要删除「$displayTitle」吗？此操作无法撤销。") },
+            title = { Text(stringResource(R.string.custom_field_delete_title)) },
+            text = { Text(stringResource(R.string.custom_field_delete_message, displayTitle)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -120,12 +122,12 @@ fun CustomFieldEditCard(
                         contentColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -183,7 +185,7 @@ fun CustomFieldEditCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "收起编辑",
+                            contentDescription = stringResource(R.string.collapse),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -193,8 +195,8 @@ fun CustomFieldEditCard(
                 OutlinedTextField(
                     value = field.title,
                     onValueChange = { onFieldChange(field.copy(title = it)) },
-                    label = { Text("字段名称") },
-                    placeholder = { Text("如：安全问题、备用邮箱") },
+                    label = { Text(stringResource(R.string.custom_field_name)) },
+                    placeholder = { Text(stringResource(R.string.custom_field_name_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
@@ -212,8 +214,8 @@ fun CustomFieldEditCard(
                 OutlinedTextField(
                     value = field.value,
                     onValueChange = { onFieldChange(field.copy(value = it)) },
-                    label = { Text("字段内容") },
-                    placeholder = { Text("输入内容...") },
+                    label = { Text(stringResource(R.string.custom_field_value)) },
+                    placeholder = { Text(stringResource(R.string.custom_field_value_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     visualTransformation = if (!valueVisible && field.isProtected) 
@@ -225,7 +227,11 @@ fun CustomFieldEditCard(
                             IconButton(onClick = { valueVisible = !valueVisible }) {
                                 Icon(
                                     imageVector = if (valueVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = if (valueVisible) "隐藏内容" else "显示内容"
+                                    contentDescription = if (valueVisible) {
+                                        stringResource(R.string.custom_field_hide_content)
+                                    } else {
+                                        stringResource(R.string.custom_field_show_content)
+                                    }
                                 )
                             }
                         }
@@ -267,12 +273,12 @@ fun CustomFieldEditCard(
                         )
                         Column {
                             Text(
-                                text = "敏感数据",
+                                text = stringResource(R.string.custom_field_sensitive),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = "开启后内容默认隐藏显示",
+                                text = stringResource(R.string.custom_field_sensitive_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -304,7 +310,7 @@ fun CustomFieldEditCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("保存字段")
+                    Text(stringResource(R.string.custom_field_save))
                 }
             }
         } else {
@@ -347,7 +353,7 @@ fun CustomFieldEditCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Edit,
-                                contentDescription = "编辑",
+                                contentDescription = stringResource(R.string.edit),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -357,7 +363,7 @@ fun CustomFieldEditCard(
                         if (field.isPreset) {
                             Icon(
                                 imageVector = Icons.Default.Lock,
-                                contentDescription = "预设字段，不可删除",
+                                contentDescription = stringResource(R.string.custom_field_preset_not_deletable),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp)
@@ -370,7 +376,7 @@ fun CustomFieldEditCard(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
-                                    contentDescription = "删除",
+                                    contentDescription = stringResource(R.string.delete),
                                     tint = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -403,7 +409,7 @@ fun CustomFieldEditCard(
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = "敏感数据",
+                            text = stringResource(R.string.custom_field_sensitive),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
                         )
@@ -429,7 +435,7 @@ fun CustomFieldEditCard(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = "预设字段",
+                                    text = stringResource(R.string.custom_field_preset),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                                 )
@@ -447,7 +453,7 @@ fun CustomFieldEditCard(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = "必填",
+                                    text = stringResource(R.string.custom_field_required),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
                                 )
@@ -497,7 +503,7 @@ fun AddCustomFieldButton(
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "添加自定义字段",
+                text = stringResource(R.string.custom_field_add),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium
@@ -572,7 +578,11 @@ fun CustomFieldDetailCard(
                         ) {
                             Icon(
                                 imageVector = if (valueVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (valueVisible) "隐藏内容" else "显示内容",
+                                contentDescription = if (valueVisible) {
+                                    stringResource(R.string.custom_field_hide_content)
+                                } else {
+                                    stringResource(R.string.custom_field_show_content)
+                                },
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -586,7 +596,7 @@ fun CustomFieldDetailCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "复制",
+                            contentDescription = stringResource(R.string.copy),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -620,7 +630,7 @@ fun CustomFieldDetailCard(
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = "敏感数据",
+                        text = stringResource(R.string.custom_field_sensitive),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
                     )

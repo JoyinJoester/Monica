@@ -45,7 +45,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Monica 自动填充"
+                android:text="@string/tile_autofill_label"
                 android:textSize="15sp"
                 android:textColor="@color/autofill_text_primary"
                 android:textStyle="bold"
@@ -56,10 +56,10 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="点击进入选择界面"
+                android:text="@string/autofill_open_picker"
                 android:textSize="13sp"
                 android:textColor="@color/autofill_text_secondary"
-                android:maxLines="1"
+                android:maxLines="2"
                 android:ellipsize="end"
                 android:layout_marginTop="2dp"
                 android:fontFamily="sans-serif" />

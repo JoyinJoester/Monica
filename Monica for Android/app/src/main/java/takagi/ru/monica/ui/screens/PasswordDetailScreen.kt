@@ -43,7 +43,7 @@ import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.data.PasswordEntry
-import takagi.ru.monica.ui.components.MasterPasswordDialog
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
@@ -108,6 +108,7 @@ fun PasswordDetailScreen(
     
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
+    var masterPasswordInput by remember { mutableStateOf("") }
     var passwordVerificationError by remember { mutableStateOf(false) }
     
     // 自定义字段状态
@@ -162,17 +163,25 @@ fun PasswordDetailScreen(
                     onSuccess = { executeDeletion() },
                     onError = {
                         // If error is not user cancellation, show password dialog
+                        masterPasswordInput = ""
+                        passwordVerificationError = false
                          showMasterPasswordDialog = true
                     },
                     onFailed = {
                         // Authentication failed (e.g. wrong finger), show password dialog
+                        masterPasswordInput = ""
+                        passwordVerificationError = false
                         showMasterPasswordDialog = true
                     }
                 )
             } ?: run {
+                masterPasswordInput = ""
+                passwordVerificationError = false
                 showMasterPasswordDialog = true
             }
         } else {
+            masterPasswordInput = ""
+            passwordVerificationError = false
             showMasterPasswordDialog = true
         }
     }
@@ -533,7 +542,11 @@ fun PasswordDetailScreen(
                             }
                             
                             clipboard.setPrimaryClip(clip)
-                            val message = if (isProtected) "已复制敏感字段: $fieldName" else "已复制: $fieldName"
+                            val message = if (isProtected) {
+                                context.getString(R.string.copied_sensitive_field, fieldName)
+                            } else {
+                                context.getString(R.string.copied_field_name, fieldName)
+                            }
                             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
                     )
@@ -603,20 +616,65 @@ fun PasswordDetailScreen(
     }
 
     if (showMasterPasswordDialog) {
-        MasterPasswordDialog(
-            onDismiss = { 
-                showMasterPasswordDialog = false 
+        val activity = context as? FragmentActivity
+        val retryBiometricAction = if (
+            activity != null &&
+            biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity_to_delete),
+                    onSuccess = {
+                        showMasterPasswordDialog = false
+                        passwordVerificationError = false
+                        executeDeletion()
+                    },
+                    onError = {
+                        // keep dialog open and let user choose password retry
+                    },
+                    onFailed = {
+                        // keep dialog open
+                    }
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.verify_identity_to_delete),
+            passwordValue = masterPasswordInput,
+            onPasswordChange = {
+                masterPasswordInput = it
                 passwordVerificationError = false
             },
-            onConfirm = { password ->
-                if (viewModel.verifyMasterPassword(password)) {
+            onDismiss = {
+                showMasterPasswordDialog = false 
+                masterPasswordInput = ""
+                passwordVerificationError = false
+            },
+            onConfirm = {
+                if (viewModel.verifyMasterPassword(masterPasswordInput)) {
                     showMasterPasswordDialog = false
+                    masterPasswordInput = ""
+                    passwordVerificationError = false
                     executeDeletion()
                 } else {
                     passwordVerificationError = true
                 }
             },
-            isError = passwordVerificationError
+            confirmText = stringResource(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = passwordVerificationError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = retryBiometricAction,
+            biometricHintText = if (retryBiometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
+            }
         )
     }
 }
@@ -889,7 +947,7 @@ private fun TotpCard(
                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    text = if (totpData != null) "动态验证码" else stringResource(R.string.linked_app),
+                    text = if (totpData != null) stringResource(R.string.dynamic_verification_code) else stringResource(R.string.linked_app),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -918,7 +976,7 @@ private fun TotpCard(
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val clip = ClipData.newPlainText("2FA Code", code)
                             clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, context.getString(R.string.copied, "验证码"), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.copied, context.getString(R.string.verification_code)), Toast.LENGTH_SHORT).show()
                         }
                     ) {
                         Icon(

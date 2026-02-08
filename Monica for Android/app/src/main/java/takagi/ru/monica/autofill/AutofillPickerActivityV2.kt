@@ -220,9 +220,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = decryptedUsername,
-                firstLabel = "Username",
+                firstLabel = getString(R.string.autofill_username),
                 secondValue = decryptedPassword,
-                secondLabel = "Password"
+                secondLabel = getString(R.string.autofill_password)
             )
             android.widget.Toast.makeText(this, R.string.username_copied, android.widget.Toast.LENGTH_SHORT).show()
         } else {
@@ -230,9 +230,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = decryptedPassword,
-                firstLabel = "Password",
+                firstLabel = getString(R.string.autofill_password),
                 secondValue = decryptedUsername,
-                secondLabel = "Username"
+                secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -270,9 +270,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = decryptedPassword,
-                firstLabel = "Password",
+                firstLabel = getString(R.string.autofill_password),
                 secondValue = decryptedUsername,
-                secondLabel = "Username"
+                secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
             finish()
@@ -358,8 +358,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             }
             clipboard.setPrimaryClip(clip)
             
-            val message = if (label == "Password") "密码已复制" else "用户名已复制"
-            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+            val messageRes = if (isSensitive) R.string.password_copied else R.string.username_copied
+            android.widget.Toast.makeText(this, messageRes, android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Clipboard copy failed", e)
         }
@@ -402,6 +402,8 @@ private fun AutofillPickerContent(
     // 读取自动填充验证设置
     val appSettingsState = settingsManager.settingsFlow.collectAsState(initial = null)
     val appSettings = appSettingsState.value
+    val autofillUsernameLabel = stringResource(R.string.autofill_username)
+    val autofillPasswordLabel = stringResource(R.string.autofill_password)
     
     if (appSettings == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -503,9 +505,9 @@ private fun AutofillPickerContent(
         "list" -> {
             // 根据模式显示不同标题
             val title = when {
-                args.isSaveMode -> "Save form data"
-                isManualMode -> "Monica 快速复制"
-                else -> "Autofill with Monica"
+                args.isSaveMode -> stringResource(R.string.autofill_save_form_data)
+                isManualMode -> stringResource(R.string.autofill_manual_quick_copy)
+                else -> stringResource(R.string.autofill_with_monica)
             }
             
             AutofillScaffold(
@@ -517,7 +519,7 @@ private fun AutofillPickerContent(
                         applicationId = if (isManualMode) null else args.applicationId,
                         webDomain = if (isManualMode) null else args.webDomain,
                         appIcon = if (isManualMode) null else appIcon,
-                        appName = if (isManualMode) "选择密码后复制到剪贴板" else appName,
+                        appName = if (isManualMode) stringResource(R.string.autofill_select_password_and_copy) else appName,
                         onClose = onClose
                     )
                 }
@@ -551,7 +553,7 @@ private fun AutofillPickerContent(
                                 if (suggestedPasswords.isNotEmpty() && searchQuery.isBlank()) {
                                     item {
                                         Text(
-                                            text = "建议填充",
+                                            text = stringResource(R.string.autofill_suggested_fill),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -578,11 +580,11 @@ private fun AutofillPickerContent(
                                                         currentScreen = "detail"
                                                     }
                                                     is PasswordItemAction.CopyUsername -> {
-                                                        onCopy("Username", action.password.username, false)
+                                                        onCopy(autofillUsernameLabel, action.password.username, false)
                                                     }
                                                     is PasswordItemAction.CopyPassword -> {
                                                         val decryptedPassword = securityManager.decryptData(action.password.password)
-                                                        onCopy("Password", decryptedPassword, true)
+                                                        onCopy(autofillPasswordLabel, decryptedPassword, true)
                                                     }
                                                     is PasswordItemAction.SmartCopyUsernameFirst -> {
                                                         onSmartCopy(action.password, true)
@@ -614,7 +616,11 @@ private fun AutofillPickerContent(
                                 if (filteredPasswords.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = if (suggestedPasswords.isNotEmpty()) "其他条目" else "所有条目",
+                                            text = if (suggestedPasswords.isNotEmpty()) {
+                                                stringResource(R.string.autofill_other_entries)
+                                            } else {
+                                                stringResource(R.string.autofill_all_entries)
+                                            },
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -647,11 +653,11 @@ private fun AutofillPickerContent(
                                                     currentScreen = "detail"
                                                 }
                                                 is PasswordItemAction.CopyUsername -> {
-                                                    onCopy("Username", action.password.username, false)
+                                                    onCopy(autofillUsernameLabel, action.password.username, false)
                                                 }
                                                 is PasswordItemAction.CopyPassword -> {
                                                     val decryptedPassword = securityManager.decryptData(action.password.password)
-                                                    onCopy("Password", decryptedPassword, true)
+                                                    onCopy(autofillPasswordLabel, decryptedPassword, true)
                                                 }
                                                 is PasswordItemAction.SmartCopyUsernameFirst -> {
                                                     onSmartCopy(action.password, true)
@@ -678,7 +684,7 @@ private fun AutofillPickerContent(
                             .align(Alignment.BottomEnd)
                             .padding(16.dp),
                         icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                        text = { Text("新建") }
+                        text = { Text(stringResource(R.string.create_new)) }
                     )
                 }
             }
@@ -755,7 +761,7 @@ private fun NoSuggestionsHint() {
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = "在此上下文中没有建议的项目",
+            text = stringResource(R.string.autofill_no_suggestions_in_context),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

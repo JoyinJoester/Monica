@@ -207,7 +207,7 @@ fun AddEditTotpScreen(
 
             // Basic Info Card
             item {
-                InfoCard(title = "验证器信息") {
+                InfoCard(title = stringResource(R.string.section_authenticator_info)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Title
                         OutlinedTextField(
@@ -302,7 +302,7 @@ fun AddEditTotpScreen(
 
             // Notes Card
             item {
-                InfoCard(title = "备注") {
+                InfoCard(title = stringResource(R.string.section_notes)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Notes
                         OutlinedTextField(

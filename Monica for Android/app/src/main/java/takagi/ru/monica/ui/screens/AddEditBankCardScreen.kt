@@ -140,7 +140,7 @@ fun AddEditBankCardScreen(
 
         if (cardId == null) {
             viewModel.addCard(
-                title = title.ifBlank { "银行卡" },
+                title = title.ifBlank { context.getString(R.string.bank_card_default_title) },
                 cardData = cardData,
                 notes = notes,
                 isFavorite = isFavorite,
@@ -149,7 +149,7 @@ fun AddEditBankCardScreen(
         } else {
             viewModel.updateCard(
                 id = cardId,
-                title = title.ifBlank { "银行卡" },
+                title = title.ifBlank { context.getString(R.string.bank_card_default_title) },
                 cardData = cardData,
                 notes = notes,
                 isFavorite = isFavorite,
@@ -219,7 +219,7 @@ fun AddEditBankCardScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Basic Information
-            InfoCard(title = "基本信息") {
+            InfoCard(title = stringResource(R.string.section_basic_info)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Card Name
                     OutlinedTextField(
@@ -475,7 +475,7 @@ fun AddEditBankCardScreen(
             }
             
             // Photos Card
-            InfoCard(title = "照片") {
+            InfoCard(title = stringResource(R.string.section_photos)) {
                 DualPhotoPicker(
                     frontImageFileName = frontImageFileName,
                     backImageFileName = backImageFileName,
@@ -483,14 +483,14 @@ fun AddEditBankCardScreen(
                     onFrontImageRemoved = { frontImageFileName = null },
                     onBackImageSelected = { fileName -> backImageFileName = fileName },
                     onBackImageRemoved = { backImageFileName = null },
-                    frontLabel = "银行卡照片（正面）",
-                    backLabel = "银行卡照片（背面）",
+                    frontLabel = stringResource(R.string.bank_card_photo_front_label),
+                    backLabel = stringResource(R.string.bank_card_photo_back_label),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
             // Notes Card
-            InfoCard(title = "备注") {
+            InfoCard(title = stringResource(R.string.section_notes)) {
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },

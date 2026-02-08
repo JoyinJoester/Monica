@@ -799,7 +799,11 @@ private fun PasskeyListItem(
                     // 展开/收起图标
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) "收起" else "展开",
+                        contentDescription = if (expanded) {
+                            stringResource(R.string.collapse)
+                        } else {
+                            stringResource(R.string.expand)
+                        },
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

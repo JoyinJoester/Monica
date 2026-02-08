@@ -135,8 +135,8 @@ fun TimelineScreen(
                     .fillMaxHeight()
             ) {
                 SplitPaneHeader(
-                    title = "时间线",
-                    subtitle = "操作历史",
+                    title = stringResource(R.string.timeline_title),
+                    subtitle = stringResource(R.string.timeline_subtitle),
                     icon = Icons.Default.History
                 )
                 TimelineContent(
@@ -156,8 +156,8 @@ fun TimelineScreen(
                     .fillMaxHeight()
             ) {
                 SplitPaneHeader(
-                    title = "回收站",
-                    subtitle = "已删除项目",
+                    title = stringResource(R.string.timeline_trash_title),
+                    subtitle = stringResource(R.string.timeline_trash_subtitle),
                     icon = Icons.Default.Delete
                 )
                 TrashContent(
@@ -280,7 +280,11 @@ private fun HistoryTopBar(
         ) {
             // 左侧大标题 - 带渐变效果
             Text(
-                text = if (currentTab == HistoryTab.TIMELINE) "时间线" else "回收站",
+                text = if (currentTab == HistoryTab.TIMELINE) {
+                    stringResource(R.string.timeline_title)
+                } else {
+                    stringResource(R.string.timeline_trash_title)
+                },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.onBackground
@@ -300,13 +304,13 @@ private fun HistoryTopBar(
                         selected = currentTab == HistoryTab.TIMELINE,
                         onClick = { onTabSelected(HistoryTab.TIMELINE) },
                         icon = Icons.Default.History,
-                        contentDescription = "操作历史"
+                        contentDescription = stringResource(R.string.timeline_subtitle)
                     )
                     HistoryPillTabItem(
                         selected = currentTab == HistoryTab.TRASH,
                         onClick = { onTabSelected(HistoryTab.TRASH) },
                         icon = Icons.Default.Delete,
-                        contentDescription = "回收站"
+                        contentDescription = stringResource(R.string.timeline_trash_title)
                     )
                 }
             }
@@ -374,11 +378,11 @@ private fun groupAndAggregateEvents(events: List<TimelineEvent>): List<TimelineG
             is TimelineEvent.ConflictBranch -> event.ancestor.timestamp
         }
         when {
-            timestamp >= today -> "今天"
-            timestamp >= yesterday -> "昨天"
-            timestamp >= thisWeekStart -> "本周"
+            timestamp >= today -> stringResource(R.string.timeline_date_today)
+            timestamp >= yesterday -> stringResource(R.string.timeline_date_yesterday)
+            timestamp >= thisWeekStart -> stringResource(R.string.timeline_date_this_week)
             else -> {
-                val sdf = SimpleDateFormat("MM月dd日", Locale.CHINESE)
+                val sdf = SimpleDateFormat(stringResource(R.string.timeline_date_month_day), Locale.getDefault())
                 sdf.format(Date(timestamp))
             }
         }
@@ -642,7 +646,7 @@ private fun EmptyTimelineState() {
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "您的操作记录将会显示在这里",
+                text = stringResource(R.string.timeline_empty_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
@@ -687,29 +691,31 @@ private fun getItemTypeIcon(itemType: String): ImageVector {
 /**
  * 获取操作类型的显示文本
  */
+@Composable
 private fun getOperationLabel(operationType: String): String {
     return when (operationType) {
-        "CREATE" -> "新建"
-        "UPDATE" -> "编辑"
-        "DELETE" -> "删除"
-        "SYNC" -> "同步"
-        else -> "操作"
+        "CREATE" -> stringResource(R.string.timeline_op_create)
+        "UPDATE" -> stringResource(R.string.timeline_op_update)
+        "DELETE" -> stringResource(R.string.timeline_op_delete)
+        "SYNC" -> stringResource(R.string.timeline_op_sync)
+        else -> stringResource(R.string.timeline_op_default)
     }
 }
 
 /**
  * 获取项目类型的显示文本
  */
+@Composable
 private fun getItemTypeLabel(itemType: String): String {
     return when (itemType) {
-        "PASSWORD" -> "密码"
-        "TOTP" -> "验证器"
-        "BANK_CARD" -> "卡片"
-        "NOTE" -> "笔记"
-        "DOCUMENT" -> "证件"
-        "WEBDAV_UPLOAD" -> "云备份"
-        "WEBDAV_DOWNLOAD" -> "云恢复"
-        else -> "项目"
+        "PASSWORD" -> stringResource(R.string.timeline_item_password)
+        "TOTP" -> stringResource(R.string.timeline_item_authenticator)
+        "BANK_CARD" -> stringResource(R.string.timeline_item_card)
+        "NOTE" -> stringResource(R.string.timeline_item_note)
+        "DOCUMENT" -> stringResource(R.string.timeline_item_document)
+        "WEBDAV_UPLOAD" -> stringResource(R.string.timeline_item_cloud_backup)
+        "WEBDAV_DOWNLOAD" -> stringResource(R.string.timeline_item_cloud_restore)
+        else -> stringResource(R.string.timeline_item_default)
     }
 }
 
@@ -830,7 +836,7 @@ private fun ModernLogItem(
                             color = colorScheme.tertiaryContainer
                         ) {
                             Text(
-                                text = "已恢复",
+                                text = stringResource(R.string.timeline_reverted),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = colorScheme.onTertiaryContainer,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -846,7 +852,11 @@ private fun ModernLogItem(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "${getOperationLabel(log.operationType)} · ${getItemTypeLabel(log.itemType)}",
+                        text = stringResource(
+                            R.string.timeline_log_meta,
+                            getOperationLabel(log.operationType),
+                            getItemTypeLabel(log.itemType)
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
@@ -946,13 +956,18 @@ private fun AggregatedLogItem(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "${getOperationLabel(aggregated.operationType)} ${aggregated.events.size} 个${getItemTypeLabel(aggregated.itemType)}",
+                        text = stringResource(
+                            R.string.timeline_aggregated_summary,
+                            getOperationLabel(aggregated.operationType),
+                            aggregated.events.size,
+                            getItemTypeLabel(aggregated.itemType)
+                        ),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         color = colorScheme.onSurface
                     )
                     Text(
-                        text = "点击展开查看详情",
+                        text = stringResource(R.string.timeline_tap_expand_for_details),
                         style = MaterialTheme.typography.bodySmall,
                         color = colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
@@ -962,7 +977,7 @@ private fun AggregatedLogItem(
                 // 展开按钮
                 Icon(
                     imageVector = Icons.Default.ExpandMore,
-                    contentDescription = if (isExpanded) "收起" else "展开",
+                    contentDescription = if (isExpanded) stringResource(R.string.collapse) else stringResource(R.string.expand),
                     tint = colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .size(24.dp)
@@ -1102,7 +1117,7 @@ private fun StandardLogDetailSheet(
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
-                                    text = "已恢复",
+                                    text = stringResource(R.string.timeline_reverted),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = colorScheme.onTertiaryContainer,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1114,7 +1129,12 @@ private fun StandardLogDetailSheet(
                     Spacer(modifier = Modifier.height(4.dp))
                     
                     Text(
-                        text = "${getOperationLabel(log.operationType)} · ${getItemTypeLabel(log.itemType)} · ${formatTimestamp(log.timestamp)}",
+                        text = stringResource(
+                            R.string.timeline_log_meta_with_time,
+                            getOperationLabel(log.operationType),
+                            getItemTypeLabel(log.itemType),
+                            formatTimestamp(log.timestamp)
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = colorScheme.onSurfaceVariant
                     )
@@ -1155,14 +1175,15 @@ private fun StandardLogDetailSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "变更详情",
+                        text = stringResource(R.string.timeline_change_details),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                         color = colorScheme.onSurface
                     )
                     
                     log.changes.forEach { change ->
-                        val isRealPasswordField = change.fieldName == "密码" && !change.newValue.endsWith("项")
+                        val isRealPasswordField = (change.fieldName == stringResource(R.string.timeline_field_password) || change.fieldName == stringResource(R.string.password)) &&
+                            !change.newValue.endsWith(stringResource(R.string.timeline_count_suffix_items))
                         
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -1247,7 +1268,7 @@ private fun StandardLogDetailSheet(
                                     ) {
                                         Icon(
                                             imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                            contentDescription = if (passwordVisible) "隐藏" else "显示",
+                                            contentDescription = if (passwordVisible) stringResource(R.string.hide_password) else stringResource(R.string.show_password),
                                             tint = colorScheme.primary,
                                             modifier = Modifier.size(20.dp)
                                         )
@@ -1280,7 +1301,7 @@ private fun StandardLogDetailSheet(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (log.isReverted) "恢复到编辑后" else "恢复到编辑前",
+                            text = if (log.isReverted) stringResource(R.string.timeline_restore_to_after_edit) else stringResource(R.string.timeline_restore_to_before_edit),
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -1297,7 +1318,7 @@ private fun StandardLogDetailSheet(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("旧数据另存为新条目")
+                            Text(stringResource(R.string.timeline_save_old_as_new))
                         }
                     }
                 }
@@ -1766,8 +1787,8 @@ private fun TrashContent(
         AlertDialog(
             onDismissRequest = { showEmptyTrashDialog = false },
             icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
-            title = { Text("清空回收站") },
-            text = { Text("确定要永久删除回收站中的 $totalCount 个条目吗？此操作无法撤销。") },
+            title = { Text(stringResource(R.string.timeline_empty_trash_title)) },
+            text = { Text(stringResource(R.string.timeline_empty_trash_message, totalCount)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -1777,12 +1798,12 @@ private fun TrashContent(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
                 ) {
-                    Text("清空")
+                    Text(stringResource(R.string.timeline_empty_action))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showEmptyTrashDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1837,29 +1858,29 @@ private fun TrashHeaderBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 IconButton(onClick = onExitSelection) {
-                    Icon(Icons.Default.Close, contentDescription = "退出选择")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.timeline_exit_selection))
                 }
                 Text(
-                    text = "已选择 $selectedCount 项",
+                    text = stringResource(R.string.selected_items, selectedCount),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium
                 )
             }
 
             TextButton(onClick = onSelectAll) {
-                Text("全选")
+                Text(stringResource(R.string.select_all))
             }
         } else {
             // 普通模式
             Column {
                 Text(
-                    text = "$totalCount 个已删除条目",
+                    text = stringResource(R.string.timeline_deleted_items_count, totalCount),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
                     color = colorScheme.onSurface
                 )
                 Text(
-                    text = if (autoDeleteDays > 0) "${autoDeleteDays} 天后自动清空" else "不会自动清空",
+                    text = if (autoDeleteDays > 0) stringResource(R.string.timeline_auto_clear_in_days, autoDeleteDays) else stringResource(R.string.timeline_auto_clear_never),
                     style = MaterialTheme.typography.bodySmall,
                     color = colorScheme.onSurfaceVariant
                 )
@@ -1869,7 +1890,7 @@ private fun TrashHeaderBar(
                 IconButton(onClick = onSettingsClick) {
                     Icon(
                         Icons.Default.Settings,
-                        contentDescription = "设置",
+                        contentDescription = stringResource(R.string.settings),
                         tint = colorScheme.onSurfaceVariant
                     )
                 }
@@ -1877,7 +1898,7 @@ private fun TrashHeaderBar(
                     IconButton(onClick = onEmptyTrashClick) {
                         Icon(
                             Icons.Default.DeleteSweep,
-                            contentDescription = "清空",
+                            contentDescription = stringResource(R.string.timeline_empty_action),
                             tint = colorScheme.error
                         )
                     }
@@ -1913,11 +1934,11 @@ private fun TrashItemCard(
     }
     
     val typeLabel = when (item.itemType) {
-        takagi.ru.monica.data.ItemType.PASSWORD -> "密码"
-        takagi.ru.monica.data.ItemType.TOTP -> "验证器"
-        takagi.ru.monica.data.ItemType.BANK_CARD -> "银行卡"
-        takagi.ru.monica.data.ItemType.DOCUMENT -> "证件"
-        takagi.ru.monica.data.ItemType.NOTE -> "笔记"
+        takagi.ru.monica.data.ItemType.PASSWORD -> stringResource(R.string.item_type_password)
+        takagi.ru.monica.data.ItemType.TOTP -> stringResource(R.string.item_type_authenticator)
+        takagi.ru.monica.data.ItemType.BANK_CARD -> stringResource(R.string.item_type_bank_card)
+        takagi.ru.monica.data.ItemType.DOCUMENT -> stringResource(R.string.item_type_document)
+        takagi.ru.monica.data.ItemType.NOTE -> stringResource(R.string.timeline_item_note)
     }
     
     Card(
@@ -1991,8 +2012,8 @@ private fun TrashItemCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = iconColor
                     )
-                    Text(
-                        text = "·",
+                        Text(
+                        text = stringResource(R.string.timeline_dot_separator),
                         color = colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
                     // 删除时间
@@ -2004,11 +2025,15 @@ private fun TrashItemCard(
                     // 剩余天数警告
                     if (item.daysRemaining in 0..3) {
                         Text(
-                            text = "·",
+                            text = stringResource(R.string.timeline_dot_separator),
                             color = colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                         Text(
-                            text = if (item.daysRemaining == 0) "今天清空" else "${item.daysRemaining}天后",
+                            text = if (item.daysRemaining == 0) {
+                                stringResource(R.string.timeline_clear_today)
+                            } else {
+                                stringResource(R.string.timeline_clear_after_days_short, item.daysRemaining)
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = colorScheme.error,
                             fontWeight = FontWeight.Medium
@@ -2029,7 +2054,7 @@ private fun TrashItemCard(
                 ) {
                     Icon(
                         Icons.Default.Restore,
-                        contentDescription = "恢复",
+                        contentDescription = stringResource(R.string.timeline_restore_this_item),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -2073,7 +2098,7 @@ private fun TrashSelectionBar(
             ) {
                 Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("恢复 $selectedCount 项")
+                Text(stringResource(R.string.timeline_restore_selected, selectedCount))
             }
             
             // 删除按钮
@@ -2083,7 +2108,7 @@ private fun TrashSelectionBar(
             ) {
                 Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("删除")
+                Text(stringResource(R.string.delete))
             }
         }
     }
@@ -2092,8 +2117,8 @@ private fun TrashSelectionBar(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             icon = { Icon(Icons.Default.Delete, contentDescription = null) },
-            title = { Text("永久删除") },
-            text = { Text("确定要永久删除选中的 $selectedCount 个条目吗？此操作无法撤销。") },
+            title = { Text(stringResource(R.string.timeline_permanent_delete_title)) },
+            text = { Text(stringResource(R.string.timeline_permanent_delete_selected_message, selectedCount)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -2102,12 +2127,12 @@ private fun TrashSelectionBar(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -2138,11 +2163,11 @@ private fun TrashItemActionSheet(
     }
     
     val typeLabel = when (item.itemType) {
-        takagi.ru.monica.data.ItemType.PASSWORD -> "密码"
-        takagi.ru.monica.data.ItemType.TOTP -> "验证器"
-        takagi.ru.monica.data.ItemType.BANK_CARD -> "银行卡"
-        takagi.ru.monica.data.ItemType.DOCUMENT -> "证件"
-        takagi.ru.monica.data.ItemType.NOTE -> "笔记"
+        takagi.ru.monica.data.ItemType.PASSWORD -> stringResource(R.string.item_type_password)
+        takagi.ru.monica.data.ItemType.TOTP -> stringResource(R.string.item_type_authenticator)
+        takagi.ru.monica.data.ItemType.BANK_CARD -> stringResource(R.string.item_type_bank_card)
+        takagi.ru.monica.data.ItemType.DOCUMENT -> stringResource(R.string.item_type_document)
+        takagi.ru.monica.data.ItemType.NOTE -> stringResource(R.string.timeline_item_note)
     }
     
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -2189,7 +2214,7 @@ private fun TrashItemActionSheet(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "$typeLabel · 删除于 ${dateFormat.format(item.deletedAt)}",
+                        text = stringResource(R.string.timeline_deleted_at_with_type, typeLabel, dateFormat.format(item.deletedAt)),
                         style = MaterialTheme.typography.bodySmall,
                         color = colorScheme.onSurfaceVariant
                     )
@@ -2219,9 +2244,9 @@ private fun TrashItemActionSheet(
                         )
                         Text(
                             text = when {
-                                item.daysRemaining == 0 -> "将于今天自动永久删除"
-                                item.daysRemaining <= 3 -> "${item.daysRemaining} 天后自动永久删除"
-                                else -> "${item.daysRemaining} 天后自动清空"
+                                item.daysRemaining == 0 -> stringResource(R.string.timeline_auto_permanent_delete_today)
+                                item.daysRemaining <= 3 -> stringResource(R.string.timeline_auto_permanent_delete_in_days, item.daysRemaining)
+                                else -> stringResource(R.string.timeline_auto_clear_in_days, item.daysRemaining)
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (item.daysRemaining <= 3) colorScheme.error else colorScheme.onSurfaceVariant
@@ -2242,7 +2267,7 @@ private fun TrashItemActionSheet(
                 ) {
                     Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("恢复此条目", fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.timeline_restore_this_item), fontWeight = FontWeight.Medium)
                 }
                 
                 // 永久删除按钮
@@ -2255,7 +2280,7 @@ private fun TrashItemActionSheet(
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("永久删除")
+                    Text(stringResource(R.string.timeline_permanent_delete_title))
                 }
             }
             
@@ -2268,8 +2293,8 @@ private fun TrashItemActionSheet(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = colorScheme.error) },
-            title = { Text("永久删除") },
-            text = { Text("确定要永久删除「${item.title}」吗？此操作无法撤销。") },
+            title = { Text(stringResource(R.string.timeline_permanent_delete_title)) },
+            text = { Text(stringResource(R.string.timeline_permanent_delete_item_message, item.title)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -2278,12 +2303,12 @@ private fun TrashItemActionSheet(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -2314,7 +2339,7 @@ private fun TrashDisabledView(
         Spacer(modifier = Modifier.height(24.dp))
         
         Text(
-            text = "回收站已禁用",
+            text = stringResource(R.string.timeline_trash_disabled_title),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
@@ -2322,7 +2347,7 @@ private fun TrashDisabledView(
         Spacer(modifier = Modifier.height(8.dp))
         
         Text(
-            text = "启用回收站后，删除的条目会在这里保留一段时间",
+            text = stringResource(R.string.timeline_trash_disabled_hint),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )
@@ -2332,7 +2357,7 @@ private fun TrashDisabledView(
         FilledTonalButton(onClick = onEnableClick) {
             Icon(Icons.Default.Settings, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("设置")
+            Text(stringResource(R.string.settings))
         }
     }
 }
@@ -2359,7 +2384,7 @@ private fun TrashEmptyView() {
         Spacer(modifier = Modifier.height(24.dp))
         
         Text(
-            text = "回收站为空",
+            text = stringResource(R.string.timeline_trash_empty_title),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
@@ -2367,7 +2392,7 @@ private fun TrashEmptyView() {
         Spacer(modifier = Modifier.height(8.dp))
         
         Text(
-            text = "删除的密码、验证器等会在这里保留",
+            text = stringResource(R.string.timeline_trash_empty_hint),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )

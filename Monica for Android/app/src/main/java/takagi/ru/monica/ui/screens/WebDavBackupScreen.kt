@@ -45,6 +45,11 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.util.ImageCompressor
 
+private fun matchesAnyKeyword(message: String, vararg keywords: String): Boolean {
+    val normalized = message.lowercase(Locale.ROOT)
+    return keywords.any { keyword -> normalized.contains(keyword.lowercase(Locale.ROOT)) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WebDavBackupScreen(
@@ -230,11 +235,11 @@ fun WebDavBackupScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "加密备份",
+                                    text = stringResource(R.string.webdav_enable_encryption),
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Text(
-                                    text = "启用加密后，备份文件将使用此密码加密。恢复时需要提供相同的密码。",
+                                    text = stringResource(R.string.webdav_encryption_description),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -263,7 +268,7 @@ fun WebDavBackupScreen(
                                     encryptionPassword = it
                                     webDavHelper.setEncryptionConfig(true, it)
                                 },
-                                label = { Text("加密密码") },
+                                label = { Text(stringResource(R.string.webdav_encryption_password)) },
                                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                                 visualTransformation = if (encryptionPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {
@@ -395,14 +400,15 @@ fun WebDavBackupScreen(
                                             onFailure = { e -> 
                                                 isTesting = false
                                                 // 提供更友好的错误信息
+                                                val message = e.message.orEmpty()
                                                 val userFriendlyMessage = when {
-                                                    e.message?.contains("网络不可达") == true -> 
+                                                    matchesAnyKeyword(message, "network is unreachable", "unreachable") ->
                                                         context.getString(R.string.webdav_network_unreachable)
-                                                    e.message?.contains("连接超时") == true -> 
+                                                    matchesAnyKeyword(message, "timeout", "timed out") ->
                                                         context.getString(R.string.webdav_connection_timeout)
-                                                    e.message?.contains("认证失败") == true -> 
+                                                    matchesAnyKeyword(message, "authentication failed", "unauthorized", "forbidden", "401", "403") ->
                                                         context.getString(R.string.webdav_auth_failed)
-                                                    e.message?.contains("服务器路径未找到") == true -> 
+                                                    matchesAnyKeyword(message, "path not found", "not found", "404") ->
                                                         context.getString(R.string.webdav_path_not_found)
                                                     else -> e.message ?: context.getString(R.string.webdav_connection_failed, "")
                                                 }
@@ -633,32 +639,40 @@ fun WebDavBackupScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "图片优化",
+                            text = stringResource(R.string.webdav_image_optimization_title),
                             style = MaterialTheme.typography.titleMedium
                         )
                         
                         imageStats?.let { stats ->
                             if (stats.totalImages > 0) {
                                 Text(
-                                    text = "共 ${stats.totalImages} 张图片，总大小 ${stats.formatTotalSize()}",
+                                    text = stringResource(
+                                        R.string.webdav_image_stats_total,
+                                        stats.totalImages,
+                                        stats.formatTotalSize()
+                                    ),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 if (stats.largeImageCount > 0) {
                                     Text(
-                                        text = "有 ${stats.largeImageCount} 张大图片可优化（已优化 ${stats.compressedCount} 张）",
+                                        text = stringResource(
+                                            R.string.webdav_image_stats_optimizable,
+                                            stats.largeImageCount,
+                                            stats.compressedCount
+                                        ),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 } else {
                                     Text(
-                                        text = "所有图片已优化 ✓",
+                                        text = stringResource(R.string.webdav_image_all_optimized),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.tertiary
                                     )
                                 }
                             } else {
                                 Text(
-                                    text = "暂无图片",
+                                    text = stringResource(R.string.webdav_image_none),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -686,7 +700,7 @@ fun WebDavBackupScreen(
                                 } else {
                                     Toast.makeText(
                                         context,
-                                        "所有图片已优化，无需压缩",
+                                        context.getString(R.string.webdav_image_no_need_compress),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -696,7 +710,7 @@ fun WebDavBackupScreen(
                         ) {
                             Icon(Icons.Default.Compress, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("一键压缩图片")
+                            Text(stringResource(R.string.webdav_compress_images_one_tap))
                         }
                     }
                 }
@@ -705,13 +719,14 @@ fun WebDavBackupScreen(
                 if (showCompressDialog) {
                     AlertDialog(
                         onDismissRequest = { showCompressDialog = false },
-                        title = { Text("压缩图片") },
+                        title = { Text(stringResource(R.string.webdav_compress_dialog_title)) },
                         text = { 
-                            Text("将压缩 ${imageStats?.largeImageCount ?: 0} 张大图片以减少备份文件大小。\n\n" +
-                                "• 压缩后的图片质量会略有下降\n" +
-                                "• 已压缩的图片不会重复压缩\n" +
-                                "• 此操作不可撤销\n\n" +
-                                "是否继续？")
+                            Text(
+                                stringResource(
+                                    R.string.webdav_compress_dialog_message,
+                                    imageStats?.largeImageCount ?: 0
+                                )
+                            )
                         },
                         confirmButton = {
                             Button(
@@ -719,7 +734,7 @@ fun WebDavBackupScreen(
                                     showCompressDialog = false
                                     isCompressing = true
                                     compressionProgress = 0f
-                                    compressionMessage = "正在准备..."
+                                    compressionMessage = context.getString(R.string.webdav_compress_status_preparing)
                                     
                                     coroutineScope.launch {
                                         try {
@@ -727,12 +742,16 @@ fun WebDavBackupScreen(
                                                 object : ImageCompressor.CompressionProgressCallback {
                                                     override fun onProgress(current: Int, total: Int, currentFileName: String) {
                                                         compressionProgress = current.toFloat() / total
-                                                        compressionMessage = "正在压缩 $current/$total..."
+                                                        compressionMessage = context.getString(
+                                                            R.string.webdav_compress_status_processing,
+                                                            current,
+                                                            total
+                                                        )
                                                     }
                                                     
                                                     override fun onComplete(result: ImageCompressor.CompressionResult) {
                                                         compressionProgress = 1f
-                                                        compressionMessage = "完成"
+                                                        compressionMessage = context.getString(R.string.webdav_compress_status_done)
                                                     }
                                                 }
                                             )
@@ -749,19 +768,19 @@ fun WebDavBackupScreen(
                                             isCompressing = false
                                             Toast.makeText(
                                                 context,
-                                                "压缩失败: ${e.message}",
+                                                context.getString(R.string.webdav_compress_failed, e.message),
                                                 Toast.LENGTH_LONG
                                             ).show()
                                         }
                                     }
                                 }
                             ) {
-                                Text("确认压缩")
+                                Text(stringResource(R.string.confirm))
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { showCompressDialog = false }) {
-                                Text("取消")
+                                Text(stringResource(R.string.cancel))
                             }
                         }
                     )
@@ -776,7 +795,7 @@ fun WebDavBackupScreen(
                         if (isBackupInProgress) {
                             Toast.makeText(
                                 context,
-                                "备份正在进行中，请稍候...",
+                                context.getString(R.string.webdav_backup_in_progress),
                                 Toast.LENGTH_SHORT
                             ).show()
                             return@Button
@@ -801,7 +820,7 @@ fun WebDavBackupScreen(
                                 if (backupPreferences.includeImages && (imageStats?.largeImageCount ?: 0) > 0) {
                                     Toast.makeText(
                                         context,
-                                        "正在优化图片...",
+                                        context.getString(R.string.webdav_optimizing_images),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                     imageCompressor.compressAllImages()
@@ -845,7 +864,7 @@ fun WebDavBackupScreen(
                                         // 显示详细报告（如果有问题）
                                         report.getSummary()
                                     } else {
-                                        "Backup created successfully"
+                                        context.getString(R.string.webdav_backup_success)
                                     }
                                     
                                     Toast.makeText(
@@ -864,21 +883,25 @@ fun WebDavBackupScreen(
                                 } else {
                                     isLoading = false
                                     isBackupInProgress = false
-                                    val error = result.exceptionOrNull()?.message ?: "Backup failed"
+                                    val error = result.exceptionOrNull()?.message
+                                        ?: context.getString(R.string.webdav_create_backup_failed)
                                     errorMessage = error
                                     Toast.makeText(
                                         context,
-                                        "Backup failed: $error",
+                                        context.getString(R.string.webdav_backup_failed, error),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
                             } catch (e: Exception) {
                                 isLoading = false
                                 isBackupInProgress = false
-                                errorMessage = e.message ?: "Backup failed"
+                                errorMessage = e.message ?: context.getString(R.string.webdav_create_backup_failed)
                                 Toast.makeText(
                                     context,
-                                    "Backup failed: ${e.message ?: "Unknown error"}",
+                                    context.getString(
+                                        R.string.webdav_backup_failed,
+                                        e.message ?: context.getString(R.string.import_data_unknown_error)
+                                    ),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -894,11 +917,11 @@ fun WebDavBackupScreen(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("备份中...")
+                        Text(stringResource(R.string.webdav_backup_in_progress))
                     } else {
                         Icon(Icons.Default.CloudUpload, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("创建永久备份")
+                        Text(stringResource(R.string.webdav_create_new_backup))
                     }
                 }
                 
@@ -964,7 +987,7 @@ fun WebDavBackupScreen(
                                     onRestoreSuccess = {
                                         Toast.makeText(
                                             context,
-                                            "数据已成功恢复",
+                                            context.getString(R.string.webdav_restore_success),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     },
@@ -1238,27 +1261,57 @@ private fun BackupItem(
                 // 无问题，显示简洁消息
                 buildString {
                     val summaryParts = mutableListOf<String>()
-                    summaryParts += "$passwordCount 个密码"
-                    summaryParts += "$secureItemCount 个其他数据"
-                    append("恢复成功! 导入了 ${summaryParts.joinToString("、")}")
+                    summaryParts += context.getString(R.string.webdav_restore_summary_part_passwords, passwordCount)
+                    summaryParts += context.getString(R.string.webdav_restore_summary_part_other_data, secureItemCount)
+                    append(
+                        context.getString(
+                            R.string.webdav_restore_summary_success,
+                            summaryParts.joinToString(", ")
+                        )
+                    )
                     
                     val issuesParts = mutableListOf<String>()
-                    if (passwordSkipped > 0) issuesParts += "$passwordSkipped 个重复密码"
-                    if (secureItemSkipped > 0) issuesParts += "$secureItemSkipped 个重复数据"
-                    if (passwordFailed > 0) issuesParts += "$passwordFailed 个密码导入失败"
-                    if (secureItemFailed > 0) issuesParts += "$secureItemFailed 个数据导入失败"
+                    if (passwordSkipped > 0) {
+                        issuesParts += context.getString(
+                            R.string.webdav_restore_summary_part_duplicate_passwords,
+                            passwordSkipped
+                        )
+                    }
+                    if (secureItemSkipped > 0) {
+                        issuesParts += context.getString(
+                            R.string.webdav_restore_summary_part_duplicate_data,
+                            secureItemSkipped
+                        )
+                    }
+                    if (passwordFailed > 0) {
+                        issuesParts += context.getString(
+                            R.string.webdav_restore_summary_part_password_failed,
+                            passwordFailed
+                        )
+                    }
+                    if (secureItemFailed > 0) {
+                        issuesParts += context.getString(
+                            R.string.webdav_restore_summary_part_data_failed,
+                            secureItemFailed
+                        )
+                    }
                     
                     if (issuesParts.isNotEmpty()) {
-                        append("\n跳过/失败: ${issuesParts.joinToString("、")}")
+                        append(
+                            "\n" + context.getString(
+                                R.string.webdav_restore_summary_issues_prefix,
+                                issuesParts.joinToString(", ")
+                            )
+                        )
                     }
                     
                     // 如果有导入失败，显示详细信息
                     if (passwordFailed > 0 || secureItemFailed > 0) {
-                        append("\n\n导入失败详情:")
+                        append("\n\n${context.getString(R.string.webdav_restore_summary_failed_details)}")
                         failedPasswordDetails.take(5).forEach { append("\n• $it") }
                         failedSecureItemDetails.take(5).forEach { append("\n• $it") }
                         if (passwordFailed + secureItemFailed > 10) {
-                            append("\n...查看日志了解更多")
+                            append("\n${context.getString(R.string.webdav_restore_summary_more_logs)}")
                         }
                     }
                 }
@@ -1275,10 +1328,10 @@ private fun BackupItem(
             if (exception is WebDavHelper.PasswordRequiredException) {
                 showPasswordInputDialog = true
             } else {
-                val error = exception?.message ?: "未知错误"
+                val error = exception?.message ?: context.getString(R.string.import_data_unknown_error)
                 Toast.makeText(
                     context,
-                    "恢复失败: $error",
+                    context.getString(R.string.webdav_restore_failed, error),
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -1327,7 +1380,7 @@ private fun BackupItem(
                             shape = MaterialTheme.shapes.small
                         ) {
                             Text(
-                                text = "永久",
+                                text = stringResource(R.string.webdav_tag_permanent),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -1340,7 +1393,7 @@ private fun BackupItem(
                             shape = MaterialTheme.shapes.small
                         ) {
                             Text(
-                                text = "即将清理",
+                                text = stringResource(R.string.webdav_tag_expiring),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer
@@ -1363,7 +1416,7 @@ private fun BackupItem(
                 } else {
                     Icon(
                         Icons.Default.Download,
-                        contentDescription = "恢复备份",
+                        contentDescription = stringResource(R.string.webdav_restore_backup_title),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -1372,7 +1425,7 @@ private fun BackupItem(
             // More Menu
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "更多选项")
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
@@ -1380,7 +1433,15 @@ private fun BackupItem(
                 ) {
                     // Mark/Unmark Permanent
                      DropdownMenuItem(
-                        text = { Text(if (backup.isPermanent) "取消永久标记" else "标记为永久") },
+                        text = {
+                            Text(
+                                if (backup.isPermanent) {
+                                    stringResource(R.string.webdav_unmark_permanent)
+                                } else {
+                                    stringResource(R.string.webdav_mark_permanent)
+                                }
+                            )
+                        },
                         onClick = {
                             menuExpanded = false
                             coroutineScope.launch {
@@ -1391,10 +1452,22 @@ private fun BackupItem(
                                 }
                                 
                                 result.onSuccess {
-                                    Toast.makeText(context, if (backup.isPermanent) "已取消永久标记" else "已标记为永久备份", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        if (backup.isPermanent) {
+                                            context.getString(R.string.webdav_unmark_permanent_success)
+                                        } else {
+                                            context.getString(R.string.webdav_mark_permanent_success)
+                                        },
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                     onStatusChanged()
                                 }.onFailure { e ->
-                                    Toast.makeText(context, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.webdav_operation_failed, e.message),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             }
                         },
@@ -1408,7 +1481,7 @@ private fun BackupItem(
                     
                     // Delete
                     DropdownMenuItem(
-                        text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
                         onClick = {
                             menuExpanded = false
                             showDeleteDialog = true
@@ -1424,10 +1497,10 @@ private fun BackupItem(
     if (showRestoreDialog) {
         AlertDialog(
             onDismissRequest = { showRestoreDialog = false },
-            title = { Text("恢复备份") },
+            title = { Text(stringResource(R.string.webdav_restore_backup_title)) },
             text = { 
                 Column {
-                    Text("确定要从此备份恢复数据吗?\n\n${backup.name}\n\n注意: 这将导入备份中的所有数据到当前应用中。")
+                    Text(stringResource(R.string.webdav_restore_backup_confirm_message, backup.name))
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = overwriteAll, onCheckedChange = { overwriteAll = it })
@@ -1450,14 +1523,14 @@ private fun BackupItem(
                                 isRestoring = false
                                 Toast.makeText(
                                     context,
-                                    "恢复失败: ${e.message}",
+                                    context.getString(R.string.webdav_restore_failed, e.message),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
                         }
                     }
                 ) {
-                    Text("恢复")
+                    Text(stringResource(R.string.webdav_restore_action))
                 }
             },
             dismissButton = {
@@ -1472,15 +1545,15 @@ private fun BackupItem(
     if (showPasswordInputDialog) {
         AlertDialog(
             onDismissRequest = { showPasswordInputDialog = false },
-            title = { Text("输入解密密码") },
+            title = { Text(stringResource(R.string.webdav_enter_decrypt_password)) },
             text = {
                 Column {
-                    Text("此备份文件已加密，请输入密码进行解密：")
+                    Text(stringResource(R.string.webdav_restore_encrypted_hint))
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = tempPassword,
                         onValueChange = { tempPassword = it },
-                        label = { Text("密码") },
+                        label = { Text(stringResource(R.string.password)) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -1499,17 +1572,21 @@ private fun BackupItem(
                                 handleRestoreResult(result)
                             } catch (e: Exception) {
                                 isRestoring = false
-                                Toast.makeText(context, "恢复失败: ${e.message}", Toast.LENGTH_LONG).show()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.webdav_restore_failed, e.message),
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
                         }
                     }
                 ) {
-                    Text("确定")
+                    Text(stringResource(R.string.confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showPasswordInputDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1585,7 +1662,7 @@ fun WebDavConfigSummaryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "WebDAV 配置",
+                    text = stringResource(R.string.webdav_config),
                     style = MaterialTheme.typography.titleMedium
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1609,13 +1686,13 @@ fun WebDavConfigSummaryCard(
             Divider()
             
             ConfigInfoRow(
-                label = "服务器",
+                label = stringResource(R.string.webdav_server_url),
                 value = config.serverUrl,
                 icon = Icons.Default.CloudUpload
             )
             
             ConfigInfoRow(
-                label = "用户名",
+                label = stringResource(R.string.username),
                 value = config.username,
                 icon = Icons.Default.Person
             )
@@ -1671,12 +1748,16 @@ fun ConfigInfoRow(
             onClick = {
                 val clip = android.content.ClipData.newPlainText(label, value)
                 clipboardManager.setPrimaryClip(clip)
-                Toast.makeText(context, "已复制 $label", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.copied_field_name, label),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         ) {
             Icon(
                 Icons.Default.ContentCopy,
-                contentDescription = "复制 $label",
+                contentDescription = "${stringResource(R.string.copy)} $label",
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(20.dp)
             )

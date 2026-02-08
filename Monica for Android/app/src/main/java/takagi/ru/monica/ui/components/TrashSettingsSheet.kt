@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.viewmodel.TrashSettings
 
 /**
@@ -28,12 +29,12 @@ fun TrashSettingsSheet(
     var selectedDays by remember { mutableStateOf(currentSettings.autoDeleteDays) }
     
     val dayOptions = listOf(
-        0 to "不自动清空",
-        7 to "7天",
-        15 to "15天",
-        30 to "30天",
-        60 to "60天",
-        90 to "90天"
+        0 to stringResource(R.string.trash_no_auto_clear),
+        7 to stringResource(R.string.trash_day_format, 7),
+        15 to stringResource(R.string.trash_day_format, 15),
+        30 to stringResource(R.string.trash_day_format, 30),
+        60 to stringResource(R.string.trash_day_format, 60),
+        90 to stringResource(R.string.trash_day_format, 90)
     )
     
     ModalBottomSheet(
@@ -59,7 +60,7 @@ fun TrashSettingsSheet(
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = "回收站设置",
+                    text = stringResource(R.string.trash_settings),
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold
@@ -70,8 +71,8 @@ fun TrashSettingsSheet(
             
             // 启用/禁用开关
             ListItem(
-                headlineContent = { Text("启用回收站") },
-                supportingContent = { Text("删除的条目会先移入回收站") },
+                headlineContent = { Text(stringResource(R.string.trash_enable)) },
+                supportingContent = { Text(stringResource(R.string.trash_enable_desc)) },
                 trailingContent = {
                     Switch(
                         checked = enabled,
@@ -89,7 +90,7 @@ fun TrashSettingsSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "自动清空时间",
+                        text = stringResource(R.string.trash_auto_clear_time),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -121,7 +122,7 @@ fun TrashSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
@@ -130,7 +131,7 @@ fun TrashSettingsSheet(
                         onDismiss()
                     }
                 ) {
-                    Text("保存")
+                    Text(stringResource(R.string.save))
                 }
             }
         }

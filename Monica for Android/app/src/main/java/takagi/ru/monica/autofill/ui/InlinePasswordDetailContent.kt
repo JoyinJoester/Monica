@@ -14,11 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.security.SecurityManager
 
@@ -74,10 +76,10 @@ fun InlinePasswordDetailContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回")
+                Icon(Icons.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
             }
             Text(
-                text = "密码详情",
+                text = stringResource(R.string.password_details),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
@@ -135,37 +137,37 @@ fun InlinePasswordDetailContent(
         
         // 用户名字段
         DetailField(
-            label = "用户名",
+            label = stringResource(R.string.autofill_username),
             value = decryptedUsername,
             icon = Icons.Outlined.Person,
-            onCopy = { copyToClipboard(context, "用户名", decryptedUsername) }
+            onCopy = { copyToClipboard(context, context.getString(R.string.autofill_username), decryptedUsername) }
         )
         
         // 密码字段
         DetailField(
-            label = "密码",
+            label = stringResource(R.string.autofill_password),
             value = decryptedPassword,
             icon = Icons.Outlined.Lock,
             isPassword = true,
             passwordVisible = passwordVisible,
             onToggleVisibility = { passwordVisible = !passwordVisible },
-            onCopy = { copyToClipboard(context, "密码", decryptedPassword) }
+            onCopy = { copyToClipboard(context, context.getString(R.string.autofill_password), decryptedPassword) }
         )
         
         // 网站字段
         if (password.website.isNotEmpty()) {
             DetailField(
-                label = "网站",
+                label = stringResource(R.string.autofill_website_app),
                 value = password.website,
                 icon = Icons.Outlined.Language,
-                onCopy = { copyToClipboard(context, "网站", password.website) }
+                onCopy = { copyToClipboard(context, context.getString(R.string.autofill_website_app), password.website) }
             )
         }
         
         // App 信息
         if (!password.appPackageName.isNullOrEmpty()) {
             DetailField(
-                label = "关联应用",
+                label = stringResource(R.string.associated_app),
                 value = password.appName ?: password.appPackageName,
                 icon = Icons.Outlined.Android,
                 onCopy = null
@@ -175,10 +177,11 @@ fun InlinePasswordDetailContent(
         // 备注
         if (password.notes.isNotEmpty()) {
             DetailField(
-                label = "备注",
+                label = stringResource(R.string.notes),
                 value = password.notes,
                 icon = Icons.Outlined.Notes,
-                onCopy = { copyToClipboard(context, "备注", password.notes) }
+                allowMultilineValue = true,
+                onCopy = { copyToClipboard(context, context.getString(R.string.notes), password.notes) }
             )
         }
         
@@ -195,7 +198,7 @@ fun InlinePasswordDetailContent(
             ) {
                 Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("自动填充")
+                Text(stringResource(R.string.autofill))
             }
             
             OutlinedButton(
@@ -204,7 +207,7 @@ fun InlinePasswordDetailContent(
             ) {
                 Icon(Icons.Outlined.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("自动填充并保存URI")
+                Text(stringResource(R.string.autofill_and_save_uri))
             }
         }
     }
@@ -220,6 +223,7 @@ private fun DetailField(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isPassword: Boolean = false,
     passwordVisible: Boolean = false,
+    allowMultilineValue: Boolean = false,
     onToggleVisibility: (() -> Unit)? = null,
     onCopy: (() -> Unit)?
 ) {
@@ -257,7 +261,7 @@ private fun DetailField(
                 Text(
                     text = displayValue,
                     style = MaterialTheme.typography.bodyLarge,
-                    maxLines = if (label == "备注") 5 else 1,
+                    maxLines = if (allowMultilineValue) 5 else 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -267,7 +271,11 @@ private fun DetailField(
                 IconButton(onClick = onToggleVisibility) {
                     Icon(
                         imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        contentDescription = if (passwordVisible) "隐藏" else "显示"
+                        contentDescription = if (passwordVisible) {
+                            stringResource(R.string.hide)
+                        } else {
+                            stringResource(R.string.show)
+                        }
                     )
                 }
             }
@@ -277,7 +285,7 @@ private fun DetailField(
                 IconButton(onClick = onCopy) {
                     Icon(
                         imageVector = Icons.Outlined.ContentCopy,
-                        contentDescription = "复制"
+                        contentDescription = stringResource(R.string.copy)
                     )
                 }
             }
@@ -292,5 +300,5 @@ private fun copyToClipboard(context: Context, label: String, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val clip = ClipData.newPlainText(label, text)
     clipboard.setPrimaryClip(clip)
-    Toast.makeText(context, "${label}已复制", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
 }

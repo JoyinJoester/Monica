@@ -37,6 +37,15 @@ private data class ImportTypeInfo(
     val fileHint: String
 )
 
+private fun isPasswordDecryptError(errorMessage: String): Boolean {
+    val normalized = errorMessage.lowercase()
+    return normalized.contains("wrong password") ||
+        normalized.contains("decrypt") ||
+        normalized.contains("invalid credentials") ||
+        normalized.contains("密码错误") ||
+        normalized.contains("解密失败")
+}
+
 /**
  * 导入类型选项卡片
  */
@@ -124,9 +133,9 @@ fun ImportDataScreen(
     onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>,  // 加密的Aegis JSON导入
     onImportSteamMaFile: suspend (Uri) -> Result<Int>,  // Steam maFile导入
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
-    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("未实现")) },  // KDBX导入
-    onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("未实现")) },  // KeePass CSV导入
-    onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("未实现")) }  // Bitwarden CSV导入
+    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
+    onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // KeePass CSV导入
+    onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) }  // Bitwarden CSV导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -149,80 +158,74 @@ fun ImportDataScreen(
     var kdbxPasswordVisible by remember { mutableStateOf(false) }
     
     // 导入类型信息列表
-    val importTypes = remember {
-        listOf(
-            ImportTypeInfo(
-                key = "monica_zip",
-                icon = Icons.Default.Archive,
-                title = "Monica 备份",
-                description = "恢复完整备份 ZIP 文件，包含所有数据",
-                fileHint = "选择 .zip 文件"
-            ),
-            ImportTypeInfo(
-                key = "kdbx",
-                icon = Icons.Default.Key,
-                title = "KeePass 格式",
-                description = "导入 KeePass 兼容的 .kdbx 数据库文件",
-                fileHint = "选择 .kdbx 文件"
-            ),
-            ImportTypeInfo(
-                key = "csv_group",
-                icon = Icons.Default.TableChart,
-                title = "CSV 数据",
-                description = "导入 Monica / KeePass / Bitwarden 的 CSV 文件",
-                fileHint = "选择 .csv 文件"
-            ),
-            ImportTypeInfo(
-                key = "aegis",
-                icon = Icons.Default.Security,
-                title = "Aegis 验证器",
-                description = "导入 Aegis Authenticator 的 JSON 备份",
-                fileHint = "选择 .json 文件"
-            ),
-            ImportTypeInfo(
-                key = "steam",
-                icon = Icons.Default.SportsEsports,
-                title = "Steam Guard",
-                description = "导入 Steam 令牌的 maFile 文件",
-                fileHint = "选择 .maFile 文件"
-            )
+    val importTypes = listOf(
+        ImportTypeInfo(
+            key = "monica_zip",
+            icon = Icons.Default.Archive,
+            title = stringResource(R.string.import_type_monica_backup_title),
+            description = stringResource(R.string.import_type_monica_backup_desc),
+            fileHint = stringResource(R.string.import_type_monica_backup_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "kdbx",
+            icon = Icons.Default.Key,
+            title = stringResource(R.string.import_type_keepass_format_title),
+            description = stringResource(R.string.import_type_keepass_format_desc),
+            fileHint = stringResource(R.string.import_type_keepass_format_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "csv_group",
+            icon = Icons.Default.TableChart,
+            title = stringResource(R.string.import_type_csv_data_title),
+            description = stringResource(R.string.import_type_csv_data_desc),
+            fileHint = stringResource(R.string.import_type_csv_data_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "aegis",
+            icon = Icons.Default.Security,
+            title = stringResource(R.string.import_type_aegis_title),
+            description = stringResource(R.string.import_type_aegis_desc),
+            fileHint = stringResource(R.string.import_type_aegis_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "steam",
+            icon = Icons.Default.SportsEsports,
+            title = stringResource(R.string.import_type_steam_title),
+            description = stringResource(R.string.import_type_steam_desc),
+            fileHint = stringResource(R.string.import_type_steam_file_hint)
         )
-    }
+    )
 
-    val csvImportTypes = remember {
-        listOf(
-            ImportTypeInfo(
-                key = "normal",
-                icon = Icons.Default.TableChart,
-                title = "Monica CSV",
-                description = "导入 Monica 应用导出的 CSV 文件",
-                fileHint = "选择 Monica .csv 文件"
-            ),
-            ImportTypeInfo(
-                key = "keepass_csv",
-                icon = Icons.Default.Description,
-                title = "KeePass CSV",
-                description = "导入 KeePass 导出的 CSV 文件",
-                fileHint = "选择 KeePass .csv 文件"
-            ),
-            ImportTypeInfo(
-                key = "bitwarden_csv",
-                icon = Icons.Default.Lock,
-                title = "Bitwarden CSV",
-                description = "导入 Bitwarden 导出的 CSV 文件",
-                fileHint = "选择 Bitwarden .csv 文件"
-            )
+    val csvImportTypes = listOf(
+        ImportTypeInfo(
+            key = "normal",
+            icon = Icons.Default.TableChart,
+            title = stringResource(R.string.import_type_csv_monica_title),
+            description = stringResource(R.string.import_type_csv_monica_desc),
+            fileHint = stringResource(R.string.import_type_csv_monica_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "keepass_csv",
+            icon = Icons.Default.Description,
+            title = stringResource(R.string.import_type_csv_keepass_title),
+            description = stringResource(R.string.import_type_csv_keepass_desc),
+            fileHint = stringResource(R.string.import_type_csv_keepass_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "bitwarden_csv",
+            icon = Icons.Default.Lock,
+            title = stringResource(R.string.import_type_csv_bitwarden_title),
+            description = stringResource(R.string.import_type_csv_bitwarden_desc),
+            fileHint = stringResource(R.string.import_type_csv_bitwarden_file_hint)
         )
-    }
+    )
 
     val effectiveImportType = if (importType == "csv_group") csvImportType else importType
     
-    val currentTypeInfo = remember(importType, csvImportType) {
-        if (importType == "csv_group") {
-            csvImportTypes.find { it.key == csvImportType } ?: csvImportTypes[0]
-        } else {
-            importTypes.find { it.key == importType } ?: importTypes[0]
-        }
+    val currentTypeInfo = if (importType == "csv_group") {
+        csvImportTypes.find { it.key == csvImportType } ?: csvImportTypes[0]
+    } else {
+        importTypes.find { it.key == importType } ?: importTypes[0]
     }
     
     // 设置文件操作回调
@@ -250,13 +253,19 @@ fun ImportDataScreen(
                             selectedFileUri = safeUri
                             // 尝试获取文件名
                             selectedFileName = try {
-                                safeUri.lastPathSegment?.substringAfterLast('/') ?: "已选择文件"
+                                safeUri.lastPathSegment?.substringAfterLast('/')
+                                    ?: context.getString(R.string.import_data_file_selected)
                             } catch (e: Exception) {
-                                "已选择文件"
+                                context.getString(R.string.import_data_file_selected)
                             }
                         } catch (e: Exception) {
                             android.util.Log.e("ImportDataScreen", "文件选择异常", e)
-                            snackbarHostState.showSnackbar("文件选择失败：${e.message ?: "未知错误"}")
+                            snackbarHostState.showSnackbar(
+                                context.getString(
+                                    R.string.import_data_file_select_failed,
+                                    e.message ?: context.getString(R.string.import_data_unknown_error)
+                                )
+                            )
                         }
                     }
                 }
@@ -357,7 +366,10 @@ fun ImportDataScreen(
                                     } catch (e: Exception) {
                                         android.util.Log.e("ImportDataScreen", "导入异常", e)
                                         snackbarHostState.showSnackbar(
-                                            context.getString(R.string.import_data_error_exception, e.message ?: "未知错误")
+                                            context.getString(
+                                                R.string.import_data_error_exception,
+                                                e.message ?: context.getString(R.string.import_data_unknown_error)
+                                            )
                                         )
                                     } finally {
                                         isImporting = false
@@ -455,7 +467,7 @@ fun ImportDataScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            "选择 CSV 来源",
+                            stringResource(R.string.import_type_csv_source_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -479,7 +491,7 @@ fun ImportDataScreen(
             
             // 文件选择区域
             Text(
-                "选择文件",
+                stringResource(R.string.import_data_select_file),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -501,7 +513,12 @@ fun ImportDataScreen(
                         }
                     } ?: run {
                         scope.launch {
-                            snackbarHostState.showSnackbar(context.getString(R.string.error_launch_export, "无法启动操作"))
+                            snackbarHostState.showSnackbar(
+                                context.getString(
+                                    R.string.error_launch_export,
+                                    context.getString(R.string.import_data_operation_unavailable)
+                                )
+                            )
                         }
                     }
                 },
@@ -544,7 +561,11 @@ fun ImportDataScreen(
                     
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            if (selectedFileUri != null) "已选择文件" else "点击选择文件",
+                            if (selectedFileUri != null) {
+                                stringResource(R.string.import_data_file_selected)
+                            } else {
+                                stringResource(R.string.import_data_tap_to_select_file)
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium,
                             color = if (selectedFileUri != null) 
@@ -587,11 +608,11 @@ fun ImportDataScreen(
                 showPasswordDialog = false
                 passwordError = null
             },
-            title = { Text("输入解密密码") },
+            title = { Text(stringResource(R.string.aegis_decrypt_password_title)) },
             text = {
                 Column {
                     Text(
-                        "此Aegis备份文件已加密，请输入密码以解密",
+                        stringResource(R.string.aegis_decrypt_password_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
@@ -601,7 +622,7 @@ fun ImportDataScreen(
                             aegisPassword = it
                             passwordError = null
                         },
-                        label = { Text("密码") },
+                        label = { Text(stringResource(R.string.password)) },
                         singleLine = true,
                         isError = passwordError != null,
                         supportingText = passwordError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
@@ -613,7 +634,7 @@ fun ImportDataScreen(
                 TextButton(
                     onClick = {
                         if (aegisPassword.isBlank()) {
-                            passwordError = "密码不能为空"
+                            passwordError = context.getString(R.string.import_data_password_cannot_be_empty)
                             return@TextButton
                         }
                         
@@ -631,25 +652,32 @@ fun ImportDataScreen(
                                     
                                     result.onSuccess { count ->
                                         val message = if (importType == "monica_zip") {
-                                            "成功恢复备份，包含 $count 个条目"
+                                            context.getString(R.string.import_data_zip_restore_success_count, count)
                                         } else {
-                                            "成功导入 $count 个TOTP验证器"
+                                            context.getString(R.string.import_data_aegis_import_success_count, count)
                                         }
                                         snackbarHostState.showSnackbar(message)
                                         onNavigateBack()
                                     }.onFailure { error ->
-                                        val errorMsg = error.message ?: "未知错误"
-                                        if (errorMsg.contains("密码错误") || errorMsg.contains("解密失败")) {
-                                            passwordError = "密码错误，请重试"
+                                        val errorMsg = error.message ?: context.getString(R.string.import_data_unknown_error)
+                                        if (isPasswordDecryptError(errorMsg)) {
+                                            passwordError = context.getString(R.string.import_data_password_incorrect_retry)
                                             showPasswordDialog = true
                                         } else {
-                                            snackbarHostState.showSnackbar("导入失败：$errorMsg")
+                                            snackbarHostState.showSnackbar(
+                                                context.getString(R.string.import_data_failed_with_reason, errorMsg)
+                                            )
                                         }
                                     }
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("ImportDataScreen", "加密导入异常", e)
-                                snackbarHostState.showSnackbar("导入失败：${e.message ?: "未知错误"}")
+                                snackbarHostState.showSnackbar(
+                                    context.getString(
+                                        R.string.import_data_failed_with_reason,
+                                        e.message ?: context.getString(R.string.import_data_unknown_error)
+                                    )
+                                )
                             } finally {
                                 isImporting = false
                             }
@@ -663,7 +691,7 @@ fun ImportDataScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("确定")
+                        Text(stringResource(R.string.confirm))
                     }
                 }
             },
@@ -675,7 +703,7 @@ fun ImportDataScreen(
                     },
                     enabled = !isImporting
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -725,7 +753,9 @@ fun ImportDataScreen(
                                 try {
                                     val result = onImportKdbx(uri, kdbxPassword)
                                     result.onSuccess { count ->
-                                        snackbarHostState.showSnackbar("成功导入 $count 条记录")
+                                        snackbarHostState.showSnackbar(
+                                            context.getString(R.string.import_data_kdbx_import_success_count, count)
+                                        )
                                         onNavigateBack()
                                     }.onFailure { error ->
                                         snackbarHostState.showSnackbar(
@@ -734,7 +764,10 @@ fun ImportDataScreen(
                                     }
                                 } catch (e: Exception) {
                                     snackbarHostState.showSnackbar(
-                                        context.getString(R.string.import_data_error_exception, e.message ?: "未知错误")
+                                        context.getString(
+                                            R.string.import_data_error_exception,
+                                            e.message ?: context.getString(R.string.import_data_unknown_error)
+                                        )
                                     )
                                 } finally {
                                     isImporting = false
@@ -780,8 +813,8 @@ private suspend fun handleImportResult(
 ) {
     result.onSuccess { count ->
         val message = when (importType) {
-            "aegis" -> "成功导入 $count 个TOTP验证器"
-            "steam" -> "成功导入 Steam Guard 验证器"
+            "aegis" -> context.getString(R.string.import_data_aegis_import_success_count, count)
+            "steam" -> context.getString(R.string.import_data_steam_import_success)
             else -> context.getString(R.string.import_data_success_normal, count)
         }
         snackbarHostState.showSnackbar(message)

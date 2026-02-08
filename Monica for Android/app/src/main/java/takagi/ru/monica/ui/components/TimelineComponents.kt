@@ -207,14 +207,15 @@ fun formatShortTime(timestamp: Long): String {
 /**
  * 格式化为相对时间描述
  */
+@Composable
 fun formatRelativeTime(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
     
     return when {
-        diff < 60 * 1000 -> "刚刚"
-        diff < 60 * 60 * 1000 -> "${diff / (60 * 1000)} 分钟前"
-        diff < 24 * 60 * 60 * 1000 -> "${diff / (60 * 60 * 1000)} 小时前"
+        diff < 60 * 1000 -> stringResource(R.string.time_just_now)
+        diff < 60 * 60 * 1000 -> stringResource(R.string.time_minutes_ago, diff / (60 * 1000))
+        diff < 24 * 60 * 60 * 1000 -> stringResource(R.string.time_hours_ago, diff / (60 * 60 * 1000))
         else -> {
             val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
             sdf.format(Date(timestamp))

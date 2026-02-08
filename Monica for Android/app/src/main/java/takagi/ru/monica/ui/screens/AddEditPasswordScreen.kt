@@ -547,7 +547,7 @@ fun AddEditPasswordScreen(
             
             // Credentials Card
             item {
-                InfoCard(title = "凭据") {
+                InfoCard(title = stringResource(R.string.section_credentials)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Title
                         OutlinedTextField(
@@ -705,12 +705,12 @@ fun AddEditPasswordScreen(
             // Security Card (TOTP) - 根据设置和数据决定是否显示
             if (shouldShowSecurityVerification()) {
                 item {
-                    InfoCard(title = "安全验证") {
+                    InfoCard(title = stringResource(R.string.section_security_verification)) {
                         OutlinedTextField(
                             value = authenticatorKey,
                             onValueChange = { authenticatorKey = it },
-                            label = { Text("验证码密钥 (可选)") },
-                            placeholder = { Text("输入密钥以自动创建验证器") },
+                            label = { Text(stringResource(R.string.authenticator_key_optional)) },
+                            placeholder = { Text(stringResource(R.string.authenticator_key_hint)) },
                             leadingIcon = { Icon(Icons.Default.VpnKey, null) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -724,7 +724,7 @@ fun AddEditPasswordScreen(
             // Organization Card - 根据设置和数据决定是否显示
             if (shouldShowCategoryAndNotes()) {
                 item {
-                    InfoCard(title = "分类与备注") {
+                    InfoCard(title = stringResource(R.string.section_category_notes)) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             // Category Selector
                             var categoryExpanded by remember { mutableStateOf(false) }
@@ -735,13 +735,13 @@ fun AddEditPasswordScreen(
                             expanded = categoryExpanded,
                             onExpandedChange = { categoryExpanded = it }
                         ) {
-                            val selectedCategoryName = categories.find { it.id == categoryId }?.name ?: "无分类"
+                            val selectedCategoryName = categories.find { it.id == categoryId }?.name ?: stringResource(R.string.category_none)
 
                             OutlinedTextField(
                                 value = selectedCategoryName,
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("分类") },
+                                label = { Text(stringResource(R.string.category)) },
                                 leadingIcon = { Icon(Icons.Default.Category, null) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
                                 modifier = Modifier
@@ -768,7 +768,7 @@ fun AddEditPasswordScreen(
                                     .clip(RoundedCornerShape(18.dp))
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("无分类") },
+                                    text = { Text(stringResource(R.string.category_none)) },
                                     leadingIcon = { Icon(Icons.Default.FolderOff, null) },
                                     trailingIcon = if (categoryId == null) { { Icon(Icons.Default.Check, null) } } else null,
                                     onClick = {
@@ -797,7 +797,7 @@ fun AddEditPasswordScreen(
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.Add, null, Modifier.size(16.dp))
                                             Spacer(Modifier.width(8.dp))
-                                            Text("新建分类")
+                                            Text(stringResource(R.string.new_category))
                                         }
                                     },
                                     onClick = {
@@ -812,12 +812,12 @@ fun AddEditPasswordScreen(
                         if (showAddCategoryDialog) {
                             AlertDialog(
                                 onDismissRequest = { showAddCategoryDialog = false },
-                                title = { Text("新建分类") },
-                                text = { OutlinedTextField(value = newCategoryName, onValueChange = { newCategoryName = it }, label = { Text("分类名称") }, singleLine = true) },
+                                title = { Text(stringResource(R.string.new_category)) },
+                                text = { OutlinedTextField(value = newCategoryName, onValueChange = { newCategoryName = it }, label = { Text(stringResource(R.string.category_name)) }, singleLine = true) },
                                 confirmButton = {
-                                    TextButton(onClick = { if (newCategoryName.isNotBlank()) { viewModel.addCategory(newCategoryName) { id -> if (id > 0) categoryId = id }; newCategoryName = ""; showAddCategoryDialog = false } }) { Text("确定") }
+                                    TextButton(onClick = { if (newCategoryName.isNotBlank()) { viewModel.addCategory(newCategoryName) { id -> if (id > 0) categoryId = id }; newCategoryName = ""; showAddCategoryDialog = false } }) { Text(stringResource(R.string.confirm)) }
                                 },
-                                dismissButton = { TextButton(onClick = { showAddCategoryDialog = false }) { Text("取消") } }
+                                dismissButton = { TextButton(onClick = { showAddCategoryDialog = false }) { Text(stringResource(R.string.cancel)) } }
                             )
                         }
 
@@ -868,7 +868,7 @@ fun AddEditPasswordScreen(
             // App Binding Card - 根据设置和数据决定是否显示
             if (shouldShowAppBinding()) {
                 item {
-                    InfoCard(title = "应用关联") {
+                    InfoCard(title = stringResource(R.string.section_app_association)) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             AppSelectorField(
                                 selectedPackageName = appPackageName,
@@ -887,8 +887,8 @@ fun AddEditPasswordScreen(
                                     ) {
                                         Checkbox(checked = bindWebsite, onCheckedChange = { bindWebsite = it })
                                         Column {
-                                            Text("绑定网址", style = MaterialTheme.typography.bodyMedium)
-                                            Text("将该应用关联到所有相同网址的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(stringResource(R.string.bind_website), style = MaterialTheme.typography.bodyMedium)
+                                            Text(stringResource(R.string.bind_website_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                     Row(
@@ -897,8 +897,8 @@ fun AddEditPasswordScreen(
                                     ) {
                                         Checkbox(checked = bindTitle, onCheckedChange = { bindTitle = it })
                                         Column {
-                                            Text("绑定标题", style = MaterialTheme.typography.bodyMedium)
-                                            Text("将该应用关联到所有相同标题的密码", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(stringResource(R.string.bind_title), style = MaterialTheme.typography.bodyMedium)
+                                            Text(stringResource(R.string.bind_title_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
@@ -972,7 +972,7 @@ fun AddEditPasswordScreen(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
-                                            contentDescription = "删除",
+                                            contentDescription = stringResource(R.string.delete),
                                             tint = MaterialTheme.colorScheme.error
                                         )
                                     }
@@ -985,7 +985,7 @@ fun AddEditPasswordScreen(
                         ) {
                             Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("添加邮箱")
+                            Text(stringResource(R.string.add_email))
                         }
                         
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -1043,7 +1043,7 @@ fun AddEditPasswordScreen(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
-                                            contentDescription = "删除",
+                                            contentDescription = stringResource(R.string.delete),
                                             tint = MaterialTheme.colorScheme.error
                                         )
                                     }
@@ -1056,7 +1056,7 @@ fun AddEditPasswordScreen(
                         ) {
                             Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("添加电话")
+                            Text(stringResource(R.string.add_phone))
                         }
                     }
                 }
@@ -1144,7 +1144,7 @@ fun AddEditPasswordScreen(
                             ) {
                                 Icon(Icons.Default.CreditCard, null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("从银行卡导入")
+                                Text(stringResource(R.string.import_from_bank_card))
                             }
                             
                             // Bank Card Selection Logic (retained)
@@ -1152,15 +1152,15 @@ fun AddEditPasswordScreen(
                                 val bankCards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
                                 AlertDialog(
                                     onDismissRequest = { showBankCardDialog = false },
-                                    title = { Text("选择银行卡") },
+                                    title = { Text(stringResource(R.string.select_bank_card)) },
                                     text = {
-                                        if (bankCards.isEmpty()) Text("暂无银行卡数据")
+                                        if (bankCards.isEmpty()) Text(stringResource(R.string.no_bank_card_data))
                                         else LazyColumn {
                                             items(bankCards) { item ->
                                                 val cardData = try { Json.decodeFromString<BankCardData>(item.itemData) } catch (e: Exception) { null }
                                                 ListItem(
                                                     headlineContent = { Text(item.title) },
-                                                    supportingContent = { Text(if (cardData != null) "尾号 ${cardData.cardNumber.takeLast(4)}" else "解析失败") },
+                                                    supportingContent = { Text(if (cardData != null) stringResource(R.string.tail_number_last4, cardData.cardNumber.takeLast(4)) else stringResource(R.string.parse_failed)) },
                                                     leadingContent = { Icon(Icons.Default.CreditCard, null) },
                                                     modifier = Modifier.clickable {
                                                         if (cardData != null) {
@@ -1171,14 +1171,14 @@ fun AddEditPasswordScreen(
                                                             val year = if (cardData.expiryYear.length == 4) cardData.expiryYear.takeLast(2) else cardData.expiryYear
                                                             creditCardExpiry = "$month/$year"
                                                             showBankCardDialog = false
-                                                            Toast.makeText(context, "已导入", Toast.LENGTH_SHORT).show()
+                                                            Toast.makeText(context, context.getString(R.string.imported), Toast.LENGTH_SHORT).show()
                                                         }
                                                     }
                                                 )
                                             }
                                         }
                                     },
-                                    confirmButton = { TextButton(onClick = { showBankCardDialog = false }) { Text("取消") } }
+                                    confirmButton = { TextButton(onClick = { showBankCardDialog = false }) { Text(stringResource(R.string.cancel)) } }
                                 )
                             }
                         }
@@ -1572,12 +1572,12 @@ private fun LoginTypeSelector(
                             Row {
                                 if (ssoRefEntryId != null) {
                                     IconButton(onClick = { onSsoRefEntryIdChange(null) }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "清除")
+                                        Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear))
                                     }
                                 }
                                 Icon(
                                     Icons.Default.Search, 
-                                    contentDescription = "选择",
+                                    contentDescription = stringResource(R.string.select),
                                     modifier = Modifier.padding(end = 12.dp)
                                 )
                             }
@@ -1796,7 +1796,7 @@ private fun VaultSelector(
     
     val displaySubtitle = when {
         isKeePass -> stringResource(R.string.vault_sync_hint)
-        isBitwarden -> "将同步保存到 Bitwarden"
+        isBitwarden -> stringResource(R.string.sync_save_to_bitwarden)
         else -> stringResource(R.string.vault_monica_only_desc)
     }
     
@@ -1941,7 +1941,7 @@ private fun VaultSelector(
                         
                         VaultOptionItem(
                             title = vault.displayName ?: vault.email,
-                            subtitle = "${vault.serverUrl} · 将同步保存到 Bitwarden",
+                            subtitle = "${vault.serverUrl} · ${stringResource(R.string.sync_save_to_bitwarden)}",
                             icon = Icons.Default.Cloud,
                             isSelected = isSelected,
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer,

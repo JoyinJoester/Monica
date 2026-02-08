@@ -211,7 +211,7 @@ fun AddEditDocumentScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Basic Info
-            InfoCard(title = "基本信息") {
+            InfoCard(title = stringResource(R.string.section_basic_info)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Title
                     OutlinedTextField(
@@ -383,8 +383,8 @@ fun AddEditDocumentScreen(
                         OutlinedTextField(
                             value = nationality,
                             onValueChange = { nationality = it },
-                            label = { Text("国籍") },
-                            placeholder = { Text("中国") },
+                            label = { Text(stringResource(R.string.nationality)) },
+                            placeholder = { Text(stringResource(R.string.nationality_example)) },
                             leadingIcon = { Icon(Icons.Default.Public, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -395,7 +395,7 @@ fun AddEditDocumentScreen(
             }
             
             // Photos InfoCard
-            InfoCard(title = "照片") {
+            InfoCard(title = stringResource(R.string.section_photos)) {
                 DualPhotoPicker(
                     frontImageFileName = frontImageFileName,
                     backImageFileName = backImageFileName,
@@ -407,7 +407,7 @@ fun AddEditDocumentScreen(
                         DocumentType.ID_CARD -> stringResource(R.string.id_card)
                         DocumentType.PASSPORT -> stringResource(R.string.passport)
                         DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> "Social Security Card"
+                        DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
                         DocumentType.OTHER -> stringResource(R.string.other_document)
                     }),
                     backLabel = stringResource(R.string.document_photo_back, when (documentType) {
@@ -422,7 +422,7 @@ fun AddEditDocumentScreen(
             }
             
             // Notes InfoCard
-            InfoCard(title = "备注") {
+            InfoCard(title = stringResource(R.string.section_notes)) {
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },

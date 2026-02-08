@@ -195,8 +195,8 @@ fun ExtensionsScreen(
                 // 添加密码页面字段定制入口
                 ExtensionClickableItem(
                     icon = Icons.Default.Tune,
-                    title = "添加密码页面字段定制",
-                    description = "自定义显示的字段卡片",
+                    title = stringResource(R.string.extensions_password_field_customization_title),
+                    description = stringResource(R.string.extensions_password_field_customization_desc),
                     onClick = onNavigateToFieldCustomization
                 )
                 

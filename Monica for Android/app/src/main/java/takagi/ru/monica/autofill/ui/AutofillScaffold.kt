@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import takagi.ru.monica.R
 
 /**
  * 自动填充布局骨架
@@ -122,7 +124,7 @@ fun AutofillScaffold(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "关闭",
+                            text = stringResource(R.string.close),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -184,7 +186,7 @@ fun AutofillHeader(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "关闭",
+                    text = stringResource(R.string.close),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -201,7 +203,7 @@ fun AutofillHeader(
             // 用户名
             if (!username.isNullOrEmpty()) {
                 TwoColumnRow(
-                    title = "用户名",
+                    title = stringResource(R.string.autofill_username),
                     value = username
                 )
             }
@@ -209,7 +211,7 @@ fun AutofillHeader(
             // 密码（彩色显示）
             if (!password.isNullOrEmpty()) {
                 TwoColumnRow(
-                    title = "密码",
+                    title = stringResource(R.string.autofill_password),
                     value = colorizePassword(password)
                 )
             }
@@ -357,7 +359,7 @@ fun AppInfo(
         } else {
             // 首字母头像
             // 优先使用 webDomain 的首字母
-            val displayText = webDomain ?: resolvedName ?: packageName?.substringAfterLast('.') ?: "Monica"
+            val displayText = webDomain ?: resolvedName ?: packageName?.substringAfterLast('.') ?: stringResource(R.string.app_name)
             val initial = displayText.firstOrNull()?.uppercaseChar() ?: 'M'
             
             Surface(
@@ -381,13 +383,13 @@ fun AppInfo(
         Column {
             // "为...自动填充" 标签
             Text(
-                text = "为以下应用自动填充",
+                text = stringResource(R.string.autofill_for_app),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
             
             // 标题优先级：WebDomain > AppName > PackageName
-            val mainTitle = webDomain ?: resolvedName ?: packageName?.substringAfterLast('.')?.replaceFirstChar { it.uppercaseChar() } ?: "Monica"
+            val mainTitle = webDomain ?: resolvedName ?: packageName?.substringAfterLast('.')?.replaceFirstChar { it.uppercaseChar() } ?: stringResource(R.string.app_name)
             
             // 应用名称
             Text(
@@ -404,7 +406,7 @@ fun AppInfo(
                 val subTitle = resolvedName ?: packageName
                 if (subTitle != null) {
                     Text(
-                        text = "来源: $subTitle",
+                        text = stringResource(R.string.autofill_source_with_value, subTitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         overflow = TextOverflow.Ellipsis,

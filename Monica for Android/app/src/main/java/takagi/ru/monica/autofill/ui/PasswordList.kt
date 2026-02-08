@@ -14,8 +14,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.autofill.data.AutofillItem
 import takagi.ru.monica.data.PasswordEntry
 
@@ -113,7 +115,7 @@ fun EmptyPasswordState(
             
             // 主要提示
             Text(
-                text = "未找到关联的密码",
+                text = stringResource(R.string.no_passwords_found),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
@@ -124,9 +126,9 @@ fun EmptyPasswordState(
             // 次要提示
             Text(
                 text = if (onShowAllPasswords != null) {
-                    "可以从所有密码中选择一个"
+                    stringResource(R.string.autofill_choose_from_all_passwords)
                 } else {
-                    "试试调整搜索条件\n或在主应用中添加新密码"
+                    stringResource(R.string.autofill_try_search_or_add)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -148,7 +150,7 @@ fun EmptyPasswordState(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("选择其他密码")
+                    Text(stringResource(R.string.autofill_select_other_password))
                 }
             }
         }

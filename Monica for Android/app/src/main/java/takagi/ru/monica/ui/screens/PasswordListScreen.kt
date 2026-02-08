@@ -45,9 +45,13 @@ import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
+import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.ClipboardUtils
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.data.Category
@@ -55,6 +59,7 @@ import takagi.ru.monica.data.Category
 import androidx.compose.ui.unit.Velocity
 import takagi.ru.monica.util.VibrationPatterns
 import androidx.activity.compose.BackHandler
+import androidx.fragment.app.FragmentActivity
 
 @OptIn(ExperimentalMaterial3Api::class)  
 @Composable
@@ -75,6 +80,12 @@ fun PasswordListScreen(
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
+    val settingsManager = remember { SettingsManager(context) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(
+        initial = AppSettings(biometricEnabled = false)
+    )
+    val biometricHelper = remember { BiometricHelper(context) }
+    val activity = context as? FragmentActivity
     
     var searchExpanded by remember { mutableStateOf(false) }
     // 使用带阻尼的偏移量
@@ -189,7 +200,7 @@ fun PasswordListScreen(
     var selectedItems by remember { mutableStateOf(setOf<Long>()) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var batchPasswordInput by remember { mutableStateOf("") }
-    var showBatchPasswordVerify by remember { mutableStateOf(false) }
+    var batchPasswordError by remember { mutableStateOf(false) }
     
     // 分组模式: "none" 不分组, "website" 按网站分组, "title" 按标题分组
     var groupMode by remember { mutableStateOf("none") }
@@ -212,15 +223,15 @@ fun PasswordListScreen(
                 TopAppBar(
                     title = { 
                         if (selectionMode) {
-                            Text("已选择 ${selectedItems.size} 项")
+                            Text(context.getString(R.string.selected_items, selectedItems.size))
                         } else {
                             Text(
                                 text = when(currentFilter) {
                                     is CategoryFilter.All -> context.getString(R.string.filter_all)
                                     is CategoryFilter.Local -> context.getString(R.string.filter_monica)
-                                    is CategoryFilter.Starred -> "标星"
-                                    is CategoryFilter.Uncategorized -> "未分类"
-                                    is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+                                    is CategoryFilter.Starred -> context.getString(R.string.filter_starred)
+                                    is CategoryFilter.Uncategorized -> context.getString(R.string.filter_uncategorized)
+                                    is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: context.getString(R.string.unknown_category)
                                     is CategoryFilter.KeePassDatabase -> "KeePass"
                                     is CategoryFilter.BitwardenVault -> "Bitwarden"
                                     is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
@@ -236,7 +247,7 @@ fun PasswordListScreen(
                                 selectionMode = false
                                 selectedItems = setOf()
                             }) {
-                                Icon(Icons.Default.Close, contentDescription = "取消选择")
+                                Icon(Icons.Default.Close, contentDescription = context.getString(R.string.exit_selection_mode))
                             }
                         }
                     },
@@ -255,7 +266,7 @@ fun PasswordListScreen(
                                         Icons.Default.CheckCircle 
                                     else 
                                         Icons.Default.CheckCircleOutline,
-                                    contentDescription = "全选"
+                                    contentDescription = context.getString(R.string.select_all)
                                 )
                             }
                             // 删除
@@ -265,7 +276,7 @@ fun PasswordListScreen(
                             ) {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = "删除",
+                                    contentDescription = context.getString(R.string.delete),
                                     tint = if (selectedItems.isNotEmpty()) 
                                         MaterialTheme.colorScheme.error 
                                     else 
@@ -288,9 +299,9 @@ fun PasswordListScreen(
                                         else -> Icons.Default.ViewList       // 列表图标表示不分组
                                     },
                                     contentDescription = when (groupMode) {
-                                        "website" -> "按网站分组"
-                                        "title" -> "按标题分组"
-                                        else -> "不分组"
+                                        "website" -> context.getString(R.string.group_by_website)
+                                        "title" -> context.getString(R.string.group_by_title)
+                                        else -> context.getString(R.string.group_by_none)
                                     }
                                 )
                             }
@@ -459,8 +470,8 @@ fun PasswordListScreen(
                     when (groupMode) {
                         "website" -> {
                             // 按网站分组
-                            val groupedByWebsite = passwordEntries.groupBy { 
-                                it.website.ifEmpty { "未分类" }
+                            val groupedByWebsite = passwordEntries.groupBy {
+                                it.website.ifEmpty { context.getString(R.string.filter_uncategorized) }
                             }.toList().sortedBy { it.first }
                             
                             groupedByWebsite.forEach { (website, entries) ->
@@ -686,90 +697,88 @@ fun PasswordListScreen(
     
     // Batch Delete Confirmation Dialog with Password
     if (showDeleteConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { 
+        val batchBiometricAction = if (
+            activity != null &&
+            appSettings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.verify_to_delete),
+                    onSuccess = {
+                        val deleteCount = selectedItems.size
+                        passwordEntries.filter { selectedItems.contains(it.id) }
+                            .forEach { viewModel.deletePasswordEntry(it) }
+                        showDeleteConfirmDialog = false
+                        selectionMode = false
+                        selectedItems = setOf()
+                        batchPasswordInput = ""
+                        batchPasswordError = false
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.deleted_items, deleteCount),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onError = { error ->
+                        android.widget.Toast.makeText(
+                            context,
+                            error,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = context.getString(R.string.verify_identity),
+            message = context.getString(R.string.batch_delete_passwords_message, selectedItems.size),
+            passwordValue = batchPasswordInput,
+            onPasswordChange = {
+                batchPasswordInput = it
+                batchPasswordError = false
+            },
+            onDismiss = {
                 showDeleteConfirmDialog = false
                 batchPasswordInput = ""
+                batchPasswordError = false
             },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = {
-                Text("确认批量删除?")
-            },
-            text = {
-                Column {
-                    Text("确定要删除选中的 ${selectedItems.size} 个密码吗?此操作无法撤销。")
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = batchPasswordInput,
-                        onValueChange = { batchPasswordInput = it },
-                        label = { Text("请输入主密码确认") },
-                        singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            onConfirm = {
+                val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                if (securityManager.verifyMasterPassword(batchPasswordInput)) {
+                    val deleteCount = selectedItems.size
+                    passwordEntries.filter { selectedItems.contains(it.id) }
+                        .forEach { viewModel.deletePasswordEntry(it) }
+                    showDeleteConfirmDialog = false
+                    selectionMode = false
+                    selectedItems = setOf()
+                    batchPasswordInput = ""
+                    batchPasswordError = false
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.deleted_items, deleteCount),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    batchPasswordError = true
                 }
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showBatchPasswordVerify = true
-                        showDeleteConfirmDialog = false
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    enabled = batchPasswordInput.isNotEmpty()
-                ) {
-                    Text("删除")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showDeleteConfirmDialog = false
-                        batchPasswordInput = ""
-                    }
-                ) {
-                    Text("取消")
-                }
+            confirmText = context.getString(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = batchPasswordError,
+            passwordErrorText = context.getString(R.string.current_password_incorrect),
+            onBiometricClick = batchBiometricAction,
+            biometricHintText = if (batchBiometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
             }
         )
-    }
-    
-    // Batch Password Verification
-    if (showBatchPasswordVerify) {
-        LaunchedEffect(Unit) {
-            val securityManager = takagi.ru.monica.security.SecurityManager(context)
-            if (securityManager.verifyMasterPassword(batchPasswordInput)) {
-                // 批量删除
-                passwordEntries.filter { selectedItems.contains(it.id) }
-                    .forEach { viewModel.deletePasswordEntry(it) }
-                showBatchPasswordVerify = false
-                selectionMode = false
-                selectedItems = setOf()
-                batchPasswordInput = ""
-                android.widget.Toast.makeText(
-                    context,
-                    "已删除 ${selectedItems.size} 个密码",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                // 密码错误
-                android.widget.Toast.makeText(
-                    context,
-                    "主密码错误",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
-                showBatchPasswordVerify = false
-                showDeleteConfirmDialog = true // 重新显示对话框
-            }
-        }
     }
     
     // Logout Confirmation Dialog
@@ -799,12 +808,12 @@ fun PasswordListScreen(
     if (showAddCategoryDialog) {
         AlertDialog(
             onDismissRequest = { showAddCategoryDialog = false },
-            title = { Text("新建分类") },
+            title = { Text(context.getString(R.string.new_category)) },
             text = {
                 OutlinedTextField(
                     value = categoryNameInput,
                     onValueChange = { categoryNameInput = it },
-                    label = { Text("分类名称") },
+                    label = { Text(context.getString(R.string.category_name)) },
                     singleLine = true
                 )
             },
@@ -816,12 +825,12 @@ fun PasswordListScreen(
                         showAddCategoryDialog = false
                     }
                 }) {
-                    Text("确定")
+                    Text(context.getString(R.string.confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text("取消")
+                    Text(context.getString(R.string.cancel))
                 }
             }
         )
@@ -830,12 +839,12 @@ fun PasswordListScreen(
     if (showEditCategoryDialog != null) {
         AlertDialog(
             onDismissRequest = { showEditCategoryDialog = null },
-            title = { Text("编辑分类") },
+            title = { Text(context.getString(R.string.edit_category)) },
             text = {
                 OutlinedTextField(
                     value = categoryNameInput,
                     onValueChange = { categoryNameInput = it },
-                    label = { Text("分类名称") },
+                    label = { Text(context.getString(R.string.category_name)) },
                     singleLine = true
                 )
             },
@@ -847,12 +856,12 @@ fun PasswordListScreen(
                         showEditCategoryDialog = null
                     }
                 }) {
-                    Text("确定")
+                    Text(context.getString(R.string.confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showEditCategoryDialog = null }) {
-                    Text("取消")
+                    Text(context.getString(R.string.cancel))
                 }
             }
         )
@@ -913,8 +922,8 @@ fun PasswordEntryCard(
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
-    var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
@@ -1044,7 +1053,7 @@ fun PasswordEntryCard(
                     // 展开/收起图标
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) "收起" else "展开",
+                        contentDescription = if (expanded) context.getString(R.string.collapse) else context.getString(R.string.expand),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 8.dp)
                     )
@@ -1056,7 +1065,7 @@ fun PasswordEntryCard(
                         IconButton(onClick = { showMenu = true }) {
                             Icon(
                                 Icons.Default.MoreVert,
-                                contentDescription = "菜单"
+                                contentDescription = context.getString(R.string.menu)
                             )
                         }
                         DropdownMenu(
@@ -1064,7 +1073,7 @@ fun PasswordEntryCard(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("编辑") },
+                                text = { Text(context.getString(R.string.edit)) },
                                 onClick = {
                                     showMenu = false
                                     onEdit()
@@ -1074,7 +1083,7 @@ fun PasswordEntryCard(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("删除") },
+                                text = { Text(context.getString(R.string.delete)) },
                                 onClick = {
                                     showMenu = false
                                     showDeleteDialog = true
@@ -1088,7 +1097,7 @@ fun PasswordEntryCard(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("多选") },
+                                text = { Text(context.getString(R.string.multi_select)) },
                                 onClick = {
                                     showMenu = false
                                     onLongPress()
@@ -1114,7 +1123,7 @@ fun PasswordEntryCard(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "网站",
+                                text = context.getString(R.string.website),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1207,78 +1216,36 @@ fun PasswordEntryCard(
     
     // Delete Confirmation Dialog with Password
     if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { 
+        M3IdentityVerifyDialog(
+            title = context.getString(R.string.delete_password_title),
+            message = context.getString(R.string.delete_password_message, entry.title),
+            passwordValue = passwordInput,
+            onPasswordChange = {
+                passwordInput = it
+                passwordError = false
+            },
+            onDismiss = {
                 showDeleteDialog = false
                 passwordInput = ""
+                passwordError = false
             },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text("删除密码") },
-            text = {
-                Column {
-                    Text("确定要删除「${entry.title}」吗?")
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = { passwordInput = it },
-                        label = { Text("请输入主密码确认") },
-                        singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            onConfirm = {
+                val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                if (securityManager.verifyMasterPassword(passwordInput)) {
+                    onDelete()
+                    showDeleteDialog = false
+                    passwordInput = ""
+                    passwordError = false
+                } else {
+                    passwordError = true
                 }
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showPasswordDialog = true
-                        showDeleteDialog = false
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    enabled = passwordInput.isNotEmpty()
-                ) {
-                    Text("删除")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showDeleteDialog = false
-                        passwordInput = ""
-                    }
-                ) {
-                    Text("取消")
-                }
-            }
+            confirmText = context.getString(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = passwordError,
+            passwordErrorText = context.getString(R.string.current_password_incorrect),
+            onBiometricClick = null,
+            biometricHintText = context.getString(R.string.biometric_not_available)
         )
-    }
-    
-    // Password Verification Dialog
-    if (showPasswordDialog) {
-        LaunchedEffect(Unit) {
-            val securityManager = takagi.ru.monica.security.SecurityManager(context)
-            if (securityManager.verifyMasterPassword(passwordInput)) {
-                onDelete()
-                showPasswordDialog = false
-                passwordInput = ""
-            } else {
-                // 密码错误
-                android.widget.Toast.makeText(
-                    context,
-                    "主密码错误",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
-                showPasswordDialog = false
-                showDeleteDialog = true // 重新显示对话框
-            }
-        }
     }
 }

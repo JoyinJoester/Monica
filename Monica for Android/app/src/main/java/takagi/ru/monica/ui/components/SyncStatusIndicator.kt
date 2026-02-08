@@ -12,8 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 
 /**
@@ -37,32 +40,32 @@ fun SyncStatusIcon(
         SyncStatus.SYNCED -> Triple(
             Icons.Outlined.CloudDone,
             MaterialTheme.colorScheme.primary,
-            "已同步"
+            stringResource(R.string.sync_status_synced_short)
         )
         SyncStatus.PENDING -> Triple(
             Icons.Outlined.CloudQueue,
             MaterialTheme.colorScheme.secondary,
-            "等待同步"
+            stringResource(R.string.sync_status_pending_short)
         )
         SyncStatus.SYNCING -> Triple(
             Icons.Outlined.CloudSync,
             MaterialTheme.colorScheme.primary,
-            "正在同步"
+            stringResource(R.string.sync_status_syncing_short)
         )
         SyncStatus.FAILED -> Triple(
             Icons.Outlined.CloudOff,
             MaterialTheme.colorScheme.error,
-            "同步失败"
+            stringResource(R.string.sync_status_failed_short)
         )
         SyncStatus.CONFLICT -> Triple(
             Icons.Outlined.Warning,
             MaterialTheme.colorScheme.error,
-            "存在冲突"
+            stringResource(R.string.sync_status_conflict_short)
         )
         SyncStatus.NONE -> Triple(
             Icons.Outlined.Cloud,
             MaterialTheme.colorScheme.outline,
-            "未同步"
+            stringResource(R.string.sync_status_local_short)
         )
     }
     
@@ -123,32 +126,32 @@ fun SyncStatusBadge(
         SyncStatus.SYNCED -> Triple(
             MaterialTheme.colorScheme.primaryContainer,
             MaterialTheme.colorScheme.onPrimaryContainer,
-            "已同步"
+            stringResource(R.string.sync_status_synced_short)
         )
         SyncStatus.PENDING -> Triple(
             MaterialTheme.colorScheme.secondaryContainer,
             MaterialTheme.colorScheme.onSecondaryContainer,
-            "待同步"
+            stringResource(R.string.sync_status_pending_badge)
         )
         SyncStatus.SYNCING -> Triple(
             MaterialTheme.colorScheme.primaryContainer,
             MaterialTheme.colorScheme.onPrimaryContainer,
-            "同步中"
+            stringResource(R.string.sync_status_syncing_badge)
         )
         SyncStatus.FAILED -> Triple(
             MaterialTheme.colorScheme.errorContainer,
             MaterialTheme.colorScheme.onErrorContainer,
-            "失败"
+            stringResource(R.string.sync_status_failed_badge)
         )
         SyncStatus.CONFLICT -> Triple(
             MaterialTheme.colorScheme.errorContainer,
             MaterialTheme.colorScheme.onErrorContainer,
-            "冲突"
+            stringResource(R.string.sync_status_conflict_badge)
         )
         SyncStatus.NONE -> Triple(
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            "本地"
+            stringResource(R.string.sync_status_local_badge)
         )
     }
     
@@ -171,7 +174,9 @@ fun SyncStatusBadge(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = textColor
+                    color = textColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -193,7 +198,7 @@ fun BitwardenBadge(
     
     Icon(
         imageVector = Icons.Outlined.CloudDone,
-        contentDescription = "Bitwarden 同步项",
+        contentDescription = stringResource(R.string.bitwarden_synced_item),
         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
         modifier = modifier.size(size)
     )
@@ -236,23 +241,29 @@ fun SyncStatusRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = getStatusText(status),
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     
                     if (bitwardenVaultName != null) {
                         Text(
-                            text = " · $bitwardenVaultName",
+                            text = stringResource(R.string.sync_status_with_vault, bitwardenVaultName),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
                 
                 if (lastSyncTime != null && lastSyncTime > 0) {
                     Text(
-                        text = "上次同步: ${formatSyncRelativeTime(lastSyncTime)}",
+                        text = stringResource(R.string.sync_last_sync, formatSyncRelativeTime(lastSyncTime)),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -261,7 +272,7 @@ fun SyncStatusRow(
                 IconButton(onClick = onSyncClick) {
                     Icon(
                         Icons.Outlined.Sync,
-                        contentDescription = "立即同步",
+                        contentDescription = stringResource(R.string.sync_now),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -270,26 +281,28 @@ fun SyncStatusRow(
     }
 }
 
+@Composable
 private fun getStatusText(status: SyncStatus): String {
     return when (status) {
-        SyncStatus.SYNCED -> "已同步到 Bitwarden"
-        SyncStatus.PENDING -> "等待同步"
-        SyncStatus.SYNCING -> "正在同步..."
-        SyncStatus.FAILED -> "同步失败"
-        SyncStatus.CONFLICT -> "存在同步冲突"
-        SyncStatus.NONE -> "仅本地存储"
+        SyncStatus.SYNCED -> stringResource(R.string.sync_status_synced_full)
+        SyncStatus.PENDING -> stringResource(R.string.sync_status_pending_full)
+        SyncStatus.SYNCING -> stringResource(R.string.sync_status_syncing_full)
+        SyncStatus.FAILED -> stringResource(R.string.sync_status_failed_full)
+        SyncStatus.CONFLICT -> stringResource(R.string.sync_status_conflict_full)
+        SyncStatus.NONE -> stringResource(R.string.sync_status_local_full)
     }
 }
 
+@Composable
 private fun formatSyncRelativeTime(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
     
     return when {
-        diff < 60_000 -> "刚刚"
-        diff < 3600_000 -> "${diff / 60_000} 分钟前"
-        diff < 86400_000 -> "${diff / 3600_000} 小时前"
-        diff < 604800_000 -> "${diff / 86400_000} 天前"
+        diff < 60_000 -> stringResource(R.string.time_just_now)
+        diff < 3600_000 -> stringResource(R.string.time_minutes_ago, diff / 60_000)
+        diff < 86400_000 -> stringResource(R.string.time_hours_ago, diff / 3600_000)
+        diff < 604800_000 -> stringResource(R.string.time_days_ago, diff / 86400_000)
         else -> {
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
             sdf.format(java.util.Date(timestamp))

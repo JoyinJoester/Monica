@@ -15,12 +15,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.autofill.ui.components.*
@@ -51,6 +53,8 @@ fun InlineAddPasswordContent(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val savedViaAutofill = stringResource(R.string.autofill_saved_via)
+    val untitledText = stringResource(R.string.untitled)
     var title by remember { mutableStateOf(initialTitle.ifEmpty { 
         initialAppName ?: initialWebsite.extractDomainName() ?: "" 
     }) }
@@ -80,7 +84,7 @@ fun InlineAddPasswordContent(
         ) {
             // 标题
             Text(
-                text = "新建密码",
+                text = stringResource(R.string.add_password_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -133,12 +137,12 @@ fun InlineAddPasswordContent(
                     isSaving = true
                     val entry = PasswordEntry(
                         title = title.ifEmpty { 
-                            initialAppName ?: initialWebsite.extractDomainName() ?: "未命名"
+                            initialAppName ?: initialWebsite.extractDomainName() ?: untitledText
                         },
                         username = username,
                         password = password,
                         website = initialWebsite,
-                        notes = "通过 Monica 自动填充保存",
+                        notes = savedViaAutofill,
                         appPackageName = initialAppPackageName ?: "",
                         appName = initialAppName ?: "",
                         keepassDatabaseId = keepassDatabaseId
@@ -163,7 +167,7 @@ fun InlineAddPasswordContent(
                 } else {
                     Icon(Icons.Outlined.Save, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("保存", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.save), style = MaterialTheme.typography.labelLarge)
                 }
             }
             

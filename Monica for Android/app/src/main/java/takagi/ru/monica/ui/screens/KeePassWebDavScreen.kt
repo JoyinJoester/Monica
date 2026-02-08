@@ -133,7 +133,7 @@ fun KeePassWebDavScreen(
                     isLoadingFiles = false
                 },
                 onFailure = { e ->
-                    errorMessage = e.message ?: "加载文件列表失败"
+                    errorMessage = e.message ?: context.getString(R.string.keepass_webdav_load_files_failed)
                     isLoadingFiles = false
                 }
             )
@@ -143,7 +143,7 @@ fun KeePassWebDavScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("KeePass WebDAV") },
+                title = { Text(stringResource(R.string.keepass_webdav_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
@@ -162,14 +162,14 @@ fun KeePassWebDavScreen(
                                             isLoadingFiles = false
                                         },
                                         onFailure = { e ->
-                                            errorMessage = e.message ?: "刷新失败"
+                                            errorMessage = e.message ?: context.getString(R.string.keepass_webdav_refresh_failed)
                                             isLoadingFiles = false
                                         }
                                     )
                                 }
                             }
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                         }
                     }
                 }
@@ -200,7 +200,7 @@ fun KeePassWebDavScreen(
                 onPasswordVisibilityChange = { passwordVisible = it },
                 onTestConnection = {
                     if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
-                        errorMessage = "请填写所有字段"
+                        errorMessage = context.getString(R.string.webdav_fill_all_fields)
                         return@WebDavConfigCard
                     }
                     
@@ -215,7 +215,11 @@ fun KeePassWebDavScreen(
                                 isConnecting = false
                                 connectionStatus = ConnectionStatus.Connected
                                 
-                                Toast.makeText(context, "连接成功", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.webdav_connection_success),
+                                    Toast.LENGTH_SHORT
+                                ).show()
                                 
                                 // 加载文件列表
                                 isLoadingFiles = true
@@ -225,7 +229,7 @@ fun KeePassWebDavScreen(
                                         isLoadingFiles = false
                                     },
                                     onFailure = { e ->
-                                        errorMessage = e.message ?: "加载文件列表失败"
+                                        errorMessage = e.message ?: context.getString(R.string.keepass_webdav_load_files_failed)
                                         isLoadingFiles = false
                                     }
                                 )
@@ -233,7 +237,8 @@ fun KeePassWebDavScreen(
                             onFailure = { e ->
                                 isConnecting = false
                                 connectionStatus = ConnectionStatus.Failed
-                                errorMessage = e.message ?: "连接失败"
+                                errorMessage = e.message
+                                    ?: context.getString(R.string.webdav_connection_failed, "")
                             }
                         )
                     }
@@ -272,7 +277,11 @@ fun KeePassWebDavScreen(
                     },
                     onExportClick = {
                         if (kdbxPassword.isBlank()) {
-                            Toast.makeText(context, "请输入数据库密码", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.keepass_webdav_enter_database_password),
+                                Toast.LENGTH_SHORT
+                            ).show()
                             return@ActionsCard
                         }
                         // 如果勾选了记住密码，导出前保存
@@ -303,7 +312,7 @@ fun KeePassWebDavScreen(
                                     isLoadingFiles = false
                                 },
                                 onFailure = { e ->
-                                    errorMessage = e.message ?: "刷新失败"
+                                    errorMessage = e.message ?: context.getString(R.string.keepass_webdav_refresh_failed)
                                     isLoadingFiles = false
                                 }
                             )
@@ -318,10 +327,9 @@ fun KeePassWebDavScreen(
     if (showExportDialog) {
         AlertDialog(
             onDismissRequest = { showExportDialog = false },
-            title = { Text("导出到 WebDAV") },
+            title = { Text(stringResource(R.string.keepass_webdav_export_title)) },
             text = { 
-                Text("将本地数据转换为 KeePass (.kdbx) 格式并上传到 WebDAV 服务器。\n\n" +
-                     "文件将使用您设置的密码加密。")
+                Text(stringResource(R.string.keepass_webdav_export_message))
             },
             confirmButton = {
                 Button(
@@ -333,7 +341,11 @@ fun KeePassWebDavScreen(
                             viewModel.exportToKdbx(context, kdbxPassword).fold(
                                 onSuccess = { fileName ->
                                     isExporting = false
-                                    Toast.makeText(context, "导出成功: $fileName", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.keepass_webdav_export_success, fileName),
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                     
                                     // 刷新文件列表
                                     isLoadingFiles = true
@@ -349,7 +361,11 @@ fun KeePassWebDavScreen(
                                 },
                                 onFailure = { e ->
                                     isExporting = false
-                                    Toast.makeText(context, "导出失败: ${e.message}", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.keepass_webdav_export_failed, e.message),
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 }
                             )
                         }
@@ -364,12 +380,12 @@ fun KeePassWebDavScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
-                    Text("确认导出")
+                    Text(stringResource(R.string.keepass_webdav_confirm_export))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showExportDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -385,10 +401,10 @@ fun KeePassWebDavScreen(
                 showImportDialog = false
                 selectedFile = null
             },
-            title = { Text("从 WebDAV 导入") },
+            title = { Text(stringResource(R.string.keepass_webdav_import_title)) },
             text = { 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("将下载并导入以下文件：")
+                    Text(stringResource(R.string.keepass_webdav_import_message))
                     Text(
                         text = selectedFile!!.name,
                         style = MaterialTheme.typography.bodyMedium,
@@ -400,7 +416,7 @@ fun KeePassWebDavScreen(
                     OutlinedTextField(
                         value = importPassword,
                         onValueChange = { importPassword = it },
-                        label = { Text("KeePass 数据库密码") },
+                        label = { Text(stringResource(R.string.keepass_webdav_database_password)) },
                         leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
                         visualTransformation = if (importPasswordVisible) 
                             VisualTransformation.None else PasswordVisualTransformation(),
@@ -426,13 +442,21 @@ fun KeePassWebDavScreen(
                 Button(
                     onClick = {
                         if (importPassword.isBlank()) {
-                            Toast.makeText(context, "请输入密码", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.keepass_webdav_enter_password),
+                                Toast.LENGTH_SHORT
+                            ).show()
                             return@Button
                         }
                         
                         val fileToImport = selectedFile
                         if (fileToImport == null) {
-                            Toast.makeText(context, "请先选择文件", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.keepass_webdav_select_file_first),
+                                Toast.LENGTH_SHORT
+                            ).show()
                             return@Button
                         }
                         
@@ -445,17 +469,35 @@ fun KeePassWebDavScreen(
                                 viewModel.importFromKdbx(context, fileToImport, importPassword).fold(
                                     onSuccess = { count ->
                                         isImporting = false
-                                        Toast.makeText(context, "导入成功: $count 个条目", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.keepass_webdav_import_success, count),
+                                            Toast.LENGTH_LONG
+                                        ).show()
                                     },
                                     onFailure = { e ->
                                         isImporting = false
-                                        Toast.makeText(context, "导入失败: ${e.message ?: "未知错误"}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.keepass_webdav_import_failed,
+                                                e.message ?: context.getString(R.string.import_data_unknown_error)
+                                            ),
+                                            Toast.LENGTH_LONG
+                                        ).show()
                                     }
                                 )
                             } catch (e: Exception) {
                                 android.util.Log.e("KeePassWebDAV", "Import exception", e)
                                 isImporting = false
-                                Toast.makeText(context, "导入异常: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.keepass_webdav_import_exception,
+                                        e.message ?: e.javaClass.simpleName
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
                         }
                     },
@@ -469,7 +511,7 @@ fun KeePassWebDavScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
-                    Text("确认导入")
+                    Text(stringResource(R.string.keepass_webdav_confirm_import))
                 }
             },
             dismissButton = {
@@ -479,7 +521,7 @@ fun KeePassWebDavScreen(
                         selectedFile = null
                     }
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -521,7 +563,7 @@ private fun WebDavConfigCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "WebDAV 配置",
+                    text = stringResource(R.string.webdav_config),
                     style = MaterialTheme.typography.titleMedium
                 )
                 
@@ -534,7 +576,7 @@ private fun WebDavConfigCard(
                 OutlinedTextField(
                     value = serverUrl,
                     onValueChange = onServerUrlChange,
-                    label = { Text("服务器地址") },
+                    label = { Text(stringResource(R.string.webdav_server_url)) },
                     placeholder = { Text("https://example.com/webdav/keepass") },
                     leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
@@ -549,7 +591,7 @@ private fun WebDavConfigCard(
                 OutlinedTextField(
                     value = username,
                     onValueChange = onUsernameChange,
-                    label = { Text("用户名") },
+                    label = { Text(stringResource(R.string.username)) },
                     leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -560,7 +602,7 @@ private fun WebDavConfigCard(
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChange,
-                    label = { Text("密码") },
+                    label = { Text(stringResource(R.string.password)) },
                     leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                     visualTransformation = if (passwordVisible) 
                         VisualTransformation.None else PasswordVisualTransformation(),
@@ -595,7 +637,7 @@ private fun WebDavConfigCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
-                    Text("测试连接")
+                    Text(stringResource(R.string.webdav_test_connection))
                 }
             } else {
                 // 已配置状态：显示配置摘要
@@ -617,7 +659,7 @@ private fun WebDavConfigCard(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "用户: $username",
+                            text = stringResource(R.string.keepass_webdav_user_summary, username),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -633,7 +675,7 @@ private fun WebDavConfigCard(
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("清除配置")
+                    Text(stringResource(R.string.webdav_clear_config))
                 }
             }
             
@@ -655,10 +697,10 @@ private fun WebDavConfigCard(
 @Composable
 private fun ConnectionStatusChip(status: ConnectionStatus) {
     val (text, color) = when (status) {
-        ConnectionStatus.NotConnected -> "未连接" to MaterialTheme.colorScheme.outline
-        ConnectionStatus.Connecting -> "连接中..." to MaterialTheme.colorScheme.tertiary
-        ConnectionStatus.Connected -> "已连接" to MaterialTheme.colorScheme.primary
-        ConnectionStatus.Failed -> "连接失败" to MaterialTheme.colorScheme.error
+        ConnectionStatus.NotConnected -> stringResource(R.string.keepass_webdav_status_not_connected) to MaterialTheme.colorScheme.outline
+        ConnectionStatus.Connecting -> stringResource(R.string.keepass_webdav_status_connecting) to MaterialTheme.colorScheme.tertiary
+        ConnectionStatus.Connected -> stringResource(R.string.keepass_webdav_status_connected) to MaterialTheme.colorScheme.primary
+        ConnectionStatus.Failed -> stringResource(R.string.keepass_webdav_status_failed) to MaterialTheme.colorScheme.error
     }
     
     Surface(
@@ -720,7 +762,7 @@ private fun ActionsCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "操作",
+                text = stringResource(R.string.keepass_webdav_actions),
                 style = MaterialTheme.typography.titleMedium
             )
             
@@ -728,8 +770,8 @@ private fun ActionsCard(
             OutlinedTextField(
                 value = kdbxPassword,
                 onValueChange = onKdbxPasswordChange,
-                label = { Text("数据库密码") },
-                placeholder = { Text("输入 .kdbx 密码") },
+                label = { Text(stringResource(R.string.keepass_webdav_database_password)) },
+                placeholder = { Text(stringResource(R.string.keepass_webdav_database_password_hint)) },
                 leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
                 visualTransformation = if (kdbxPasswordVisible) 
                     VisualTransformation.None else PasswordVisualTransformation(),
@@ -760,7 +802,7 @@ private fun ActionsCard(
                     onCheckedChange = onRememberPasswordChange
                 )
                 Text(
-                    text = "记住密码",
+                    text = stringResource(R.string.keepass_webdav_remember_password),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.clickable { onRememberPasswordChange(!rememberPassword) }
                 )
@@ -779,16 +821,16 @@ private fun ActionsCard(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("导出中...")
+                    Text(stringResource(R.string.keepass_webdav_exporting))
                 } else {
                     Icon(Icons.Default.Upload, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("导出到 WebDAV")
+                    Text(stringResource(R.string.keepass_webdav_export_title))
                 }
             }
             
             Text(
-                text = "导出为 .kdbx 格式并上传",
+                text = stringResource(R.string.keepass_webdav_export_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -822,7 +864,7 @@ private fun RemoteFilesCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "云端 .kdbx 文件",
+                    text = stringResource(R.string.keepass_webdav_remote_files_title),
                     style = MaterialTheme.typography.titleMedium
                 )
                 
@@ -836,7 +878,7 @@ private fun RemoteFilesCard(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
                 }
             }
@@ -868,7 +910,7 @@ private fun RemoteFilesCard(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "暂无 .kdbx 文件",
+                            text = stringResource(R.string.keepass_webdav_no_files),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -955,7 +997,7 @@ private fun KdbxFileItem(
             ) {
                 Icon(
                     Icons.Default.Download,
-                    contentDescription = "导入",
+                    contentDescription = stringResource(R.string.keepass_webdav_import_action),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }

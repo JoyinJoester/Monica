@@ -6,7 +6,9 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 
@@ -43,7 +45,7 @@ fun CategoryEditDialog(
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑分类") },
+        title = { Text(stringResource(R.string.edit_category)) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -53,7 +55,7 @@ fun CategoryEditDialog(
                 OutlinedTextField(
                     value = categoryName,
                     onValueChange = { categoryName = it },
-                    label = { Text("分类名称") },
+                    label = { Text(stringResource(R.string.category_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -65,7 +67,7 @@ fun CategoryEditDialog(
                     BitwardenLinkCard(
                         isLinked = category.bitwardenVaultId != null,
                         vaultName = linkedVault?.displayName,
-                        folderName = category.bitwardenFolderId?.takeIf { it.isNotEmpty() }?.let { "文件夹" },
+                        folderName = category.bitwardenFolderId?.takeIf { it.isNotEmpty() }?.let { stringResource(R.string.folder_generic) },
                         syncTypes = currentSyncTypes,
                         onLinkClick = { 
                             onLinkToBitwarden(category.copy(name = categoryName)) 
@@ -89,12 +91,12 @@ fun CategoryEditDialog(
                 },
                 enabled = categoryName.isNotBlank()
             ) {
-                Text("保存")
+                Text(stringResource(R.string.save))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -127,12 +129,12 @@ fun SimpleCategoryEditDialog(
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑分类") },
+        title = { Text(stringResource(R.string.edit_category)) },
         text = {
             OutlinedTextField(
                 value = categoryName,
                 onValueChange = { categoryName = it },
-                label = { Text("分类名称") },
+                label = { Text(stringResource(R.string.category_name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -146,12 +148,12 @@ fun SimpleCategoryEditDialog(
                 },
                 enabled = categoryName.isNotBlank()
             ) {
-                Text("确定")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

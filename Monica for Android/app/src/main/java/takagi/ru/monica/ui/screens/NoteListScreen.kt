@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Search
@@ -41,11 +40,9 @@ import java.util.Locale
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import androidx.fragment.app.FragmentActivity
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.bitwarden.sync.SyncStatus
@@ -69,6 +66,7 @@ fun NoteListScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf(false) }
     
     // 防止重复点击
     var isNavigating by remember { mutableStateOf(false) }
@@ -110,6 +108,7 @@ fun NoteListScreen(
         showDeleteDialog = false
         showPasswordDialog = false
         masterPassword = ""
+        passwordError = false
     }
 
     Scaffold(
@@ -127,7 +126,11 @@ fun NoteListScreen(
                     IconButton(onClick = { settingsViewModel.updateNoteGridLayout(!isGridLayout) }) {
                         Icon(
                             imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
-                            contentDescription = if (isGridLayout) "切换到列表" else "切换到网格",
+                            contentDescription = if (isGridLayout) {
+                                stringResource(R.string.switch_to_list)
+                            } else {
+                                stringResource(R.string.switch_to_grid)
+                            },
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -198,73 +201,56 @@ fun NoteListScreen(
         }
 
         if (showPasswordDialog) {
-            AlertDialog(
-                onDismissRequest = { 
+            val activity = context as? FragmentActivity
+            val biometricAction = if (activity != null && canUseBiometric) {
+                {
+                    biometricHelper.authenticate(
+                        activity = activity,
+                        title = context.getString(R.string.verify_identity),
+                        subtitle = context.getString(R.string.verify_to_delete),
+                        onSuccess = { performDelete() },
+                        onError = { error ->
+                            android.widget.Toast.makeText(
+                                context,
+                                error,
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        onFailed = {}
+                    )
+                }
+            } else {
+                null
+            }
+            M3IdentityVerifyDialog(
+                title = stringResource(R.string.verify_identity),
+                message = stringResource(R.string.notes_delete_selected_confirm, selectedNoteIds.size),
+                passwordValue = masterPassword,
+                onPasswordChange = {
+                    masterPassword = it
+                    passwordError = false
+                },
+                onDismiss = {
                     showPasswordDialog = false
                     masterPassword = ""
+                    passwordError = false
                 },
-                title = { Text(stringResource(R.string.enter_master_password_confirm)) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(stringResource(R.string.notes_delete_selected_confirm, selectedNoteIds.size))
-                        OutlinedTextField(
-                            value = masterPassword,
-                            onValueChange = { masterPassword = it },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
-                            placeholder = { Text(stringResource(R.string.enter_master_password_confirm)) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        val activity = context as? FragmentActivity
-                        if (activity != null && canUseBiometric) {
-                            TextButton(onClick = {
-                                biometricHelper.authenticate(
-                                    activity = activity,
-                                    title = context.getString(R.string.verify_identity),
-                                    subtitle = context.getString(R.string.verify_to_delete),
-                                    onSuccess = { performDelete() },
-                                    onError = { error ->
-                                        android.widget.Toast.makeText(
-                                            context,
-                                            error,
-                                            android.widget.Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    onFailed = {}
-                                )
-                            }) {
-                                Icon(Icons.Default.Fingerprint, contentDescription = null)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(stringResource(R.string.use_biometric))
-                            }
-                        }
+                onConfirm = {
+                    if (securityManager.verifyMasterPassword(masterPassword)) {
+                        performDelete()
+                    } else {
+                        passwordError = true
                     }
                 },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            if (securityManager.verifyMasterPassword(masterPassword)) {
-                                performDelete()
-                            } else {
-                                android.widget.Toast.makeText(
-                                    context,
-                                    context.getString(R.string.current_password_incorrect),
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        enabled = masterPassword.isNotBlank()
-                    ) {
-                        Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { 
-                        showPasswordDialog = false
-                        masterPassword = ""
-                    }) {
-                        Text(stringResource(R.string.cancel))
-                    }
+                confirmText = stringResource(R.string.delete),
+                destructiveConfirm = true,
+                isPasswordError = passwordError,
+                passwordErrorText = stringResource(R.string.current_password_incorrect),
+                onBiometricClick = biometricAction,
+                biometricHintText = if (biometricAction == null) {
+                    context.getString(R.string.biometric_not_available)
+                } else {
+                    null
                 }
             )
         }
@@ -584,7 +570,7 @@ fun ExpressiveNoteCard(
                     // 安全标识小图标
                     Icon(
                         imageVector = Icons.Default.Shield,
-                        contentDescription = "加密存储",
+                        contentDescription = stringResource(R.string.encrypted_storage),
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                     )

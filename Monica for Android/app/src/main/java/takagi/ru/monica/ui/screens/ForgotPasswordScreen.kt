@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.viewmodel.PasswordViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -233,88 +234,41 @@ fun ForgotPasswordScreen(
     if (showConfirmDialog) {
         var passwordInput by remember { mutableStateOf("") }
         var passwordError by remember { mutableStateOf(false) }
-        
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.DeleteForever,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+
+        M3IdentityVerifyDialog(
+            title = context.getString(R.string.forgot_password_confirm),
+            message = context.getString(R.string.forgot_password_warning),
+            passwordValue = passwordInput,
+            onPasswordChange = {
+                passwordInput = it
+                passwordError = false
             },
-            title = {
-                Text(
-                    text = context.getString(R.string.forgot_password_confirm),
-                    textAlign = TextAlign.Center
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        text = context.getString(R.string.forgot_password_warning),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 16.dp)
+            onDismiss = { showConfirmDialog = false },
+            onConfirm = {
+                if (viewModel.verifyMasterPassword(passwordInput)) {
+                    showConfirmDialog = false
+                    isResetting = true
+
+                    viewModel.resetAllData(
+                        clearPasswords = clearPasswords,
+                        clearTotp = clearAuthenticators,
+                        clearDocuments = clearDocuments,
+                        clearBankCards = clearBankCards,
+                        clearGeneratorHistory = clearGeneratorHistory
                     )
-                    
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = { 
-                            passwordInput = it
-                            passwordError = false
-                        },
-                        label = { Text(context.getString(R.string.enter_master_password_to_confirm)) },
-                        isError = passwordError,
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    
-                    if (passwordError) {
-                        Text(
-                            text = context.getString(R.string.error_invalid_password),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
+
+                    isResetting = false
+                    onResetComplete()
+                } else {
+                    passwordError = true
                 }
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        // 验证密码
-                        if (viewModel.verifyMasterPassword(passwordInput)) {
-                            showConfirmDialog = false
-                            isResetting = true
-                            
-                            // Reset selected data types
-                            viewModel.resetAllData(
-                                clearPasswords = clearPasswords,
-                                clearTotp = clearAuthenticators,
-                                clearDocuments = clearDocuments,
-                                clearBankCards = clearBankCards,
-                                clearGeneratorHistory = clearGeneratorHistory
-                            )
-                            
-                            // Show completion and navigate back
-                            isResetting = false
-                            onResetComplete()
-                        } else {
-                            passwordError = true
-                        }
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text(context.getString(R.string.reset_all_data))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
-                    Text(context.getString(R.string.cancel))
-                }
-            }
+            confirmText = context.getString(R.string.reset_all_data),
+            destructiveConfirm = true,
+            isPasswordError = passwordError,
+            passwordErrorText = context.getString(R.string.error_invalid_password),
+            onBiometricClick = null,
+            biometricHintText = context.getString(R.string.biometric_not_available)
         )
     }
 }

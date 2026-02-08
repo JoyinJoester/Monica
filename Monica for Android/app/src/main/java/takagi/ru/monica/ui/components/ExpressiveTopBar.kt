@@ -33,7 +33,9 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 
 /**
  * M3E 风格的顶部标题栏
@@ -46,13 +48,14 @@ fun ExpressiveTopBar(
     onSearchQueryChange: (String) -> Unit,
     isSearchExpanded: Boolean,
     onSearchExpandedChange: (Boolean) -> Unit,
-    searchHint: String = "搜索...",
+    searchHint: String? = null,
     modifier: Modifier = Modifier,
     navigationIcon: @Composable (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    val resolvedSearchHint = searchHint ?: stringResource(R.string.topbar_search_hint)
 
     // 动画状态：使用 Alpha 而不是 Visibility，避免布局重排导致挤压搜索框
     val titleAlpha by animateFloatAsState(
@@ -171,7 +174,7 @@ fun ExpressiveTopBar(
                             ) {
                                 if (searchQuery.isEmpty()) {
                                     Text(
-                                        text = searchHint,
+                                        text = resolvedSearchHint,
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                     )
@@ -192,7 +195,11 @@ fun ExpressiveTopBar(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { onSearchQueryChange("") }) {
-                                        Icon(Icons.Default.Clear, "清除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(
+                                            Icons.Default.Clear,
+                                            stringResource(R.string.clear_search),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 }
 
@@ -203,7 +210,7 @@ fun ExpressiveTopBar(
                                 }) {
                                     Icon(
                                         imageVector = Icons.Default.ArrowForward, // 使用向右的箭头，表示收回方向
-                                        contentDescription = "关闭搜索",
+                                        contentDescription = stringResource(R.string.topbar_close_search),
                                         tint = MaterialTheme.colorScheme.onSurface
                                     )
                                 }

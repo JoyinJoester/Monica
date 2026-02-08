@@ -7,7 +7,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 
 /**
  * 加载指示器组件
@@ -15,9 +17,10 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun LoadingIndicator(
-    message: String = "加载中...",
+    message: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val resolvedMessage = message ?: stringResource(R.string.loading_default)
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -34,7 +37,7 @@ fun LoadingIndicator(
         Spacer(modifier = Modifier.height(16.dp))
         
         Text(
-            text = message,
+            text = resolvedMessage,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

@@ -43,8 +43,8 @@ fun DualPhotoPicker(
     onBackImageSelected: (String) -> Unit,
     onBackImageRemoved: () -> Unit,
     modifier: Modifier = Modifier,
-    frontLabel: String = "正面照片",
-    backLabel: String = "背面照片"
+    frontLabel: String? = null,
+    backLabel: String? = null
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -55,6 +55,8 @@ fun DualPhotoPicker(
     var backBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showFrontImageDialog by remember { mutableStateOf(false) }
     var showBackImageDialog by remember { mutableStateOf(false) }
+    val resolvedFrontLabel = frontLabel ?: stringResource(R.string.photo_front_label)
+    val resolvedBackLabel = backLabel ?: stringResource(R.string.photo_back_label)
     
     // 加载正面图片
     LaunchedEffect(frontImageFileName) {
@@ -84,7 +86,7 @@ fun DualPhotoPicker(
                             // 检查文件是否存在
                             val file = java.io.File(path)
                             if (!file.exists() || file.length() == 0L) {
-                                Toast.makeText(context, "文件不存在或为空", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.photo_file_missing_or_empty), Toast.LENGTH_SHORT).show()
                                 return@launch
                             }
                             
@@ -101,10 +103,14 @@ fun DualPhotoPicker(
                                 // 删除临时文件
                                 file.delete()
                             } else {
-                                Toast.makeText(context, "保存图片失败", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(context, "处理图片失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 }
@@ -123,13 +129,13 @@ fun DualPhotoPicker(
         // 正面照片
         PhotoCard(
             bitmap = frontBitmap,
-            label = frontLabel,
+            label = resolvedFrontLabel,
             onImageSelected = {
                 PhotoPickerHelper.currentTag = "front"
                 activity?.let { act ->
                     PhotoPickerHelper.pickFromGallery(act)
                 } ?: run {
-                    Toast.makeText(context, "无法启动相册", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
                 }
             },
             onImageCaptured = {
@@ -137,13 +143,13 @@ fun DualPhotoPicker(
                 activity?.let { act ->
                     PhotoPickerHelper.takePhoto(act)
                 } ?: run {
-                    Toast.makeText(context, "无法启动相机，将使用图库选择", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_camera_use_gallery), Toast.LENGTH_SHORT).show()
                     // 直接打开图库作为替代
                     PhotoPickerHelper.currentTag = "front"
                     activity?.let { act ->
                         PhotoPickerHelper.pickFromGallery(act)
                     } ?: run {
-                        Toast.makeText(context, "无法启动图库", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -162,13 +168,13 @@ fun DualPhotoPicker(
         // 背面照片（所有证件类型都显示背面照片选择器）
         PhotoCard(
             bitmap = backBitmap,
-            label = backLabel,
+            label = resolvedBackLabel,
             onImageSelected = {
                 PhotoPickerHelper.currentTag = "back"
                 activity?.let { act ->
                     PhotoPickerHelper.pickFromGallery(act)
                 } ?: run {
-                    Toast.makeText(context, "无法启动相册", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
                 }
             },
             onImageCaptured = {
@@ -176,13 +182,13 @@ fun DualPhotoPicker(
                 activity?.let { act ->
                     PhotoPickerHelper.takePhoto(act)
                 } ?: run {
-                    Toast.makeText(context, "无法启动相机，将使用图库选择", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_camera_use_gallery), Toast.LENGTH_SHORT).show()
                     // 直接打开图库作为替代
                     PhotoPickerHelper.currentTag = "back"
                     activity?.let { act ->
                         PhotoPickerHelper.pickFromGallery(act)
                     } ?: run {
-                        Toast.makeText(context, "无法启动图库", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -274,7 +280,7 @@ private fun PhotoCard(
                     ) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = "删除图片",
+                            contentDescription = stringResource(R.string.delete_image),
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.size(20.dp)
                         )
@@ -293,7 +299,7 @@ private fun PhotoCard(
                 ) {
                     Icon(
                         Icons.Default.Image,
-                        contentDescription = "无图片",
+                        contentDescription = stringResource(R.string.no_image),
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
@@ -377,7 +383,7 @@ fun ImageDialog(
         ) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
-                contentDescription = "查看图片",
+                contentDescription = stringResource(R.string.view_image),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
@@ -405,7 +411,7 @@ fun ImageDialog(
             ) {
                 Icon(
                     Icons.Default.Close,
-                    contentDescription = "关闭",
+                    contentDescription = stringResource(R.string.cancel),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
@@ -425,7 +431,7 @@ fun ImageDialog(
                 ) {
                     Icon(
                         Icons.Default.Download,
-                        contentDescription = "保存到相册",
+                        contentDescription = stringResource(R.string.save_to_gallery),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }

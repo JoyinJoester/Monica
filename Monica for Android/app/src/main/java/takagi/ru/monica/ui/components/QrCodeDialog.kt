@@ -204,13 +204,17 @@ private suspend fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title:
             fos?.use {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "QR码已保存到相册", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.qr_code_saved), Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.save_failed_with_error, e.message ?: ""),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }

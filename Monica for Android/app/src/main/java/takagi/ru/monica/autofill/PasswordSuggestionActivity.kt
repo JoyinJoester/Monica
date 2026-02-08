@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -130,7 +131,7 @@ class PasswordSuggestionActivity : ComponentActivity() {
                     
                     // 创建简单的 presentation (不会显示,仅用于满足 API 要求)
                     val presentation = android.widget.RemoteViews(this@PasswordSuggestionActivity.packageName, R.layout.autofill_suggestion_item)
-                    presentation.setTextViewText(R.id.title, "使用建议密码")
+                    presentation.setTextViewText(R.id.title, getString(R.string.password_suggestion_accept))
                     
                     // 为每个密码字段设置生成的密码值
                     passwordFieldIds!!.forEach { autofillId ->
@@ -252,13 +253,13 @@ fun PasswordSuggestionDialog(
                     
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "创建强密码",
+                            text = stringResource(R.string.password_suggestion_title),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "为 $displayName",
+                            text = stringResource(R.string.autofill_for_display_name, displayName),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -272,7 +273,7 @@ fun PasswordSuggestionDialog(
                 if (username.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "账户",
+                            text = stringResource(R.string.autofill_username),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -305,7 +306,7 @@ fun PasswordSuggestionDialog(
                 // 生成的密码显示
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "建议的强密码",
+                        text = stringResource(R.string.autofill_suggested_strong_password),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -343,7 +344,11 @@ fun PasswordSuggestionDialog(
                                     ) {
                                         Icon(
                                             imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                            contentDescription = if (showPassword) "隐藏密码" else "显示密码",
+                                            contentDescription = if (showPassword) {
+                                                stringResource(R.string.hide_password)
+                                            } else {
+                                                stringResource(R.string.show_password)
+                                            },
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(20.dp)
                                         )
@@ -359,7 +364,7 @@ fun PasswordSuggestionDialog(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "复制密码",
+                                            contentDescription = stringResource(R.string.copy_password),
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(20.dp)
                                         )
@@ -385,7 +390,7 @@ fun PasswordSuggestionDialog(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Refresh,
-                                            contentDescription = "重新生成",
+                                            contentDescription = stringResource(R.string.regenerate),
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(20.dp)
                                         )
@@ -418,7 +423,7 @@ fun PasswordSuggestionDialog(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "Monica 会保存此密码,下次自动填充",
+                            text = stringResource(R.string.autofill_save_for_next_fill),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             maxLines = 2
@@ -440,7 +445,7 @@ fun PasswordSuggestionDialog(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = "不了,谢谢",
+                            text = stringResource(R.string.password_suggestion_decline),
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
@@ -463,7 +468,7 @@ fun PasswordSuggestionDialog(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "使用",
+                            text = stringResource(R.string.password_suggestion_accept),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -505,7 +510,7 @@ fun PasswordSuggestionDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "密码已复制",
+                        text = stringResource(R.string.password_suggestion_copied),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.inverseOnSurface
                     )
@@ -520,6 +525,12 @@ fun PasswordSuggestionDialog(
  */
 @Composable
 fun PasswordStrengthIndicator(strength: PasswordStrengthCalculator.PasswordStrength) {
+    val weakText = stringResource(R.string.password_strength_weak)
+    val fairText = stringResource(R.string.password_strength_moderate)
+    val goodText = stringResource(R.string.password_strength_strong)
+    val strongText = stringResource(R.string.password_strength_very_strong)
+    val veryStrongText = stringResource(R.string.password_strength_very_strong)
+
     val strengthColor = when (strength) {
         PasswordStrengthCalculator.PasswordStrength.WEAK -> Color(0xFFEF5350)
         PasswordStrengthCalculator.PasswordStrength.FAIR -> Color(0xFFFF9800)
@@ -529,11 +540,11 @@ fun PasswordStrengthIndicator(strength: PasswordStrengthCalculator.PasswordStren
     }
     
     val strengthText = when (strength) {
-        PasswordStrengthCalculator.PasswordStrength.WEAK -> "弱"
-        PasswordStrengthCalculator.PasswordStrength.FAIR -> "一般"
-        PasswordStrengthCalculator.PasswordStrength.GOOD -> "良好"
-        PasswordStrengthCalculator.PasswordStrength.STRONG -> "强"
-        PasswordStrengthCalculator.PasswordStrength.VERY_STRONG -> "非常强"
+        PasswordStrengthCalculator.PasswordStrength.WEAK -> weakText
+        PasswordStrengthCalculator.PasswordStrength.FAIR -> fairText
+        PasswordStrengthCalculator.PasswordStrength.GOOD -> goodText
+        PasswordStrengthCalculator.PasswordStrength.STRONG -> strongText
+        PasswordStrengthCalculator.PasswordStrength.VERY_STRONG -> veryStrongText
     }
     
     val strengthProgress = when (strength) {
@@ -551,7 +562,7 @@ fun PasswordStrengthIndicator(strength: PasswordStrengthCalculator.PasswordStren
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "密码强度",
+                text = stringResource(R.string.password_strength_label),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

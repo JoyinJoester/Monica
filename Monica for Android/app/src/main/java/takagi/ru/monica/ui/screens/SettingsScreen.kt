@@ -40,6 +40,7 @@ import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.ui.components.TrashSettingsSheet
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
@@ -96,6 +97,7 @@ fun SettingsScreen(
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
     var previewFeaturesExpanded by remember { mutableStateOf(false) }
     var developerPasswordInput by remember { mutableStateOf("") }
+    var developerPasswordError by remember { mutableStateOf(false) }
     var showWeakBiometricWarning by remember { mutableStateOf(false) }
     
     // 生物识别帮助类
@@ -137,7 +139,7 @@ fun SettingsScreen(
             biometricHelper.authenticate(
                 activity = activity,
                 title = context.getString(R.string.biometric_login_title),
-                subtitle = "验证指纹以启用指纹解锁",
+                subtitle = context.getString(R.string.biometric_subtitle),
                 description = context.getString(R.string.biometric_login_description),
                 negativeButtonText = context.getString(R.string.cancel),
                 onSuccess = {
@@ -146,7 +148,7 @@ fun SettingsScreen(
                     viewModel.updateBiometricEnabled(true)
                     Toast.makeText(
                         context,
-                        "指纹解锁已启用",
+                        context.getString(R.string.biometric_unlock_enabled),
                         Toast.LENGTH_SHORT
                     ).show()
                 },
@@ -155,7 +157,7 @@ fun SettingsScreen(
                     biometricSwitchState = false
                     Toast.makeText(
                         context,
-                        "指纹验证失败: $errorMsg",
+                        context.getString(R.string.biometric_auth_error, errorMsg),
                         Toast.LENGTH_SHORT
                     ).show()
                 },
@@ -164,7 +166,7 @@ fun SettingsScreen(
                     biometricSwitchState = false
                     Toast.makeText(
                         context,
-                        "已取消",
+                        context.getString(R.string.cancel),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -533,6 +535,7 @@ fun SettingsScreen(
                         )
 
                         developerPasswordInput = ""
+                        developerPasswordError = false
                         showDeveloperVerifyDialog = false
 
                         when {
@@ -565,6 +568,7 @@ fun SettingsScreen(
                                         )
                                         showDeveloperVerifyDialog = false
                                         developerPasswordInput = ""
+                                        developerPasswordError = false
                                         onNavigateToDeveloperSettings()
                                     },
                                     onError = { errorCode, errorMessage ->
@@ -665,71 +669,78 @@ fun SettingsScreen(
     
     // Developer Settings Verification Dialog
     if (showDeveloperVerifyDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showDeveloperVerifyDialog = false
-                developerPasswordInput = ""
-            },
-            icon = {
-                Icon(
-                    Icons.Default.Code,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            title = {
-                Text(stringResource(R.string.biometric_title))
-            },
-            text = {
-                Column {
-                    Text(
-                        stringResource(R.string.enter_master_password_confirm),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = developerPasswordInput,
-                        onValueChange = { developerPasswordInput = it },
-                        label = { Text(stringResource(R.string.master_password)) },
-                        singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            val securityManager = takagi.ru.monica.security.SecurityManager(context)
-                            if (securityManager.verifyMasterPassword(developerPasswordInput)) {
-                                showDeveloperVerifyDialog = false
-                                developerPasswordInput = ""
-                                onNavigateToDeveloperSettings()
-                            } else {
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "密码错误",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
-                                developerPasswordInput = ""
-                            }
-                        }
-                    },
-                    enabled = developerPasswordInput.isNotEmpty()
-                ) {
-                    Text("确认")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
+        val canUseBiometricInDialog = activity != null &&
+            settings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        val retryBiometricAction = if (canUseBiometricInDialog) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity!!,
+                    title = context.getString(R.string.biometric_login_title),
+                    subtitle = context.getString(R.string.biometric_login_subtitle),
+                    description = context.getString(R.string.biometric_login_description),
+                    negativeButtonText = context.getString(R.string.use_master_password),
+                    onSuccess = {
                         showDeveloperVerifyDialog = false
                         developerPasswordInput = ""
+                        developerPasswordError = false
+                        onNavigateToDeveloperSettings()
+                    },
+                    onError = { _, errorMessage ->
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.biometric_auth_error, errorMessage),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onCancel = {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.use_master_password),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
-                ) {
-                    Text("取消")
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.enter_master_password_confirm),
+            passwordValue = developerPasswordInput,
+            onPasswordChange = {
+                developerPasswordInput = it
+                developerPasswordError = false
+            },
+            onDismiss = {
+                showDeveloperVerifyDialog = false
+                developerPasswordInput = ""
+                developerPasswordError = false
+            },
+            onConfirm = {
+                coroutineScope.launch {
+                    val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                    if (securityManager.verifyMasterPassword(developerPasswordInput)) {
+                        showDeveloperVerifyDialog = false
+                        developerPasswordInput = ""
+                        developerPasswordError = false
+                        onNavigateToDeveloperSettings()
+                    } else {
+                        developerPasswordError = true
+                    }
                 }
+            },
+            confirmText = stringResource(R.string.confirm),
+            destructiveConfirm = false,
+            icon = Icons.Default.Code,
+            isPasswordError = developerPasswordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = retryBiometricAction,
+            biometricHintText = if (retryBiometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
             }
         )
     }
@@ -2087,12 +2098,12 @@ private fun SettingsItemWithTrashConfig(
     
     val subtitleText = if (trashEnabled) {
         if (trashAutoDeleteDays > 0) {
-            "已启用 · ${trashAutoDeleteDays}天后自动清空"
+            stringResource(R.string.trash_status_enabled_auto_clear, trashAutoDeleteDays)
         } else {
-            "已启用 · 不自动清空"
+            stringResource(R.string.trash_status_enabled_no_auto_clear)
         }
     } else {
-        "已禁用 · 删除将永久删除"
+        stringResource(R.string.trash_status_disabled_permanent_delete)
     }
 
     SettingsItem(

@@ -14,12 +14,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 
 /**
@@ -61,8 +63,8 @@ fun SimplePasswordPicker(
             ) {
                 // 标题栏
                 SimplePickerHeader(
-                    title = passwords.firstOrNull()?.title ?: "选择密码",
-                    subtitle = "检测到 ${passwords.size} 个密码",
+                    title = passwords.firstOrNull()?.title ?: stringResource(R.string.autofill_select_password),
+                    subtitle = stringResource(R.string.autofill_detected_passwords, passwords.size),
                     onDismiss = onDismiss
                 )
                 
@@ -130,7 +132,7 @@ private fun SimplePickerHeader(
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = "关闭",
+                contentDescription = stringResource(R.string.close),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -180,7 +182,7 @@ private fun SimplePasswordOption(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = "密码 $index",
+                    text = stringResource(R.string.autofill_password_index, index),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface

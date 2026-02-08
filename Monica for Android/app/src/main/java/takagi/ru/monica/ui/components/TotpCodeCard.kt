@@ -276,7 +276,7 @@ fun TotpCodeCard(
                     if (!isSelectionMode && item.isFavorite) {
                         Icon(
                             Icons.Default.Favorite,
-                            contentDescription = "收藏",
+                            contentDescription = stringResource(R.string.favorite),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -296,7 +296,7 @@ fun TotpCodeCard(
                             IconButton(onClick = { expanded = true }) {
                                 Icon(
                                     Icons.Default.MoreVert,
-                                    contentDescription = "更多"
+                                    contentDescription = stringResource(R.string.more_options)
                                 )
                             }
                             
@@ -325,7 +325,7 @@ fun TotpCodeCard(
                                 // 上移选项
                                 if (onMoveUp != null) {
                                     DropdownMenuItem(
-                                        text = { Text("上移") },
+                                        text = { Text(stringResource(R.string.move_up)) },
                                         onClick = {
                                             expanded = false
                                             onMoveUp()
@@ -342,7 +342,7 @@ fun TotpCodeCard(
                                 // 下移选项
                                 if (onMoveDown != null) {
                                     DropdownMenuItem(
-                                        text = { Text("下移") },
+                                        text = { Text(stringResource(R.string.move_down)) },
                                         onClick = {
                                             expanded = false
                                             onMoveDown()
@@ -376,7 +376,7 @@ fun TotpCodeCard(
                                 // 显示二维码选项
                                 if (onShowQrCode != null) {
                                     DropdownMenuItem(
-                                        text = { Text("显示二维码") },
+                                        text = { Text(stringResource(R.string.show_qr_code)) },
                                         onClick = {
                                             expanded = false
                                             onShowQrCode(item)
@@ -391,7 +391,7 @@ fun TotpCodeCard(
                                 }
                                 
                                 DropdownMenuItem(
-                                    text = { Text("删除") },
+                                    text = { Text(stringResource(R.string.delete)) },
                                     onClick = {
                                         expanded = false
                                         onDelete()
@@ -488,7 +488,7 @@ fun TotpCodeCard(
                     ) {
                         Icon(
                             Icons.Default.ContentCopy,
-                            contentDescription = "复制验证码"
+                            contentDescription = stringResource(R.string.copy_verification_code)
                         )
                     }
                 }

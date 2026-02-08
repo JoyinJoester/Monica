@@ -799,7 +799,7 @@ private fun CreateKeePassDatabaseBottomSheet(
             // 安全设置区
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "安全选项",
+                    stringResource(R.string.local_keepass_security_options),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary
@@ -825,12 +825,12 @@ private fun CreateKeePassDatabaseBottomSheet(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "使用密钥文件",
+                                stringResource(R.string.local_keepass_use_key_file),
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "增加额外的安全层",
+                                stringResource(R.string.local_keepass_use_key_file_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -851,17 +851,23 @@ private fun CreateKeePassDatabaseBottomSheet(
                             value = keyFileName,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("密钥文件") },
-                            placeholder = { Text("点击选择或生成") },
+                            label = { Text(stringResource(R.string.local_keepass_key_file)) },
+                            placeholder = { Text(stringResource(R.string.local_keepass_key_file_pick_or_generate)) },
                             shape = RoundedCornerShape(12.dp),
                             leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) },
                             trailingIcon = {
                                 Row {
                                     IconButton(onClick = { createKeyFileLauncher.launch("monica.key") }) {
-                                        Icon(Icons.Default.Add, contentDescription = "生成新密钥文件")
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = stringResource(R.string.local_keepass_generate_new_key_file)
+                                        )
                                     }
                                     IconButton(onClick = { keyFilePickerLauncher.launch(arrayOf("*/*")) }) {
-                                        Icon(Icons.Default.FolderOpen, contentDescription = "选择现有密钥文件")
+                                        Icon(
+                                            Icons.Default.FolderOpen,
+                                            contentDescription = stringResource(R.string.local_keepass_select_existing_key_file)
+                                        )
                                     }
                                 }
                             },
@@ -1144,11 +1150,14 @@ private fun ImportExternalDatabaseDialog(
                     value = keyFileName,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("密钥文件（可选）") },
-                    placeholder = { Text("点击选择密钥文件") },
+                    label = { Text(stringResource(R.string.local_keepass_key_file_optional)) },
+                    placeholder = { Text(stringResource(R.string.local_keepass_key_file_tap_to_select)) },
                     trailingIcon = {
                         IconButton(onClick = { keyFilePickerLauncher.launch(arrayOf("*/*")) }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "选择密钥文件")
+                            Icon(
+                                Icons.Default.FolderOpen,
+                                contentDescription = stringResource(R.string.local_keepass_select_key_file)
+                            )
                         }
                     },
                     modifier = Modifier
@@ -1157,7 +1166,11 @@ private fun ImportExternalDatabaseDialog(
                 )
                 
                 Text(
-                    if (keyFileUri == null) "未选择密钥文件" else "已选择密钥文件",
+                    if (keyFileUri == null) {
+                        stringResource(R.string.local_keepass_no_key_file_selected)
+                    } else {
+                        stringResource(R.string.local_keepass_key_file_selected)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp)

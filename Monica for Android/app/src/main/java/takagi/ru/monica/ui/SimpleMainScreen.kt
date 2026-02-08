@@ -132,6 +132,7 @@ import takagi.ru.monica.ui.components.DraggableNavItem
 import takagi.ru.monica.ui.components.QuickActionItem
 import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
@@ -301,23 +302,23 @@ private fun PasskeyOverviewPane(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "通行秘钥检查器",
+                    text = stringResource(R.string.passkey_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "从左侧选择一条通行秘钥以查看详情和执行操作。",
+                    text = stringResource(R.string.passkey_empty_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     AssistChip(
                         onClick = {},
-                        label = { Text("总数 $totalPasskeys") }
+                        label = { Text(stringResource(R.string.passkey_count, totalPasskeys)) }
                     )
                     AssistChip(
                         onClick = {},
-                        label = { Text("已绑定 $boundPasskeys") }
+                        label = { Text("${stringResource(R.string.passkey_bound_label)} $boundPasskeys") }
                     )
                 }
             }
@@ -368,8 +369,8 @@ private fun PasskeyDetailPane(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text("总数 $totalPasskeys") })
-                AssistChip(onClick = {}, label = { Text("绑定 $boundPasskeys") })
+                AssistChip(onClick = {}, label = { Text(stringResource(R.string.passkey_count, totalPasskeys)) })
+                AssistChip(onClick = {}, label = { Text("${stringResource(R.string.passkey_bound_label)} $boundPasskeys") })
             }
         }
 
@@ -383,11 +384,11 @@ private fun PasskeyDetailPane(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                InspectorRow("用户显示名", passkey.userDisplayName.ifBlank { "-" })
-                InspectorRow("用户名", passkey.userName.ifBlank { "-" })
-                InspectorRow("创建时间", createdTime)
-                InspectorRow("最近使用", passkey.getLastUsedFormatted())
-                InspectorRow("使用次数", passkey.useCount.toString())
+                InspectorRow(stringResource(R.string.passkey_detail_user), passkey.userDisplayName.ifBlank { "-" })
+                InspectorRow(stringResource(R.string.passkey_detail_username), passkey.userName.ifBlank { "-" })
+                InspectorRow(stringResource(R.string.passkey_detail_created), createdTime)
+                InspectorRow(stringResource(R.string.passkey_detail_last_used), passkey.getLastUsedFormatted())
+                InspectorRow(stringResource(R.string.passkey_detail_use_count), passkey.useCount.toString())
             }
         }
 
@@ -402,18 +403,18 @@ private fun PasskeyDetailPane(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "安全属性",
+                    text = stringResource(R.string.security),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                InspectorRow("算法", passkey.getAlgorithmName())
-                InspectorRow("传输方式", transports)
-                InspectorRow("可发现凭据", if (passkey.isDiscoverable) "是" else "否")
-                InspectorRow("需要用户验证", if (passkey.isUserVerificationRequired) "是" else "否")
-                InspectorRow("已备份", if (passkey.isBackedUp) "是" else "否")
-                InspectorRow("同步状态", passkey.syncStatus)
+                InspectorRow("Algorithm", passkey.getAlgorithmName())
+                InspectorRow("Transports", transports)
+                InspectorRow("Discoverable", if (passkey.isDiscoverable) stringResource(R.string.yes) else stringResource(R.string.no))
+                InspectorRow("User verification", if (passkey.isUserVerificationRequired) stringResource(R.string.yes) else stringResource(R.string.no))
+                InspectorRow("Backed up", if (passkey.isBackedUp) stringResource(R.string.yes) else stringResource(R.string.no))
+                InspectorRow("Sync status", passkey.syncStatus)
                 SelectionContainer {
-                    InspectorRow("凭据 ID", passkey.credentialId)
+                    InspectorRow("Credential ID", passkey.credentialId)
                 }
             }
         }
@@ -429,12 +430,12 @@ private fun PasskeyDetailPane(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "绑定关系",
+                    text = stringResource(R.string.bind_password),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = boundPasswordTitle ?: "未绑定密码条目",
+                    text = boundPasswordTitle ?: stringResource(R.string.common_account_not_configured),
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -442,13 +443,13 @@ private fun PasskeyDetailPane(
                         onClick = { onOpenBoundPassword?.invoke() },
                         enabled = onOpenBoundPassword != null
                     ) {
-                        Text("打开绑定条目")
+                        Text(stringResource(R.string.passkey_view_details))
                     }
                     OutlinedButton(
                         onClick = { onUnbindPassword?.invoke() },
                         enabled = onUnbindPassword != null
                     ) {
-                        Text("解除绑定")
+                        Text(stringResource(R.string.unbind))
                     }
                 }
             }
@@ -466,7 +467,7 @@ private fun PasskeyDetailPane(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "备注",
+                        text = stringResource(R.string.notes),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -489,12 +490,12 @@ private fun PasskeyDetailPane(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "危险操作",
+                    text = stringResource(R.string.delete),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.error
                 )
                 Text(
-                    text = "删除后将无法在本设备继续使用该通行秘钥。",
+                    text = stringResource(R.string.passkey_delete_message, passkey.rpName.ifBlank { passkey.rpId }, passkey.userName.ifBlank { "-" }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -505,7 +506,7 @@ private fun PasskeyDetailPane(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
                 ) {
-                    Text("删除通行秘钥")
+                    Text(stringResource(R.string.passkey_delete_button))
                 }
             }
         }
@@ -548,7 +549,7 @@ private fun SendDetailPane(
             ) {
                 val previewText = when {
                     send.isTextType && !send.textContent.isNullOrBlank() -> send.textContent
-                    send.isFileType -> send.fileName ?: "文件 Send"
+                    send.isFileType -> send.fileName ?: "File Send"
                     else -> send.notes.ifBlank { "-" }
                 }
                 Text(
@@ -557,20 +558,20 @@ private fun SendDetailPane(
                 )
 
                 Text(
-                    text = "访问次数：${send.accessCount}",
+                    text = stringResource(R.string.send_tag_access_count, send.accessCount),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 send.maxAccessCount?.let { max ->
                     Text(
-                        text = "访问上限：$max",
+                        text = "${stringResource(R.string.send_max_access_count)}: $max",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 send.expirationDate?.let { expiration ->
                     Text(
-                        text = "过期时间：$expiration",
+                        text = stringResource(R.string.send_tag_expire, expiration),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -587,10 +588,10 @@ private fun GeneratorDetailPane(
     modifier: Modifier = Modifier
 ) {
     val generatorLabel = when (selectedGenerator) {
-        GeneratorType.SYMBOL -> "随机字符"
-        GeneratorType.PASSWORD -> "可读密码"
-        GeneratorType.PASSPHRASE -> "密码短语"
-        GeneratorType.PIN -> "PIN 码"
+        GeneratorType.SYMBOL -> stringResource(R.string.generator_symbol)
+        GeneratorType.PASSWORD -> stringResource(R.string.generator_word)
+        GeneratorType.PASSPHRASE -> stringResource(R.string.generator_passphrase)
+        GeneratorType.PIN -> stringResource(R.string.generator_pin)
     }
 
     Column(
@@ -601,7 +602,7 @@ private fun GeneratorDetailPane(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "生成结果预览",
+            text = stringResource(R.string.generator_result),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
@@ -620,7 +621,7 @@ private fun GeneratorDetailPane(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = generatedValue.ifBlank { "等待生成..." },
+                    text = generatedValue.ifBlank { stringResource(R.string.loading_default) },
                     style = MaterialTheme.typography.titleMedium
                 )
             }
@@ -641,7 +642,7 @@ private fun TimelineDetailPane(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "历史详情",
+            text = stringResource(R.string.history),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
@@ -1551,7 +1552,11 @@ fun SimpleMainScreen(
                                 Icon(item.icon, contentDescription = label)
                             },
                             label = {
-                                Text(label)
+                                Text(
+                                    text = label,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             },
                             selected = item.key == currentTab.key,
                             onClick = { selectedTabKey = item.key }
@@ -2238,7 +2243,13 @@ fun SimpleMainScreen(
                                 selected = item.key == currentTab.key,
                                 onClick = { selectedTabKey = item.key },
                                 icon = { Icon(item.icon, contentDescription = label) },
-                                label = { Text(label) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
                                 alwaysShowLabel = true
                             )
                         }
@@ -2443,20 +2454,24 @@ fun SimpleMainScreen(
         val passkey = pendingPasskeyDelete!!
         AlertDialog(
             onDismissRequest = { pendingPasskeyDelete = null },
-            title = { Text("删除通行秘钥") },
+            title = { Text(stringResource(R.string.passkey_delete_title)) },
             text = {
                 Text(
-                    "确定删除「${passkey.rpName.ifBlank { passkey.rpId }}」的通行秘钥吗？删除后该设备上的凭据将不可恢复。"
+                    stringResource(
+                        R.string.passkey_delete_message,
+                        passkey.rpName.ifBlank { passkey.rpId },
+                        passkey.userName.ifBlank { "-" }
+                    )
                 )
             },
             confirmButton = {
                 TextButton(onClick = confirmPasskeyDelete) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingPasskeyDelete = null }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -2465,12 +2480,12 @@ fun SimpleMainScreen(
     if (showAddCategoryDialog) {
         AlertDialog(
             onDismissRequest = { showAddCategoryDialog = false },
-            title = { Text("新建分类") },
+            title = { Text(stringResource(R.string.new_category)) },
             text = {
                 OutlinedTextField(
                     value = categoryNameInput,
                     onValueChange = { categoryNameInput = it },
-                    label = { Text("分类名称") },
+                    label = { Text(stringResource(R.string.category_name)) },
                     singleLine = true
                 )
             },
@@ -2482,12 +2497,12 @@ fun SimpleMainScreen(
                         showAddCategoryDialog = false
                     }
                 }) {
-                    Text("确定")
+                    Text(stringResource(R.string.confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -2496,12 +2511,12 @@ fun SimpleMainScreen(
     if (showEditCategoryDialog != null) {
         AlertDialog(
             onDismissRequest = { showEditCategoryDialog = null },
-            title = { Text("编辑分类") },
+            title = { Text(stringResource(R.string.edit_category)) },
             text = {
                 OutlinedTextField(
                     value = categoryNameInput,
                     onValueChange = { categoryNameInput = it },
-                    label = { Text("分类名称") },
+                    label = { Text(stringResource(R.string.category_name)) },
                     singleLine = true
                 )
             },
@@ -2513,12 +2528,12 @@ fun SimpleMainScreen(
                         showEditCategoryDialog = null
                     }
                 }) {
-                    Text("确定")
+                    Text(stringResource(R.string.confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showEditCategoryDialog = null }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -2703,7 +2718,7 @@ private fun PasswordListContent(
             "title" -> {
                 // 按完整标题分组
                 mergedByInfo
-                    .groupBy { entries -> entries.first().title.ifBlank { "未命名" } }
+                    .groupBy { entries -> entries.first().title.ifBlank { context.getString(R.string.untitled) } }
                     .mapValues { (_, groups) -> groups.flatten() }
                     .toList()
                     .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
@@ -2860,7 +2875,7 @@ private fun PasswordListContent(
             icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
             title = { 
                 Text(
-                    "移动到分类",
+                    stringResource(R.string.move_to_category),
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center
                 ) 
@@ -2878,7 +2893,7 @@ private fun PasswordListContent(
                                 showMoveToCategoryDialog = false
                                 isSelectionMode = false
                                 selectedPasswords = setOf()
-                                Toast.makeText(context, "已移出分类", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerLow
@@ -2898,7 +2913,7 @@ private fun PasswordListContent(
                                     )
                                     Spacer(modifier = Modifier.width(16.dp))
                                     Text(
-                                        "无分类",
+                                        stringResource(R.string.category_none),
                                         style = MaterialTheme.typography.bodyLarge
                                     )
                                 }
@@ -2926,7 +2941,7 @@ private fun PasswordListContent(
                                 showMoveToCategoryDialog = false
                                 isSelectionMode = false
                                 selectedPasswords = setOf()
-                                Toast.makeText(context, "已移动到 ${category.name}", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "${context.getString(R.string.move_to_category)} ${category.name}", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerLow
@@ -2975,7 +2990,7 @@ private fun PasswordListContent(
                                 color = MaterialTheme.colorScheme.outlineVariant
                             )
                             Text(
-                                text = "KeePass 数据库",
+                                text = stringResource(R.string.keepass_webdav_title),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(vertical = 4.dp)
@@ -3001,19 +3016,31 @@ private fun PasswordListContent(
                                             if (result.isSuccess) {
                                                 // 更新数据库关联
                                                 viewModel.movePasswordsToKeePassDatabase(selectedPasswords.toList(), database.id)
-                                                Toast.makeText(context, "已移动 ${result.getOrNull()} 条到 ${database.name}", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(
+                                                    context,
+                                                    "${context.getString(R.string.move_to_category)} ${database.name}: ${result.getOrNull()}",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                             } else {
-                                                Toast.makeText(context, "移动失败: ${result.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                             }
                                         } catch (e: Exception) {
-                                            Toast.makeText(context, "移动失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.webdav_operation_failed, e.message ?: ""),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
                                         }
                                     }
                                     
                                     showMoveToCategoryDialog = false
                                     isSelectionMode = false
                                     selectedPasswords = setOf()
-                                    Toast.makeText(context, "已移动到 ${database.name}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "${context.getString(R.string.move_to_category)} ${database.name}", Toast.LENGTH_SHORT).show()
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerLow
@@ -3039,7 +3066,7 @@ private fun PasswordListContent(
                                             )
                                             if (database.isDefault) {
                                                 Text(
-                                                    "默认",
+                                                    stringResource(R.string.default_label),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.tertiary
                                                 )
@@ -3068,7 +3095,7 @@ private fun PasswordListContent(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showMoveToCategoryDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -3082,9 +3109,9 @@ private fun PasswordListContent(
         val title = when(val filter = currentFilter) {
             is CategoryFilter.All -> stringResource(R.string.filter_all)
             is CategoryFilter.Local -> stringResource(R.string.filter_monica)
-            is CategoryFilter.Starred -> "标星"
-            is CategoryFilter.Uncategorized -> "未分类"
-            is CategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name ?: "未知分类"
+            is CategoryFilter.Starred -> stringResource(R.string.filter_starred)
+            is CategoryFilter.Uncategorized -> stringResource(R.string.filter_uncategorized)
+            is CategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name ?: stringResource(R.string.unknown_category)
             is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
             is CategoryFilter.BitwardenVault -> "Bitwarden"
             is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
@@ -3102,7 +3129,7 @@ private fun PasswordListContent(
                     IconButton(onClick = { isCategorySheetVisible = true }) {
                          Icon(
                             imageVector = Icons.Default.Folder, // Or CreateNewFolder
-                            contentDescription = "分类",
+                            contentDescription = stringResource(R.string.category),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -3120,7 +3147,7 @@ private fun PasswordListContent(
                     IconButton(onClick = { isSearchExpanded = true }) {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = "搜索",
+                            contentDescription = stringResource(R.string.search),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -3142,7 +3169,7 @@ private fun PasswordListContent(
                            .padding(horizontal = 20.dp, vertical = 16.dp)
                    ) {
                        Text(
-                           text = "选择分类",
+                           text = stringResource(R.string.ledger_select_category),
                            style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                        )
@@ -3167,7 +3194,7 @@ private fun PasswordListContent(
                             item {
                                 val selected = currentFilter is CategoryFilter.Starred
                                 CategoryListItem(
-                                    title = "标星",
+                                    title = stringResource(R.string.filter_starred),
                                     icon = Icons.Outlined.CheckCircle,
                                     selected = selected,
                                     onClick = {
@@ -3178,7 +3205,7 @@ private fun PasswordListContent(
                             item {
                                 val selected = currentFilter is CategoryFilter.Uncategorized
                                 CategoryListItem(
-                                    title = "未分类",
+                                    title = stringResource(R.string.filter_uncategorized),
                                     icon = Icons.Default.FolderOff,
                                     selected = selected,
                                     onClick = {
@@ -3228,7 +3255,7 @@ private fun PasswordListContent(
                                             modifier = Modifier.clip(RoundedCornerShape(18.dp))
                                         ) {
                                             DropdownMenuItem(
-                                                text = { Text("重命名") },
+                                                text = { Text(stringResource(R.string.edit)) },
                                                 leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                                                 onClick = {
                                                     expandedMenuId = null
@@ -3236,7 +3263,7 @@ private fun PasswordListContent(
                                                 }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("删除") },
+                                                text = { Text(stringResource(R.string.delete)) },
                                                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
                                                 onClick = {
                                                     expandedMenuId = null
@@ -3290,7 +3317,7 @@ private fun PasswordListContent(
                                             badge = {
                                                 if (vault.isDefault) {
                                                     Text(
-                                                        text = "默认",
+                                                        text = stringResource(R.string.default_label),
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.primary
                                                     )
@@ -3377,7 +3404,7 @@ private fun PasswordListContent(
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("新建分类")
+                                    Text(stringResource(R.string.new_category))
                                 }
                             }
                        }
@@ -3740,7 +3767,7 @@ private fun PasswordListContent(
                         onToggleGroupCover = { password ->
                             // 切换封面状态并移到顶部
                             coroutineScope.launch {
-                                val websiteKey = password.website.ifBlank { "未分类" }
+                                val websiteKey = password.website.ifBlank { context.getString(R.string.filter_uncategorized) }
                                 val newCoverState = !password.isGroupCover
                                 
                                 if (newCoverState) {
@@ -3756,7 +3783,7 @@ private fun PasswordListContent(
                                         
                                         // 更新sortOrder
                                         val allPasswords = passwordEntries
-                                        val firstItemInGroup = allPasswords.first { it.website.ifBlank { "未分类" } == websiteKey }
+                                        val firstItemInGroup = allPasswords.first { it.website.ifBlank { context.getString(R.string.filter_uncategorized) } == websiteKey }
                                         val startSortOrder = allPasswords.indexOf(firstItemInGroup)
                                         
                                         viewModel.updateSortOrders(
@@ -3906,7 +3933,7 @@ private fun PasswordListContent(
     itemToDelete?.let { item ->
         DeleteConfirmDialog(
             itemTitle = item.title,
-            itemType = "密码",
+            itemType = stringResource(R.string.item_type_password),
             biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
@@ -4138,11 +4165,11 @@ private fun TotpListContent(
     Column {
         // M3E Top Bar with integrated search - 始终显示
         // 根据当前分类过滤器动态显示标题
-        val title = when(currentFilter) {
-            is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> "验证器"
-            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Starred -> "标星"
-            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Uncategorized -> "未分类"
-            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom -> categories.find { it.id == (currentFilter as takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom).categoryId }?.name ?: "未知分类"
+            val title = when(currentFilter) {
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> stringResource(R.string.nav_authenticator)
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Starred -> stringResource(R.string.filter_starred)
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Uncategorized -> stringResource(R.string.filter_uncategorized)
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom -> categories.find { it.id == (currentFilter as takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom).categoryId }?.name ?: stringResource(R.string.unknown_category)
         }
 
         ExpressiveTopBar(
@@ -4157,7 +4184,7 @@ private fun TotpListContent(
                 IconButton(onClick = { isCategorySheetVisible = true }) {
                     Icon(
                         imageVector = Icons.Default.Folder,
-                        contentDescription = "分类",
+                        contentDescription = stringResource(R.string.category),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -4165,7 +4192,7 @@ private fun TotpListContent(
                 IconButton(onClick = onQuickScanTotp) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = "扫码添加",
+                        contentDescription = stringResource(R.string.quick_action_scan_qr),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -4173,7 +4200,7 @@ private fun TotpListContent(
                 IconButton(onClick = { isSearchExpanded = true }) {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = "搜索",
+                        contentDescription = stringResource(R.string.search),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -4193,7 +4220,7 @@ private fun TotpListContent(
                         .padding(horizontal = 20.dp, vertical = 16.dp)
                 ) {
                     Text(
-                        text = "选择分类",
+                        text = stringResource(R.string.ledger_select_category),
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                     )
@@ -4219,7 +4246,7 @@ private fun TotpListContent(
                         item {
                             val selected = currentFilter is takagi.ru.monica.viewmodel.TotpCategoryFilter.Starred
                             CategoryListItem(
-                                title = "标星",
+                                title = stringResource(R.string.filter_starred),
                                 icon = Icons.Outlined.CheckCircle,
                                 selected = selected,
                                 onClick = {
@@ -4231,7 +4258,7 @@ private fun TotpListContent(
                         item {
                             val selected = currentFilter is takagi.ru.monica.viewmodel.TotpCategoryFilter.Uncategorized
                             CategoryListItem(
-                                title = "未分类",
+                                title = stringResource(R.string.filter_uncategorized),
                                 icon = Icons.Default.FolderOff,
                                 selected = selected,
                                 onClick = {
@@ -4470,7 +4497,7 @@ private fun TotpListContent(
     itemToDelete?.let { item ->
         DeleteConfirmDialog(
             itemTitle = item.title,
-            itemType = "验证器",
+            itemType = stringResource(R.string.item_type_authenticator),
             biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
@@ -4652,7 +4679,7 @@ private fun TotpItemCard(
             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val clip = android.content.ClipData.newPlainText("TOTP Code", code)
             clipboard.setPrimaryClip(clip)
-            android.widget.Toast.makeText(context, "验证码已复制", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, context.getString(R.string.verification_code_copied), android.widget.Toast.LENGTH_SHORT).show()
         },
         onToggleSelect = onToggleSelect,
         onDelete = onDelete,
@@ -4687,12 +4714,15 @@ private fun BankCardListContent(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var passwordError by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? FragmentActivity
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = takagi.ru.monica.data.AppSettings(biometricEnabled = false)
     )
+    val biometricHelper = remember { BiometricHelper(context) }
     
     val cards by viewModel.allCards.collectAsState(initial = emptyList())
     
@@ -4743,7 +4773,7 @@ private fun BankCardListContent(
                         }
                         android.widget.Toast.makeText(
                             context,
-                            "已更新 ${selectedItems.size} 张卡片的收藏状态",
+                            context.getString(R.string.batch_favorited, selectedItems.size),
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                         isSelectionMode = false
@@ -4782,48 +4812,74 @@ private fun BankCardListContent(
     
     // 主密码验证对话框
     if (showPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showPasswordDialog = false
-                masterPassword = ""
-            },
-            title = { Text(stringResource(R.string.enter_master_password_confirm)) },
-            text = {
-                OutlinedTextField(
-                    value = masterPassword,
-                    onValueChange = { masterPassword = it },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            // TODO: 验证主密码
-                            // 这里简化处理,直接删除
-                            selectedItems.forEach { id ->
-                                viewModel.deleteCard(id)
-                            }
-                            showPasswordDialog = false
-                            masterPassword = ""
-                            isSelectionMode = false
-                            selectedItems = emptySet()
+        val biometricAction = if (
+            activity != null &&
+            appSettings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.verify_to_delete),
+                    onSuccess = {
+                        selectedItems.forEach { id ->
+                            viewModel.deleteCard(id)
                         }
-                    }
-                ) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
                         showPasswordDialog = false
                         masterPassword = ""
+                        passwordError = false
+                        isSelectionMode = false
+                        selectedItems = emptySet()
+                    },
+                    onError = { error ->
+                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                    },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.batch_delete_bankcards_message, selectedItems.size),
+            passwordValue = masterPassword,
+            onPasswordChange = {
+                masterPassword = it
+                passwordError = false
+            },
+            onDismiss = {
+                showPasswordDialog = false
+                masterPassword = ""
+                passwordError = false
+            },
+            onConfirm = {
+                scope.launch {
+                    val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                    if (securityManager.verifyMasterPassword(masterPassword)) {
+                        selectedItems.forEach { id ->
+                            viewModel.deleteCard(id)
+                        }
+                        showPasswordDialog = false
+                        masterPassword = ""
+                        passwordError = false
+                        isSelectionMode = false
+                        selectedItems = emptySet()
+                    } else {
+                        passwordError = true
                     }
-                ) {
-                    Text(stringResource(android.R.string.cancel))
                 }
+            },
+            confirmText = stringResource(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = passwordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = biometricAction,
+            biometricHintText = if (biometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
             }
         )
     }
@@ -4935,7 +4991,7 @@ private fun BankCardListContent(
     itemToDelete?.let { item ->
         DeleteConfirmDialog(
             itemTitle = item.title,
-            itemType = "银行卡",
+            itemType = stringResource(R.string.item_type_bank_card),
             biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
@@ -5035,12 +5091,15 @@ private fun DocumentListContent(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var passwordError by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? FragmentActivity
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = takagi.ru.monica.data.AppSettings(biometricEnabled = false)
     )
+    val biometricHelper = remember { BiometricHelper(context) }
     val haptic = rememberHapticFeedback()
     
     val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
@@ -5110,48 +5169,74 @@ private fun DocumentListContent(
     
     // 主密码验证对话框
     if (showPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showPasswordDialog = false
-                masterPassword = ""
-            },
-            title = { Text(stringResource(R.string.enter_master_password_confirm)) },
-            text = {
-                OutlinedTextField(
-                    value = masterPassword,
-                    onValueChange = { masterPassword = it },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            // TODO: 验证主密码
-                            // 这里简化处理,直接删除
-                            selectedItems.forEach { id ->
-                                viewModel.deleteDocument(id)
-                            }
-                            showPasswordDialog = false
-                            masterPassword = ""
-                            isSelectionMode = false
-                            selectedItems = emptySet()
+        val biometricAction = if (
+            activity != null &&
+            appSettings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.verify_to_delete),
+                    onSuccess = {
+                        selectedItems.forEach { id ->
+                            viewModel.deleteDocument(id)
                         }
-                    }
-                ) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
                         showPasswordDialog = false
                         masterPassword = ""
+                        passwordError = false
+                        isSelectionMode = false
+                        selectedItems = emptySet()
+                    },
+                    onError = { error ->
+                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                    },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.batch_delete_documents_message, selectedItems.size),
+            passwordValue = masterPassword,
+            onPasswordChange = {
+                masterPassword = it
+                passwordError = false
+            },
+            onDismiss = {
+                showPasswordDialog = false
+                masterPassword = ""
+                passwordError = false
+            },
+            onConfirm = {
+                scope.launch {
+                    val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                    if (securityManager.verifyMasterPassword(masterPassword)) {
+                        selectedItems.forEach { id ->
+                            viewModel.deleteDocument(id)
+                        }
+                        showPasswordDialog = false
+                        masterPassword = ""
+                        passwordError = false
+                        isSelectionMode = false
+                        selectedItems = emptySet()
+                    } else {
+                        passwordError = true
                     }
-                ) {
-                    Text(stringResource(android.R.string.cancel))
                 }
+            },
+            confirmText = stringResource(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = passwordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = biometricAction,
+            biometricHintText = if (biometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
             }
         )
     }
@@ -5261,7 +5346,7 @@ private fun DocumentListContent(
     itemToDelete?.let { item ->
         DeleteConfirmDialog(
             itemTitle = item.title,
-            itemType = "证件",
+            itemType = stringResource(R.string.item_type_document),
             biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
                 // 取消删除，恢复卡片显示
@@ -5726,14 +5811,14 @@ private fun StackedPasswordGroup(
                                                 if (isGroupFavorited) {
                                                     Icon(
                                                         Icons.Default.Favorite,
-                                                        contentDescription = "已收藏",
+                                                        contentDescription = stringResource(R.string.favorite),
                                                         tint = MaterialTheme.colorScheme.primary,
                                                         modifier = Modifier.size(20.dp)
                                                     )
                                                 }
                                                 Icon(
                                                     Icons.Default.ExpandMore,
-                                                    contentDescription = "展开",
+                                                    contentDescription = stringResource(R.string.expand),
                                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     modifier = Modifier.size(22.dp)
                                                 )
@@ -6048,7 +6133,7 @@ private fun MultiPasswordEntryCard(
                                 ) {
                                     Icon(
                                         Icons.Default.Star,
-                                        contentDescription = "取消封面",
+                                        contentDescription = "Remove cover",
                                         tint = MaterialTheme.colorScheme.tertiary,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -6059,7 +6144,7 @@ private fun MultiPasswordEntryCard(
                     } else if (isSelectionMode && passwords.any { it.isGroupCover }) {
                         Icon(
                             Icons.Default.Star,
-                            contentDescription = "封面",
+                            contentDescription = "Cover",
                             tint = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -6082,7 +6167,7 @@ private fun MultiPasswordEntryCard(
                         ) {
                             Icon(
                                 if (anyFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = if (allFavorited) "取消收藏" else "收藏",
+                                contentDescription = if (allFavorited) stringResource(R.string.remove_from_favorites) else stringResource(R.string.add_to_favorites),
                                 tint = if (anyFavorited) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -6212,7 +6297,7 @@ private fun MultiPasswordEntryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "密码:",
+                    text = "${stringResource(R.string.password)}:",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -6261,7 +6346,7 @@ private fun MultiPasswordEntryCard(
                                 )
                                 
                                 Text(
-                                    text = "密码${index + 1}",
+                                    text = stringResource(R.string.password_item_title, index + 1),
                                     style = MaterialTheme.typography.labelLarge,
                                     color = if (isSelected) {
                                         MaterialTheme.colorScheme.onPrimary
@@ -6461,7 +6546,7 @@ private fun PasswordEntryCard(
                             ) {
                                 Icon(
                                     if (entry.isGroupCover) Icons.Default.Star else Icons.Default.StarBorder,
-                                    contentDescription = if (entry.isGroupCover) "取消封面" else "设为封面",
+                                    contentDescription = if (entry.isGroupCover) "Remove cover" else "Set as cover",
                                     tint = if (entry.isGroupCover) {
                                         MaterialTheme.colorScheme.tertiary
                                     } else if (canSetGroupCover) {
@@ -6754,7 +6839,7 @@ private fun SelectionModeTopBar(
                     ) {
                         Icon(
                             Icons.Default.FolderOpen,
-                            contentDescription = "移动到分类",
+                            contentDescription = stringResource(R.string.move_to_category),
                             tint = if (selectedCount > 0) 
                                 MaterialTheme.colorScheme.primary 
                             else 
@@ -6919,7 +7004,7 @@ private fun indexToDefaultTabKey(index: Int): String = when (index) {
 @Composable
 private fun DeleteConfirmDialog(
     itemTitle: String,
-    itemType: String = "项目",
+    itemType: String = "Item",
     biometricEnabled: Boolean,
     onDismiss: () -> Unit,
     onConfirmWithPassword: (String) -> Unit,
@@ -6932,108 +7017,44 @@ private fun DeleteConfirmDialog(
     val isBiometricAvailable = remember(biometricEnabled) {
         biometricEnabled && biometricHelper.isBiometricAvailable()
     }
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                Icons.Default.Warning,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error
+
+    val biometricAction = if (isBiometricAvailable && activity != null) {
+        {
+            biometricHelper.authenticate(
+                activity = activity,
+                title = context.getString(R.string.verify_identity),
+                subtitle = context.getString(R.string.verify_to_delete),
+                description = context.getString(R.string.biometric_login_description),
+                onSuccess = {
+                    onConfirmWithBiometric()
+                },
+                onError = { error ->
+                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                },
+                onFailed = {}
             )
-        },
-        title = { Text("删除$itemType") },
-        text = {
-            Column {
-                Text("确定要删除$itemType \"$itemTitle\" 吗？")
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // 密码输入框
-                OutlinedTextField(
-                    value = passwordInput,
-                    onValueChange = { passwordInput = it },
-                    label = { Text(stringResource(R.string.enter_master_password_confirm)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                // 指纹验证提示
-                if (isBiometricAvailable) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Fingerprint,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "或使用指纹验证",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
+        }
+    } else {
+        null
+    }
+    M3IdentityVerifyDialog(
+        title = stringResource(R.string.delete_item_title, itemType),
+        message = stringResource(R.string.delete_item_message, itemType, itemTitle),
+        passwordValue = passwordInput,
+        onPasswordChange = { passwordInput = it },
+        onDismiss = onDismiss,
+        onConfirm = {
+            if (passwordInput.isNotEmpty()) {
+                onConfirmWithPassword(passwordInput)
             }
         },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // 指纹验证按钮
-                if (isBiometricAvailable && activity != null) {
-                    IconButton(
-                        onClick = {
-                            biometricHelper.authenticate(
-                                activity = activity,
-                                title = "验证身份",
-                                subtitle = "确认删除$itemType",
-                                description = "使用生物识别快速确认删除操作",
-                                onSuccess = {
-                                    onConfirmWithBiometric()
-                                },
-                                onError = { error ->
-                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                                },
-                                onFailed = {
-                                    // 用户取消，不做任何操作
-                                }
-                            )
-                        }
-                    ) {
-                        Icon(
-                            Icons.Default.Fingerprint,
-                            contentDescription = "使用指纹验证",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-                
-                // 密码验证按钮
-                TextButton(
-                    onClick = {
-                        if (passwordInput.isNotEmpty()) {
-                            onConfirmWithPassword(passwordInput)
-                        }
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    enabled = passwordInput.isNotEmpty()
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
+        confirmText = stringResource(R.string.delete),
+        destructiveConfirm = true,
+        onBiometricClick = biometricAction,
+        biometricHintText = if (biometricAction == null) {
+            context.getString(R.string.biometric_not_available)
+        } else {
+            null
         }
     )
 }
@@ -7116,7 +7137,13 @@ private fun AdaptiveMainScaffold(
                             selected = item.key == currentTab.key,
                             onClick = { onTabSelected(item) },
                             icon = { Icon(item.icon, contentDescription = label) },
-                            label = { Text(label) }
+                            label = {
+                                Text(
+                                    text = label,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         )
                     }
                 }
@@ -7147,7 +7174,13 @@ private fun AdaptiveMainScaffold(
                                 selected = item.key == currentTab.key,
                                 onClick = { onTabSelected(item) },
                                 icon = { Icon(item.icon, contentDescription = label) },
-                                label = { Text(label) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
                                 alwaysShowLabel = true
                             )
                         }

@@ -174,12 +174,12 @@ fun DeveloperSettingsScreen(
             
             // 自动填充调试区域
             SettingsSection(
-                title = "自动填充调试"
+                title = stringResource(R.string.developer_autofill_debug)
             ) {
                 SettingsItem(
                     icon = Icons.Default.AutoAwesome,
-                    title = "启动自动填充 V2 (测试)",
-                    subtitle = "使用模拟数据打开自动填充界面，方便调试 UI 和逻辑",
+                    title = stringResource(R.string.developer_launch_autofill_v2_test),
+                    subtitle = stringResource(R.string.developer_launch_autofill_v2_desc),
                     onClick = {
                         try {
                             val testIntent = AutofillPickerActivityV2.getTestIntent(context)
@@ -187,7 +187,7 @@ fun DeveloperSettingsScreen(
                         } catch (e: Exception) {
                             Toast.makeText(
                                 context,
-                                "启动失败: ${e.message}",
+                                context.getString(R.string.developer_launch_failed, e.message),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -200,19 +200,27 @@ fun DeveloperSettingsScreen(
                 
                 SettingsItem(
                     icon = if (sessionUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
-                    title = "会话状态",
+                    title = stringResource(R.string.developer_session_status),
                     subtitle = if (sessionUnlocked) 
-                        "已解锁 (剩余 $remainingMinutes 分钟)" 
+                        stringResource(R.string.developer_session_unlocked_remaining, remainingMinutes) 
                     else 
-                        "已锁定",
+                        stringResource(R.string.developer_session_locked),
                     onClick = {
                         // 手动锁定/解锁会话（用于测试）
                         if (sessionUnlocked) {
                             SessionManager.markLocked()
-                            Toast.makeText(context, "会话已锁定", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.developer_session_locked_toast),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         } else {
                             SessionManager.markUnlocked()
-                            Toast.makeText(context, "会话已解锁", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.developer_session_unlocked_toast),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 )

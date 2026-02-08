@@ -117,7 +117,7 @@ fun FolderManagementScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "同步中",
+                                    text = stringResource(R.string.sync_status_syncing_full),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -512,7 +512,7 @@ private fun SyncHeroCard(
                     ) {
                         Column {
                             Text(
-                                text = "目标账户",
+                                text = stringResource(R.string.target_account),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                             )

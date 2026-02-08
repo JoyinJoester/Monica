@@ -78,11 +78,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.ui.components.ExpressiveTopBar
@@ -156,7 +158,7 @@ fun SendScreen(
         topBar = {
             if (showTopBar) {
                 ExpressiveTopBar(
-                    title = "安全发送",
+                    title = stringResource(R.string.send_screen_title),
                     searchQuery = searchQuery,
                     onSearchQueryChange = { searchQuery = it },
                     isSearchExpanded = isSearchExpanded,
@@ -166,17 +168,17 @@ fun SendScreen(
                             searchQuery = ""
                         }
                     },
-                    searchHint = "搜索 Send",
+                    searchHint = stringResource(R.string.send_search_hint),
                     actions = {
                         IconButton(
                             onClick = { bitwardenViewModel.loadSends(forceRemoteSync = true) },
                             enabled = canCreateSend &&
                                 sendState !is BitwardenViewModel.SendState.Syncing
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                         }
                         IconButton(onClick = { isSearchExpanded = true }) {
-                            Icon(Icons.Default.Search, contentDescription = "搜索")
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
                         }
                     }
                 )
@@ -219,14 +221,14 @@ fun SendScreen(
                 when {
                     activeVault == null -> {
                         EmptyStateCard(
-                            title = "未连接 Bitwarden",
-                            message = "请先在设置中登录并连接 Bitwarden，之后即可创建和管理 Send。"
+                            title = stringResource(R.string.send_empty_no_connection_title),
+                            message = stringResource(R.string.send_empty_no_connection_message)
                         )
                     }
                     unlockState != BitwardenViewModel.UnlockState.Unlocked -> {
                         EmptyStateCard(
-                            title = "Vault 已锁定",
-                            message = "请先在 Bitwarden 设置页解锁 Vault，然后即可使用 Send。"
+                            title = stringResource(R.string.send_empty_vault_locked_title),
+                            message = stringResource(R.string.send_empty_vault_locked_message)
                         )
                     }
                     sends.isEmpty() && sendState == BitwardenViewModel.SendState.Loading -> {
@@ -239,14 +241,14 @@ fun SendScreen(
                     }
                     sends.isEmpty() -> {
                         EmptyStateCard(
-                            title = "暂无 Send",
-                            message = "点击右下角按钮创建第一个文本 Send，可设置访问次数、到期时间和访问密码。"
+                            title = stringResource(R.string.send_empty_none_title),
+                            message = stringResource(R.string.send_empty_none_message)
                         )
                     }
                     filteredSends.isEmpty() -> {
                         EmptyStateCard(
-                            title = "未找到匹配 Send",
-                            message = "换个关键词试试，或清空搜索后查看全部结果。"
+                            title = stringResource(R.string.send_empty_no_match_title),
+                            message = stringResource(R.string.send_empty_no_match_message)
                         )
                     }
                     else -> {
@@ -289,8 +291,8 @@ fun SendScreen(
         val send = deletingSend ?: return
         AlertDialog(
             onDismissRequest = { deletingSend = null },
-            title = { Text("删除 Send") },
-            text = { Text("确定删除「${send.name}」吗？此操作无法撤销。") },
+            title = { Text(stringResource(R.string.send_delete_title)) },
+            text = { Text(stringResource(R.string.send_delete_message, send.name)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -298,12 +300,12 @@ fun SendScreen(
                         deletingSend = null
                     }
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deletingSend = null }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -343,22 +345,22 @@ private fun SendHeroCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "端到端加密分享",
+                        text = stringResource(R.string.send_secure_share_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
 
                 Text(
-                    text = "你的 Send 数据通过 Bitwarden 协议加密，链接可设置有效期、访问次数与访问密码。",
+                    text = stringResource(R.string.send_secure_share_desc),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HeroChip(label = "总计 $sendCount")
-                    HeroChip(label = "文本 $textCount")
-                    HeroChip(label = "文件 $fileCount")
+                    HeroChip(label = stringResource(R.string.send_chip_total, sendCount))
+                    HeroChip(label = stringResource(R.string.send_chip_text, textCount))
+                    HeroChip(label = stringResource(R.string.send_chip_file, fileCount))
                 }
             }
         }
@@ -425,7 +427,13 @@ private fun SendItemCard(
                 AssistChip(
                     onClick = {},
                     label = {
-                        Text(if (send.isTextType) "文本" else "文件")
+                        Text(
+                            if (send.isTextType) {
+                                stringResource(R.string.send_type_text)
+                            } else {
+                                stringResource(R.string.send_type_file)
+                            }
+                        )
                     },
                     leadingIcon = {
                         Icon(
@@ -439,7 +447,7 @@ private fun SendItemCard(
 
             val body = when {
                 send.isTextType && !send.textContent.isNullOrBlank() -> send.textContent
-                send.isFileType -> send.fileName ?: "文件 Send"
+                send.isFileType -> send.fileName ?: stringResource(R.string.send_file_fallback_name)
                 else -> send.notes
             }
             if (!body.isNullOrBlank()) {
@@ -457,18 +465,20 @@ private fun SendItemCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (send.hasPassword) {
-                    MetaTag(icon = Icons.Default.Key, label = "密码保护")
+                    MetaTag(icon = Icons.Default.Key, label = stringResource(R.string.send_tag_password_protected))
                 }
                 if (send.isTextHidden) {
-                    MetaTag(icon = Icons.Default.VisibilityOff, label = "内容隐藏")
+                    MetaTag(icon = Icons.Default.VisibilityOff, label = stringResource(R.string.send_tag_hidden_content))
                 }
                 if (send.disabled) {
-                    MetaTag(icon = Icons.Default.Lock, label = "已禁用")
+                    MetaTag(icon = Icons.Default.Lock, label = stringResource(R.string.send_tag_disabled))
                 }
-                MetaTag(icon = Icons.Default.Refresh, label = "访问 ${send.accessCount}")
-                send.maxAccessCount?.let { max -> MetaTag(icon = Icons.AutoMirrored.Filled.Send, label = "上限 $max") }
+                MetaTag(icon = Icons.Default.Refresh, label = stringResource(R.string.send_tag_access_count, send.accessCount))
+                send.maxAccessCount?.let { max ->
+                    MetaTag(icon = Icons.AutoMirrored.Filled.Send, label = stringResource(R.string.send_tag_limit, max))
+                }
                 send.expirationDate?.let { exp ->
-                    MetaTag(icon = Icons.Default.CloudOff, label = "过期 ${formatDate(exp)}")
+                    MetaTag(icon = Icons.Default.CloudOff, label = stringResource(R.string.send_tag_expire, formatDate(exp)))
                 }
             }
 
@@ -481,17 +491,17 @@ private fun SendItemCard(
                 TextButton(onClick = onCopyLink) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("复制链接")
+                    Text(stringResource(R.string.send_copy_link))
                 }
                 TextButton(onClick = onOpenLink) {
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("打开")
+                    Text(stringResource(R.string.open_link))
                 }
                 TextButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("删除")
+                    Text(stringResource(R.string.delete))
                 }
             }
         }
@@ -559,12 +569,12 @@ fun AddEditSendScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("创建 Send") },
+                title = { Text(stringResource(R.string.send_create_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.back)
                         )
                     }
                 },
@@ -607,7 +617,7 @@ fun AddEditSendScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Icon(Icons.Default.Check, contentDescription = "保存")
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
                 }
             }
         }
@@ -622,7 +632,7 @@ fun AddEditSendScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = "文本发送",
+                text = stringResource(R.string.send_text_send_heading),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -630,7 +640,7 @@ fun AddEditSendScreen(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("标题") },
+                label = { Text(stringResource(R.string.title)) },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -639,7 +649,7 @@ fun AddEditSendScreen(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                label = { Text("发送内容") },
+                label = { Text(stringResource(R.string.send_content_label)) },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -649,7 +659,7 @@ fun AddEditSendScreen(
             OutlinedTextField(
                 value = notes,
                 onValueChange = { notes = it },
-                label = { Text("备注（可选）") },
+                label = { Text(stringResource(R.string.notes_optional)) },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -657,7 +667,7 @@ fun AddEditSendScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("访问密码（可选）") },
+                label = { Text(stringResource(R.string.send_access_password_optional)) },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -667,7 +677,7 @@ fun AddEditSendScreen(
                 OutlinedTextField(
                     value = maxAccessCount,
                     onValueChange = { maxAccessCount = it.filter(Char::isDigit) },
-                    label = { Text("最大访问次数") },
+                    label = { Text(stringResource(R.string.send_max_access_count)) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
@@ -675,7 +685,7 @@ fun AddEditSendScreen(
                 OutlinedTextField(
                     value = expireDaysText,
                     onValueChange = { expireDaysText = it.filter(Char::isDigit) },
-                    label = { Text("有效天数(1-30)") },
+                    label = { Text(stringResource(R.string.send_valid_days)) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
@@ -687,9 +697,9 @@ fun AddEditSendScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("隐藏邮箱")
+                    Text(stringResource(R.string.send_hide_email))
                     Text(
-                        text = "收件方不会看到发送者邮箱",
+                        text = stringResource(R.string.send_hide_email_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -705,9 +715,9 @@ fun AddEditSendScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("隐藏文本内容")
+                    Text(stringResource(R.string.send_hide_text))
                     Text(
-                        text = "首次查看后隐藏明文（Bitwarden 标准）",
+                        text = stringResource(R.string.send_hide_text_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

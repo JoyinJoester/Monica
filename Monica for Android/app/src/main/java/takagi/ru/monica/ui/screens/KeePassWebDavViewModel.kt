@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import takagi.ru.monica.R
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
@@ -193,23 +194,23 @@ class KeePassWebDavViewModel {
                 Log.d(TAG, "Connection test SUCCESSFUL")
                 Result.success(true)
             } else {
-                Result.failure(Exception("连接测试失败"))
+                Result.failure(Exception(context.getString(R.string.keepass_webdav_connection_test_failed)))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Connection test FAILED", e)
             
             val detailedMessage = when {
                 e.message?.contains("Network is unreachable") == true -> 
-                    "网络不可达，请检查网络连接"
+                    context.getString(R.string.webdav_network_unreachable)
                 e.message?.contains("Connection timed out") == true -> 
-                    "连接超时，请检查服务器地址"
+                    context.getString(R.string.webdav_connection_timeout)
                 e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true -> 
-                    "认证失败，请检查用户名和密码"
+                    context.getString(R.string.webdav_auth_failed)
                 e.message?.contains("404") == true -> 
-                    "路径未找到，请检查服务器地址"
+                    context.getString(R.string.webdav_path_not_found)
                 e.message?.contains("403") == true -> 
-                    "访问被拒绝，请检查权限"
-                else -> "连接失败: ${e.message}"
+                    context.getString(R.string.webdav_operation_failed, e.message ?: "")
+                else -> context.getString(R.string.webdav_connection_failed, e.message ?: "")
             }
             Result.failure(Exception(detailedMessage))
         }
@@ -238,7 +239,7 @@ class KeePassWebDavViewModel {
     suspend fun listKdbxFiles(context: Context): Result<List<KdbxFileInfo>> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
-                return@withContext Result.failure(Exception("WebDAV 未配置"))
+                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
             }
             
             val folderPath = "$serverUrl/$KEEPASS_FOLDER"
@@ -255,7 +256,8 @@ class KeePassWebDavViewModel {
             }
             
             // 列出目录内容
-            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+            val currentSardine = sardine
+                ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
             val resources = currentSardine.list(folderPath)
             
             val kdbxFiles = resources
@@ -349,7 +351,7 @@ class KeePassWebDavViewModel {
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
-                return@withContext Result.failure(Exception("WebDAV 未配置"))
+                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
             }
             
             Log.d(TAG, "Starting export to kdbx...")
@@ -379,7 +381,8 @@ class KeePassWebDavViewModel {
                 val remotePath = "$serverUrl/$KEEPASS_FOLDER/$fileName"
                 val fileBytes = tempFile.readBytes()
                 
-                val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+                val currentSardine = sardine
+                    ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
                 currentSardine.put(remotePath, fileBytes, "application/octet-stream")
                 
                 Log.d(TAG, "Uploaded successfully: $fileName")
@@ -409,7 +412,7 @@ class KeePassWebDavViewModel {
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
-                return@withContext Result.failure(Exception("WebDAV 未配置"))
+                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
             }
             
             Log.d(TAG, "Starting import from: ${file.name}")
@@ -419,7 +422,8 @@ class KeePassWebDavViewModel {
             val tempFile = File(context.cacheDir, "import_${file.name}")
             
             try {
-                val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+                val currentSardine = sardine
+                    ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
                 currentSardine.get(remotePath).use { inputStream ->
                     tempFile.outputStream().use { outputStream ->
                         inputStream.copyTo(outputStream)
@@ -456,11 +460,11 @@ class KeePassWebDavViewModel {
     suspend fun downloadKdbxStream(file: KdbxFileInfo): Result<InputStream> = withContext(Dispatchers.IO) {
         try {
             if (sardine == null) {
-                return@withContext Result.failure(Exception("WebDAV 未配置"))
+                return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
             val remotePath = "$serverUrl/$KEEPASS_FOLDER/${file.name}"
-            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV 未配置"))
+            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV not configured"))
             val inputStream = currentSardine.get(remotePath)
             
             Log.d(TAG, "Downloaded stream for: ${file.name}")
@@ -590,13 +594,13 @@ class KeePassWebDavViewModel {
         // 5. 创建分组结构
         val passwordGroup = Group(
             uuid = UUID.randomUUID(),
-            name = "密码",
+            name = context.getString(R.string.item_type_password),
             entries = passwordEntries
         )
         
         val totpGroup = Group(
             uuid = UUID.randomUUID(),
-            name = "验证器",
+            name = context.getString(R.string.item_type_authenticator),
             entries = totpEntries
         )
         
@@ -837,11 +841,16 @@ class KeePassWebDavViewModel {
                 e.message?.contains("Invalid credentials") == true ||
                 e.message?.contains("Wrong password") == true ||
                 e.message?.contains("InvalidKey") == true -> 
-                    throw Exception("密码错误，无法解密数据库")
+                    throw Exception(context.getString(R.string.keepass_webdav_import_wrong_password))
                 e.message?.contains("Invalid database") == true ||
                 e.message?.contains("Not a valid KDBX") == true ->
-                    throw Exception("无效的 KeePass 数据库文件")
-                else -> throw Exception("导入失败: ${e.message}")
+                    throw Exception(context.getString(R.string.keepass_webdav_import_invalid_database))
+                else -> throw Exception(
+                    context.getString(
+                        R.string.keepass_webdav_import_failed,
+                        e.message ?: context.getString(R.string.import_data_unknown_error)
+                    )
+                )
             }
         }
     }

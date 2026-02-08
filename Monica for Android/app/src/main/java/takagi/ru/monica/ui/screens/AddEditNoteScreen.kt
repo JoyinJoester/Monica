@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -60,6 +58,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.NoteViewModel
@@ -89,6 +88,7 @@ fun AddEditNoteScreen(
     var showConfirmDelete by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val isEditing = noteId != -1L
@@ -308,84 +308,66 @@ fun AddEditNoteScreen(
             }
             showPasswordDialog = false
             masterPassword = ""
+            passwordError = false
             onNavigateBack()
         }
     }
 
     if (showPasswordDialog) {
         val activity = context as? FragmentActivity
-        AlertDialog(
-            onDismissRequest = {
+        val biometricAction = if (
+            activity != null &&
+            appSettings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.verify_to_delete),
+                    onSuccess = { performDelete() },
+                    onError = { error ->
+                        android.widget.Toast.makeText(
+                            context,
+                            error,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.verify_to_delete),
+            passwordValue = masterPassword,
+            onPasswordChange = {
+                masterPassword = it
+                passwordError = false
+            },
+            onDismiss = {
                 showPasswordDialog = false
                 masterPassword = ""
+                passwordError = false
             },
-            title = { Text(stringResource(R.string.verify_identity)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(R.string.verify_to_delete))
-                    OutlinedTextField(
-                        value = masterPassword,
-                        onValueChange = { masterPassword = it },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        placeholder = { Text(stringResource(R.string.enter_master_password_confirm)) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (activity != null &&
-                        appSettings.biometricEnabled &&
-                        biometricHelper.isBiometricAvailable()
-                    ) {
-                        TextButton(onClick = {
-                            biometricHelper.authenticate(
-                                activity = activity,
-                                title = context.getString(R.string.verify_identity),
-                                subtitle = context.getString(R.string.verify_to_delete),
-                                onSuccess = { performDelete() },
-                                onError = { error ->
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        error,
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
-                                },
-                                onFailed = {}
-                            )
-                        }) {
-                            Icon(Icons.Default.Fingerprint, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.use_biometric))
-                        }
-                    }
+            onConfirm = {
+                if (securityManager.verifyMasterPassword(masterPassword)) {
+                    performDelete()
+                } else {
+                    passwordError = true
                 }
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (securityManager.verifyMasterPassword(masterPassword)) {
-                            performDelete()
-                        } else {
-                            android.widget.Toast.makeText(
-                                context,
-                                context.getString(R.string.current_password_incorrect),
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    enabled = masterPassword.isNotBlank()
-                ) {
-                    Text(
-                        text = stringResource(R.string.delete),
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showPasswordDialog = false
-                    masterPassword = ""
-                }) {
-                    Text(stringResource(R.string.cancel))
-                }
+            confirmText = stringResource(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = passwordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = biometricAction,
+            biometricHintText = if (biometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
             }
         )
     }

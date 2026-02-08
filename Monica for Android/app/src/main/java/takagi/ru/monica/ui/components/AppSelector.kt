@@ -233,7 +233,7 @@ fun AppSelectorDialog(
                 ) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = "手动输入应用信息",
+                        contentDescription = stringResource(R.string.app_selector_manual_input_cd),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -270,9 +270,9 @@ fun AppSelectorDialog(
                 if (!isLoading && installedApps.isNotEmpty()) {
                     Text(
                         text = if (searchQuery.isBlank()) {
-                            "共 ${installedApps.size} 个应用"
+                            stringResource(R.string.app_selector_total_apps, installedApps.size)
                         } else {
-                            "找到 ${filteredApps.size} 个应用"
+                            stringResource(R.string.app_selector_found_apps, filteredApps.size)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -294,7 +294,7 @@ fun AppSelectorDialog(
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "正在加载应用列表...",
+                                text = stringResource(R.string.app_selector_loading),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -318,9 +318,9 @@ fun AppSelectorDialog(
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 text = if (searchQuery.isBlank()) {
-                                    "未找到已安装的应用"
+                                    stringResource(R.string.app_selector_no_installed_apps)
                                 } else {
-                                    "未找到匹配 \"$searchQuery\" 的应用"
+                                    stringResource(R.string.app_selector_no_match_apps, searchQuery)
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -427,7 +427,7 @@ private fun ManualInputDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("手动添加应用")
+            Text(stringResource(R.string.app_selector_manual_title))
         },
         text = {
             Column(
@@ -435,7 +435,7 @@ private fun ManualInputDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "如果应用未在列表中显示，可以手动输入应用信息",
+                    text = stringResource(R.string.app_selector_manual_desc),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -447,14 +447,14 @@ private fun ManualInputDialog(
                         packageName = it.trim()
                         packageNameError = false
                     },
-                    label = { Text("应用包名 *") },
-                    placeholder = { Text("例如: com.tencent.mm") },
+                    label = { Text(stringResource(R.string.app_selector_package_name_required)) },
+                    placeholder = { Text(stringResource(R.string.app_selector_package_name_example)) },
                     modifier = Modifier.fillMaxWidth(),
                     isError = packageNameError,
                     supportingText = if (packageNameError) {
-                        { Text("包名不能为空") }
+                        { Text(stringResource(R.string.app_selector_package_name_empty)) }
                     } else {
-                        { Text("必填，用于唯一标识应用") }
+                        { Text(stringResource(R.string.app_selector_package_name_required_hint)) }
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
@@ -467,10 +467,10 @@ private fun ManualInputDialog(
                 OutlinedTextField(
                     value = appName,
                     onValueChange = { appName = it },
-                    label = { Text("应用名称（可选）") },
-                    placeholder = { Text("例如: 微信") },
+                    label = { Text(stringResource(R.string.app_selector_app_name_optional)) },
+                    placeholder = { Text(stringResource(R.string.app_selector_app_name_example)) },
                     modifier = Modifier.fillMaxWidth(),
-                    supportingText = { Text("选填，用于显示") },
+                    supportingText = { Text(stringResource(R.string.app_selector_app_name_optional_hint)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         imeAction = ImeAction.Done
@@ -507,14 +507,14 @@ private fun ManualInputDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "如何获取应用包名？",
+                            text = stringResource(R.string.app_selector_how_get_package_name),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "• 在应用商店查看应用详情\n• 使用\"查看应用包名\"等工具\n• 在设置-应用管理中查看",
+                            text = stringResource(R.string.app_selector_how_get_package_name_steps),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -533,12 +533,12 @@ private fun ManualInputDialog(
                     }
                 }
             ) {
-                Text("确定")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -622,7 +622,7 @@ private suspend fun loadInstalledApps(context: Context): List<AppInfo> = withCon
         android.util.Log.e("AppSelector", "内存不足！", e)
         appList.clear()
         System.gc() // 建议 GC 回收
-        throw Exception("内存不足，应用过多")
+        throw Exception("Out of memory: too many apps")
     } catch (e: Exception) {
         android.util.Log.e("AppSelector", "加载应用列表时出错", e)
         throw e
@@ -738,7 +738,7 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
         withContext(Dispatchers.Main) {
             android.widget.Toast.makeText(
                 context,
-                "⏳ 正在导出应用列表...",
+                context.getString(R.string.app_selector_loading),
                 android.widget.Toast.LENGTH_SHORT
             ).show()
         }
@@ -782,9 +782,9 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
         
         // 健康度评估
         val healthScore = when {
-            hiddenCount < 30 -> "⚠️ 黑名单规则可能不够，建议增加"
-            hiddenCount > 100 -> "⚠️ 黑名单规则可能太严格，建议放宽"
-            else -> "✅ 黑名单规则比较合理"
+            hiddenCount < 30 -> "Warning: blacklist may be too loose"
+            hiddenCount > 100 -> "Warning: blacklist may be too strict"
+            else -> "Blacklist health looks good"
         }
         sb.appendLine("  💡 健康度评估: $healthScore")
         sb.appendLine()
@@ -838,11 +838,11 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
         val hiddenByPrefix = hiddenPackages
             .groupBy { 
                 when {
-                    it.packageName.startsWith("android") -> "Android核心"
-                    it.packageName.startsWith("com.android.") -> "Android系统"
-                    it.packageName.startsWith("com.google.android.") -> "Google服务"
-                    it.packageName.startsWith("com.qualcomm.") || it.packageName.startsWith("com.qti.") -> "芯片厂商"
-                    else -> "其他"
+                    it.packageName.startsWith("android") -> "Android core"
+                    it.packageName.startsWith("com.android.") -> "Android system"
+                    it.packageName.startsWith("com.google.android.") -> "Google services"
+                    it.packageName.startsWith("com.qualcomm.") || it.packageName.startsWith("com.qti.") -> "Chip vendor"
+                    else -> "Other"
                 }
             }
         
@@ -852,7 +852,7 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
                 val appName = try {
                     packageManager.getApplicationLabel(app).toString()
                 } catch (e: Exception) {
-                    "未知"
+                    "Unknown"
                 }
                 sb.appendLine("  🚫 $appName")
                 sb.appendLine("     ${app.packageName}")
@@ -876,7 +876,7 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
             val appName = try {
                 packageManager.getApplicationLabel(app).toString()
             } catch (e: Exception) {
-                "未知应用"
+                "Unknown app"
             }
             
             val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -885,9 +885,9 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
             
             val statusIcon = if (isHidden) "❌" else "✅"
             val typeLabel = when {
-                !isSystem -> "用户应用"
-                isUpdated -> "已更新系统应用"
-                else -> "系统应用"
+                !isSystem -> "User app"
+                isUpdated -> "Updated system app"
+                else -> "System app"
             }
             
             sb.appendLine("$statusIcon $appName")
@@ -916,13 +916,13 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
         // ============ 成功提示 ============
         withContext(Dispatchers.Main) {
             val message = buildString {
-                appendLine("✅ 导出成功!")
+                appendLine(context.getString(R.string.export_data_success))
                 appendLine()
-                appendLine("📊 应用总数: $totalApps")
-                appendLine("✅ 显示: $visibleCount")
-                appendLine("❌ 隐藏: $hiddenCount")
+                appendLine(context.getString(R.string.app_selector_total_apps, totalApps))
+                appendLine(context.getString(R.string.app_selector_found_apps, visibleCount))
+                appendLine("Hidden: $hiddenCount")
                 appendLine()
-                appendLine("📁 保存位置:")
+                appendLine("Path:")
                 appendLine(file.absolutePath)
             }
             
@@ -938,7 +938,10 @@ private suspend fun exportAppListToFile(context: Context, currentList: List<AppI
         withContext(Dispatchers.Main) {
             android.widget.Toast.makeText(
                 context,
-                "❌ 导出失败: ${e.message}\n请检查存储权限或联系开发者",
+                context.getString(
+                    R.string.save_failed_with_error,
+                    e.message ?: context.getString(R.string.import_data_unknown_error)
+                ),
                 android.widget.Toast.LENGTH_LONG
             ).show()
         }
