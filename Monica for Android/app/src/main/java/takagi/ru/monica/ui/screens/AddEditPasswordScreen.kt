@@ -67,6 +67,7 @@ import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 
@@ -149,6 +150,7 @@ fun AddEditPasswordScreen(
 
     var categoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     val categories by viewModel.categories.collectAsState()
+    val currentFilter by viewModel.categoryFilter.collectAsState()
     
     // KeePass 数据库选择
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -183,6 +185,7 @@ fun AddEditPasswordScreen(
     var paymentInfoExpanded by remember { mutableStateOf(false) }
 
     val isEditing = passwordId != null && passwordId > 0
+    var hasAppliedFilterStorageDefaults by rememberSaveable(passwordId) { mutableStateOf(false) }
     
     // 字段可见性设置
     val fieldVisibility = settings.passwordFieldVisibility
@@ -460,6 +463,49 @@ fun AddEditPasswordScreen(
                 }
             )
         }
+    }
+
+    LaunchedEffect(isEditing, currentFilter, hasAppliedFilterStorageDefaults) {
+        if (isEditing || hasAppliedFilterStorageDefaults) return@LaunchedEffect
+        when (val filter = currentFilter) {
+            is CategoryFilter.Custom -> {
+                categoryId = filter.categoryId
+                keepassDatabaseId = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is CategoryFilter.KeePassDatabase -> {
+                categoryId = null
+                keepassDatabaseId = filter.databaseId
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is CategoryFilter.KeePassGroupFilter -> {
+                categoryId = null
+                keepassDatabaseId = filter.databaseId
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is CategoryFilter.BitwardenVault -> {
+                categoryId = null
+                keepassDatabaseId = null
+                bitwardenVaultId = filter.vaultId
+                bitwardenFolderId = null
+            }
+            is CategoryFilter.BitwardenFolderFilter -> {
+                categoryId = null
+                keepassDatabaseId = null
+                bitwardenVaultId = filter.vaultId
+                bitwardenFolderId = filter.folderId
+            }
+            else -> {
+                categoryId = null
+                keepassDatabaseId = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+        }
+        hasAppliedFilterStorageDefaults = true
     }
 
     Scaffold(

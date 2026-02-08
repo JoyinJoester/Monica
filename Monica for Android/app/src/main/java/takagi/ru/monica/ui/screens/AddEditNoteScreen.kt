@@ -93,6 +93,10 @@ import takagi.ru.monica.viewmodel.NoteViewModel
 fun AddEditNoteScreen(
     noteId: Long,
     onNavigateBack: () -> Unit,
+    initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
+    initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null,
     viewModel: NoteViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -109,10 +113,11 @@ fun AddEditNoteScreen(
     var noteImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var noteImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showNoteImageDialog by remember { mutableStateOf(false) }
-    var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategoryId by rememberSaveable(noteId) { mutableStateOf<Long?>(null) }
+    var keepassDatabaseId by rememberSaveable(noteId) { mutableStateOf<Long?>(null) }
+    var bitwardenVaultId by rememberSaveable(noteId) { mutableStateOf<Long?>(null) }
+    var bitwardenFolderId by rememberSaveable(noteId) { mutableStateOf<String?>(null) }
+    var hasAppliedInitialStorage by rememberSaveable(noteId) { mutableStateOf(false) }
     var isSaving by rememberSaveable { mutableStateOf(false) }
     var createdAt by remember { mutableStateOf(java.util.Date()) }
     var currentNote by remember { mutableStateOf<SecureItem?>(null) }
@@ -132,6 +137,7 @@ fun AddEditNoteScreen(
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val draftStorageTarget by viewModel.draftStorageTarget.collectAsState()
     LaunchedEffect(Unit) {
         bitwardenVaults = bitwardenRepository.getAllVaults()
     }
@@ -165,6 +171,23 @@ fun AddEditNoteScreen(
             }
             createdAt = it.createdAt
         }
+    }
+
+    LaunchedEffect(
+        isEditing,
+        hasAppliedInitialStorage,
+        initialCategoryId,
+        initialKeePassDatabaseId,
+        initialBitwardenVaultId,
+        initialBitwardenFolderId,
+        draftStorageTarget
+    ) {
+        if (isEditing || hasAppliedInitialStorage) return@LaunchedEffect
+        selectedCategoryId = initialCategoryId ?: draftStorageTarget.categoryId
+        keepassDatabaseId = initialKeePassDatabaseId ?: draftStorageTarget.keepassDatabaseId
+        bitwardenVaultId = initialBitwardenVaultId ?: draftStorageTarget.bitwardenVaultId
+        bitwardenFolderId = initialBitwardenFolderId ?: draftStorageTarget.bitwardenFolderId
+        hasAppliedInitialStorage = true
     }
 
     LaunchedEffect(noteImageFileName) {

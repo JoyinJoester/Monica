@@ -58,6 +58,7 @@ fun AddEditTotpScreen(
     initialTitle: String,
     initialNotes: String,
     initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     categories: List<Category> = emptyList(),
@@ -86,7 +87,9 @@ fun AddEditTotpScreen(
     var boundPasswordId by remember { mutableStateOf(initialData?.boundPasswordId) }
     
     // KeePass Database Selection
-    var keepassDatabaseId by rememberSaveable { mutableStateOf(initialData?.keepassDatabaseId) }
+    var keepassDatabaseId by rememberSaveable {
+        mutableStateOf(initialData?.keepassDatabaseId ?: initialKeePassDatabaseId)
+    }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
     val context = LocalContext.current
     var bitwardenVaultId by rememberSaveable { mutableStateOf(initialBitwardenVaultId) }

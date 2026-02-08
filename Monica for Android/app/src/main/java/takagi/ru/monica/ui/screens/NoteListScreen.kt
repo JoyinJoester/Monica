@@ -50,6 +50,7 @@ import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.viewmodel.NoteViewModel
+import takagi.ru.monica.viewmodel.NoteDraftStorageTarget
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -143,6 +144,11 @@ fun NoteListScreen(
     
     val notes by viewModel.allNotes.collectAsState(initial = emptyList())
     var selectedCategoryFilter by remember { mutableStateOf<NoteCategoryFilter>(NoteCategoryFilter.All) }
+
+    LaunchedEffect(selectedCategoryFilter) {
+        viewModel.setDraftStorageTarget(selectedCategoryFilter.toDraftStorageTarget())
+    }
+
     val title = when (val filter = selectedCategoryFilter) {
         NoteCategoryFilter.All -> stringResource(R.string.filter_all)
         NoteCategoryFilter.Local -> stringResource(R.string.filter_monica)
@@ -902,6 +908,21 @@ private sealed interface NoteCategoryFilter {
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : NoteCategoryFilter
     data class KeePassDatabase(val databaseId: Long) : NoteCategoryFilter
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : NoteCategoryFilter
+}
+
+private fun NoteCategoryFilter.toDraftStorageTarget(): NoteDraftStorageTarget = when (this) {
+    NoteCategoryFilter.All,
+    NoteCategoryFilter.Local,
+    NoteCategoryFilter.Starred,
+    NoteCategoryFilter.Uncategorized -> NoteDraftStorageTarget()
+    is NoteCategoryFilter.Custom -> NoteDraftStorageTarget(categoryId = categoryId)
+    is NoteCategoryFilter.BitwardenVault -> NoteDraftStorageTarget(bitwardenVaultId = vaultId)
+    is NoteCategoryFilter.BitwardenFolderFilter -> NoteDraftStorageTarget(
+        bitwardenVaultId = vaultId,
+        bitwardenFolderId = folderId
+    )
+    is NoteCategoryFilter.KeePassDatabase -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
+    is NoteCategoryFilter.KeePassGroupFilter -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
 }
 
 @Composable

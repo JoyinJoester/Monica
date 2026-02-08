@@ -20,6 +20,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
 
+data class NoteDraftStorageTarget(
+    val categoryId: Long? = null,
+    val keepassDatabaseId: Long? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null
+)
+
 class NoteViewModel(
     private val repository: SecureItemRepository,
     context: Context? = null,
@@ -39,9 +46,16 @@ class NoteViewModel(
     // 笔记列表布局偏好 (true = 网格, false = 列表)
     private val _isGridLayout = MutableStateFlow(true)
     val isGridLayout: StateFlow<Boolean> = _isGridLayout.asStateFlow()
+
+    private val _draftStorageTarget = MutableStateFlow(NoteDraftStorageTarget())
+    val draftStorageTarget: StateFlow<NoteDraftStorageTarget> = _draftStorageTarget.asStateFlow()
     
     fun setGridLayout(isGrid: Boolean) {
         _isGridLayout.value = isGrid
+    }
+
+    fun setDraftStorageTarget(target: NoteDraftStorageTarget) {
+        _draftStorageTarget.value = target
     }
 
     fun syncKeePassNotes(databaseId: Long) {

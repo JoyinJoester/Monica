@@ -241,6 +241,37 @@ private fun ActionIcon(icon: ImageVector, contentDescription: String, onClick: (
     }
 }
 
+private data class NewItemStorageDefaults(
+    val categoryId: Long? = null,
+    val keepassDatabaseId: Long? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null
+)
+
+private fun defaultsFromTotpFilter(filter: takagi.ru.monica.viewmodel.TotpCategoryFilter): NewItemStorageDefaults {
+    return when (filter) {
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom -> {
+            NewItemStorageDefaults(categoryId = filter.categoryId)
+        }
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabase -> {
+            NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
+        }
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> {
+            NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
+        }
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> {
+            NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)
+        }
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenFolderFilter -> {
+            NewItemStorageDefaults(
+                bitwardenVaultId = filter.vaultId,
+                bitwardenFolderId = filter.folderId
+            )
+        }
+        else -> NewItemStorageDefaults()
+    }
+}
+
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
@@ -854,6 +885,8 @@ fun SimpleMainScreen(
     var selectedSend by remember { mutableStateOf<BitwardenSend?>(null) }
     var selectedTimelineLog by remember { mutableStateOf<TimelineEvent.StandardLog?>(null) }
     val sendState by bitwardenViewModel.sendState.collectAsState()
+    val totpFilter by totpViewModel.categoryFilter.collectAsState()
+    val totpNewItemDefaults = remember(totpFilter) { defaultsFromTotpFilter(totpFilter) }
 
     val selectedGeneratorType by generatorViewModel.selectedGenerator.collectAsState()
     val symbolGeneratorResult by generatorViewModel.symbolResult.collectAsState()
@@ -1728,6 +1761,10 @@ fun SimpleMainScreen(
                                         initialData = null,
                                         initialTitle = "",
                                         initialNotes = "",
+                                        initialCategoryId = totpNewItemDefaults.categoryId,
+                                        initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                                        initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
+                                        initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
                                         categories = totpCategories,
                                         passwordViewModel = passwordViewModel,
                                         localKeePassViewModel = localKeePassViewModel,
@@ -2385,6 +2422,10 @@ fun SimpleMainScreen(
                             initialData = null,
                             initialTitle = "",
                             initialNotes = "",
+                            initialCategoryId = totpNewItemDefaults.categoryId,
+                            initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                            initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
+                            initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
                             categories = totpCategories,
                             passwordViewModel = passwordViewModel,
                             localKeePassViewModel = localKeePassViewModel,

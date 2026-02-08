@@ -700,6 +700,7 @@ fun MonicaContent(
 
         composable(Screen.AddEditTotp.route) { backStackEntry ->
             val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: -1L
+            val currentTotpFilter by totpViewModel.categoryFilter.collectAsState()
 
             var initialData by remember { mutableStateOf<takagi.ru.monica.data.model.TotpData?>(null) }
             var initialTitle by remember { mutableStateOf("") }
@@ -750,15 +751,48 @@ fun MonicaContent(
 
             if (!isLoading) {
                 val totpCategories by totpViewModel.categories.collectAsState()
-                val initialCategoryId = initialData?.categoryId
+                data class TotpStorageDefaults(
+                    val categoryId: Long? = null,
+                    val keepassDatabaseId: Long? = null,
+                    val bitwardenVaultId: Long? = null,
+                    val bitwardenFolderId: String? = null
+                )
+                val filterDefaults = remember(currentTotpFilter) {
+                    when (val filter = currentTotpFilter) {
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom -> {
+                            TotpStorageDefaults(categoryId = filter.categoryId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabase -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> {
+                            TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenFolderFilter -> {
+                            TotpStorageDefaults(
+                                bitwardenVaultId = filter.vaultId,
+                                bitwardenFolderId = filter.folderId
+                            )
+                        }
+                        else -> TotpStorageDefaults()
+                    }
+                }
+                val initialCategoryId = initialData?.categoryId ?: filterDefaults.categoryId
+                val initialKeePassDatabaseId = initialData?.keepassDatabaseId ?: filterDefaults.keepassDatabaseId
+                val initialVaultId = initialBitwardenVaultId ?: filterDefaults.bitwardenVaultId
+                val initialFolderId = initialBitwardenFolderId ?: filterDefaults.bitwardenFolderId
                 takagi.ru.monica.ui.screens.AddEditTotpScreen(
                     totpId = if (totpId > 0) totpId else null,
                     initialData = initialData,
                     initialTitle = initialTitle,
                     initialNotes = initialNotes,
                     initialCategoryId = initialCategoryId,
-                    initialBitwardenVaultId = initialBitwardenVaultId,
-                    initialBitwardenFolderId = initialBitwardenFolderId,
+                    initialKeePassDatabaseId = initialKeePassDatabaseId,
+                    initialBitwardenVaultId = initialVaultId,
+                    initialBitwardenFolderId = initialFolderId,
                     categories = totpCategories,
                     passwordViewModel = viewModel,
                     localKeePassViewModel = localKeePassViewModel,
