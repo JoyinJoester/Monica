@@ -1,114 +1,122 @@
-# Monica Password Manager 🔐
+# Monica 本地密码库
 
-[中文](README_ZH.md) | **English**
+**中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md)
+
+[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Browser-3DDC84)
+![Security](https://img.shields.io/badge/Security-AES--256--GCM-success)
+[![Website](https://img.shields.io/badge/Website-Monica-0A66C2)](https://joyinjoester.github.io/Monica/)
+
+Monica 是一个聚合 **Bitwarden** 与 **KeePass** 的本地密码库（Local Vault）。
+它以本地存储优先为核心，帮助你在 Android 与浏览器端统一管理账号密码、2FA、私密笔记与敏感附件。
+
+官网入口: https://joyinjoester.github.io/Monica/
+
+> Monica for Windows 已归档。历史代码见: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
+
+---
+
+## 用户先看
+
+### Monica 适合谁
+- 需要本地优先密码管理，不希望账号数据托管到第三方云。
+- 既使用 Bitwarden，也维护 KeePass (`.kdbx`) 数据。
+- 需要 Android 日常使用，同时在浏览器里完成自动填充。
+
+### 你能得到什么
+- 本地加密保险箱: 登录信息、银行卡、身份信息、私密笔记、附件。
+- 双生态聚合: Android 端包含 Bitwarden API/同步能力与 KeePass (`.kdbx`) 读写能力。
+- 可选同步与备份: 通过自有 WebDAV 基础设施实现跨设备数据流转。
+- 内置 TOTP: 在同一应用内完成密码与二次验证码管理。
+
+### 快速安装
+
+Android:
+1. 从 [Releases](https://github.com/JoyinJoester/Monica/releases) 下载最新 APK。
+2. 在 Android 8.0+ 设备安装并初始化主密码。
+
+浏览器插件 (Chrome / Edge):
+1. 在 `Monica for Browser` 目录构建插件。
+2. 打开 `chrome://extensions/` 并启用开发者模式。
+3. 选择“加载已解压的扩展程序”，导入 `dist` 目录。
+
+---
+
+## Android 版本重点
+
+### 核心功能
+- 本地 Vault: 所有核心凭据本地加密存储。
+- 聚合导入: 支持 KeePass 数据迁移与 Bitwarden 兼容接入。
+- 智能检索: 按标题、域名、标签快速定位凭据。
+- 生物识别解锁: 使用系统级生物识别能力提升安全与可用性。
+- TOTP 管理: 统一存储并生成动态验证码。
+
+### 实现说明（专业版）
+- UI 层: Jetpack Compose + Material 3 + Navigation Compose。
+- 数据层: Room（`PasswordDatabase`）+ DAO + Repository。
+- 并发模型: Kotlin Coroutines + Flow。
+- 依赖注入: Koin（应用启动于 `MonicaApplication`）。
+- 安全能力: Android Keystore、EncryptedSharedPreferences、BiometricPrompt。
+- 同步任务: WorkManager（`AutoBackupWorker`）用于自动 WebDAV 备份。
+- 协议与集成: Retrofit + OkHttp（Bitwarden API）、kotpass（KeePass）、sardine-android（WebDAV）。
+
+### 安全模型
+- 加密算法: AES-256-GCM（认证加密）。
+- 密钥派生: PBKDF2-HMAC-SHA256（高迭代参数）。
+- 本地保护: 主密码哈希与安全配置由本地安全组件管理。
+- 网络边界: 应用声明网络权限，主要用于 Bitwarden 联动与 WebDAV 备份/同步等在线能力。
+
+---
+
+## 赞助支持
+
+如果 Monica 对你有帮助，欢迎支持持续开发与安全投入。
 
 <div align="center">
-
-![Windows](https://img.shields.io/badge/Windows%2011-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![Security](https://img.shields.io/badge/Security-AES--256--GCM-success?style=for-the-badge&logo=security&logoColor=white)
-![License](https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge)
-
-**A unified, offline-first password management solution for Windows and Android.**
-*Secure. Sovereign. Cross-Platform.*
-
-</div>
-
----
-
-## 📖 Overview
-
-**Monica** is an enterprise-grade password manager engineered for absolute privacy and sovereignty over your digital credentials. By eschewing cloud dependencies in favor of local-only encrypted storage, Monica ensures that your sensitive data remains exclusively in your possession.
-
-Whether you are on your **Browser (Chrome, Edge, Firefox)** or **Android** phone, Monica provides a seamless, consistent, and secure experience without monthly subscriptions or data tracking.
-
-> **📦 Monica for Windows - Archived**  
-> Due to significant feature overlap between Monica for Windows and the browser extension, we have discontinued Windows development.  
-> Historical code has been migrated to: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
-
----
-
-## ✨ Key Features
-
-### 🔐 Multi-Platform Credential Management
-*   **Unified Experience**: Feature parity between the modern **WinUI 3** desktop application and the **Jetpack Compose** Android app.
-*   **Zero-Knowledge Encryption**: All data is encrypted locally using **AES-256-GCM**. Your master password is the only key, and it never leaves your device.
-*   **Encrypted Vault**: Securely store logins, credit cards, identities, and secure notes.
-
-### 🔄 Cross-Device Synchronization
-*   **WebDAV Sync**: Synchronize your encrypted vault securely across Windows and Android using any WebDAV-compliant provider (Nextcloud, Synology, JianguoYun, etc.).
-*   **Sovereignty**: YOU control the infrastructure. No vendor lock-in, no proprietary cloud servers.
-
-### 🛡️ Built-in Authenticator (TOTP)
-*   **Integrated 2FA**: Generate Time-based One-Time Passwords directly within Monica.
-*   **Smart Scan (Android)**: Add accounts instantly by scanning QR codes.
-*   **Steam Guard**: Native support for Steam's 2FA protocol.
-
-### 📦 Advanced Data Features
-*   **Secure Document Storage**: Encrypt and store sensitive files (ID scans, contracts) directly in the database.
-*   **KeePass Compatibility**: Full interoperability with `.kdbx` files. Use Monica as a modern frontend for your KeePass databases.
-*   **Breach Detection**: Proactive security analysis to check against known data breaches (Coming soon).
-
----
-
-## 🛠️ Technical Architecture
-
-Monica is built with modern, platform-native technologies to ensure performance and security.
-
-### 🖥️ Windows Client
-*   **Framework**: [WinUI 3 (Windows App SDK)](https://github.com/microsoft/WindowsAppSDK)
-*   **Runtime**: .NET 8
-*   **Data Access**: Entity Framework Core (SQLite)
-*   **Design**: Native Fluent Design with Mica material support.
-
-### 📱 Android Client
-*   **Framework**: [Jetpack Compose](https://developer.android.com/jetpack/compose)
-*   **Language**: Kotlin
-*   **Design**: Material Design 3 (Material You) with dynamic theming.
-*   **Security**: Android Keystore System for hardware-backed key protection.
-
----
-
-## 🔒 Security Model
-
-1.  **Encryption**: **AES-256** in **GCM** mode (Authenticated Encryption).
-2.  **Key Derivation**: **PBKDF2-HMAC-SHA256** with high iteration counts (100,000+).
-3.  **Local First**: No internet permissions required for core functionality. Network access is only used for WebDAV sync (user-controlled) and optionally checking favicons.
-
----
-
-## 🚀 Installation
-
-### Browser (Chrome / Edge)
-1.  Download the latest source or build from the [**Monica for Browser**](Monica%20for%20Browser) directory.
-2.  Enable **Developer Mode** in `chrome://extensions/`.
-3.  Click **Load unpacked** and select the `dist` folder.
-4.  *(Coming Soon: Installation from Chrome Web Store)*
-
-### Android
-1.  Download the latest `.apk` from the [**Releases**](https://github.com/JoyinJoester/Monica/releases) page.
-2.  Install on **Android 8.0+** devices.
-
----
-
-## 🤝 Support the Development
-
-Monica is an open-source project driven by community support. If this tool adds value to your digital security workflow, consider supporting its continued development.
-
-<div align="center">
-<img src="image/support_author.jpg" alt="Support Author" width="300" style="border-radius: 10px"/>
+<img src="image/support_author.jpg" alt="Support Monica" width="320"/>
 <br/>
-<sub>Scan using WeChat or Alipay</sub>
+<sub>微信 / 支付宝扫码支持</sub>
 </div>
 
-**Your support helps fund:**
-*   Security audits
-*   Multi-platform infrastructure
-*   Continuous feature updates
+你的支持将优先用于:
+- 安全审计与加密方案强化。
+- Android 体验优化与稳定性改进。
+- 跨端功能统一与文档维护。
 
 ---
 
-## ⚖️ License
+## 开发者信息
 
-Copyright © 2025 JoyinJoester.
-Distributed under the **GNU General Public License v3.0**. See `LICENSE` for more information.
+### 项目分层（代码现状）
+- `takagi/ru/monica/ui`: Compose 页面与组件。
+- `takagi/ru/monica/data`: Room 实体、DAO、数据库迁移。
+- `takagi/ru/monica/repository`: 数据访问封装。
+- `takagi/ru/monica/security`: 加密、密钥与鉴权相关实现。
+- `takagi/ru/monica/bitwarden`: API、加密、映射、同步与视图模型。
+- `takagi/ru/monica/autofill`: 自动填充服务与流程。
+- `takagi/ru/monica/passkey`: Android 14+ Credential Provider 相关实现。
+- `takagi/ru/monica/workers`: 后台任务（如自动 WebDAV 备份）。
+
+### 当前已使用的成熟组件（仓库可验证）
+- Android UI: Jetpack Compose, Material 3, Navigation Compose。
+- 数据与状态: Room, DataStore Preferences, ViewModel。
+- 安全: Android Keystore, EncryptedSharedPreferences, BiometricPrompt。
+- 网络与协议: Retrofit, OkHttp, Kotlinx Serialization。
+- 同步与生态: sardine-android(WebDAV), kotpass(KeePass), Bitwarden API 对接。
+- 异步与任务: Coroutines, Flow, WorkManager。
+- 其他能力: CameraX + ML Kit（二维码扫描）, Credentials API（Passkey）。
+
+### 构建与贡献
+- Android Studio: 最新稳定版。
+- JDK: 17+。
+- Android 配置: `minSdk 26`，`targetSdk 34`（见 `Monica for Android/app/build.gradle`）。
+- 浏览器端技术栈: React + TypeScript + Vite（见 `Monica for Browser/package.json`）。
+- 欢迎通过 Issue / PR 参与功能和安全改进。
+
+---
+
+## 许可证
+
+Copyright (c) 2025 JoyinJoester
+
+Monica 基于 [GNU General Public License v3.0](LICENSE) 开源发布。
