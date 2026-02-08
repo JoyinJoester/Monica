@@ -1731,7 +1731,7 @@ fun SimpleMainScreen(
                                         categories = totpCategories,
                                         passwordViewModel = passwordViewModel,
                                         localKeePassViewModel = localKeePassViewModel,
-                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId ->
+                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                                             totpViewModel.saveTotpItem(
                                                 id = null,
                                                 title = title,
@@ -1739,7 +1739,8 @@ fun SimpleMainScreen(
                                                 totpData = totpData,
                                                 categoryId = categoryId,
                                                 keepassDatabaseId = keepassDatabaseId,
-                                                bitwardenVaultId = bitwardenVaultId
+                                                bitwardenVaultId = bitwardenVaultId,
+                                                bitwardenFolderId = bitwardenFolderId
                                             )
                                             handleInlineTotpEditorBack()
                                         },
@@ -1777,10 +1778,11 @@ fun SimpleMainScreen(
                                         initialNotes = selectedTotpItem.notes,
                                         initialCategoryId = selectedTotpData.categoryId,
                                         initialBitwardenVaultId = selectedTotpItem.bitwardenVaultId,
+                                        initialBitwardenFolderId = selectedTotpItem.bitwardenFolderId,
                                         categories = totpCategories,
                                         passwordViewModel = passwordViewModel,
                                         localKeePassViewModel = localKeePassViewModel,
-                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId ->
+                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                                             totpViewModel.saveTotpItem(
                                                 id = selectedTotpItem.id,
                                                 title = title,
@@ -1788,7 +1790,8 @@ fun SimpleMainScreen(
                                                 totpData = totpData,
                                                 categoryId = categoryId,
                                                 keepassDatabaseId = keepassDatabaseId,
-                                                bitwardenVaultId = bitwardenVaultId
+                                                bitwardenVaultId = bitwardenVaultId,
+                                                bitwardenFolderId = bitwardenFolderId
                                             )
                                         },
                                         onNavigateBack = handleInlineTotpEditorBack,
@@ -2385,7 +2388,7 @@ fun SimpleMainScreen(
                             categories = totpCategories,
                             passwordViewModel = passwordViewModel,
                             localKeePassViewModel = localKeePassViewModel,
-                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId ->
+                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                                 totpViewModel.saveTotpItem(
                                     id = null,
                                     title = title,
@@ -2393,7 +2396,8 @@ fun SimpleMainScreen(
                                     totpData = totpData,
                                     categoryId = categoryId,
                                     keepassDatabaseId = keepassDatabaseId,
-                                    bitwardenVaultId = bitwardenVaultId
+                                    bitwardenVaultId = bitwardenVaultId,
+                                    bitwardenFolderId = bitwardenFolderId
                                 )
                                 collapse()
                             },

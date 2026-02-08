@@ -261,6 +261,11 @@ fun NoteListScreen(
                         is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> NoteCategoryFilter.KeePassDatabase(selection.databaseId)
                         is UnifiedCategoryFilterSelection.KeePassGroupFilter -> NoteCategoryFilter.KeePassGroupFilter(selection.databaseId, selection.groupPath)
                     }
+                    when (selection) {
+                        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> viewModel.syncKeePassNotes(selection.databaseId)
+                        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> viewModel.syncKeePassNotes(selection.databaseId)
+                        else -> Unit
+                    }
                     isCategorySheetVisible = false
                 },
                 categories = categories,

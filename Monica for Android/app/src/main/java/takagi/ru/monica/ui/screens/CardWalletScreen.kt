@@ -69,6 +69,11 @@ fun CardWalletScreen(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 2 })
     val coroutineScope = rememberCoroutineScope()
 
+    LaunchedEffect(Unit) {
+        bankCardViewModel.syncAllKeePassCards()
+        documentViewModel.syncAllKeePassDocuments()
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         // M3E 风格的顶部标题栏 (Header)
         // 包含左侧的大标题和右侧的胶囊形切换器

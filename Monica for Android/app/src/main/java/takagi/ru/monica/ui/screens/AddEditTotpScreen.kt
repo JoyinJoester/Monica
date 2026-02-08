@@ -59,10 +59,11 @@ fun AddEditTotpScreen(
     initialNotes: String,
     initialCategoryId: Long? = null,
     initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null,
     categories: List<Category> = emptyList(),
     passwordViewModel: PasswordViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
-    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?, bitwardenVaultId: Long?) -> Unit,
+    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?, bitwardenVaultId: Long?, bitwardenFolderId: String?) -> Unit,
     onNavigateBack: () -> Unit,
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
@@ -89,6 +90,7 @@ fun AddEditTotpScreen(
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
     val context = LocalContext.current
     var bitwardenVaultId by rememberSaveable { mutableStateOf(initialBitwardenVaultId) }
+    var bitwardenFolderId by rememberSaveable { mutableStateOf(initialBitwardenFolderId) }
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
 
@@ -150,7 +152,7 @@ fun AddEditTotpScreen(
             categoryId = selectedCategoryId,
             keepassDatabaseId = keepassDatabaseId
         )
-        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, bitwardenVaultId)
+        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId)
     }
     
     Scaffold(
@@ -213,7 +215,10 @@ fun AddEditTotpScreen(
                     selectedKeePassDatabaseId = keepassDatabaseId,
                     onKeePassDatabaseSelected = {
                         keepassDatabaseId = it
-                        if (it != null) bitwardenVaultId = null
+                        if (it != null) {
+                            bitwardenVaultId = null
+                            bitwardenFolderId = null
+                        }
                     },
                     bitwardenVaults = bitwardenVaults,
                     selectedBitwardenVaultId = bitwardenVaultId,
@@ -223,7 +228,12 @@ fun AddEditTotpScreen(
                     },
                     categories = categories,
                     selectedCategoryId = selectedCategoryId,
-                    onCategorySelected = { selectedCategoryId = it }
+                    onCategorySelected = { selectedCategoryId = it },
+                    selectedBitwardenFolderId = bitwardenFolderId,
+                    onBitwardenFolderSelected = { folderId ->
+                        bitwardenFolderId = folderId
+                        if (bitwardenVaultId != null) keepassDatabaseId = null
+                    }
                 )
             }
 

@@ -17,9 +17,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import takagi.ru.monica.data.KeePassStorageLocation
+import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.security.SecurityManager
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -43,11 +45,25 @@ data class KeePassGroupInfo(
     val uuid: String?
 )
 
+data class KeePassSecureItemData(
+    val item: SecureItem,
+    val sourceMonicaId: Long?
+)
+
 class KeePassKdbxService(
     private val context: Context,
     private val dao: LocalKeePassDatabaseDao,
     private val securityManager: SecurityManager
 ) {
+    companion object {
+        private const val FIELD_MONICA_LOCAL_ID = "MonicaLocalId"
+        private const val FIELD_MONICA_ITEM_ID = "MonicaSecureItemId"
+        private const val FIELD_MONICA_ITEM_TYPE = "MonicaItemType"
+        private const val FIELD_MONICA_ITEM_DATA = "MonicaItemData"
+        private const val FIELD_MONICA_IMAGE_PATHS = "MonicaImagePaths"
+        private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
+    }
+
     // Argon2 解码内存峰值很高，串行化解码可避免并发 OOM。
     private val decodeMutex = Mutex()
 
@@ -247,6 +263,92 @@ class KeePassKdbxService(
         }
     }
 
+    suspend fun readSecureItems(
+        databaseId: Long,
+        allowedTypes: Set<ItemType>? = null
+    ): Result<List<KeePassSecureItemData>> = withContext(Dispatchers.IO) {
+        try {
+            val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val entries = mutableListOf<Pair<Entry, String?>>()
+            collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
+            val data = entries.mapNotNull { (entry, groupPath) ->
+                entryToSecureItemData(entry, databaseId, groupPath, allowedTypes)
+            }
+            Result.success(data)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun addOrUpdateSecureItems(
+        databaseId: Long,
+        items: List<SecureItem>
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            var updatedDatabase = keePassDatabase
+            var addedCount = 0
+            items.forEach { item ->
+                val updateResult = updateSecureItemInternal(updatedDatabase, item)
+                if (updateResult.second) {
+                    updatedDatabase = updateResult.first
+                } else {
+                    val newEntry = buildSecureItemEntry(item)
+                    updatedDatabase = updatedDatabase.modifyParentGroup {
+                        copy(entries = this.entries + newEntry)
+                    }
+                    addedCount++
+                }
+            }
+            writeDatabase(database, credentials, updatedDatabase)
+            Result.success(addedCount)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateSecureItem(
+        databaseId: Long,
+        item: SecureItem
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val updateResult = updateSecureItemInternal(keePassDatabase, item)
+            val updatedDatabase = if (updateResult.second) {
+                updateResult.first
+            } else {
+                val newEntry = buildSecureItemEntry(item)
+                keePassDatabase.modifyParentGroup {
+                    copy(entries = this.entries + newEntry)
+                }
+            }
+            writeDatabase(database, credentials, updatedDatabase)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteSecureItems(
+        databaseId: Long,
+        items: List<SecureItem>
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            var updatedDatabase = keePassDatabase
+            var removedCount = 0
+            items.forEach { item ->
+                val result = removeSecureItem(updatedDatabase, item)
+                updatedDatabase = result.first
+                removedCount += result.second
+            }
+            writeDatabase(database, credentials, updatedDatabase)
+            Result.success(removedCount)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun buildEntry(entry: PasswordEntry, plainPassword: String): Entry {
         return Entry(
             uuid = UUID.randomUUID(),
@@ -264,7 +366,33 @@ class KeePassKdbxService(
             "Notes" to EntryValue.Plain(entry.notes)
         )
         if (monicaId.isNotEmpty()) {
-            pairs.add("MonicaLocalId" to EntryValue.Plain(monicaId))
+            pairs.add(FIELD_MONICA_LOCAL_ID to EntryValue.Plain(monicaId))
+        }
+        return EntryFields.of(*pairs.toTypedArray())
+    }
+
+    private fun buildSecureItemEntry(item: SecureItem): Entry {
+        return Entry(
+            uuid = UUID.randomUUID(),
+            fields = buildSecureItemFields(item)
+        )
+    }
+
+    private fun buildSecureItemFields(item: SecureItem): EntryFields {
+        val monicaId = if (item.id > 0) item.id.toString() else ""
+        val pairs = mutableListOf<Pair<String, EntryValue>>(
+            "Title" to EntryValue.Plain(item.title),
+            "UserName" to EntryValue.Plain(""),
+            "Password" to EntryValue.Encrypted(EncryptedValue.fromString("")),
+            "URL" to EntryValue.Plain(""),
+            "Notes" to EntryValue.Plain(item.notes),
+            FIELD_MONICA_ITEM_TYPE to EntryValue.Plain(item.itemType.name),
+            FIELD_MONICA_ITEM_DATA to EntryValue.Encrypted(EncryptedValue.fromString(item.itemData)),
+            FIELD_MONICA_IMAGE_PATHS to EntryValue.Plain(item.imagePaths),
+            FIELD_MONICA_IS_FAVORITE to EntryValue.Plain(item.isFavorite.toString())
+        )
+        if (monicaId.isNotEmpty()) {
+            pairs.add(FIELD_MONICA_ITEM_ID to EntryValue.Plain(monicaId))
         }
         return EntryFields.of(*pairs.toTypedArray())
     }
@@ -275,7 +403,7 @@ class KeePassKdbxService(
         plainPassword: String
     ): Pair<KeePassDatabase, Boolean> {
         val matcher: (Entry) -> Boolean = { existing ->
-            val monicaId = getFieldValue(existing, "MonicaLocalId").toLongOrNull()
+            val monicaId = getFieldValue(existing, FIELD_MONICA_LOCAL_ID).toLongOrNull()
             if (monicaId != null && monicaId == entry.id) {
                 true
             } else {
@@ -294,16 +422,61 @@ class KeePassKdbxService(
         return updatedDatabase to result.second
     }
 
+    private fun updateSecureItemInternal(
+        keePassDatabase: KeePassDatabase,
+        item: SecureItem
+    ): Pair<KeePassDatabase, Boolean> {
+        val matcher: (Entry) -> Boolean = { existing ->
+            val monicaId = getFieldValue(existing, FIELD_MONICA_ITEM_ID).toLongOrNull()
+            if (monicaId != null && item.id > 0) {
+                monicaId == item.id
+            } else {
+                matchSecureItemByKey(existing, item)
+            }
+        }
+        val updater: (Entry) -> Entry = { existing ->
+            existing.copy(fields = buildSecureItemFields(item))
+        }
+        val result = updateEntryInGroup(keePassDatabase.content.group, matcher, updater)
+        val updatedDatabase = if (result.second) {
+            keePassDatabase.modifyParentGroup { result.first }
+        } else {
+            keePassDatabase
+        }
+        return updatedDatabase to result.second
+    }
+
     private fun removeEntry(
         keePassDatabase: KeePassDatabase,
         entry: PasswordEntry
     ): Pair<KeePassDatabase, Int> {
         val matcher: (Entry) -> Boolean = { existing ->
-            val monicaId = getFieldValue(existing, "MonicaLocalId").toLongOrNull()
+            val monicaId = getFieldValue(existing, FIELD_MONICA_LOCAL_ID).toLongOrNull()
             if (monicaId != null && entry.id > 0) {
                 monicaId == entry.id
             } else {
                 matchByKey(existing, entry)
+            }
+        }
+        val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
+        val updatedDatabase = if (result.second > 0) {
+            keePassDatabase.modifyParentGroup { result.first }
+        } else {
+            keePassDatabase
+        }
+        return updatedDatabase to result.second
+    }
+
+    private fun removeSecureItem(
+        keePassDatabase: KeePassDatabase,
+        item: SecureItem
+    ): Pair<KeePassDatabase, Int> {
+        val matcher: (Entry) -> Boolean = { existing ->
+            val monicaId = getFieldValue(existing, FIELD_MONICA_ITEM_ID).toLongOrNull()
+            if (monicaId != null && item.id > 0) {
+                monicaId == item.id
+            } else {
+                matchSecureItemByKey(existing, item)
             }
         }
         val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
@@ -362,6 +535,13 @@ class KeePassKdbxService(
             url.equals(target.website, true)
     }
 
+    private fun matchSecureItemByKey(entry: Entry, target: SecureItem): Boolean {
+        val title = getFieldValue(entry, "Title")
+        val itemType = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE)
+        return title.equals(target.title, true) &&
+            itemType.equals(target.itemType.name, true)
+    }
+
     private fun entryToData(entry: Entry, groupPath: String?): KeePassEntryData? {
         val title = getFieldValue(entry, "Title")
         val username = getFieldValue(entry, "UserName")
@@ -371,7 +551,7 @@ class KeePassKdbxService(
         if (title.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty()) {
             return null
         }
-        val monicaId = getFieldValue(entry, "MonicaLocalId").toLongOrNull()
+        val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
         return KeePassEntryData(
             title = title,
             username = username,
@@ -380,6 +560,45 @@ class KeePassKdbxService(
             notes = notes,
             monicaLocalId = monicaId,
             groupPath = groupPath
+        )
+    }
+
+    private fun entryToSecureItemData(
+        entry: Entry,
+        databaseId: Long,
+        groupPath: String?,
+        allowedTypes: Set<ItemType>?
+    ): KeePassSecureItemData? {
+        val typeRaw = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE)
+        if (typeRaw.isBlank()) return null
+        val itemType = runCatching { ItemType.valueOf(typeRaw) }.getOrNull() ?: return null
+        if (allowedTypes != null && itemType !in allowedTypes) return null
+
+        val itemData = getFieldValue(entry, FIELD_MONICA_ITEM_DATA)
+        if (itemData.isBlank()) return null
+
+        val title = getFieldValue(entry, "Title")
+        val notes = getFieldValue(entry, "Notes")
+        val imagePaths = getFieldValue(entry, FIELD_MONICA_IMAGE_PATHS)
+        val isFavorite = getFieldValue(entry, FIELD_MONICA_IS_FAVORITE).toBoolean()
+        val sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
+        val now = java.util.Date()
+
+        return KeePassSecureItemData(
+            item = SecureItem(
+                id = 0,
+                itemType = itemType,
+                title = title.ifBlank { "Untitled" },
+                notes = notes,
+                isFavorite = isFavorite,
+                createdAt = now,
+                updatedAt = now,
+                itemData = itemData,
+                imagePaths = imagePaths,
+                keepassDatabaseId = databaseId,
+                keepassGroupPath = groupPath
+            ),
+            sourceMonicaId = sourceMonicaId
         )
     }
 

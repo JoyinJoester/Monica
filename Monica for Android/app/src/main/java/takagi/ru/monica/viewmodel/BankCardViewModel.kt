@@ -1,24 +1,92 @@
 package takagi.ru.monica.viewmodel
 
+import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.CardType
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
 
 class BankCardViewModel(
-    private val repository: SecureItemRepository
+    private val repository: SecureItemRepository,
+    context: Context? = null,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
+    securityManager: SecurityManager? = null
 ) : ViewModel() {
+
+    private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    } else {
+        null
+    }
+
+    fun syncAllKeePassCards() {
+        viewModelScope.launch {
+            val dao = localKeePassDatabaseDao ?: return@launch
+            val dbs = withContext(Dispatchers.IO) { dao.getAllDatabasesSync() }
+            dbs.forEach { syncKeePassCards(it.id) }
+        }
+    }
+
+    fun syncKeePassCards(databaseId: Long) {
+        viewModelScope.launch {
+            val snapshots = keepassService
+                ?.readSecureItems(databaseId, setOf(ItemType.BANK_CARD))
+                ?.getOrNull()
+                ?: return@launch
+
+            val existingCards = repository.getItemsByType(ItemType.BANK_CARD).first()
+            snapshots.forEach { snapshot ->
+                val incoming = snapshot.item
+                val existingBySource = snapshot.sourceMonicaId
+                    ?.takeIf { it > 0 }
+                    ?.let { sourceId -> repository.getItemById(sourceId) }
+                    ?.takeIf { it.itemType == ItemType.BANK_CARD }
+
+                val existing = existingBySource ?: existingCards.firstOrNull {
+                    it.itemType == ItemType.BANK_CARD &&
+                        it.keepassDatabaseId == databaseId &&
+                        it.keepassGroupPath == incoming.keepassGroupPath &&
+                        it.title == incoming.title
+                }
+
+                if (existing == null) {
+                    repository.insertItem(incoming)
+                } else {
+                    repository.updateItem(
+                        existing.copy(
+                            title = incoming.title,
+                            notes = incoming.notes,
+                            itemData = incoming.itemData,
+                            isFavorite = incoming.isFavorite,
+                            imagePaths = incoming.imagePaths,
+                            keepassDatabaseId = incoming.keepassDatabaseId,
+                            keepassGroupPath = incoming.keepassGroupPath,
+                            isDeleted = false,
+                            deletedAt = null,
+                            updatedAt = Date()
+                        )
+                    )
+                }
+            }
+        }
+    }
     
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -64,7 +132,8 @@ class BankCardViewModel(
         imagePaths: String = "",
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
-        bitwardenVaultId: Long? = null
+        bitwardenVaultId: Long? = null,
+        bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
             val item = SecureItem(
@@ -77,12 +146,19 @@ class BankCardViewModel(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                 createdAt = Date(),
                 updatedAt = Date(),
                 imagePaths = imagePaths
             )
             val newId = repository.insertItem(item)
+            if (keepassDatabaseId != null) {
+                val syncResult = keepassService?.updateSecureItem(keepassDatabaseId, item.copy(id = newId))
+                if (syncResult?.isFailure == true) {
+                    Log.e("BankCardViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
+                }
+            }
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -103,7 +179,8 @@ class BankCardViewModel(
         imagePaths: String = "",
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
-        bitwardenVaultId: Long? = null
+        bitwardenVaultId: Long? = null,
+        bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { existingItem ->
@@ -139,6 +216,7 @@ class BankCardViewModel(
                     categoryId = categoryId,
                     keepassDatabaseId = keepassDatabaseId,
                     bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId,
                     bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
                     syncStatus = if (bitwardenVaultId != null) {
                         if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
@@ -149,6 +227,20 @@ class BankCardViewModel(
                     imagePaths = imagePaths
                 )
                 repository.updateItem(updatedItem)
+                val oldKeepassId = existingItem.keepassDatabaseId
+                val newKeepassId = updatedItem.keepassDatabaseId
+                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(existingItem))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("BankCardViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
+                if (newKeepassId != null) {
+                    val updateResult = keepassService?.updateSecureItem(newKeepassId, updatedItem)
+                    if (updateResult?.isFailure == true) {
+                        Log.e("BankCardViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                    }
+                }
                 
                 // 记录更新操作 - 始终记录，即使没有检测到字段变更
                 OperationLogger.logUpdate(
@@ -166,6 +258,12 @@ class BankCardViewModel(
     fun deleteCard(id: Long, softDelete: Boolean = true) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { item ->
+                if (item.keepassDatabaseId != null) {
+                    val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("BankCardViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
                 if (softDelete) {
                     // 软删除：移动到回收站
                     repository.softDeleteItem(item)

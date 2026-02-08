@@ -33,10 +33,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -115,6 +112,7 @@ fun AddEditNoteScreen(
     var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var isSaving by rememberSaveable { mutableStateOf(false) }
     var createdAt by remember { mutableStateOf(java.util.Date()) }
     var currentNote by remember { mutableStateOf<SecureItem?>(null) }
@@ -123,7 +121,6 @@ fun AddEditNoteScreen(
     var showPasswordDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
-    var categoryExpanded by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val imageManager = remember { ImageManager(context) }
@@ -135,10 +132,6 @@ fun AddEditNoteScreen(
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
-    val selectedCategoryName = remember(selectedCategoryId, categories) {
-        selectedCategoryId?.let { id -> categories.find { it.id == id }?.name } ?: context.getString(R.string.category_none)
-    }
-
     LaunchedEffect(Unit) {
         bitwardenVaults = bitwardenRepository.getAllVaults()
     }
@@ -159,6 +152,7 @@ fun AddEditNoteScreen(
             selectedCategoryId = it.categoryId
             keepassDatabaseId = it.keepassDatabaseId
             bitwardenVaultId = it.bitwardenVaultId
+            bitwardenFolderId = it.bitwardenFolderId
             noteImageFileName = try {
                 if (it.imagePaths.isNotBlank()) {
                     val paths = Json.decodeFromString<List<String>>(it.imagePaths)
@@ -234,7 +228,8 @@ fun AddEditNoteScreen(
                 categoryId = selectedCategoryId,
                 imagePaths = imagePathsJson,
                 keepassDatabaseId = keepassDatabaseId,
-                bitwardenVaultId = bitwardenVaultId
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
             )
         } else {
             viewModel.addNote(
@@ -244,7 +239,8 @@ fun AddEditNoteScreen(
                 categoryId = selectedCategoryId,
                 imagePaths = imagePathsJson,
                 keepassDatabaseId = keepassDatabaseId,
-                bitwardenVaultId = bitwardenVaultId
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
             )
         }
         onNavigateBack()
@@ -339,7 +335,10 @@ fun AddEditNoteScreen(
                 selectedKeePassDatabaseId = keepassDatabaseId,
                 onKeePassDatabaseSelected = {
                     keepassDatabaseId = it
-                    if (it != null) bitwardenVaultId = null
+                    if (it != null) {
+                        bitwardenVaultId = null
+                        bitwardenFolderId = null
+                    }
                 },
                 bitwardenVaults = bitwardenVaults,
                 selectedBitwardenVaultId = bitwardenVaultId,
@@ -349,7 +348,12 @@ fun AddEditNoteScreen(
                 },
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
-                onCategorySelected = { selectedCategoryId = it }
+                onCategorySelected = { selectedCategoryId = it },
+                selectedBitwardenFolderId = bitwardenFolderId,
+                onBitwardenFolderSelected = { folderId ->
+                    bitwardenFolderId = folderId
+                    if (bitwardenVaultId != null) keepassDatabaseId = null
+                }
             )
 
             Surface(
@@ -376,63 +380,6 @@ fun AddEditNoteScreen(
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
                     )
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                tonalElevation = 1.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.move_to_category),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    ExposedDropdownMenuBox(
-                        expanded = categoryExpanded,
-                        onExpandedChange = { categoryExpanded = !categoryExpanded }
-                    ) {
-                        OutlinedTextField(
-                            value = selectedCategoryName,
-                            onValueChange = {},
-                            readOnly = true,
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded)
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        ExposedDropdownMenu(
-                            expanded = categoryExpanded,
-                            onDismissRequest = { categoryExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.category_none)) },
-                                onClick = {
-                                    selectedCategoryId = null
-                                    categoryExpanded = false
-                                }
-                            )
-                            categories.forEach { category ->
-                                DropdownMenuItem(
-                                    text = { Text(category.name) },
-                                    onClick = {
-                                        selectedCategoryId = category.id
-                                        categoryExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
             }
 

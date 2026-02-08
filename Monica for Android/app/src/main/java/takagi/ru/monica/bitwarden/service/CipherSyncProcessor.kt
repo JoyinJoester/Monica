@@ -1,12 +1,20 @@
 package takagi.ru.monica.bitwarden.service
 
 import android.content.Context
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.mapper.*
 import takagi.ru.monica.bitwarden.sync.SyncItemType
 import takagi.ru.monica.data.*
+import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardType
+import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.security.SecurityManager
 import java.util.Date
@@ -32,6 +40,10 @@ class CipherSyncProcessor(
     private val secureItemDao = database.secureItemDao()
     private val passkeyDao = database.passkeyDao()
     private val securityManager = SecurityManager(context)
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     
     /**
      * 处理从服务器同步的 Cipher
@@ -175,14 +187,12 @@ class CipherSyncProcessor(
         val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
         
         // 构建 TOTP 数据
-        val totpData = TotpItemData(
+        val totpData = TotpData(
             secret = totpSecret,
             issuer = name,
-            account = account
+            accountName = account
         )
-        val itemData = kotlinx.serialization.json.Json.encodeToString(
-            TotpItemData.serializer(), totpData
-        )
+        val itemData = json.encodeToString(totpData)
         
         if (existing == null) {
             val newItem = SecureItem(
@@ -239,16 +249,14 @@ class CipherSyncProcessor(
         val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
         
         // 构建笔记数据
-        val noteData = NoteItemData(content = notes)
-        val itemData = kotlinx.serialization.json.Json.encodeToString(
-            NoteItemData.serializer(), noteData
-        )
+        val noteData = NoteData(content = notes)
+        val itemData = json.encodeToString(noteData)
         
         if (existing == null) {
             val newItem = SecureItem(
                 itemType = ItemType.NOTE,
                 title = name,
-                notes = "",  // 内容在 itemData 中
+                notes = notes,
                 isFavorite = cipher.favorite == true,
                 createdAt = Date(),
                 updatedAt = Date(),
@@ -271,6 +279,7 @@ class CipherSyncProcessor(
             
             val updated = existing.copy(
                 title = name,
+                notes = notes,
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
                 updatedAt = Date(),
@@ -308,17 +317,16 @@ class CipherSyncProcessor(
         val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
         
         // 构建银行卡数据（使用 CardMapper.kt 中的 CardItemData 结构）
-        val cardData = CardItemData(
+        val cardData = BankCardData(
+            cardNumber = cardNumber,
             cardholderName = cardHolder,
-            number = cardNumber,
-            expMonth = expMonth,
-            expYear = expYear,
+            expiryMonth = expMonth,
+            expiryYear = expYear,
             cvv = cvv,
-            brand = brand
+            bankName = brand,
+            cardType = CardType.CREDIT
         )
-        val itemData = kotlinx.serialization.json.Json.encodeToString(
-            CardItemData.serializer(), cardData
-        )
+        val itemData = json.encodeToString(cardData)
         
         if (existing == null) {
             val newItem = SecureItem(
@@ -386,16 +394,14 @@ class CipherSyncProcessor(
         val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
         
         // 构建证件数据（使用 IdentityMapper.kt 中的 DocumentItemData 结构）
-        val docData = DocumentItemData(
+        val docData = DocumentData(
             documentType = guessDocumentType(identity),
             documentNumber = idNumber,
-            firstName = firstName,
-            lastName = lastName,
-            issuingAuthority = decryptString(identity.company, symmetricKey) ?: ""
+            fullName = fullName,
+            issuedBy = decryptString(identity.company, symmetricKey) ?: "",
+            nationality = decryptString(identity.country, symmetricKey) ?: ""
         )
-        val itemData = kotlinx.serialization.json.Json.encodeToString(
-            DocumentItemData.serializer(), docData
-        )
+        val itemData = json.encodeToString(docData)
         
         if (existing == null) {
             val newItem = SecureItem(
@@ -501,12 +507,12 @@ class CipherSyncProcessor(
         }
     }
     
-    private fun guessDocumentType(identity: CipherIdentityApiData): String {
+    private fun guessDocumentType(identity: CipherIdentityApiData): DocumentType {
         return when {
-            identity.passportNumber != null -> "PASSPORT"
-            identity.licenseNumber != null -> "DRIVER_LICENSE"
-            identity.ssn != null -> "ID_CARD"
-            else -> "OTHER"
+            !identity.passportNumber.isNullOrBlank() -> DocumentType.PASSPORT
+            !identity.licenseNumber.isNullOrBlank() -> DocumentType.DRIVER_LICENSE
+            !identity.ssn.isNullOrBlank() -> DocumentType.ID_CARD
+            else -> DocumentType.OTHER
         }
     }
 }

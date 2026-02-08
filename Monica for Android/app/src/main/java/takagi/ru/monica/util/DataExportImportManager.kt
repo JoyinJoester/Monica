@@ -36,7 +36,11 @@ class DataExportImportManager(private val context: Context) {
         val imagePaths: String,
         val createdAt: Long,
         val updatedAt: Long,
-        val categoryId: Long? = null
+        val categoryId: Long? = null,
+        val keepassDatabaseId: Long? = null,
+        val keepassGroupPath: String? = null,
+        val bitwardenVaultId: Long? = null,
+        val bitwardenFolderId: String? = null
     )
 
     companion object {
@@ -47,7 +51,8 @@ class DataExportImportManager(private val context: Context) {
         // CSV 列标题
         private val CSV_HEADERS = arrayOf(
             "ID", "Type", "Title", "Data", "Notes", "IsFavorite", 
-            "ImagePaths", "CreatedAt", "UpdatedAt", "CategoryId"
+            "ImagePaths", "CreatedAt", "UpdatedAt", "CategoryId",
+            "KeePassDatabaseId", "KeePassGroupPath", "BitwardenVaultId", "BitwardenFolderId"
         )
     }
 
@@ -86,7 +91,11 @@ class DataExportImportManager(private val context: Context) {
                                 escapeCsvField(item.imagePaths),
                                 item.createdAt.time.toString(),
                                 item.updatedAt.time.toString(),
-                                item.categoryId?.toString() ?: ""
+                                item.categoryId?.toString() ?: "",
+                                item.keepassDatabaseId?.toString() ?: "",
+                                escapeCsvField(item.keepassGroupPath ?: ""),
+                                item.bitwardenVaultId?.toString() ?: "",
+                                escapeCsvField(item.bitwardenFolderId ?: "")
                             )
                             writer.write(row.joinToString(CSV_SEPARATOR))
                             writer.newLine()
@@ -237,7 +246,11 @@ class DataExportImportManager(private val context: Context) {
             imagePaths = fields[6],
             createdAt = fields[7].toLongOrNull() ?: System.currentTimeMillis(),
             updatedAt = fields[8].toLongOrNull() ?: System.currentTimeMillis(),
-            categoryId = fields.getOrNull(9)?.toLongOrNull()
+            categoryId = fields.getOrNull(9)?.toLongOrNull(),
+            keepassDatabaseId = fields.getOrNull(10)?.toLongOrNull(),
+            keepassGroupPath = fields.getOrNull(11)?.takeIf { it.isNotBlank() },
+            bitwardenVaultId = fields.getOrNull(12)?.toLongOrNull(),
+            bitwardenFolderId = fields.getOrNull(13)?.takeIf { it.isNotBlank() }
         )
     }
     
@@ -934,7 +947,12 @@ class DataExportImportManager(private val context: Context) {
                                 item.isFavorite.toString(),
                                 escapeCsvField(item.imagePaths),
                                 item.createdAt.time.toString(),
-                                item.updatedAt.time.toString()
+                                item.updatedAt.time.toString(),
+                                item.categoryId?.toString() ?: "",
+                                item.keepassDatabaseId?.toString() ?: "",
+                                escapeCsvField(item.keepassGroupPath ?: ""),
+                                item.bitwardenVaultId?.toString() ?: "",
+                                escapeCsvField(item.bitwardenFolderId ?: "")
                             )
                             writer.write(row.joinToString(CSV_SEPARATOR))
                             writer.newLine()
@@ -979,7 +997,12 @@ class DataExportImportManager(private val context: Context) {
                                 item.isFavorite.toString(),
                                 escapeCsvField(item.imagePaths),
                                 item.createdAt.time.toString(),
-                                item.updatedAt.time.toString()
+                                item.updatedAt.time.toString(),
+                                item.categoryId?.toString() ?: "",
+                                item.keepassDatabaseId?.toString() ?: "",
+                                escapeCsvField(item.keepassGroupPath ?: ""),
+                                item.bitwardenVaultId?.toString() ?: "",
+                                escapeCsvField(item.bitwardenFolderId ?: "")
                             )
                             writer.write(row.joinToString(CSV_SEPARATOR))
                             writer.newLine()

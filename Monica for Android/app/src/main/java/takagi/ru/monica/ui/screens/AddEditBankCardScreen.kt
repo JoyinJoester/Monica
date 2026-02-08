@@ -70,6 +70,7 @@ fun AddEditBankCardScreen(
     var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
@@ -90,6 +91,7 @@ fun AddEditBankCardScreen(
                 selectedCategoryId = item.categoryId
                 keepassDatabaseId = item.keepassDatabaseId
                 bitwardenVaultId = item.bitwardenVaultId
+                bitwardenFolderId = item.bitwardenFolderId
                 
                 // 解析图片路径
                 try {
@@ -166,7 +168,8 @@ fun AddEditBankCardScreen(
                 imagePaths = imagePathsJson,
                 categoryId = selectedCategoryId,
                 keepassDatabaseId = keepassDatabaseId,
-                bitwardenVaultId = bitwardenVaultId
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
             )
         } else {
             viewModel.updateCard(
@@ -178,7 +181,8 @@ fun AddEditBankCardScreen(
                 imagePaths = imagePathsJson,
                 categoryId = selectedCategoryId,
                 keepassDatabaseId = keepassDatabaseId,
-                bitwardenVaultId = bitwardenVaultId
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
             )
         }
         onNavigateBack()
@@ -248,7 +252,10 @@ fun AddEditBankCardScreen(
                 selectedKeePassDatabaseId = keepassDatabaseId,
                 onKeePassDatabaseSelected = {
                     keepassDatabaseId = it
-                    if (it != null) bitwardenVaultId = null
+                    if (it != null) {
+                        bitwardenVaultId = null
+                        bitwardenFolderId = null
+                    }
                 },
                 bitwardenVaults = bitwardenVaults,
                 selectedBitwardenVaultId = bitwardenVaultId,
@@ -258,7 +265,12 @@ fun AddEditBankCardScreen(
                 },
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
-                onCategorySelected = { selectedCategoryId = it }
+                onCategorySelected = { selectedCategoryId = it },
+                selectedBitwardenFolderId = bitwardenFolderId,
+                onBitwardenFolderSelected = { folderId ->
+                    bitwardenFolderId = folderId
+                    if (bitwardenVaultId != null) keepassDatabaseId = null
+                }
             )
 
             // Basic Information

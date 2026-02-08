@@ -63,7 +63,12 @@ class DataExportImportViewModel(
                     isFavorite = entry.isFavorite,
                     imagePaths = "", // PasswordEntry没有iconPath字段
                     createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt
+                    updatedAt = entry.updatedAt,
+                    categoryId = entry.categoryId,
+                    keepassDatabaseId = entry.keepassDatabaseId,
+                    keepassGroupPath = entry.keepassGroupPath,
+                    bitwardenVaultId = entry.bitwardenVaultId,
+                    bitwardenFolderId = entry.bitwardenFolderId
                 )
             }
             
@@ -125,9 +130,14 @@ class DataExportImportViewModel(
                                     notes = exportItem.notes,
                                     email = passwordData["email"] ?: "",
                                     phone = passwordData["phone"] ?: "",
+                                    categoryId = exportItem.categoryId,
                                     isFavorite = exportItem.isFavorite,
                                     createdAt = Date(exportItem.createdAt),
-                                    updatedAt = Date(exportItem.updatedAt)
+                                    updatedAt = Date(exportItem.updatedAt),
+                                    keepassDatabaseId = exportItem.keepassDatabaseId,
+                                    keepassGroupPath = exportItem.keepassGroupPath,
+                                    bitwardenVaultId = exportItem.bitwardenVaultId,
+                                    bitwardenFolderId = exportItem.bitwardenFolderId
                                 )
                                 val newId = passwordRepository.insertPasswordEntry(passwordEntry)
                                 if (originalId > 0 && newId > 0) {
@@ -195,7 +205,12 @@ class DataExportImportViewModel(
                                     isFavorite = exportItem.isFavorite,
                                     imagePaths = exportItem.imagePaths,
                                     createdAt = Date(exportItem.createdAt),
-                                    updatedAt = Date(exportItem.updatedAt)
+                                    updatedAt = Date(exportItem.updatedAt),
+                                    categoryId = exportItem.categoryId,
+                                    keepassDatabaseId = exportItem.keepassDatabaseId,
+                                    keepassGroupPath = exportItem.keepassGroupPath,
+                                    bitwardenVaultId = exportItem.bitwardenVaultId,
+                                    bitwardenFolderId = exportItem.bitwardenFolderId
                                 )
                                 secureItemRepository.insertItem(secureItem)
                                 android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
@@ -857,7 +872,12 @@ class DataExportImportViewModel(
                                         isFavorite = item.isFavorite,
                                         imagePaths = item.imagePaths,
                                         createdAt = Date(item.createdAt),
-                                        updatedAt = Date(item.updatedAt)
+                                        updatedAt = Date(item.updatedAt),
+                                        categoryId = item.categoryId,
+                                        keepassDatabaseId = item.keepassDatabaseId,
+                                        keepassGroupPath = item.keepassGroupPath,
+                                        bitwardenVaultId = item.bitwardenVaultId,
+                                        bitwardenFolderId = item.bitwardenFolderId
                                     )
                                     secureItemRepository.insertItem(secureItem)
                                     count++

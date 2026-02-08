@@ -1,23 +1,37 @@
 package takagi.ru.monica.viewmodel
 
+import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
 
 class NoteViewModel(
-    private val repository: SecureItemRepository
+    private val repository: SecureItemRepository,
+    context: Context? = null,
+    localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
+    securityManager: SecurityManager? = null
 ) : ViewModel() {
+
+    private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    } else {
+        null
+    }
     
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -28,6 +42,50 @@ class NoteViewModel(
     
     fun setGridLayout(isGrid: Boolean) {
         _isGridLayout.value = isGrid
+    }
+
+    fun syncKeePassNotes(databaseId: Long) {
+        viewModelScope.launch {
+            val snapshots = keepassService
+                ?.readSecureItems(databaseId, setOf(ItemType.NOTE))
+                ?.getOrNull()
+                ?: return@launch
+
+            val existingNotes = repository.getItemsByType(ItemType.NOTE).first()
+            snapshots.forEach { snapshot ->
+                val incoming = snapshot.item
+                val existingBySource = snapshot.sourceMonicaId
+                    ?.takeIf { it > 0 }
+                    ?.let { sourceId -> repository.getItemById(sourceId) }
+                    ?.takeIf { it.itemType == ItemType.NOTE }
+
+                val existing = existingBySource ?: existingNotes.firstOrNull {
+                    it.itemType == ItemType.NOTE &&
+                        it.keepassDatabaseId == databaseId &&
+                        it.keepassGroupPath == incoming.keepassGroupPath &&
+                        it.title == incoming.title
+                }
+
+                if (existing == null) {
+                    repository.insertItem(incoming)
+                } else {
+                    repository.updateItem(
+                        existing.copy(
+                            title = incoming.title,
+                            notes = incoming.notes,
+                            itemData = incoming.itemData,
+                            isFavorite = incoming.isFavorite,
+                            imagePaths = incoming.imagePaths,
+                            keepassDatabaseId = incoming.keepassDatabaseId,
+                            keepassGroupPath = incoming.keepassGroupPath,
+                            isDeleted = false,
+                            deletedAt = null,
+                            updatedAt = Date()
+                        )
+                    )
+                }
+            }
+        }
     }
     
     // 获取所有笔记
@@ -73,7 +131,8 @@ class NoteViewModel(
         imagePaths: String = "",
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
-        bitwardenVaultId: Long? = null
+        bitwardenVaultId: Long? = null,
+        bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
             val noteData = NoteData(
@@ -105,11 +164,18 @@ class NoteViewModel(
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
                 bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                 createdAt = Date(),
                 updatedAt = Date()
             )
             val newId = repository.insertItem(item)
+            if (keepassDatabaseId != null) {
+                val syncResult = keepassService?.updateSecureItem(keepassDatabaseId, item.copy(id = newId))
+                if (syncResult?.isFailure == true) {
+                    Log.e("NoteViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
+                }
+            }
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -132,7 +198,8 @@ class NoteViewModel(
         imagePaths: String = "",
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
-        bitwardenVaultId: Long? = null
+        bitwardenVaultId: Long? = null,
+        bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
             // 获取旧笔记以检测变化
@@ -168,7 +235,7 @@ class NoteViewModel(
                 keepassGroupPath = keepassGroupPath ?: existingItem?.keepassGroupPath,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenCipherId = existingItem?.bitwardenCipherId,
-                bitwardenFolderId = existingItem?.bitwardenFolderId,
+                bitwardenFolderId = bitwardenFolderId,
                 bitwardenRevisionDate = existingItem?.bitwardenRevisionDate,
                 bitwardenLocalModified = existingItem?.bitwardenCipherId != null && bitwardenVaultId != null,
                 syncStatus = if (bitwardenVaultId != null) {
@@ -180,6 +247,22 @@ class NoteViewModel(
                 updatedAt = Date()
             )
             repository.updateItem(item)
+            val oldKeepassId = existingItem?.keepassDatabaseId
+            val newKeepassId = item.keepassDatabaseId
+            if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                existingItem?.let { oldItem ->
+                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(oldItem))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
+            }
+            if (newKeepassId != null) {
+                val updateResult = keepassService?.updateSecureItem(newKeepassId, item)
+                if (updateResult?.isFailure == true) {
+                    Log.e("NoteViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                }
+            }
             
             // 记录更新操作 - 始终记录，即使没有检测到字段变更
             val changes = mutableListOf<FieldChange>()
@@ -207,6 +290,12 @@ class NoteViewModel(
     fun deleteNote(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
             if (softDelete) {
+                if (item.keepassDatabaseId != null) {
+                    val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
                 // 软删除：移动到回收站
                 repository.softDeleteItem(item)
                 // 记录移入回收站操作
@@ -234,6 +323,12 @@ class NoteViewModel(
         viewModelScope.launch {
             items.forEach { item ->
                 if (softDelete) {
+                    if (item.keepassDatabaseId != null) {
+                        val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                        if (deleteResult?.isFailure == true) {
+                            Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        }
+                    }
                     // 软删除：移动到回收站
                     repository.softDeleteItem(item)
                     OperationLogger.logDelete(

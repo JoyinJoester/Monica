@@ -64,6 +64,10 @@ private data class PasswordBackupEntry(
     val categoryName: String? = null,  // ✅ 添加分类名称用于跨设备同步
     val email: String = "",
     val phone: String = "",
+    val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val authenticatorKey: String = "",  // ✅ 直接存储验证器密钥
@@ -84,6 +88,10 @@ private data class NoteBackupEntry(
     val itemData: String = "",
     val isFavorite: Boolean = false,
     val imagePaths: String = "",
+    val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val categoryName: String? = null
@@ -763,6 +771,10 @@ class WebDavHelper(
                                 categoryName = categoryName,
                                 email = password.email,
                                 phone = password.phone,
+                                keepassDatabaseId = password.keepassDatabaseId,
+                                keepassGroupPath = password.keepassGroupPath,
+                                bitwardenVaultId = password.bitwardenVaultId,
+                                bitwardenFolderId = password.bitwardenFolderId,
                                 createdAt = password.createdAt.time,
                                 updatedAt = password.updatedAt.time,
                                 authenticatorKey = password.authenticatorKey,  // ✅ 直接备份验证器密钥
@@ -841,6 +853,10 @@ class WebDavHelper(
                                 itemData = item.itemData,
                                 isFavorite = item.isFavorite,
                                 imagePaths = item.imagePaths,
+                                keepassDatabaseId = item.keepassDatabaseId,
+                                keepassGroupPath = item.keepassGroupPath,
+                                bitwardenVaultId = item.bitwardenVaultId,
+                                bitwardenFolderId = item.bitwardenFolderId,
                                 createdAt = item.createdAt.time,
                                 updatedAt = item.updatedAt.time,
                                 categoryName = categoryName
@@ -2459,6 +2475,10 @@ class WebDavHelper(
                 categoryId = null, // ✅ 先设为null，稍后根据categoryName解析
                 email = backup.email,
                 phone = backup.phone,
+                keepassDatabaseId = backup.keepassDatabaseId,
+                keepassGroupPath = backup.keepassGroupPath,
+                bitwardenVaultId = backup.bitwardenVaultId,
+                bitwardenFolderId = backup.bitwardenFolderId,
                 createdAt = Date(backup.createdAt),
                 updatedAt = Date(backup.updatedAt),
                 authenticatorKey = backup.authenticatorKey,  // ✅ 直接恢复验证器密钥
@@ -2497,7 +2517,11 @@ class WebDavHelper(
                 isFavorite = entry.isFavorite,
                 imagePaths = entry.imagePaths,
                 createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt
+                    updatedAt = entry.updatedAt,
+                    keepassDatabaseId = entry.keepassDatabaseId,
+                    keepassGroupPath = entry.keepassGroupPath,
+                    bitwardenVaultId = entry.bitwardenVaultId,
+                    bitwardenFolderId = entry.bitwardenFolderId
                 ),
                 entry.categoryName
             )
@@ -2577,6 +2601,11 @@ class WebDavHelper(
                 val isFavorite = fields.getOrNull(5)?.toBoolean() ?: false
                 val createdAt = fields.getOrNull(7)?.toLongOrNull()?.let { Date(it) } ?: Date()
                 val updatedAt = fields.getOrNull(8)?.toLongOrNull()?.let { Date(it) } ?: Date()
+                val categoryId = fields.getOrNull(9)?.toLongOrNull()
+                val keepassDatabaseId = fields.getOrNull(10)?.toLongOrNull()
+                val keepassGroupPath = fields.getOrNull(11)?.takeIf { it.isNotBlank() }
+                val bitwardenVaultId = fields.getOrNull(12)?.toLongOrNull()
+                val bitwardenFolderId = fields.getOrNull(13)?.takeIf { it.isNotBlank() }
 
                 // Parse Data string (username:x;password:y;...)
                 val dataMap = parsePasswordDataString(dataStr)
@@ -2592,7 +2621,12 @@ class WebDavHelper(
                     notes = notes,
                     isFavorite = isFavorite,
                     createdAt = createdAt,
-                    updatedAt = updatedAt
+                    updatedAt = updatedAt,
+                    categoryId = categoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
                 )
             } else {
                 null

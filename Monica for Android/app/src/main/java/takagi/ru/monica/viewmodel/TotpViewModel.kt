@@ -1,18 +1,23 @@
 package takagi.ru.monica.viewmodel
 
+import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
@@ -37,8 +42,17 @@ sealed class TotpCategoryFilter {
  */
 class TotpViewModel(
     private val repository: SecureItemRepository,
-    private val passwordRepository: PasswordRepository
+    private val passwordRepository: PasswordRepository,
+    context: Context? = null,
+    localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
+    securityManager: SecurityManager? = null
 ) : ViewModel() {
+
+    private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    } else {
+        null
+    }
     
     // 搜索查询
     private val _searchQuery = MutableStateFlow("")
@@ -159,6 +173,55 @@ class TotpViewModel(
      */
     fun setCategoryFilter(filter: TotpCategoryFilter) {
         _categoryFilter.value = filter
+        when (filter) {
+            is TotpCategoryFilter.KeePassDatabase -> syncKeePassTotp(filter.databaseId)
+            is TotpCategoryFilter.KeePassGroupFilter -> syncKeePassTotp(filter.databaseId)
+            else -> Unit
+        }
+    }
+
+    private fun syncKeePassTotp(databaseId: Long) {
+        viewModelScope.launch {
+            val snapshots = keepassService
+                ?.readSecureItems(databaseId, setOf(ItemType.TOTP))
+                ?.getOrNull()
+                ?: return@launch
+
+            val existingTotp = repository.getItemsByType(ItemType.TOTP).first()
+            snapshots.forEach { snapshot ->
+                val incoming = snapshot.item
+                val existingBySource = snapshot.sourceMonicaId
+                    ?.takeIf { it > 0 }
+                    ?.let { sourceId -> repository.getItemById(sourceId) }
+                    ?.takeIf { it.itemType == ItemType.TOTP }
+
+                val existing = existingBySource ?: existingTotp.firstOrNull {
+                    it.itemType == ItemType.TOTP &&
+                        it.keepassDatabaseId == databaseId &&
+                        it.keepassGroupPath == incoming.keepassGroupPath &&
+                        it.title == incoming.title
+                }
+
+                if (existing == null) {
+                    repository.insertItem(incoming)
+                } else {
+                    repository.updateItem(
+                        existing.copy(
+                            title = incoming.title,
+                            notes = incoming.notes,
+                            itemData = incoming.itemData,
+                            isFavorite = incoming.isFavorite,
+                            imagePaths = incoming.imagePaths,
+                            keepassDatabaseId = incoming.keepassDatabaseId,
+                            keepassGroupPath = incoming.keepassGroupPath,
+                            isDeleted = false,
+                            deletedAt = null,
+                            updatedAt = Date()
+                        )
+                    )
+                }
+            }
+        }
     }
     
     /**
@@ -211,7 +274,8 @@ class TotpViewModel(
         isFavorite: Boolean = false,
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
-        bitwardenVaultId: Long? = null
+        bitwardenVaultId: Long? = null,
+        bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
             try {
@@ -243,6 +307,7 @@ class TotpViewModel(
                         categoryId = categoryId,
                         keepassDatabaseId = keepassDatabaseId,
                         bitwardenVaultId = bitwardenVaultId,
+                        bitwardenFolderId = bitwardenFolderId,
                         bitwardenLocalModified = existing.bitwardenCipherId != null && bitwardenVaultId != null,
                         syncStatus = if (bitwardenVaultId != null) {
                             if (existing.bitwardenCipherId != null) "PENDING" else existing.syncStatus
@@ -262,6 +327,7 @@ class TotpViewModel(
                         categoryId = categoryId,
                         keepassDatabaseId = keepassDatabaseId,
                         bitwardenVaultId = bitwardenVaultId,
+                        bitwardenFolderId = bitwardenFolderId,
                         syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                         createdAt = Date(),
                         updatedAt = Date(),
@@ -291,6 +357,12 @@ class TotpViewModel(
                     }
                 } else {
                     val newId = repository.insertItem(item)
+                    if (keepassDatabaseId != null) {
+                        val syncResult = keepassService?.updateSecureItem(keepassDatabaseId, item.copy(id = newId))
+                        if (syncResult?.isFailure == true) {
+                            Log.e("TotpViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
+                        }
+                    }
                     // 创建操作 - 记录日志
                     OperationLogger.logCreate(
                         itemType = OperationLogItemType.TOTP,
@@ -311,6 +383,28 @@ class TotpViewModel(
                     val previousPassword = passwordRepository.getPasswordEntryById(previousBoundId)
                     if (previousPassword?.authenticatorKey == previousSecret) {
                         passwordRepository.updateAuthenticatorKey(previousBoundId, "")
+                    }
+                }
+
+                if (id != null && id > 0) {
+                    val current = repository.getItemById(id)
+                    if (current != null) {
+                        val oldKeepassId = existingItem?.keepassDatabaseId
+                        val newKeepassId = current.keepassDatabaseId
+                        if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                            existingItem?.let { oldItem ->
+                                val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(oldItem))
+                                if (deleteResult?.isFailure == true) {
+                                    Log.e("TotpViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                                }
+                            }
+                        }
+                        if (newKeepassId != null) {
+                            val updateResult = keepassService?.updateSecureItem(newKeepassId, current)
+                            if (updateResult?.isFailure == true) {
+                                Log.e("TotpViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -361,6 +455,12 @@ class TotpViewModel(
      */
     fun deleteTotpItem(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
+            if (item.keepassDatabaseId != null) {
+                val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                if (deleteResult?.isFailure == true) {
+                    Log.e("TotpViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                }
+            }
             val totpData = try {
                 Json.decodeFromString<TotpData>(item.itemData)
             } catch (e: Exception) {

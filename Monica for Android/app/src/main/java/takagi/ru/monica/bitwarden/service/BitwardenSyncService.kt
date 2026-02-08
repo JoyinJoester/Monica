@@ -49,6 +49,7 @@ class BitwardenSyncService(
     
     // 多类型 Cipher 同步处理器
     private val cipherSyncProcessor = CipherSyncProcessor(context)
+    private val cipherUploadProcessor = CipherUploadProcessor(context, apiManager)
     
     private val json = Json {
         ignoreUnknownKeys = true
@@ -587,16 +588,13 @@ class BitwardenSyncService(
         // 查找所有需要上传的条目：有 bitwardenVaultId 但没有 bitwardenCipherId
         val entriesToUpload = passwordEntryDao.getLocalEntriesPendingUpload(vault.id)
         
-        if (entriesToUpload.isEmpty()) {
-            android.util.Log.d(TAG, "No local entries pending upload")
-            return@withContext UploadResult.Success(uploaded = 0, failed = 0)
-        }
-        
-        android.util.Log.i(TAG, "Found ${entriesToUpload.size} entries to upload")
-        
         var uploaded = 0
         var failed = 0
-        
+
+        if (entriesToUpload.isNotEmpty()) {
+            android.util.Log.i(TAG, "Found ${entriesToUpload.size} password entries to upload")
+        }
+
         for (entry in entriesToUpload) {
             try {
                 val success = uploadLocalEntry(vault, entry, accessToken, symmetricKey)
@@ -611,7 +609,20 @@ class BitwardenSyncService(
             }
         }
         
-        android.util.Log.i(TAG, "Upload complete: $uploaded uploaded, $failed failed")
+        // 同步上传 SecureItems
+        val secureResult = cipherUploadProcessor.uploadPendingSecureItems(vault, accessToken, symmetricKey)
+        uploaded += secureResult.uploaded
+        failed += secureResult.failed
+
+        // 同步上传 Passkeys（仅新增）
+        val passkeyResult = cipherUploadProcessor.uploadPendingPasskeys(vault, accessToken, symmetricKey)
+        uploaded += passkeyResult.uploaded
+        failed += passkeyResult.failed
+
+        android.util.Log.i(
+            TAG,
+            "Upload complete: $uploaded uploaded, $failed failed (password + secure items + passkeys)"
+        )
         UploadResult.Success(uploaded = uploaded, failed = failed)
     }
 
@@ -630,15 +641,12 @@ class BitwardenSyncService(
             .getEntriesWithPendingBitwardenSync(vault.id)
             .filter { !it.bitwardenCipherId.isNullOrBlank() }
 
-        if (modifiedEntries.isEmpty()) {
-            android.util.Log.d(TAG, "No modified entries pending upload")
-            return@withContext UploadResult.Success(uploaded = 0, failed = 0)
-        }
-
-        android.util.Log.i(TAG, "Found ${modifiedEntries.size} modified entries to upload")
-
         var uploaded = 0
         var failed = 0
+
+        if (modifiedEntries.isNotEmpty()) {
+            android.util.Log.i(TAG, "Found ${modifiedEntries.size} modified password entries to upload")
+        }
 
         for (entry in modifiedEntries) {
             try {
@@ -658,6 +666,11 @@ class BitwardenSyncService(
                 failed++
             }
         }
+
+        // 同步上传已修改的 SecureItems（Passkey 暂不支持修改上传）
+        val secureResult = cipherUploadProcessor.uploadModifiedSecureItems(vault, accessToken, symmetricKey)
+        uploaded += secureResult.uploaded
+        failed += secureResult.failed
 
         android.util.Log.i(TAG, "Modified upload complete: $uploaded uploaded, $failed failed")
         UploadResult.Success(uploaded = uploaded, failed = failed)
