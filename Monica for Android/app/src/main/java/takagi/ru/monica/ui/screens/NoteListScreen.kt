@@ -5,6 +5,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,7 +48,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
@@ -564,42 +571,78 @@ fun NoteListContent(
         }
     }
 
-    val isAtTop = remember(isGridLayout, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
-        if (isGridLayout) {
-            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
-        } else {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+    // NestedScrollConnection 处理下拉搜索手势
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // 如果正在向上滑动且有偏移量，先消耗偏移量
+                if (currentOffset > 0 && available.y < 0) {
+                    val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
+                    val consumed = currentOffset - newOffset
+                    currentOffset = newOffset
+                    return Offset(0f, -consumed)
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (!isSearchExpanded && available.y > 0 && canTriggerPullToSearch) {
+                    if (source == NestedScrollSource.UserInput) {
+                        val delta = available.y * 0.5f
+                        val newOffset = currentOffset + delta
+                        val oldOffset = currentOffset
+                        currentOffset = newOffset
+
+                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                            hasVibrated = true
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                vibrator?.vibrate(20)
+                            }
+                        } else if (newOffset < triggerDistance) {
+                            hasVibrated = false
+                        }
+                        return available
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (currentOffset >= triggerDistance) {
+                    onRequestExpandSearch()
+                    hasVibrated = false
+                }
+                Animatable(currentOffset).animateTo(0f) {
+                    currentOffset = value
+                }
+                return super.onPreFling(available)
+            }
         }
     }
 
-    val pullGestureModifier = Modifier
+    // 空状态下的下拉手势处理
+    val emptyStateGestureModifier = Modifier
         .offset { IntOffset(0, currentOffset.toInt()) }
-        .pointerInput(isGridLayout, isSearchExpanded, notes.size) {
+        .pointerInput(isSearchExpanded) {
             detectVerticalDragGestures(
-                onDragStart = {
-                    canTriggerPullToSearch = notes.isEmpty() || isAtTop
-                },
-                onVerticalDrag = { change, dragAmount ->
-                    if (!isSearchExpanded && canTriggerPullToSearch) {
-                        if (dragAmount > 0f) {
-                            val oldOffset = currentOffset
-                            val newOffset = currentOffset + dragAmount * 0.5f
-                            currentOffset = newOffset
-                            if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                                hasVibrated = true
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                    vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
-                                } else {
-                                    @Suppress("DEPRECATION")
-                                    vibrator?.vibrate(20)
-                                }
-                            } else if (newOffset < triggerDistance) {
-                                hasVibrated = false
+                onVerticalDrag = { _, dragAmount ->
+                    if (!isSearchExpanded && dragAmount > 0f) {
+                        val newOffset = currentOffset + dragAmount * 0.5f
+                        val oldOffset = currentOffset
+                        currentOffset = newOffset
+                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                            hasVibrated = true
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                vibrator?.vibrate(20)
                             }
-                            change.consume()
-                        } else if (currentOffset > 0f) {
-                            currentOffset = (currentOffset + dragAmount).coerceAtLeast(0f)
-                            change.consume()
+                        } else if (newOffset < triggerDistance) {
+                            hasVibrated = false
                         }
                     }
                 },
@@ -608,7 +651,6 @@ fun NoteListContent(
                         onRequestExpandSearch()
                     }
                     hasVibrated = false
-                    canTriggerPullToSearch = false
                     scope.launch {
                         Animatable(currentOffset).animateTo(0f) {
                             currentOffset = value
@@ -617,7 +659,6 @@ fun NoteListContent(
                 },
                 onDragCancel = {
                     hasVibrated = false
-                    canTriggerPullToSearch = false
                     scope.launch {
                         Animatable(currentOffset).animateTo(0f) {
                             currentOffset = value
@@ -631,7 +672,7 @@ fun NoteListContent(
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .then(pullGestureModifier),
+                .then(emptyStateGestureModifier),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -662,7 +703,15 @@ fun NoteListContent(
                 verticalItemSpacing = 12.dp,
                 modifier = modifier
                     .fillMaxSize()
-                    .then(pullGestureModifier),
+                    .offset { IntOffset(0, currentOffset.toInt()) }
+                    .nestedScroll(nestedScrollConnection)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            val isAtTop = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+                            canTriggerPullToSearch = isAtTop
+                        }
+                    },
                 state = gridState
             ) {
                 items(notes, key = { it.id }) { note ->
@@ -682,7 +731,15 @@ fun NoteListContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = modifier
                     .fillMaxSize()
-                    .then(pullGestureModifier),
+                    .offset { IntOffset(0, currentOffset.toInt()) }
+                    .nestedScroll(nestedScrollConnection)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                            canTriggerPullToSearch = isAtTop
+                        }
+                    },
                 state = listState
             ) {
                 items(notes, key = { it.id }) { note ->

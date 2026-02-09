@@ -7,6 +7,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,7 +86,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -276,65 +283,71 @@ fun SendScreen(
                         )
                     }
                     else -> {
+                        // NestedScrollConnection 处理下拉搜索手势
+                        val nestedScrollConnection = remember {
+                            object : NestedScrollConnection {
+                                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                                    if (currentOffset > 0 && available.y < 0) {
+                                        val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
+                                        val consumed = currentOffset - newOffset
+                                        currentOffset = newOffset
+                                        return Offset(0f, -consumed)
+                                    }
+                                    return Offset.Zero
+                                }
+
+                                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                                    if (!isSearchExpanded && available.y > 0 && canTriggerPullToSearch) {
+                                        if (source == NestedScrollSource.UserInput) {
+                                            val delta = available.y * 0.5f
+                                            val newOffset = currentOffset + delta
+                                            val oldOffset = currentOffset
+                                            currentOffset = newOffset
+
+                                            if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                                                hasVibrated = true
+                                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                                    vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
+                                                } else {
+                                                    @Suppress("DEPRECATION")
+                                                    vibrator?.vibrate(20)
+                                                }
+                                            } else if (newOffset < triggerDistance) {
+                                                hasVibrated = false
+                                            }
+                                            return available
+                                        }
+                                    }
+                                    return Offset.Zero
+                                }
+
+                                override suspend fun onPreFling(available: Velocity): Velocity {
+                                    if (currentOffset >= triggerDistance) {
+                                        isSearchExpanded = true
+                                        hasVibrated = false
+                                    }
+                                    Animatable(currentOffset).animateTo(0f) {
+                                        currentOffset = value
+                                    }
+                                    return super.onPreFling(available)
+                                }
+                            }
+                        }
+
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
                                 .offset { IntOffset(0, currentOffset.toInt()) }
-                                .pointerInput(isSearchExpanded, filteredSends.size) {
-                                    detectVerticalDragGestures(
-                                        onDragStart = {
-                                            canTriggerPullToSearch =
-                                                listState.firstVisibleItemIndex == 0 &&
-                                                    listState.firstVisibleItemScrollOffset == 0
-                                        },
-                                        onVerticalDrag = { change, dragAmount ->
-                                            if (!isSearchExpanded && canTriggerPullToSearch) {
-                                                if (dragAmount > 0f) {
-                                                    val oldOffset = currentOffset
-                                                    val newOffset = currentOffset + dragAmount * 0.5f
-                                                    currentOffset = newOffset
-                                                    if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                                                        hasVibrated = true
-                                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                                            vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
-                                                        } else {
-                                                            @Suppress("DEPRECATION")
-                                                            vibrator?.vibrate(20)
-                                                        }
-                                                    } else if (newOffset < triggerDistance) {
-                                                        hasVibrated = false
-                                                    }
-                                                    change.consume()
-                                                } else if (currentOffset > 0f) {
-                                                    currentOffset = (currentOffset + dragAmount).coerceAtLeast(0f)
-                                                    change.consume()
-                                                }
-                                            }
-                                        },
-                                        onDragEnd = {
-                                            if (currentOffset >= triggerDistance) {
-                                                isSearchExpanded = true
-                                            }
-                                            hasVibrated = false
-                                            canTriggerPullToSearch = false
-                                            scope.launch {
-                                                Animatable(currentOffset).animateTo(0f) {
-                                                    currentOffset = value
-                                                }
-                                            }
-                                        },
-                                        onDragCancel = {
-                                            hasVibrated = false
-                                            canTriggerPullToSearch = false
-                                            scope.launch {
-                                                Animatable(currentOffset).animateTo(0f) {
-                                                    currentOffset = value
-                                                }
-                                            }
-                                        }
-                                    )
+                                .nestedScroll(nestedScrollConnection)
+                                .pointerInput(Unit) {
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        val isAtTop = listState.firstVisibleItemIndex == 0 &&
+                                            listState.firstVisibleItemScrollOffset == 0
+                                        canTriggerPullToSearch = isAtTop
+                                    }
                                 },
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = 96.dp)
