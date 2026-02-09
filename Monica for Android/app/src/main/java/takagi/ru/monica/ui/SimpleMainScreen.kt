@@ -4742,6 +4742,7 @@ private fun TotpItemCard(
         onLongClick = onLongClick,
         isSelectionMode = isSelectionMode,
         isSelected = isSelected,
+        allowVibration = true,
         sharedTickSeconds = sharedTickSeconds,
         appSettings = appSettings
     )

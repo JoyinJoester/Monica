@@ -30,12 +30,15 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
@@ -72,11 +75,13 @@ fun TotpCodeCard(
     onLongClick: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
+    allowVibration: Boolean = false,
     boundPasswordSummary: String? = null,
     sharedTickSeconds: Long? = null,
     appSettings: AppSettings? = null
 ) {
     val context = LocalContext.current
+    val screenLifecycleOwner = LocalLifecycleOwner.current
     
     // 使用传入的设置或默认值，避免创建多个 SettingsManager 实例
     val settings = appSettings ?: AppSettings()
@@ -100,6 +105,23 @@ fun TotpCodeCard(
         }
     }
     val currentSeconds = sharedTickSeconds ?: internalTickSeconds
+
+    var isScreenStarted by remember {
+        mutableStateOf(screenLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    var isScreenResumed by remember {
+        mutableStateOf(screenLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+
+    DisposableEffect(screenLifecycleOwner) {
+        val lifecycle = screenLifecycleOwner.lifecycle
+        val observer = LifecycleEventObserver { _, _ ->
+            isScreenStarted = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            isScreenResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     
     // 震动服务
     val vibrator = remember {
@@ -161,8 +183,11 @@ fun TotpCodeCard(
     }
 
     // 倒计时<=5秒时每秒触发震动（使用改进的双击模式）
-    LaunchedEffect(remainingSeconds, totpData.otpType, settings.validatorVibrationEnabled) {
-        if (settings.validatorVibrationEnabled && 
+    LaunchedEffect(remainingSeconds, totpData.otpType, settings.validatorVibrationEnabled, allowVibration, isScreenStarted, isScreenResumed) {
+        if (allowVibration &&
+            isScreenStarted &&
+            isScreenResumed &&
+            settings.validatorVibrationEnabled && 
             totpData.otpType != OtpType.HOTP && 
             remainingSeconds in 1..5) {
             

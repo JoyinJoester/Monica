@@ -101,6 +101,7 @@ fun TotpListScreen(
                         onShowQrCode = {
                             itemToShowQr = item
                         },
+                        allowVibration = true,
                         sharedTickSeconds = sharedTickSeconds,
                         appSettings = settings,
                         modifier = Modifier.fillMaxWidth()

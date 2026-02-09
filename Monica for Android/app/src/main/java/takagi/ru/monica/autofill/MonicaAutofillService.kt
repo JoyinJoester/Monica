@@ -1349,9 +1349,9 @@ class MonicaAutofillService : AutofillService() {
         // ✨ 添加"打开 Monica"手动选择入口（始终作为最后一个选项）
         // 参考 Keyguard: 固定保留兜底入口确保用户始终有选择
         try {
-            val manualSelectionPresentation = RemoteViews(this.packageName, R.layout.autofill_manual_card).apply {
-                setTextViewText(R.id.text_title, "Monica 自动填充")
-                setTextViewText(R.id.text_username, "点击进入选择界面")
+            val manualSelectionPresentation = RemoteViews(this.packageName, R.layout.autofill_manual_card_v2).apply {
+                setTextViewText(R.id.text_title, getString(R.string.tile_autofill_label))
+                setTextViewText(R.id.text_username, getString(R.string.autofill_open_picker))
                 setImageViewResource(R.id.icon_app, R.mipmap.ic_launcher)
             }
             
@@ -1708,10 +1708,10 @@ class MonicaAutofillService : AutofillService() {
             
             // 构建内联UI
             val inlineUi = InlineSuggestionUi.newContentBuilder(pendingIntent).apply {
-                setTitle("Monica 自动填充")
-                setSubtitle("点击进入选择界面")
+                setTitle(getString(R.string.tile_autofill_label))
+                setSubtitle(getString(R.string.autofill_open_picker))
                 setStartIcon(monicaIcon)
-                setContentDescription("Monica 自动填充")
+                setContentDescription(getString(R.string.tile_autofill_label))
             }.build()
             
             return InlinePresentation(inlineUi.slice, inlineSpec, false)

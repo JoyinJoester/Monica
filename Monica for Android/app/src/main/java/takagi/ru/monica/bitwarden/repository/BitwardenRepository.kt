@@ -772,6 +772,44 @@ class BitwardenRepository(private val context: Context) {
         }
     }
 
+    suspend fun deleteCipher(vaultId: Long, cipherId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+            if (!isVaultUnlocked(vaultId)) {
+                return@withContext Result.failure(IllegalStateException("Vault 未解锁"))
+            }
+
+            var accessToken = accessTokenCache[vaultId]
+                ?: return@withContext Result.failure(IllegalStateException("令牌不可用"))
+
+            val expiresAt = vault.accessTokenExpiresAt ?: 0
+            if (expiresAt <= System.currentTimeMillis() + 60000) {
+                val refreshed = refreshToken(vault)
+                if (refreshed != null) {
+                    accessToken = refreshed
+                    accessTokenCache[vaultId] = refreshed
+                } else {
+                    return@withContext Result.failure(IllegalStateException("Token 刷新失败，请重新登录"))
+                }
+            }
+
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.deleteCipher("Bearer $accessToken", cipherId)
+            if (!response.isSuccessful && response.code() != 404) {
+                return@withContext Result.failure(
+                    IllegalStateException("删除失败: ${response.code()} ${response.message()}")
+                )
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "删除 Bitwarden Cipher 失败", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun getSends(vaultId: Long): List<BitwardenSend> = withContext(Dispatchers.IO) {
         sendDao.getSendsByVault(vaultId)
     }

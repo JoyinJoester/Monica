@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
@@ -45,6 +46,7 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
     private val database = PasswordDatabase.getDatabase(application)
     private val passwordRepository = PasswordRepository(database.passwordEntryDao())
     private val secureItemRepository = SecureItemRepository(database.secureItemDao())
+    private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val settingsManager = SettingsManager(application)
     
     // 回收站设置
@@ -267,6 +269,10 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
     fun permanentlyDeleteItem(item: TrashItem, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             try {
+                if (!deleteRemoteCipherIfNeeded(item.originalData)) {
+                    onResult(false)
+                    return@launch
+                }
                 when (item.originalData) {
                     is PasswordEntry -> {
                         database.passwordEntryDao().delete(item.originalData)
@@ -323,10 +329,27 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
     fun emptyTrash(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             try {
-                // 永久删除所有已标记删除的条目
-                database.passwordEntryDao().permanentlyDeleteAll()
-                database.secureItemDao().permanentlyDeleteAll()
-                onResult(true)
+                var hasFailure = false
+
+                val deletedPasswords = database.passwordEntryDao().getDeletedEntriesSync()
+                deletedPasswords.forEach { entry ->
+                    if (deleteRemoteCipherIfNeeded(entry)) {
+                        database.passwordEntryDao().delete(entry)
+                    } else {
+                        hasFailure = true
+                    }
+                }
+
+                val deletedSecureItems = database.secureItemDao().getDeletedItemsSync()
+                deletedSecureItems.forEach { item ->
+                    if (deleteRemoteCipherIfNeeded(item)) {
+                        database.secureItemDao().delete(item)
+                    } else {
+                        hasFailure = true
+                    }
+                }
+
+                onResult(!hasFailure)
             } catch (e: Exception) {
                 android.util.Log.e("TrashViewModel", "Failed to empty trash", e)
                 onResult(false)
@@ -345,11 +368,52 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
             val cutoffDate = Date(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(settings.autoDeleteDays.toLong()))
             
             try {
-                database.passwordEntryDao().deleteExpiredItems(cutoffDate)
-                database.secureItemDao().deleteExpiredItems(cutoffDate)
+                val expiredPasswords = database.passwordEntryDao()
+                    .getDeletedEntriesSync()
+                    .filter { it.deletedAt != null && it.deletedAt < cutoffDate }
+
+                expiredPasswords.forEach { entry ->
+                    if (deleteRemoteCipherIfNeeded(entry)) {
+                        database.passwordEntryDao().delete(entry)
+                    }
+                }
+
+                val expiredSecureItems = database.secureItemDao()
+                    .getDeletedItemsSync()
+                    .filter { it.deletedAt != null && it.deletedAt < cutoffDate }
+
+                expiredSecureItems.forEach { item ->
+                    if (deleteRemoteCipherIfNeeded(item)) {
+                        database.secureItemDao().delete(item)
+                    }
+                }
             } catch (e: Exception) {
                 android.util.Log.e("TrashViewModel", "Failed to cleanup expired items", e)
             }
+        }
+    }
+
+    private suspend fun deleteRemoteCipherIfNeeded(data: Any): Boolean {
+        return when (data) {
+            is PasswordEntry -> {
+                val vaultId = data.bitwardenVaultId
+                val cipherId = data.bitwardenCipherId
+                if (vaultId != null && !cipherId.isNullOrBlank()) {
+                    bitwardenRepository.deleteCipher(vaultId, cipherId).isSuccess
+                } else {
+                    true
+                }
+            }
+            is SecureItem -> {
+                val vaultId = data.bitwardenVaultId
+                val cipherId = data.bitwardenCipherId
+                if (vaultId != null && !cipherId.isNullOrBlank()) {
+                    bitwardenRepository.deleteCipher(vaultId, cipherId).isSuccess
+                } else {
+                    true
+                }
+            }
+            else -> true
         }
     }
     

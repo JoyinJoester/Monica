@@ -67,13 +67,10 @@ object AutofillPickerLauncher {
         val pendingIntent = PendingIntent.getActivity(context, 0, pickerIntent, flags)
         
         // 2. 创建单一入口的 Presentation
-        // 复用 autofill_manual_card 但修改文字以匹配"Unlock Keyguard"风格
-        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card).apply {
-            // 主标题
-            setTextViewText(R.id.text_title, "Unlock Monica") 
-            // 副标题显示域名或包名
-            setTextViewText(R.id.text_username, domain ?: packageName ?: "Tap to search passwords")
-            // 更换为锁图标
+        // v2 手动入口：使用本地化文案，避免中文系统显示英文硬编码
+        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
+            setTextViewText(R.id.text_title, context.getString(R.string.tile_autofill_label))
+            setTextViewText(R.id.text_username, context.getString(R.string.autofill_open_picker))
             setImageViewResource(R.id.icon_app, R.drawable.ic_key) 
         }
         

@@ -471,8 +471,24 @@ class TotpViewModel(
                 val boundId = totpData.boundPasswordId
                 val password = boundId?.let { passwordRepository.getPasswordEntryById(it) }
                 if (password?.authenticatorKey == totpData.secret) {
-                    passwordRepository.updateAuthenticatorKey(boundId, "")
+                    if (password.bitwardenVaultId != null && password.bitwardenCipherId != null) {
+                        // For Bitwarden-linked passwords, mark as locally modified so sync can clear remote login.totp.
+                        passwordRepository.updatePasswordEntry(
+                            password.copy(
+                                authenticatorKey = "",
+                                bitwardenLocalModified = true,
+                                updatedAt = Date()
+                            )
+                        )
+                    } else {
+                        passwordRepository.updateAuthenticatorKey(boundId, "")
+                    }
                 }
+            }
+
+            // Virtual TOTP items are derived from password.authenticatorKey and are not persisted in secure_items.
+            if (item.id <= 0) {
+                return@launch
             }
 
             if (softDelete) {
