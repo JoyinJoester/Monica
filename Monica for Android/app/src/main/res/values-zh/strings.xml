@@ -2095,6 +2095,9 @@
     <string name="import_type_aegis_title">Aegis 验证器</string>
     <string name="import_type_aegis_desc">导入 Aegis Authenticator 的 JSON 备份</string>
     <string name="import_type_aegis_file_hint">选择 .json 文件</string>
+    <string name="import_type_stratum_title">Stratum Auth</string>
+    <string name="import_type_stratum_desc">导入 Stratum/AuthPro 备份（.stratum/.txt/.html）</string>
+    <string name="import_type_stratum_file_hint">选择 .stratum / .txt / .html 文件</string>
     <string name="import_type_steam_title">Steam Guard</string>
     <string name="import_type_steam_desc">导入 Steam 令牌的 maFile 文件</string>
     <string name="import_type_steam_file_hint">选择 .maFile 文件</string>
@@ -2114,9 +2117,12 @@
     <string name="import_data_tap_to_select_file">点击选择文件</string>
     <string name="aegis_decrypt_password_title">输入解密密码</string>
     <string name="aegis_decrypt_password_hint">此 Aegis 备份文件已加密，请输入密码以解密。</string>
+    <string name="stratum_decrypt_password_title">输入 Stratum 备份密码</string>
+    <string name="stratum_decrypt_password_hint">此 Stratum/AuthPro 备份已加密，请输入密码解密。</string>
     <string name="import_data_password_cannot_be_empty">密码不能为空</string>
     <string name="import_data_zip_restore_success_count">成功恢复备份，包含 %1$d 个条目</string>
     <string name="import_data_aegis_import_success_count">成功导入 %1$d 个 TOTP 验证器</string>
+    <string name="import_data_stratum_import_success_count">成功导入 %1$d 个 Stratum 验证器</string>
     <string name="import_data_password_incorrect_retry">密码错误，请重试</string>
     <string name="import_data_failed_with_reason">导入失败：%1$s</string>
     <string name="import_data_kdbx_import_success_count">成功导入 %1$d 条记录</string>

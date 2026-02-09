@@ -2267,6 +2267,9 @@
     <string name="import_type_aegis_title">Aegis Authenticator</string>
     <string name="import_type_aegis_desc">Import JSON backup from Aegis Authenticator</string>
     <string name="import_type_aegis_file_hint">Select .json file</string>
+    <string name="import_type_stratum_title">Stratum Auth</string>
+    <string name="import_type_stratum_desc">Import Stratum/AuthPro backup (.stratum/.txt/.html)</string>
+    <string name="import_type_stratum_file_hint">Select .stratum / .txt / .html file</string>
     <string name="import_type_steam_title">Steam Guard</string>
     <string name="import_type_steam_desc">Import Steam token from maFile</string>
     <string name="import_type_steam_file_hint">Select .maFile file</string>
@@ -2286,9 +2289,12 @@
     <string name="import_data_tap_to_select_file">Tap to select file</string>
     <string name="aegis_decrypt_password_title">Enter decryption password</string>
     <string name="aegis_decrypt_password_hint">This Aegis backup is encrypted. Enter password to decrypt.</string>
+    <string name="stratum_decrypt_password_title">Stratum Backup Password</string>
+    <string name="stratum_decrypt_password_hint">Enter your Stratum/AuthPro backup password.</string>
     <string name="import_data_password_cannot_be_empty">Password cannot be empty</string>
     <string name="import_data_zip_restore_success_count">Backup restored successfully with %1$d items</string>
     <string name="import_data_aegis_import_success_count">Imported %1$d TOTP authenticators</string>
+    <string name="import_data_stratum_import_success_count">Imported %1$d Stratum authenticators</string>
     <string name="import_data_password_incorrect_retry">Incorrect password, please try again</string>
     <string name="import_data_failed_with_reason">Import failed: %1$s</string>
     <string name="import_data_kdbx_import_success_count">Imported %1$d records</string>

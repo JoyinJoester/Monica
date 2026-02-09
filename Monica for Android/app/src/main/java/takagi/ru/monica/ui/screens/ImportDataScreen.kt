@@ -40,10 +40,18 @@ private data class ImportTypeInfo(
 private fun isPasswordDecryptError(errorMessage: String): Boolean {
     val normalized = errorMessage.lowercase()
     return normalized.contains("wrong password") ||
+        normalized.contains("password incorrect") ||
         normalized.contains("decrypt") ||
         normalized.contains("invalid credentials") ||
         normalized.contains("密码错误") ||
         normalized.contains("解密失败")
+}
+
+private fun isPasswordRequiredError(errorMessage: String): Boolean {
+    val normalized = errorMessage.lowercase()
+    return normalized.contains("password required") ||
+        normalized.contains("password needed") ||
+        normalized.contains("need password")
 }
 
 /**
@@ -131,6 +139,7 @@ fun ImportDataScreen(
     onImport: suspend (Uri) -> Result<Int>,  // 普通数据导入
     onImportAegis: suspend (Uri) -> Result<Int>,  // Aegis JSON导入
     onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>,  // 加密的Aegis JSON导入
+    onImportStratum: suspend (Uri, String?) -> Result<Int> = { _, _ -> Result.failure(Exception("Not implemented")) }, // Stratum 导入
     onImportSteamMaFile: suspend (Uri) -> Result<Int>,  // Steam maFile导入
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
     onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
@@ -186,6 +195,13 @@ fun ImportDataScreen(
             title = stringResource(R.string.import_type_aegis_title),
             description = stringResource(R.string.import_type_aegis_desc),
             fileHint = stringResource(R.string.import_type_aegis_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "stratum",
+            icon = Icons.Default.VerifiedUser,
+            title = stringResource(R.string.import_type_stratum_title),
+            description = stringResource(R.string.import_type_stratum_desc),
+            fileHint = stringResource(R.string.import_type_stratum_file_hint)
         ),
         ImportTypeInfo(
             key = "steam",
@@ -336,6 +352,22 @@ fun ImportDataScreen(
                                                     // 不是加密文件，直接导入
                                                     val result = onImportAegis(uri)
                                                     handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                            }
+                                            "stratum" -> {
+                                                val result = onImportStratum(uri, null)
+                                                result.onSuccess { count ->
+                                                    handleImportResult(Result.success(count), context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }.onFailure { error ->
+                                                    val errorMsg = error.message ?: ""
+                                                    if (isPasswordRequiredError(errorMsg)) {
+                                                        isImporting = false
+                                                        showPasswordDialog = true
+                                                        passwordError = null
+                                                        aegisPassword = ""
+                                                    } else {
+                                                        handleImportResult(Result.failure(error), context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                    }
                                                 }
                                             }
                                             "steam" -> {
@@ -508,6 +540,7 @@ fun ImportDataScreen(
                             "keepass_csv" -> FileOperationHelper.importFromCsv(act)
                             "bitwarden_csv" -> FileOperationHelper.importFromCsv(act)
                             "aegis" -> FileOperationHelper.importFromJson(act)
+                            "stratum" -> FileOperationHelper.importFromStratum(act)
                             "steam" -> FileOperationHelper.importFromMaFile(act)
                             else -> FileOperationHelper.importFromCsv(act)
                         }
@@ -608,11 +641,20 @@ fun ImportDataScreen(
                 showPasswordDialog = false
                 passwordError = null
             },
-            title = { Text(stringResource(R.string.aegis_decrypt_password_title)) },
+            title = {
+                val title = when (importType) {
+                    "stratum" -> stringResource(R.string.stratum_decrypt_password_title)
+                    else -> stringResource(R.string.aegis_decrypt_password_title)
+                }
+                Text(title)
+            },
             text = {
                 Column {
                     Text(
-                        stringResource(R.string.aegis_decrypt_password_hint),
+                        when (importType) {
+                            "stratum" -> stringResource(R.string.stratum_decrypt_password_hint)
+                            else -> stringResource(R.string.aegis_decrypt_password_hint)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
@@ -644,15 +686,17 @@ fun ImportDataScreen(
                             try {
                                 selectedFileUri?.let { uri ->
                                     // 使用加密导入回调
-                                    val result = if (importType == "monica_zip") {
-                                        onImportZip(uri, aegisPassword)
-                                    } else {
-                                        onImportEncryptedAegis(uri, aegisPassword)
+                                    val result = when (importType) {
+                                        "monica_zip" -> onImportZip(uri, aegisPassword)
+                                        "stratum" -> onImportStratum(uri, aegisPassword)
+                                        else -> onImportEncryptedAegis(uri, aegisPassword)
                                     }
                                     
                                     result.onSuccess { count ->
                                         val message = if (importType == "monica_zip") {
                                             context.getString(R.string.import_data_zip_restore_success_count, count)
+                                        } else if (importType == "stratum") {
+                                            context.getString(R.string.import_data_stratum_import_success_count, count)
                                         } else {
                                             context.getString(R.string.import_data_aegis_import_success_count, count)
                                         }
@@ -814,6 +858,7 @@ private suspend fun handleImportResult(
     result.onSuccess { count ->
         val message = when (importType) {
             "aegis" -> context.getString(R.string.import_data_aegis_import_success_count, count)
+            "stratum" -> context.getString(R.string.import_data_stratum_import_success_count, count)
             "steam" -> context.getString(R.string.import_data_steam_import_success)
             else -> context.getString(R.string.import_data_success_normal, count)
         }

@@ -1619,6 +1619,9 @@
     <string name="import_type_aegis_title">Trinh xac thuc Aegis</string>
     <string name="import_type_aegis_desc">Nhap ban sao luu JSON tu Aegis Authenticator</string>
     <string name="import_type_aegis_file_hint">Chon tep .json</string>
+    <string name="import_type_stratum_title">Stratum Auth</string>
+    <string name="import_type_stratum_desc">Nhap ban sao luu Stratum/AuthPro (.stratum/.txt/.html)</string>
+    <string name="import_type_stratum_file_hint">Chon tep .stratum / .txt / .html</string>
     <string name="import_type_steam_title">Steam Guard</string>
     <string name="import_type_steam_desc">Nhap token Steam tu tep maFile</string>
     <string name="import_type_steam_file_hint">Chon tep .maFile</string>
@@ -1638,9 +1641,12 @@
     <string name="import_data_tap_to_select_file">Nhan de chon tep</string>
     <string name="aegis_decrypt_password_title">Nhap mat khau giai ma</string>
     <string name="aegis_decrypt_password_hint">Ban sao luu Aegis nay da duoc ma hoa. Hay nhap mat khau de giai ma.</string>
+    <string name="stratum_decrypt_password_title">Mat khau sao luu Stratum</string>
+    <string name="stratum_decrypt_password_hint">Ban sao luu Stratum/AuthPro nay da duoc ma hoa. Hay nhap mat khau.</string>
     <string name="import_data_password_cannot_be_empty">Mat khau khong duoc de trong</string>
     <string name="import_data_zip_restore_success_count">Khoi phuc ban sao luu thanh cong voi %1$d muc</string>
     <string name="import_data_aegis_import_success_count">Da nhap %1$d trinh xac thuc TOTP</string>
+    <string name="import_data_stratum_import_success_count">Da nhap %1$d trinh xac thuc Stratum</string>
     <string name="import_data_password_incorrect_retry">Mat khau sai, vui long thu lai</string>
     <string name="import_data_failed_with_reason">Nhap that bai: %1$s</string>
     <string name="import_data_kdbx_import_success_count">Da nhap %1$d ban ghi</string>

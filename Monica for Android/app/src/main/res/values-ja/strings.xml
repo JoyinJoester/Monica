@@ -1613,6 +1613,9 @@
     <string name="import_type_aegis_title">Aegis 認証器</string>
     <string name="import_type_aegis_desc">Aegis Authenticator の JSON バックアップをインポート</string>
     <string name="import_type_aegis_file_hint">.json ファイルを選択</string>
+    <string name="import_type_stratum_title">Stratum Auth</string>
+    <string name="import_type_stratum_desc">Stratum/AuthPro バックアップ（.stratum/.txt/.html）をインポート</string>
+    <string name="import_type_stratum_file_hint">.stratum / .txt / .html ファイルを選択</string>
     <string name="import_type_steam_title">Steam Guard</string>
     <string name="import_type_steam_desc">maFile から Steam トークンをインポート</string>
     <string name="import_type_steam_file_hint">.maFile ファイルを選択</string>
@@ -1632,9 +1635,12 @@
     <string name="import_data_tap_to_select_file">タップしてファイルを選択</string>
     <string name="aegis_decrypt_password_title">復号パスワードを入力</string>
     <string name="aegis_decrypt_password_hint">この Aegis バックアップは暗号化されています。復号するためにパスワードを入力してください。</string>
+    <string name="stratum_decrypt_password_title">Stratum バックアップのパスワード</string>
+    <string name="stratum_decrypt_password_hint">この Stratum/AuthPro バックアップは暗号化されています。パスワードを入力してください。</string>
     <string name="import_data_password_cannot_be_empty">パスワードは空にできません</string>
     <string name="import_data_zip_restore_success_count">バックアップを復元しました（%1$d 件）</string>
     <string name="import_data_aegis_import_success_count">%1$d 件の TOTP 認証器をインポートしました</string>
+    <string name="import_data_stratum_import_success_count">%1$d 件の Stratum 認証器をインポートしました</string>
     <string name="import_data_password_incorrect_retry">パスワードが正しくありません。再試行してください</string>
     <string name="import_data_failed_with_reason">インポート失敗: %1$s</string>
     <string name="import_data_kdbx_import_success_count">%1$d 件のレコードをインポートしました</string>

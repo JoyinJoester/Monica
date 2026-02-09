@@ -1053,6 +1053,9 @@ fun MonicaContent(
                 onImportZip = { uri, password ->
                     dataExportImportViewModel.importZipBackup(uri, password)
                 },
+                onImportStratum = { uri, password ->
+                    dataExportImportViewModel.importStratum(uri, password)
+                },
                 onImportKdbx = { uri, password ->
                     val ctx = navController.context
                     val inputStream = ctx.contentResolver.openInputStream(uri)

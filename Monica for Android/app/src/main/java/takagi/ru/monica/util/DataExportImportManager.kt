@@ -1105,4 +1105,184 @@ class DataExportImportManager(private val context: Context) {
         
         return result.toString()
     }
+    
+    // ==================== Stratum Auth Import ====================
+
+    suspend fun detectStratumFileType(inputUri: Uri): Result<StratumDecryptor.StratumFileType> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("Cannot read file"))
+            inputStream.use { input ->
+                val data = input.readBytes()
+                val decryptor = StratumDecryptor()
+                Result.success(decryptor.detectFileType(data))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun importStratumJson(inputUri: Uri): Result<List<AegisEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("Cannot read file"))
+            inputStream.use { input ->
+                val content = input.readBytes().toString(Charsets.UTF_8)
+                parseStratumJson(content)
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Import failed: ${e.message}"))
+        }
+    }
+
+    suspend fun importEncryptedStratum(inputUri: Uri, password: String): Result<List<AegisEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("Cannot read file"))
+            inputStream.use { input ->
+                val data = input.readBytes()
+                val decryptor = StratumDecryptor()
+                val decryptedJson = try {
+                    decryptor.decrypt(data, password)
+                } catch (e: Exception) {
+                    return@withContext Result.failure(Exception("Wrong password or corrupted file"))
+                }
+                parseStratumJson(decryptedJson)
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Import failed: ${e.message}"))
+        }
+    }
+
+    suspend fun importStratumTxt(inputUri: Uri): Result<List<AegisEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("Cannot read file"))
+            inputStream.use { input ->
+                val content = input.readBytes().toString(Charsets.UTF_8)
+                val entries = content
+                    .lineSequence()
+                    .map { it.trim() }
+                    .filter { it.startsWith("otpauth://", ignoreCase = true) }
+                    .mapNotNull { parseOtpauthUri(it) }
+                    .toList()
+
+                if (entries.isEmpty()) {
+                    Result.failure(Exception("No valid TOTP entries found"))
+                } else {
+                    Result.success(entries)
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Import failed: ${e.message}"))
+        }
+    }
+
+    suspend fun importStratumHtml(inputUri: Uri): Result<List<AegisEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception("Cannot read file"))
+            inputStream.use { input ->
+                val content = input.readBytes().toString(Charsets.UTF_8)
+                val entries = Regex("""otpauth://[^\s"'<>]+""")
+                    .findAll(content)
+                    .map { it.value.replace("&amp;", "&") }
+                    .mapNotNull { parseOtpauthUri(it) }
+                    .toList()
+
+                if (entries.isEmpty()) {
+                    Result.failure(Exception("No valid TOTP entries found"))
+                } else {
+                    Result.success(entries)
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Import failed: ${e.message}"))
+        }
+    }
+
+    private fun parseStratumJson(jsonContent: String): Result<List<AegisEntry>> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true }
+            val root = json.parseToJsonElement(jsonContent).jsonObject
+            val authenticatorsArray = root["Authenticators"]?.jsonArray
+                ?: return Result.failure(Exception("Invalid Stratum format"))
+
+            val entries = mutableListOf<AegisEntry>()
+            authenticatorsArray.forEach { element ->
+                runCatching {
+                    val obj = element.jsonObject
+                    val type = obj["Type"]?.jsonPrimitive?.content?.toIntOrNull() ?: 2
+                    val issuer = obj["Issuer"]?.jsonPrimitive?.content.orEmpty()
+                    val username = obj["Username"]?.jsonPrimitive?.content.orEmpty()
+                    val secret = obj["Secret"]?.jsonPrimitive?.content.orEmpty()
+                    if (secret.isBlank()) return@forEach
+
+                    val algorithmCode = obj["Algorithm"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                    val algorithm = when (algorithmCode) {
+                        1 -> "SHA256"
+                        2 -> "SHA512"
+                        else -> "SHA1"
+                    }
+                    val digits = obj["Digits"]?.jsonPrimitive?.content?.toIntOrNull() ?: 6
+                    val period = obj["Period"]?.jsonPrimitive?.content?.toIntOrNull() ?: 30
+                    val actualDigits = if (type == 4) 5 else digits
+
+                    entries.add(
+                        AegisEntry(
+                            uuid = java.util.UUID.randomUUID().toString(),
+                            name = username.ifBlank { issuer },
+                            issuer = issuer,
+                            note = "",
+                            secret = secret,
+                            algorithm = algorithm,
+                            digits = actualDigits,
+                            period = period
+                        )
+                    )
+                }
+            }
+
+            if (entries.isEmpty()) {
+                Result.failure(Exception("No valid TOTP entries found"))
+            } else {
+                Result.success(entries)
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Parse JSON failed: ${e.message}"))
+        }
+    }
+
+    private fun parseOtpauthUri(uri: String): AegisEntry? {
+        return try {
+            val parsed = TotpUriParser.parseUri(uri) ?: return null
+            val data = parsed.totpData
+            AegisEntry(
+                uuid = java.util.UUID.randomUUID().toString(),
+                name = data.accountName.ifBlank { parsed.label },
+                issuer = data.issuer,
+                note = "",
+                secret = data.secret,
+                algorithm = data.algorithm,
+                digits = data.digits,
+                period = data.period
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun isStratumFileEncrypted(inputUri: Uri): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.success(false)
+            inputStream.use {
+                val data = it.readBytes()
+                val decryptor = StratumDecryptor()
+                Result.success(decryptor.requiresPassword(data))
+            }
+        } catch (e: Exception) {
+            Result.success(false)
+        }
+    }
 }

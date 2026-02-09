@@ -101,6 +101,25 @@ object FileOperationHelper {
     }
 
     /**
+     * 从 Stratum/AuthPro 备份文件导入数据
+     * 支持 .stratum（二进制）、.txt、.html
+     */
+    fun importFromStratum(activity: Activity) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                "application/octet-stream",
+                "text/plain",
+                "text/html",
+                "application/json"
+            ))
+        }
+
+        activity.startActivityForResult(intent, REQUEST_CODE_IMPORT)
+    }
+
+    /**
      * 从ZIP文件导入数据
      * @param activity 调用的Activity
      */

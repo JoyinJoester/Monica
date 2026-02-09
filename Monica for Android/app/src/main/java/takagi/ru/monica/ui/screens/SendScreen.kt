@@ -3,9 +3,11 @@ package takagi.ru.monica.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -69,8 +72,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,19 +83,24 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.util.VibrationPatterns
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -109,11 +119,25 @@ fun SendScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val canCreateSend = activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked
 
     var deletingSend by remember { mutableStateOf<BitwardenSend?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
+    var currentOffset by remember { mutableFloatStateOf(0f) }
+    val triggerDistance = with(LocalDensity.current) { 72.dp.toPx() }
+    var hasVibrated by remember { mutableStateOf(false) }
+    var canTriggerPullToSearch by remember { mutableStateOf(false) }
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        }
+    }
 
     val filteredSends = remember(sends, searchQuery) {
         val query = searchQuery.trim()
@@ -256,7 +280,62 @@ fun SendScreen(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .weight(1f)
+                                .offset { IntOffset(0, currentOffset.toInt()) }
+                                .pointerInput(isSearchExpanded, filteredSends.size) {
+                                    detectVerticalDragGestures(
+                                        onDragStart = {
+                                            canTriggerPullToSearch =
+                                                listState.firstVisibleItemIndex == 0 &&
+                                                    listState.firstVisibleItemScrollOffset == 0
+                                        },
+                                        onVerticalDrag = { change, dragAmount ->
+                                            if (!isSearchExpanded && canTriggerPullToSearch) {
+                                                if (dragAmount > 0f) {
+                                                    val oldOffset = currentOffset
+                                                    val newOffset = currentOffset + dragAmount * 0.5f
+                                                    currentOffset = newOffset
+                                                    if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                                                        hasVibrated = true
+                                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                                            vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
+                                                        } else {
+                                                            @Suppress("DEPRECATION")
+                                                            vibrator?.vibrate(20)
+                                                        }
+                                                    } else if (newOffset < triggerDistance) {
+                                                        hasVibrated = false
+                                                    }
+                                                    change.consume()
+                                                } else if (currentOffset > 0f) {
+                                                    currentOffset = (currentOffset + dragAmount).coerceAtLeast(0f)
+                                                    change.consume()
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            if (currentOffset >= triggerDistance) {
+                                                isSearchExpanded = true
+                                            }
+                                            hasVibrated = false
+                                            canTriggerPullToSearch = false
+                                            scope.launch {
+                                                Animatable(currentOffset).animateTo(0f) {
+                                                    currentOffset = value
+                                                }
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            hasVibrated = false
+                                            canTriggerPullToSearch = false
+                                            scope.launch {
+                                                Animatable(currentOffset).animateTo(0f) {
+                                                    currentOffset = value
+                                                }
+                                            }
+                                        }
+                                    )
+                                },
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = 96.dp)
                         ) {
@@ -486,22 +565,46 @@ private fun SendItemCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                TextButton(onClick = onCopyLink) {
+                TextButton(
+                    onClick = onCopyLink,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(stringResource(R.string.send_copy_link))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.send_copy_link),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                TextButton(onClick = onOpenLink) {
+                TextButton(
+                    onClick = onOpenLink,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(stringResource(R.string.open_link))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.open_link),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                TextButton(onClick = onDelete) {
+                TextButton(
+                    onClick = onDelete,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(Icons.Default.Delete, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(stringResource(R.string.delete))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.delete),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

@@ -1,11 +1,13 @@
 package takagi.ru.monica.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.R
@@ -130,6 +133,10 @@ fun UnifiedCategoryFilterBottomSheet(
     var deleteAction by remember { mutableStateOf<DeleteAction?>(null) }
     var deletePasswordInput by remember { mutableStateOf("") }
     var deletePasswordError by remember { mutableStateOf(false) }
+    val expandCollapseSpec = spring<IntSize>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMediumLow
+    )
 
     LaunchedEffect(bitwardenVaults) {
         if (selectedCreateVaultId == null) {
@@ -228,8 +235,8 @@ fun UnifiedCategoryFilterBottomSheet(
                         )
                         AnimatedVisibility(
                             visible = monicaExpanded,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut() + shrinkVertically()
+                            enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                            exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                         ) {
                             Column {
                             categories.forEach { category ->
@@ -319,8 +326,8 @@ fun UnifiedCategoryFilterBottomSheet(
                                     )
                                     AnimatedVisibility(
                                         visible = expanded,
-                                        enter = fadeIn() + expandVertically(),
-                                        exit = fadeOut() + shrinkVertically()
+                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                                     ) {
                                         Column {
                                         folders.forEach { folder ->
@@ -442,8 +449,8 @@ fun UnifiedCategoryFilterBottomSheet(
                                     )
                                     AnimatedVisibility(
                                         visible = expanded,
-                                        enter = fadeIn() + expandVertically(),
-                                        exit = fadeOut() + shrinkVertically()
+                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                                     ) {
                                         Column {
                                         groups.forEach { group ->
@@ -782,7 +789,6 @@ private fun StorageSectionCard(
         Column(
             modifier = Modifier
                 .padding(8.dp)
-                .animateContentSize()
         ) {
             Text(
                 text = title,

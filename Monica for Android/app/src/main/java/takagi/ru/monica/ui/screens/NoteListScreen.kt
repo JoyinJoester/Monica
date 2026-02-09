@@ -1,12 +1,16 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
@@ -42,7 +46,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.Category
@@ -68,6 +75,7 @@ import takagi.ru.monica.bitwarden.sync.SyncStatus
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+import takagi.ru.monica.util.VibrationPatterns
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -495,6 +503,8 @@ fun NoteListScreen(
         NoteListContent(
             notes = filteredNotes,
             isGridLayout = isGridLayout,
+            isSearchExpanded = isSearchExpanded,
+            onRequestExpandSearch = { isSearchExpanded = true },
             isSelectionMode = isSelectionMode,
             selectedNoteIds = selectedNoteIds,
             onNoteClick = { noteId ->
@@ -527,15 +537,101 @@ fun NoteListScreen(
 fun NoteListContent(
     notes: List<SecureItem>,
     isGridLayout: Boolean,
+    isSearchExpanded: Boolean,
+    onRequestExpandSearch: () -> Unit,
     isSelectionMode: Boolean,
     selectedNoteIds: Set<Long>,
     onNoteClick: (Long) -> Unit,
     onNoteLongClick: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyStaggeredGridState()
+    var currentOffset by remember { mutableFloatStateOf(0f) }
+    val triggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    var hasVibrated by remember { mutableStateOf(false) }
+    var canTriggerPullToSearch by remember { mutableStateOf(false) }
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        }
+    }
+
+    val isAtTop = remember(isGridLayout, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
+        if (isGridLayout) {
+            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+        } else {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+
+    val pullGestureModifier = Modifier
+        .offset { IntOffset(0, currentOffset.toInt()) }
+        .pointerInput(isGridLayout, isSearchExpanded, notes.size) {
+            detectVerticalDragGestures(
+                onDragStart = {
+                    canTriggerPullToSearch = notes.isEmpty() || isAtTop
+                },
+                onVerticalDrag = { change, dragAmount ->
+                    if (!isSearchExpanded && canTriggerPullToSearch) {
+                        if (dragAmount > 0f) {
+                            val oldOffset = currentOffset
+                            val newOffset = currentOffset + dragAmount * 0.5f
+                            currentOffset = newOffset
+                            if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                                hasVibrated = true
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    vibrator?.vibrate(20)
+                                }
+                            } else if (newOffset < triggerDistance) {
+                                hasVibrated = false
+                            }
+                            change.consume()
+                        } else if (currentOffset > 0f) {
+                            currentOffset = (currentOffset + dragAmount).coerceAtLeast(0f)
+                            change.consume()
+                        }
+                    }
+                },
+                onDragEnd = {
+                    if (currentOffset >= triggerDistance) {
+                        onRequestExpandSearch()
+                    }
+                    hasVibrated = false
+                    canTriggerPullToSearch = false
+                    scope.launch {
+                        Animatable(currentOffset).animateTo(0f) {
+                            currentOffset = value
+                        }
+                    }
+                },
+                onDragCancel = {
+                    hasVibrated = false
+                    canTriggerPullToSearch = false
+                    scope.launch {
+                        Animatable(currentOffset).animateTo(0f) {
+                            currentOffset = value
+                        }
+                    }
+                }
+            )
+        }
+
     if (notes.isEmpty()) {
         Box(
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier
+                .fillMaxSize()
+                .then(pullGestureModifier),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -564,7 +660,10 @@ fun NoteListContent(
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalItemSpacing = 12.dp,
-                modifier = modifier.fillMaxSize()
+                modifier = modifier
+                    .fillMaxSize()
+                    .then(pullGestureModifier),
+                state = gridState
             ) {
                 items(notes, key = { it.id }) { note ->
                     ExpressiveNoteCard(
@@ -581,7 +680,10 @@ fun NoteListContent(
             LazyColumn(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = modifier.fillMaxSize()
+                modifier = modifier
+                    .fillMaxSize()
+                    .then(pullGestureModifier),
+                state = listState
             ) {
                 items(notes, key = { it.id }) { note ->
                     ExpressiveNoteCard(

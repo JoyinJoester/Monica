@@ -909,4 +909,65 @@ class DataExportImportViewModel(
             Result.failure(e)
         }
     }
+
+    // ==================== Stratum Auth Import ====================
+    
+    suspend fun isStratumFileEncrypted(inputUri: Uri): Boolean {
+        return exportManager.isStratumFileEncrypted(inputUri).getOrDefault(false)
+    }
+    
+    suspend fun importStratum(inputUri: Uri, password: String? = null): Result<Int> {
+        return try {
+            val fileType = exportManager.detectStratumFileType(inputUri).getOrNull()
+                ?: return Result.failure(Exception("Cannot detect file type"))
+            val entriesResult = when (fileType) {
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.MODERN_ENCRYPTED,
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.LEGACY_ENCRYPTED -> {
+                    if (password.isNullOrEmpty()) return Result.failure(Exception("Password required"))
+                    exportManager.importEncryptedStratum(inputUri, password)
+                }
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.UNENCRYPTED -> exportManager.importStratumJson(inputUri)
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.NOT_STRATUM -> {
+                    val txtResult = exportManager.importStratumTxt(inputUri)
+                    if (txtResult.isSuccess) {
+                        txtResult
+                    } else {
+                        exportManager.importStratumHtml(inputUri)
+                    }
+                }
+            }
+            entriesResult.fold(
+                onSuccess = { list -> insertTotpEntries(list) },
+                onFailure = { Result.failure(it) }
+            )
+        } catch (e: Exception) { Result.failure(e) }
+    }
+    
+    suspend fun importStratumTxt(inputUri: Uri): Result<Int> {
+        return try {
+            exportManager.importStratumTxt(inputUri).fold(onSuccess = { insertTotpEntries(it) }, onFailure = { Result.failure(it) })
+        } catch (e: Exception) { Result.failure(e) }
+    }
+    
+    suspend fun importStratumHtml(inputUri: Uri): Result<Int> {
+        return try {
+            exportManager.importStratumHtml(inputUri).fold(onSuccess = { insertTotpEntries(it) }, onFailure = { Result.failure(it) })
+        } catch (e: Exception) { Result.failure(e) }
+    }
+    
+    private suspend fun insertTotpEntries(entries: List<DataExportImportManager.AegisEntry>): Result<Int> {
+        var count = 0
+        val existingItems = secureItemRepository.getAllItems().first().filter { it.itemType == ItemType.TOTP }
+        val existingSecrets = existingItems.mapNotNull { try { Json.decodeFromString<TotpData>(it.itemData).secret } catch (e: Exception) { null } }.toSet()
+        for (entry in entries) {
+            try {
+                if (entry.secret in existingSecrets) continue
+                val totpData = TotpData(secret = entry.secret, issuer = entry.issuer, accountName = entry.name, digits = entry.digits, period = entry.period, algorithm = entry.algorithm)
+                val item = SecureItem(id = 0, itemType = ItemType.TOTP, title = entry.issuer.ifBlank { entry.name }, itemData = Json.encodeToString(totpData), notes = entry.note, isFavorite = false, imagePaths = "", createdAt = Date(), updatedAt = Date(), categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+                secureItemRepository.insertItem(item)
+                count++
+            } catch (e: Exception) { }
+        }
+        return Result.success(count)
+    }
 }
