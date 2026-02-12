@@ -10,23 +10,29 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -50,11 +56,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,12 +120,25 @@ fun AddEditNoteScreen(
         initial = AppSettings(biometricEnabled = false)
     )
 
+    // 重构: 显式区分 Title 和 Content
     var title by rememberSaveable { mutableStateOf("") }
     var content by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
-    var noteImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
-    var noteImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var showNoteImageDialog by remember { mutableStateOf(false) }
+    
+    // 重构: 支持多图
+    val noteImagePaths = rememberSaveable(saver = listSaver(
+        save = { it.toList() },
+        restore = { it.toMutableStateList() }
+    )) { mutableStateListOf<String>() }
+    // 待删除的图片列表（只有在保存时才真正删除文件，防止误删或取消时丢失）
+    val deletedImagePaths = rememberSaveable(saver = listSaver(
+        save = { it.toList() },
+        restore = { it.toMutableStateList() }
+    )) { mutableStateListOf<String>() }
+    // 图片位图缓存
+    val noteImageBitmaps = remember { mutableStateMapOf<String, Bitmap>() }
+    
+    var showNoteImageDialog by remember { mutableStateOf<String?>(null) } // 存文件名
     var selectedCategoryId by rememberSaveable(noteId) { mutableStateOf<Long?>(null) }
     var keepassDatabaseId by rememberSaveable(noteId) { mutableStateOf<Long?>(null) }
     var bitwardenVaultId by rememberSaveable(noteId) { mutableStateOf<Long?>(null) }
@@ -126,18 +152,23 @@ fun AddEditNoteScreen(
     var showPasswordDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
+    var showAddImageDialog by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val imageManager = remember { ImageManager(context) }
     val activity = remember(context) { context as? Activity }
     val isEditing = noteId != -1L
-    val canSave = title.isNotBlank() || content.isNotBlank() || !noteImageFileName.isNullOrBlank()
+    
+    // 只要有标题、内容或者有图片就可以保存
+    val canSave = title.isNotBlank() || content.isNotBlank() || noteImagePaths.isNotEmpty()
+    
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
     val draftStorageTarget by viewModel.draftStorageTarget.collectAsState()
+    
     LaunchedEffect(Unit) {
         bitwardenVaults = bitwardenRepository.getAllVaults()
     }
@@ -147,27 +178,36 @@ fun AddEditNoteScreen(
         val note = viewModel.getNoteById(noteId)
         note?.let {
             currentNote = it
+            
+            // 重构: 显式加载 Title 和 Content
             title = it.title
+            
             content = try {
                 val noteData = Json.decodeFromString<NoteData>(it.itemData)
                 noteData.content
             } catch (_: Exception) {
                 it.notes
             }
+            
             isFavorite = it.isFavorite
             selectedCategoryId = it.categoryId
             keepassDatabaseId = it.keepassDatabaseId
             bitwardenVaultId = it.bitwardenVaultId
             bitwardenFolderId = it.bitwardenFolderId
-            noteImageFileName = try {
+            
+            // 重构: 解析多图 JSON
+            try {
                 if (it.imagePaths.isNotBlank()) {
                     val paths = Json.decodeFromString<List<String>>(it.imagePaths)
-                    paths.firstOrNull()?.takeIf { path -> path.isNotBlank() }
-                } else {
-                    null
+                    noteImagePaths.clear()
+                    noteImagePaths.addAll(paths.filter { path -> path.isNotBlank() })
                 }
             } catch (_: Exception) {
-                null
+                // 兼容旧数据（如果是单字符串）或解析失败
+                if (it.imagePaths.isNotBlank() && !it.imagePaths.startsWith("[")) {
+                     noteImagePaths.clear()
+                     noteImagePaths.add(it.imagePaths)
+                }
             }
             createdAt = it.createdAt
         }
@@ -190,8 +230,16 @@ fun AddEditNoteScreen(
         hasAppliedInitialStorage = true
     }
 
-    LaunchedEffect(noteImageFileName) {
-        noteImageBitmap = noteImageFileName?.let { imageManager.loadImage(it) }
+    // 重构: 加载图片列表
+    LaunchedEffect(noteImagePaths.toList()) {
+        noteImagePaths.forEach { fileName ->
+            if (!noteImageBitmaps.containsKey(fileName)) {
+                val bitmap = imageManager.loadImage(fileName)
+                if (bitmap != null) {
+                    noteImageBitmaps[fileName] = bitmap
+                }
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -208,12 +256,8 @@ fun AddEditNoteScreen(
 
                             val fileName = imageManager.saveImageFromUri(Uri.fromFile(file))
                             if (fileName != null) {
-                                noteImageFileName?.let { oldFile ->
-                                    if (oldFile != fileName) {
-                                        imageManager.deleteImage(oldFile)
-                                    }
-                                }
-                                noteImageFileName = fileName
+                                // 添加到列表而不是替换
+                                noteImagePaths.add(fileName)
                                 file.delete()
                             } else {
                                 Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
@@ -238,14 +282,31 @@ fun AddEditNoteScreen(
     fun saveNote() {
         if (isSaving || !canSave) return
         isSaving = true
-        val normalizedTitle = title.trim().takeIf { it.isNotEmpty() }
+        
         val normalizedContent = content.trimEnd()
-        val imagePathsJson = Json.encodeToString(listOf(noteImageFileName ?: ""))
+        
+        // 如果标题为空，尝试从内容第一行提取作为标题（仅用于列表显示，不修改内容本身）
+        val finalTitle = if (title.isNotBlank()) {
+            title.trim()
+        } else {
+            normalizedContent.lines().firstOrNull()?.take(100)?.trim() ?: ""
+        }
+        
+        // 重构: 序列化多图列表
+        val imagePathsJson = Json.encodeToString(noteImagePaths.toList())
+        
+        // 执行真正的文件删除
+        scope.launch {
+            if (deletedImagePaths.isNotEmpty()) {
+                imageManager.deleteImages(deletedImagePaths)
+            }
+        }
+        
         if (isEditing) {
             viewModel.updateNote(
                 id = noteId,
                 content = normalizedContent,
-                title = normalizedTitle,
+                title = finalTitle,
                 isFavorite = isFavorite,
                 createdAt = createdAt,
                 categoryId = selectedCategoryId,
@@ -257,7 +318,7 @@ fun AddEditNoteScreen(
         } else {
             viewModel.addNote(
                 content = normalizedContent,
-                title = normalizedTitle,
+                title = finalTitle,
                 isFavorite = isFavorite,
                 categoryId = selectedCategoryId,
                 imagePaths = imagePathsJson,
@@ -379,6 +440,7 @@ fun AddEditNoteScreen(
                 }
             )
 
+            // Content Area (Moved Up)
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -390,22 +452,48 @@ fun AddEditNoteScreen(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.title),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    // Title Field
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(stringResource(R.string.title)) },
+                        placeholder = { 
+                            Text(
+                                stringResource(R.string.title), 
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            ) 
+                        },
+                        textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedBorderColor = Color.Transparent
+                        )
+                    )
+                    
+                    // Content Field
+                    OutlinedTextField(
+                        value = content,
+                        onValueChange = { content = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 220.dp),
+                        placeholder = { Text(stringResource(R.string.note_placeholder)) },
+                        minLines = 8,
+                        maxLines = 100, // Allow more lines
+                        shape = RoundedCornerShape(12.dp),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedBorderColor = Color.Transparent
+                        )
                     )
                 }
             }
-
+            
+            // Images Area (Moved Down & Refactored for Multi-image)
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -417,69 +505,138 @@ fun AddEditNoteScreen(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.section_photos),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    if (noteImageBitmap != null) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.section_photos),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        
+                        // Add Image Button (Icon style)
+                        IconButton(
+                            onClick = { showAddImageDialog = true }
                         ) {
-                            Image(
-                                bitmap = noteImageBitmap!!.asImageBitmap(),
-                                contentDescription = stringResource(R.string.view_image),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 160.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { showNoteImageDialog = true },
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    noteImageFileName?.let { fileName ->
-                                        imageManager.deleteImage(fileName)
-                                    }
-                                    noteImageFileName = null
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(imageVector = Icons.Default.Delete, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.delete_image))
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = RoundedCornerShape(12.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Image,
-                                contentDescription = stringResource(R.string.no_image),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Icon(Icons.Default.Add, contentDescription = "Add Image")
                         }
                     }
 
+                    if (noteImagePaths.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            items(noteImagePaths) { fileName ->
+                                val bitmap = noteImageBitmaps[fileName]
+                                Box(
+                                    modifier = Modifier
+                                        .size(100.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clickable { showNoteImageDialog = fileName },
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                        }
+                                    }
+                                    
+                                    // Delete Button Overlay
+                                    IconButton(
+                                        onClick = { 
+                                            noteImagePaths.remove(fileName) 
+                                            deletedImagePaths.add(fileName)
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .size(24.dp)
+                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(bottomStart = 8.dp))
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close, 
+                                            contentDescription = "Remove",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Empty State
+                         Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable { showAddImageDialog = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "添加图片",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Image Detail Dialog
+    if (showNoteImageDialog != null) {
+        val bitmap = noteImageBitmaps[showNoteImageDialog!!]
+        if (bitmap != null) {
+            ImageDialog(
+                bitmap = bitmap,
+                onDismiss = { showNoteImageDialog = null }
+            )
+        } else {
+            showNoteImageDialog = null
+        }
+    }
+    
+    // Add Image Selection Dialog (Bottom Sheet or Dialog)
+    if (showAddImageDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddImageDialog = false },
+            icon = { Icon(Icons.Default.Image, contentDescription = null) },
+            title = { Text(stringResource(R.string.section_photos)) },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text("选择图片来源", style = MaterialTheme.typography.bodyMedium)
+                    
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
+                                showAddImageDialog = false
                                 if (activity != null) {
                                     PhotoPickerHelper.currentTag = "note"
                                     PhotoPickerHelper.pickFromGallery(activity)
@@ -495,6 +652,7 @@ fun AddEditNoteScreen(
                         }
                         OutlinedButton(
                             onClick = {
+                                showAddImageDialog = false
                                 if (activity != null) {
                                     PhotoPickerHelper.currentTag = "note"
                                     PhotoPickerHelper.takePhoto(activity)
@@ -510,44 +668,13 @@ fun AddEditNoteScreen(
                         }
                     }
                 }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                tonalElevation = 1.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.content),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    OutlinedTextField(
-                        value = content,
-                        onValueChange = { content = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 220.dp),
-                        placeholder = { Text(stringResource(R.string.note_placeholder)) },
-                        minLines = 8,
-                        maxLines = 20,
-                        shape = RoundedCornerShape(12.dp)
-                    )
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAddImageDialog = false }) {
+                    Text(stringResource(R.string.cancel))
                 }
             }
-        }
-    }
-
-    if (showNoteImageDialog && noteImageBitmap != null) {
-        ImageDialog(
-            bitmap = noteImageBitmap!!,
-            onDismiss = { showNoteImageDialog = false }
         )
     }
 
