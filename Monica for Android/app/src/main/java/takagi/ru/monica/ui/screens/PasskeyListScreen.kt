@@ -318,6 +318,11 @@ fun PasskeyListScreen(
         }
     }
 
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        viewModel.updateSearchQuery("")
+    }
+
     BackHandler(enabled = selectionMode) {
         selectionMode = false
         selectedPasskeys = emptySet()

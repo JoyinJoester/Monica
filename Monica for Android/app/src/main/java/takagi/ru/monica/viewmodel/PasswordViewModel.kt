@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.Date
+import java.net.URI
+import java.util.Locale
 
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 
@@ -155,7 +157,8 @@ class PasswordViewModel(
                     else -> false
                 }
                 
-                val shouldDedupe = !isExplicitSourceView && smartDedupe
+                // Smart dedupe is only for the "All" view and does not mutate source data.
+                val shouldDedupe = !isExplicitSourceView && smartDedupe && filter is CategoryFilter.All
                 
                 val filtered = if (shouldDedupe) {
                     dedupeSmart(entries)
@@ -189,77 +192,89 @@ class PasswordViewModel(
 
     /**
      * Smart Deduplication Logic
-     * Merges entries that have identical Title, Username, Website AND Password.
-     * Prioritizes the "richest" entry (most metadata).
+     * Display-layer dedupe for "All" view:
+     * 1) merge same account across sources
+     * 2) then keep one entry per unique password value within that account
      */
     private fun dedupeSmart(entries: List<PasswordEntry>): List<PasswordEntry> {
-        // Group by visible business key
-        val groups = entries.groupBy { buildDedupeKey(it) }
-        
-        val result = mutableListOf<PasswordEntry>()
-        
-        for ((_, groupEntries) in groups) {
+        if (entries.size <= 1) return entries
+
+        val indexById = entries.mapIndexed { index, entry -> entry.id to index }.toMap()
+        val accountGroups = entries.groupBy { buildDedupeKey(it) }
+        val deduped = mutableListOf<PasswordEntry>()
+
+        for ((_, groupEntries) in accountGroups) {
             if (groupEntries.size <= 1) {
-                result.addAll(groupEntries)
+                deduped.addAll(groupEntries)
                 continue
             }
-            
-            // Allow multiple entries if passwords differ (decryption needed for comparison)
-            // But here we might not want to decrypt ALL passwords for performance?
-            // However, we need to know if they are "duplicates". 
-            // Assumption: If Title/User/Web match, we should check password match.
-            // Since we are inside the map { ... decrypt ... } block in the flow, 
-            // wait, we are BEFORE decryption in the flow transformation above?
-            // Let's check: "filtered.map { entry -> entry.copy(password = decrypt...) }"
-            // So 'entries' here has ENCRYPTED passwords.
-            
-            // To properly dedupe by password value without decrypting all, we rely on the fact that
-            // for "Smart Deduplication" to be safe, we usually only merge if we are reasonably sure.
-            // But Encrypted passwords will differ even for same plaintext.
-            // So we MUST decrypt to compare, OR we relax the "Same Password" requirement?
-            // The requirement says: "visually merge entries that share ... AND Password".
-            // So we really should compare passwords.
-            
-            // Performance Trade-off: Decrypting all candidates in a group.
-            // Groups are usually small (2-3 items). This is acceptable.
-            
-            val subgroups = groupEntries.groupBy { 
-                try {
-                    securityManager.decryptData(it.password)
-                } catch (e: Exception) {
-                    // Fallback for decryption failure: treat as unique
-                    it.password 
-                }
+
+            val decrypted = groupEntries.map { entry ->
+                entry to runCatching { securityManager.decryptData(entry.password) }.getOrNull()
             }
-            
-            for ((_, candidates) in subgroups) {
-                // Now we have candidates with Same Key AND Same Password.
-                // Pick the best one.
-                val best = candidates.maxWithOrNull(
-                    compareBy<PasswordEntry> { it.notes.length } // Prefer longer notes
-                        .thenBy { it.website.length }        // Prefer longer website URL (if trim matches but original differs?)
-                        .thenBy { if (it.isFavorite) 1 else 0 } // Prefer favorites
-                        .thenBy { if (it.keepassDatabaseId != null || it.bitwardenVaultId != null) 1 else 0 } // Prefer Remote? Or Local? 
-                        // Plan said "prioritize richer data". Usually Remote has more sync info. 
-                        // Let's stick to Note Length as primary proxy for richness.
-                )
-                if (best != null) {
-                    result.add(best)
-                }
+
+            val hasAnyDecrypted = decrypted.any { (_, password) -> password != null }
+            if (!hasAnyDecrypted) {
+                // When auth/MDK is unavailable, still collapse source-duplicates by account key.
+                pickBestEntry(groupEntries)?.let { deduped.add(it) }
+                continue
+            }
+
+            val knownPasswordBuckets = decrypted
+                .filter { (_, password) -> password != null }
+                .groupBy({ (_, password) -> password!! }, { (entry, _) -> entry })
+
+            for ((_, candidates) in knownPasswordBuckets) {
+                pickBestEntry(candidates)?.let { deduped.add(it) }
             }
         }
-        
-        // Restore sort order (optional, but good for stability)
-        // Original list might be sorted by something. 
-        // We can sort by title to be safe.
-        return result.sortedBy { it.title }
+
+        return deduped.sortedBy { indexById[it.id] ?: Int.MAX_VALUE }
+    }
+
+    private fun pickBestEntry(candidates: List<PasswordEntry>): PasswordEntry? {
+        return candidates.maxWithOrNull(
+            compareBy<PasswordEntry> { it.notes.length }
+                .thenBy { it.website.length }
+                .thenBy { it.username.length }
+                .thenBy { if (it.isFavorite) 1 else 0 }
+                .thenBy { if (it.keepassDatabaseId != null || it.bitwardenVaultId != null) 1 else 0 }
+                .thenBy { it.updatedAt.time }
+        )
     }
 
     private fun buildDedupeKey(entry: PasswordEntry): String {
-        val title = entry.title.trim().lowercase()
-        val username = entry.username.trim().lowercase()
-        val website = entry.website.trim().lowercase()
+        val title = normalizeDedupeText(entry.title)
+        val username = normalizeDedupeText(entry.username)
+        val website = normalizeWebsiteForDedupe(entry.website)
         return "$title|$username|$website"
+    }
+
+    private fun normalizeDedupeText(value: String): String {
+        return value.trim().lowercase(Locale.ROOT)
+    }
+
+    private fun normalizeWebsiteForDedupe(value: String): String {
+        val raw = value.trim()
+        if (raw.isEmpty()) return ""
+
+        return runCatching {
+            val withScheme = if (raw.contains("://")) raw else "https://$raw"
+            val uri = URI(withScheme)
+            val host = (uri.host ?: "").lowercase(Locale.ROOT).removePrefix("www.")
+            if (host.isEmpty()) return@runCatching raw.lowercase(Locale.ROOT).trimEnd('/')
+
+            val port = uri.port
+            val hostWithPort = if (port == -1 || port == 80 || port == 443) host else "$host:$port"
+            val path = (uri.path ?: "").trim().trimEnd('/').lowercase(Locale.ROOT)
+            if (path.isBlank()) hostWithPort else "$hostWithPort$path"
+        }.getOrElse {
+            raw.lowercase(Locale.ROOT)
+                .removePrefix("http://")
+                .removePrefix("https://")
+                .removePrefix("www.")
+                .trimEnd('/')
+        }
     }
 
     private fun decryptForDisplay(encryptedPassword: String): String {

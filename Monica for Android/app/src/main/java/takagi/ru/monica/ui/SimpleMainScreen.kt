@@ -120,6 +120,7 @@ import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
 import java.text.SimpleDateFormat
+import java.net.URI
 import java.util.Date
 import java.util.Locale
 
@@ -816,6 +817,7 @@ fun SimpleMainScreen(
     var selectedTotpCount by remember { mutableIntStateOf(0) }
     var onExitTotpSelection by remember { mutableStateOf({}) }
     var onSelectAllTotp by remember { mutableStateOf({}) }
+    var onMoveToCategoryTotp by remember { mutableStateOf({}) }
     var onDeleteSelectedTotp by remember { mutableStateOf({}) }
     
     // 证件的选择模式状态
@@ -1411,11 +1413,12 @@ fun SimpleMainScreen(
                                     totpViewModel.deleteTotpItem(totp)
                                 },
                                 onQuickScanTotp = onNavigateToQuickTotpScan,
-                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
                                     isTotpSelectionMode = isSelectionMode
                                     selectedTotpCount = count
                                     onExitTotpSelection = onExit
                                     onSelectAllTotp = onSelectAll
+                                    onMoveToCategoryTotp = onMoveToCategory
                                     onDeleteSelectedTotp = onDelete
                                 }
                             )
@@ -1534,6 +1537,7 @@ fun SimpleMainScreen(
                                 selectedCount = selectedTotpCount,
                                 onExit = onExitTotpSelection,
                                 onSelectAll = onSelectAllTotp,
+                                onMoveToCategory = onMoveToCategoryTotp,
                                 onDelete = onDeleteSelectedTotp
                             )
                         }
@@ -1713,11 +1717,12 @@ fun SimpleMainScreen(
                                 totpViewModel.deleteTotpItem(totp)
                             },
                             onQuickScanTotp = onNavigateToQuickTotpScan,
-                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
                                 isTotpSelectionMode = isSelectionMode
                                 selectedTotpCount = count
                                 onExitTotpSelection = onExit
                                 onSelectAllTotp = onSelectAll
+                                onMoveToCategoryTotp = onMoveToCategory
                                 onDeleteSelectedTotp = onDelete
                             }
                         )
@@ -2221,6 +2226,7 @@ fun SimpleMainScreen(
                         selectedCount = selectedTotpCount,
                         onExit = onExitTotpSelection,
                         onSelectAll = onSelectAllTotp,
+                        onMoveToCategory = onMoveToCategoryTotp,
                         onDelete = onDeleteSelectedTotp
                     )
                 }
@@ -3785,6 +3791,7 @@ private fun TotpListContent(
         selectedCount: Int,
         onExit: () -> Unit,
         onSelectAll: () -> Unit,
+        onMoveToCategory: () -> Unit,
         onDelete: () -> Unit
     ) -> Unit
 ) {
@@ -3910,6 +3917,7 @@ private fun TotpListContent(
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<Long>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    var showMoveToCategoryDialog by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var categoryNameInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
@@ -3960,6 +3968,10 @@ private fun TotpListContent(
     val deleteSelected = {
         showBatchDeleteDialog = true
     }
+
+    val moveToCategory = {
+        showMoveToCategoryDialog = true
+    }
     
     // 通知父组件选择模式状态变化
     LaunchedEffect(isSelectionMode, selectedItems.size) {
@@ -3968,9 +3980,55 @@ private fun TotpListContent(
             selectedItems.size,
             exitSelection,
             selectAll,
+            moveToCategory,
             deleteSelected
         )
     }
+
+    UnifiedMoveToCategoryBottomSheet(
+        visible = showMoveToCategoryDialog,
+        onDismiss = { showMoveToCategoryDialog = false },
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = getKeePassGroups,
+        onTargetSelected = { target ->
+            val movableIds = selectedItems.filter { it > 0L }
+            when (target) {
+                UnifiedMoveCategoryTarget.Uncategorized -> {
+                    viewModel.moveToCategory(movableIds, null)
+                    Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.MonicaCategory -> {
+                    viewModel.moveToCategory(movableIds, target.categoryId)
+                    val name = categories.find { it.id == target.categoryId }?.name ?: ""
+                    Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+                    viewModel.moveToBitwardenFolder(movableIds, target.vaultId, "")
+                    Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+                    viewModel.moveToBitwardenFolder(movableIds, target.vaultId, target.folderId)
+                    Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+                    viewModel.moveToKeePassDatabase(movableIds, target.databaseId)
+                    val name = keepassDatabases.find { it.id == target.databaseId }?.name ?: "KeePass"
+                    Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
+                    viewModel.moveToKeePassGroup(movableIds, target.databaseId, target.groupPath)
+                    val groupName = target.groupPath.substringAfterLast('/')
+                    Toast.makeText(context, "${context.getString(R.string.move_to_category)} $groupName", Toast.LENGTH_SHORT).show()
+                }
+            }
+            showMoveToCategoryDialog = false
+            isSelectionMode = false
+            selectedItems = emptySet()
+        }
+    )
 
     if (showAddCategoryDialog) {
         AlertDialog(
@@ -6978,7 +7036,29 @@ private fun DeleteConfirmDialog(
  * 用于将除密码外其它信息相同的条目合并显示
  */
 private fun getPasswordInfoKey(entry: takagi.ru.monica.data.PasswordEntry): String {
-    return "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+    val title = entry.title.trim().lowercase(Locale.ROOT)
+    val username = entry.username.trim().lowercase(Locale.ROOT)
+    val website = normalizeWebsiteForInfoKey(entry.website)
+    return "$title|$website|$username"
+}
+
+private fun normalizeWebsiteForInfoKey(value: String): String {
+    val raw = value.trim()
+    if (raw.isEmpty()) return ""
+    return runCatching {
+        val withScheme = if (raw.contains("://")) raw else "https://$raw"
+        val uri = URI(withScheme)
+        val host = (uri.host ?: "").lowercase(Locale.ROOT).removePrefix("www.")
+        if (host.isEmpty()) return@runCatching raw.lowercase(Locale.ROOT).trimEnd('/')
+        val path = (uri.path ?: "").trim().trimEnd('/').lowercase(Locale.ROOT)
+        if (path.isBlank()) host else "$host$path"
+    }.getOrElse {
+        raw.lowercase(Locale.ROOT)
+            .removePrefix("http://")
+            .removePrefix("https://")
+            .removePrefix("www.")
+            .trimEnd('/')
+    }
 }
 
 /**

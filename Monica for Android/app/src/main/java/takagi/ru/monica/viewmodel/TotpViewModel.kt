@@ -597,6 +597,82 @@ class TotpViewModel(
             }
         }
     }
+
+    fun moveToKeePassDatabase(ids: List<Long>, databaseId: Long?) {
+        viewModelScope.launch {
+            ids.forEach { id ->
+                try {
+                    val item = repository.getItemById(id) ?: return@forEach
+                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val updatedData = totpData.copy(keepassDatabaseId = databaseId)
+                    val updatedItem = item.copy(
+                        itemData = Json.encodeToString(updatedData),
+                        keepassDatabaseId = databaseId,
+                        keepassGroupPath = null,
+                        bitwardenVaultId = null,
+                        bitwardenFolderId = null,
+                        bitwardenLocalModified = false,
+                        syncStatus = "NONE",
+                        updatedAt = Date()
+                    )
+                    repository.updateItem(updatedItem)
+                    if (databaseId != null) {
+                        keepassService?.updateSecureItem(databaseId, updatedItem)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun moveToKeePassGroup(ids: List<Long>, databaseId: Long, groupPath: String) {
+        viewModelScope.launch {
+            ids.forEach { id ->
+                try {
+                    val item = repository.getItemById(id) ?: return@forEach
+                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val updatedData = totpData.copy(keepassDatabaseId = databaseId)
+                    val updatedItem = item.copy(
+                        itemData = Json.encodeToString(updatedData),
+                        keepassDatabaseId = databaseId,
+                        keepassGroupPath = groupPath,
+                        bitwardenVaultId = null,
+                        bitwardenFolderId = null,
+                        bitwardenLocalModified = false,
+                        syncStatus = "NONE",
+                        updatedAt = Date()
+                    )
+                    repository.updateItem(updatedItem)
+                    keepassService?.updateSecureItem(databaseId, updatedItem)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun moveToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String) {
+        viewModelScope.launch {
+            ids.forEach { id ->
+                try {
+                    val item = repository.getItemById(id) ?: return@forEach
+                    val updatedItem = item.copy(
+                        keepassDatabaseId = null,
+                        keepassGroupPath = null,
+                        bitwardenVaultId = vaultId,
+                        bitwardenFolderId = folderId,
+                        bitwardenLocalModified = item.bitwardenCipherId != null,
+                        syncStatus = if (item.bitwardenCipherId != null) "PENDING" else item.syncStatus,
+                        updatedAt = Date()
+                    )
+                    repository.updateItem(updatedItem)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
     
     /**
      * 添加新分类
