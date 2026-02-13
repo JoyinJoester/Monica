@@ -86,6 +86,7 @@ class MonicaAutofillService : AutofillService() {
     
     // 缓存应用信息以提高性能
     private val appInfoCache = mutableMapOf<String, String>()
+    private val interactionTtlMillis = 2 * 60 * 1000L
     
     override fun onCreate() {
         super.onCreate()
@@ -360,39 +361,7 @@ class MonicaAutofillService : AutofillService() {
         
         // ✨ 使用增强的字段解析器 V2
         val respectAutofillOff = autofillPreferences.isRespectAutofillDisabledEnabled.first()
-        var parsedStructure = enhancedParserV2.parse(structure, respectAutofillOff)
-        
-        // 🔧 修复：检查并纠正字段顺序（如果密码框在用户名框之前）
-        if (parsedStructure.items.size >= 2) {
-            val usernameItem = parsedStructure.items.find { 
-                it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
-                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS
-            }
-            val passwordItem = parsedStructure.items.find { 
-                it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD 
-            }
-            
-            if (usernameItem != null && passwordItem != null) {
-                // 如果密码框的遍历索引小于用户名框，说明密码框在视觉/结构上位于前方
-                // 这通常是识别错误（例如将账号框误认为密码框）
-                if (passwordItem.traversalIndex < usernameItem.traversalIndex) {
-                    AutofillLogger.w("PARSING", "⚠️ Detected Password field BEFORE Username field (Index: ${passwordItem.traversalIndex} < ${usernameItem.traversalIndex}). Swapping hints.")
-                    android.util.Log.w("MonicaAutofill", "🔄 Swapping hints due to incorrect order")
-                    
-                    // 创建修正后的项列表
-                    val correctedItems = parsedStructure.items.map { item ->
-                        when (item.id) {
-                            usernameItem.id -> item.copy(hint = EnhancedAutofillStructureParserV2.FieldHint.PASSWORD)
-                            passwordItem.id -> item.copy(hint = EnhancedAutofillStructureParserV2.FieldHint.USERNAME) // 降级为 USERNAME 比较安全
-                            else -> item
-                        }
-                    }
-                    
-                    // 更新结构
-                    parsedStructure = parsedStructure.copy(items = correctedItems)
-                }
-            }
-        }
+        val parsedStructure = enhancedParserV2.parse(structure, respectAutofillOff)
         
         // 📊 记录增强解析结果
         AutofillLogger.d("PARSING", "Application: ${parsedStructure.applicationId}, WebView: ${parsedStructure.webView}")
@@ -1251,11 +1220,31 @@ class MonicaAutofillService : AutofillService() {
         
         return try {
             val domain = parsedStructure.webDomain
+            val identifier = (domain ?: packageName).trim().lowercase()
             
             // 🔧 修复: 获取所有密码的 ID,以便"手动选择"时可以显示所有密码
             val allPasswords = passwordRepository.getAllPasswordEntries().first()
             val allPasswordIds = allPasswords.map { it.id }
             android.util.Log.d("MonicaAutofill", "📋 Total passwords available for manual selection: ${allPasswordIds.size}")
+
+            val lastFilledPassword = if (identifier.isNotBlank()) {
+                val now = System.currentTimeMillis()
+                val interaction = autofillPreferences.getAutofillInteractionState(identifier)
+                val isExpired = interaction == null || (now - interaction.startedAt) > interactionTtlMillis
+
+                if (isExpired) {
+                    autofillPreferences.beginAutofillInteraction(identifier)
+                    null
+                } else if (interaction?.completed == true) {
+                    interaction.lastFilledPasswordId?.let { lastId ->
+                        allPasswords.firstOrNull { it.id == lastId }
+                    }
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
             
             val directListResponse = AutofillPickerLauncher.createDirectListResponse(
                 context = applicationContext,
@@ -1263,7 +1252,8 @@ class MonicaAutofillService : AutofillService() {
                 allPasswordIds = allPasswordIds, // 传递所有密码ID而不是空列表
                 packageName = packageName,
                 domain = domain,
-                parsedStructure = parsedStructure
+                parsedStructure = parsedStructure,
+                lastFilledPassword = lastFilledPassword
             )
             
             android.util.Log.d("MonicaAutofill", "✓ Direct list response created successfully")
@@ -1300,6 +1290,8 @@ class MonicaAutofillService : AutofillService() {
         inlineRequest: InlineSuggestionsRequest? = null
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
+        val fillTargets = selectCredentialFillTargets(parsedStructure)
+        val authTargets = selectAuthenticationTargets(fillTargets)
         
         // 🔍 跟踪响应构建统计
         var datasetsCreated = 0
@@ -1359,7 +1351,8 @@ class MonicaAutofillService : AutofillService() {
             val args = AutofillPickerActivityV2.Args(
                 applicationId = packageName,
                 webDomain = parsedStructure.webDomain,
-                autofillIds = ArrayList(parsedStructure.items.map { it.id }),
+                autofillIds = ArrayList(fillTargets.map { it.id }),
+                autofillHints = ArrayList(fillTargets.map { it.hint.name }),
                 isSaveMode = false
             )
             val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
@@ -1375,14 +1368,6 @@ class MonicaAutofillService : AutofillService() {
                 pickerIntent, 
                 flags
             )
-            
-            val manualDatasetBuilder = Dataset.Builder(manualSelectionPresentation)
-            
-            // 为所有字段设置空值以触发 Authentication
-            parsedStructure.items.forEach { item ->
-                manualDatasetBuilder.setValue(item.id, null, manualSelectionPresentation)
-            }
-            manualDatasetBuilder.setAuthentication(manualPendingIntent.intentSender)
             
             // 添加内联建议的手动选择入口（如果有剩余槽位）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R 
@@ -1402,9 +1387,14 @@ class MonicaAutofillService : AutofillService() {
                     android.util.Log.d("MonicaAutofill", "✅ Manual selection inline added")
                 }
             }
-            
-            responseBuilder.addDataset(manualDatasetBuilder.build())
-            datasetsCreated++
+
+            authTargets.forEach { item ->
+                val manualDatasetBuilder = Dataset.Builder(manualSelectionPresentation)
+                manualDatasetBuilder.setValue(item.id, null, manualSelectionPresentation)
+                manualDatasetBuilder.setAuthentication(manualPendingIntent.intentSender)
+                responseBuilder.addDataset(manualDatasetBuilder.build())
+                datasetsCreated++
+            }
             android.util.Log.d("MonicaAutofill", "✅ Manual selection dataset added")
             
         } catch (e: Exception) {
@@ -1680,10 +1670,12 @@ class MonicaAutofillService : AutofillService() {
             }
             
             // 创建跳转到选择器的 Intent
+            val fillTargets = selectCredentialFillTargets(parsedStructure)
             val args = AutofillPickerActivityV2.Args(
                 applicationId = packageName,
                 webDomain = domain,
-                autofillIds = ArrayList(parsedStructure.items.map { it.id }),
+                autofillIds = ArrayList(fillTargets.map { it.id }),
+                autofillHints = ArrayList(fillTargets.map { it.hint.name }),
                 isSaveMode = false
             )
             val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
@@ -1720,6 +1712,32 @@ class MonicaAutofillService : AutofillService() {
             android.util.Log.e("MonicaAutofill", "Error creating manual selection inline", e)
             return null
         }
+    }
+
+    private fun selectCredentialFillTargets(parsedStructure: ParsedStructure): List<ParsedItem> {
+        val credentialTargets = parsedStructure.items.filter { item ->
+            item.hint == FieldHint.USERNAME ||
+                item.hint == FieldHint.EMAIL_ADDRESS ||
+                item.hint == FieldHint.PASSWORD ||
+                item.hint == FieldHint.NEW_PASSWORD
+        }
+        return if (credentialTargets.isNotEmpty()) credentialTargets else parsedStructure.items
+    }
+
+    private fun selectAuthenticationTargets(fillTargets: List<ParsedItem>): List<ParsedItem> {
+        if (fillTargets.isEmpty()) return emptyList()
+        val username = fillTargets.firstOrNull {
+            it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS
+        }
+        val password = fillTargets.firstOrNull {
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
+        }
+
+        val pair = listOfNotNull(username, password).distinctBy { it.id }
+        if (pair.isNotEmpty()) return pair
+
+        val focused = fillTargets.firstOrNull { it.isFocused }
+        return listOf(focused ?: fillTargets.first())
     }
     
     /**

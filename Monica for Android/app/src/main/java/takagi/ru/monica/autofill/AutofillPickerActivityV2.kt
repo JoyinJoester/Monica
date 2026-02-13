@@ -1,7 +1,6 @@
 package takagi.ru.monica.autofill
 
 import android.app.Activity
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -11,7 +10,6 @@ import android.service.autofill.Dataset
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
-import android.widget.RemoteViews
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -94,6 +92,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val capturedUsername: String? = null,
         val capturedPassword: String? = null,
         val autofillIds: ArrayList<AutofillId>? = null,
+        val autofillHints: ArrayList<String>? = null,
         val suggestedPasswordIds: LongArray? = null,
         val isSaveMode: Boolean = false
     ) : Parcelable {
@@ -212,7 +211,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
         } catch (e: Exception) {
-            ""
+            password.password
         }
         
         if (usernameFirst) {
@@ -261,7 +260,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
         } catch (e: Exception) {
-            ""
+            password.password
         }
         
         // 手动模式：复制密码到剪贴板
@@ -287,17 +286,36 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
         
-        val presentation = RemoteViews(packageName, R.layout.autofill_dataset_card).apply {
-            setTextViewText(R.id.text_title, password.title.ifEmpty { decryptedUsername })
-            setTextViewText(R.id.text_username, decryptedUsername)
-            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
-        }
-        
-        val datasetBuilder = Dataset.Builder(presentation)
-        
+        val datasetBuilder = Dataset.Builder()
+
+        val hints = args.autofillHints
+        var filledCount = 0
         autofillIds.forEachIndexed { index, autofillId ->
-            val value = if (index % 2 == 0) decryptedUsername else decryptedPassword
-            datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+            val hint = hints?.getOrNull(index)
+            val value = when (hint) {
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name,
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name -> decryptedUsername
+                EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
+                EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name -> decryptedPassword
+                else -> {
+                    if (hints.isNullOrEmpty()) {
+                        if (index % 2 == 0) decryptedUsername else decryptedPassword
+                    } else {
+                        null
+                    }
+                }
+            }
+            if (value != null) {
+                datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                filledCount++
+            }
+        }
+
+        if (filledCount == 0) {
+            autofillIds.forEachIndexed { index, autofillId ->
+                val fallbackValue = if (index % 2 == 0) decryptedUsername else decryptedPassword
+                datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
+            }
         }
         
         val resultIntent = Intent().apply {
@@ -308,9 +326,27 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         if (forceAddUri) {
             saveUriBinding(password)
         }
+
+        rememberLastFilledCredential(password.id)
         
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
+    }
+
+    private fun rememberLastFilledCredential(passwordId: Long) {
+        val identifier = when {
+            !args.webDomain.isNullOrBlank() -> args.webDomain!!.trim().lowercase()
+            !args.applicationId.isNullOrBlank() -> args.applicationId!!.trim().lowercase()
+            else -> return
+        }
+
+        try {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                AutofillPreferences(applicationContext).setLastFilledCredential(identifier, passwordId)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)
+        }
     }
     
     private fun saveUriBinding(password: PasswordEntry) {
