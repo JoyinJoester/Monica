@@ -319,6 +319,10 @@ data class AppSettings(
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
     val reduceAnimations: Boolean = false, // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题
     val smartDeduplicationEnabled: Boolean = true, // 智能去重（在“所有”视图中合并显示相同密码）
+    val lastPasswordCategoryFilterType: String = "all", // 上次密码列表分类类型
+    val lastPasswordCategoryFilterPrimaryId: Long? = null, // 上次分类主参数（分类ID/库ID等）
+    val lastPasswordCategoryFilterSecondaryId: Long? = null, // 上次分类次参数（如 Bitwarden Vault ID）
+    val lastPasswordCategoryFilterText: String? = null, // 上次分类文本参数（如组路径/文件夹ID）
 
     // Bitwarden 同步范围设置
     val bitwardenUploadAll: Boolean = false, // 一键上传所有数据到 Bitwarden

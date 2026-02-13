@@ -83,6 +83,10 @@ class SettingsManager(private val context: Context) {
 
         // 智能去重
         private val SMART_DEDUPLICATION_ENABLED_KEY = booleanPreferencesKey("smart_deduplication_enabled")
+        private val LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY = stringPreferencesKey("last_password_category_filter_type")
+        private val LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY = longPreferencesKey("last_password_category_filter_primary_id")
+        private val LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY = longPreferencesKey("last_password_category_filter_secondary_id")
+        private val LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY = stringPreferencesKey("last_password_category_filter_text")
 
         // Bitwarden 同步范围
         private val BITWARDEN_UPLOAD_ALL_KEY = booleanPreferencesKey("bitwarden_upload_all")
@@ -176,6 +180,10 @@ class SettingsManager(private val context: Context) {
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
             smartDeduplicationEnabled = preferences[SMART_DEDUPLICATION_ENABLED_KEY] ?: true,
+            lastPasswordCategoryFilterType = preferences[LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY] ?: "all",
+            lastPasswordCategoryFilterPrimaryId = preferences[LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY],
+            lastPasswordCategoryFilterSecondaryId = preferences[LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY],
+            lastPasswordCategoryFilterText = preferences[LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY],
             bitwardenUploadAll = preferences[BITWARDEN_UPLOAD_ALL_KEY] ?: false,
             
             autofillSources = runCatching {
@@ -505,6 +513,32 @@ class SettingsManager(private val context: Context) {
     suspend fun updateSmartDeduplicationEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[SMART_DEDUPLICATION_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateLastPasswordCategoryFilter(
+        type: String,
+        primaryId: Long? = null,
+        secondaryId: Long? = null,
+        text: String? = null
+    ) {
+        dataStore.edit { preferences ->
+            preferences[LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY] = type
+            if (primaryId != null) {
+                preferences[LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY] = primaryId
+            } else {
+                preferences.remove(LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY)
+            }
+            if (secondaryId != null) {
+                preferences[LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY] = secondaryId
+            } else {
+                preferences.remove(LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY)
+            }
+            if (text.isNullOrBlank()) {
+                preferences.remove(LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY)
+            } else {
+                preferences[LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY] = text
+            }
         }
     }
     

@@ -54,6 +54,17 @@ class PasswordViewModel(
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
+    companion object {
+        private const val SAVED_FILTER_ALL = "all"
+        private const val SAVED_FILTER_LOCAL = "local"
+        private const val SAVED_FILTER_STARRED = "starred"
+        private const val SAVED_FILTER_UNCATEGORIZED = "uncategorized"
+        private const val SAVED_FILTER_CUSTOM = "custom"
+        private const val SAVED_FILTER_KEEPASS_DATABASE = "keepass_database"
+        private const val SAVED_FILTER_KEEPASS_GROUP = "keepass_group"
+        private const val SAVED_FILTER_BITWARDEN_VAULT = "bitwarden_vault"
+        private const val SAVED_FILTER_BITWARDEN_FOLDER = "bitwarden_folder"
+    }
     
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
     private val settingsManager: takagi.ru.monica.utils.SettingsManager? = context?.let { takagi.ru.monica.utils.SettingsManager(it) }
@@ -84,6 +95,10 @@ class PasswordViewModel(
     
     private val _isAuthenticated = MutableStateFlow(false)
     val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
+
+    init {
+        restoreLastCategoryFilter()
+    }
     
     fun getBitwardenFolders(vaultId: Long): Flow<List<BitwardenFolder>> {
         return repository.getBitwardenFoldersByVaultId(vaultId)
@@ -341,11 +356,118 @@ class PasswordViewModel(
     }
 
     fun setCategoryFilter(filter: CategoryFilter) {
+        applyCategoryFilter(filter, persist = true)
+    }
+
+    private fun applyCategoryFilter(filter: CategoryFilter, persist: Boolean) {
         _categoryFilter.value = filter
+        if (persist) {
+            persistCategoryFilter(filter)
+        }
         when (filter) {
             is CategoryFilter.KeePassDatabase -> syncKeePassDatabase(filter.databaseId)
             is CategoryFilter.KeePassGroupFilter -> syncKeePassDatabase(filter.databaseId)
             else -> Unit
+        }
+    }
+
+    private fun restoreLastCategoryFilter() {
+        val manager = settingsManager ?: return
+        viewModelScope.launch {
+            runCatching { manager.settingsFlow.first() }
+                .onSuccess { settings ->
+                    if (_categoryFilter.value !is CategoryFilter.All) return@onSuccess
+                    val restoredFilter = decodeSavedCategoryFilter(settings)
+                    applyCategoryFilter(restoredFilter, persist = false)
+                }
+                .onFailure { error ->
+                    Log.w("PasswordViewModel", "Failed to restore last category filter", error)
+                }
+        }
+    }
+
+    private fun decodeSavedCategoryFilter(settings: takagi.ru.monica.data.AppSettings): CategoryFilter {
+        val type = settings.lastPasswordCategoryFilterType.lowercase(Locale.ROOT)
+        return when (type) {
+            SAVED_FILTER_ALL -> CategoryFilter.All
+            SAVED_FILTER_LOCAL -> CategoryFilter.Local
+            SAVED_FILTER_STARRED -> CategoryFilter.Starred
+            SAVED_FILTER_UNCATEGORIZED -> CategoryFilter.Uncategorized
+            SAVED_FILTER_CUSTOM -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.Custom(it) }
+                ?: CategoryFilter.All
+            SAVED_FILTER_KEEPASS_DATABASE -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.KeePassDatabase(it) }
+                ?: CategoryFilter.All
+            SAVED_FILTER_KEEPASS_GROUP -> {
+                val databaseId = settings.lastPasswordCategoryFilterPrimaryId
+                val groupPath = settings.lastPasswordCategoryFilterText
+                if (databaseId != null && !groupPath.isNullOrBlank()) {
+                    CategoryFilter.KeePassGroupFilter(databaseId, groupPath)
+                } else {
+                    CategoryFilter.All
+                }
+            }
+            SAVED_FILTER_BITWARDEN_VAULT -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.BitwardenVault(it) }
+                ?: CategoryFilter.All
+            SAVED_FILTER_BITWARDEN_FOLDER -> {
+                val vaultId = settings.lastPasswordCategoryFilterSecondaryId
+                    ?: settings.lastPasswordCategoryFilterPrimaryId
+                val folderId = settings.lastPasswordCategoryFilterText
+                if (vaultId != null && !folderId.isNullOrBlank()) {
+                    CategoryFilter.BitwardenFolderFilter(folderId, vaultId)
+                } else {
+                    CategoryFilter.All
+                }
+            }
+            else -> CategoryFilter.All
+        }
+    }
+
+    private fun persistCategoryFilter(filter: CategoryFilter) {
+        val manager = settingsManager ?: return
+        viewModelScope.launch {
+            runCatching {
+                when (filter) {
+                    is CategoryFilter.All -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_ALL
+                    )
+                    is CategoryFilter.Local -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_LOCAL
+                    )
+                    is CategoryFilter.Starred -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_STARRED
+                    )
+                    is CategoryFilter.Uncategorized -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_UNCATEGORIZED
+                    )
+                    is CategoryFilter.Custom -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_CUSTOM,
+                        primaryId = filter.categoryId
+                    )
+                    is CategoryFilter.KeePassDatabase -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_KEEPASS_DATABASE,
+                        primaryId = filter.databaseId
+                    )
+                    is CategoryFilter.KeePassGroupFilter -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_KEEPASS_GROUP,
+                        primaryId = filter.databaseId,
+                        text = filter.groupPath
+                    )
+                    is CategoryFilter.BitwardenVault -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_BITWARDEN_VAULT,
+                        primaryId = filter.vaultId
+                    )
+                    is CategoryFilter.BitwardenFolderFilter -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_BITWARDEN_FOLDER,
+                        secondaryId = filter.vaultId,
+                        text = filter.folderId
+                    )
+                }
+            }.onFailure { error ->
+                Log.w("PasswordViewModel", "Failed to persist category filter", error)
+            }
         }
     }
 
@@ -366,7 +488,7 @@ class PasswordViewModel(
         viewModelScope.launch {
             repository.deleteCategory(category)
             if (_categoryFilter.value is CategoryFilter.Custom && (_categoryFilter.value as CategoryFilter.Custom).categoryId == category.id) {
-                _categoryFilter.value = CategoryFilter.All
+                applyCategoryFilter(CategoryFilter.All, persist = true)
             }
         }
     }
