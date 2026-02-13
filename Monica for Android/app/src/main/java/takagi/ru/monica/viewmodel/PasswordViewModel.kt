@@ -389,6 +389,20 @@ class PasswordViewModel(
             repository.updateKeePassDatabaseForPasswords(ids, databaseId)
         }
     }
+
+    fun movePasswordsToKeePassGroup(ids: List<Long>, databaseId: Long, groupPath: String) {
+        viewModelScope.launch {
+            repository.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
+        }
+    }
+
+    fun movePasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String) {
+        viewModelScope.launch {
+            // Clear KeePass binding first so the same entry can switch storage target.
+            repository.updateKeePassDatabaseForPasswords(ids, null)
+            repository.bindPasswordsToBitwardenFolder(ids, vaultId, folderId)
+        }
+    }
     
     fun authenticate(password: String): Boolean {
         val isValid = securityManager.verifyMasterPassword(password)

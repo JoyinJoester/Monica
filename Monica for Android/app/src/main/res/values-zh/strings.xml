@@ -601,6 +601,7 @@
     
     <string name="filter_monica">Monica</string>
     <string name="filter_bitwarden">Bitwarden</string>
+    <string name="move_to_category">移动到分类</string>
     <string name="ledger_select_category">选择分类</string>
     <string name="filter_keepass">KeePass</string>
     <string name="filter_all">全部</string>

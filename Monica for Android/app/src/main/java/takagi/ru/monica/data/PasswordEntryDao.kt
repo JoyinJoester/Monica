@@ -131,6 +131,9 @@ interface PasswordEntryDao {
     @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = NULL WHERE id IN (:ids)")
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?)
 
+    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = :groupPath WHERE id IN (:ids)")
+    suspend fun updateKeePassGroupForPasswords(ids: List<Long>, databaseId: Long, groupPath: String)
+
     @Transaction
     suspend fun setGroupCover(id: Long, website: String) {
         // 先清除该分组的所有封面标记

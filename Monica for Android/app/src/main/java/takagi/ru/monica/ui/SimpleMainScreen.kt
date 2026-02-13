@@ -55,7 +55,6 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material3.*
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -135,6 +134,8 @@ import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
+import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
@@ -204,7 +205,7 @@ private fun SelectionActionBar(
 
             onMoveToCategory?.let {
                 ActionIcon(
-                    icon = Icons.Outlined.Label,
+                    icon = Icons.Default.Folder,
                     contentDescription = stringResource(id = R.string.move_to_category),
                     onClick = it
                 )
@@ -2640,6 +2641,7 @@ private fun PasswordListContent(
     
     
     val context = androidx.compose.ui.platform.LocalContext.current
+    val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
 
     // Display options menu state (moved here)
@@ -2916,242 +2918,103 @@ private fun PasswordListContent(
         )
     }
 
-    if (showMoveToCategoryDialog) {
-        // 计算每个分类的密码数量
-        val categoryCounts = remember(passwordEntries) {
-            passwordEntries.groupingBy { it.categoryId }.eachCount()
-        }
-
-        AlertDialog(
-            onDismissRequest = { showMoveToCategoryDialog = false },
-            icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
-            title = { 
-                Text(
-                    stringResource(R.string.move_to_category),
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
-                ) 
-            },
-            text = {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    item {
-                        val count = categoryCounts[null] ?: 0
-                        Surface(
-                            onClick = {
-                                viewModel.movePasswordsToCategory(selectedPasswords.toList(), null)
-                                showMoveToCategoryDialog = false
-                                isSelectionMode = false
-                                selectedPasswords = setOf()
-                                Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.FolderOff,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Text(
-                                        stringResource(R.string.category_none),
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                }
-                                if (count > 0) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.secondaryContainer,
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) {
-                                        Text(
-                                            text = count.toString(),
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    items(categories) { category ->
-                        val count = categoryCounts[category.id] ?: 0
-                        Surface(
-                            onClick = {
-                                viewModel.movePasswordsToCategory(selectedPasswords.toList(), category.id)
-                                showMoveToCategoryDialog = false
-                                isSelectionMode = false
-                                selectedPasswords = setOf()
-                                Toast.makeText(context, "${context.getString(R.string.move_to_category)} ${category.name}", Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.Folder,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Text(
-                                        category.name,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                }
-                                if (count > 0) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) {
-                                        Text(
-                                            text = count.toString(),
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // KeePass 数据库部分
-                    if (keepassDatabases.isNotEmpty()) {
-                        item {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant
+    UnifiedMoveToCategoryBottomSheet(
+        visible = showMoveToCategoryDialog,
+        onDismiss = { showMoveToCategoryDialog = false },
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = localKeePassViewModel::getGroups,
+        onTargetSelected = { target ->
+            val selectedIds = selectedPasswords.toList()
+            val selectedEntries = passwordEntries.filter { it.id in selectedPasswords }
+            when (target) {
+                UnifiedMoveCategoryTarget.Uncategorized -> {
+                    viewModel.movePasswordsToCategory(selectedIds, null)
+                    Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.MonicaCategory -> {
+                    viewModel.movePasswordsToCategory(selectedIds, target.categoryId)
+                    val name = categories.find { it.id == target.categoryId }?.name ?: ""
+                    Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+                    viewModel.movePasswordsToBitwardenFolder(selectedIds, target.vaultId, "")
+                    Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+                    viewModel.movePasswordsToBitwardenFolder(selectedIds, target.vaultId, target.folderId)
+                    Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
+                }
+                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+                    coroutineScope.launch {
+                        try {
+                            val result = localKeePassViewModel.addPasswordEntriesToKdbx(
+                                databaseId = target.databaseId,
+                                entries = selectedEntries,
+                                decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
                             )
-                            Text(
-                                text = stringResource(R.string.keepass_webdav_title),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
-                        }
-                        
-                        items(keepassDatabases) { database ->
-                            val count = passwordEntries.count { it.keepassDatabaseId == database.id }
-                            Surface(
-                                onClick = {
-                                    // 获取选中的密码条目
-                                    val selectedEntries = passwordEntries.filter { it.id in selectedPasswords }
-                                    
-                                    // 真正写入 kdbx 文件并更新数据库关联
-                                    coroutineScope.launch {
-                                        try {
-                                            val result = localKeePassViewModel.addPasswordEntriesToKdbx(
-                                                databaseId = database.id,
-                                                entries = selectedEntries,
-                                                decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
-                                            )
-                                            
-                                            if (result.isSuccess) {
-                                                // 更新数据库关联
-                                                viewModel.movePasswordsToKeePassDatabase(selectedPasswords.toList(), database.id)
-                                                Toast.makeText(
-                                                    context,
-                                                    "${context.getString(R.string.move_to_category)} ${database.name}: ${result.getOrNull()}",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.webdav_operation_failed, e.message ?: ""),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
-                                    
-                                    showMoveToCategoryDialog = false
-                                    isSelectionMode = false
-                                    selectedPasswords = setOf()
-                                    Toast.makeText(context, "${context.getString(R.string.move_to_category)} ${database.name}", Toast.LENGTH_SHORT).show()
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerLow
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.Default.Key,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.tertiary
-                                        )
-                                        Spacer(modifier = Modifier.width(16.dp))
-                                        Column {
-                                            Text(
-                                                database.name,
-                                                style = MaterialTheme.typography.bodyLarge
-                                            )
-                                            if (database.isDefault) {
-                                                Text(
-                                                    stringResource(R.string.default_label),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.tertiary
-                                                )
-                                            }
-                                        }
-                                    }
-                                    if (count > 0) {
-                                        Surface(
-                                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                                            shape = RoundedCornerShape(16.dp)
-                                        ) {
-                                            Text(
-                                                text = count.toString(),
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                                            )
-                                        }
-                                    }
-                                }
+                            if (result.isSuccess) {
+                                viewModel.movePasswordsToKeePassDatabase(selectedIds, target.databaseId)
+                                Toast.makeText(
+                                    context,
+                                    "${context.getString(R.string.move_to_category)} ${keepassDatabases.find { it.id == target.databaseId }?.name ?: "KeePass"}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.webdav_operation_failed, e.message ?: ""),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showMoveToCategoryDialog = false }) {
-                    Text(stringResource(R.string.cancel))
+                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
+                    coroutineScope.launch {
+                        try {
+                            val result = localKeePassViewModel.addPasswordEntriesToKdbx(
+                                databaseId = target.databaseId,
+                                entries = selectedEntries,
+                                decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
+                            )
+                            if (result.isSuccess) {
+                                viewModel.movePasswordsToKeePassGroup(selectedIds, target.databaseId, target.groupPath)
+                                Toast.makeText(
+                                    context,
+                                    "${context.getString(R.string.move_to_category)} ${target.groupPath.substringAfterLast('/')}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.webdav_operation_failed, e.message ?: ""),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
                 }
             }
-        )
-    }
+            showMoveToCategoryDialog = false
+            isSelectionMode = false
+            selectedPasswords = emptySet()
+        }
+    )
 
     // Display options/search state moved to top
     
