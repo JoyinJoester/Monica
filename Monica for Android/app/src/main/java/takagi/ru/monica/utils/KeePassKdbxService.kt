@@ -62,10 +62,49 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_ITEM_DATA = "MonicaItemData"
         private const val FIELD_MONICA_IMAGE_PATHS = "MonicaImagePaths"
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
+        // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
+        private val globalDecodeMutex = Mutex()
     }
 
-    // Argon2 解码内存峰值很高，串行化解码可避免并发 OOM。
-    private val decodeMutex = Mutex()
+    suspend fun verifyDatabase(
+        databaseId: Long,
+        passwordOverride: String? = null,
+        keyFileUriOverride: Uri? = null
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
+            val credentials = buildCredentials(
+                database,
+                passwordOverride = passwordOverride,
+                keyFileUriOverride = keyFileUriOverride
+            )
+            val bytes = readDatabaseBytes(database)
+            val keePassDatabase = decodeDatabase(bytes, credentials)
+            val entries = mutableListOf<Entry>()
+            collectEntries(keePassDatabase.content.group, entries)
+            Result.success(entries.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun verifyExternalDatabase(
+        fileUri: Uri,
+        password: String,
+        keyFileUri: Uri? = null
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val credentials = buildCredentialsFromRaw(password = password, keyFileUri = keyFileUri)
+            val bytes = context.contentResolver.openInputStream(fileUri)?.use { it.readBytes() }
+                ?: throw Exception("无法打开数据库文件")
+            val keePassDatabase = decodeDatabase(bytes, credentials)
+            val entries = mutableListOf<Entry>()
+            collectEntries(keePassDatabase.content.group, entries)
+            Result.success(entries.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     suspend fun createGroup(
         databaseId: Long,
@@ -771,16 +810,27 @@ class KeePassKdbxService(
         val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
         val credentials = buildCredentials(database)
         val bytes = readDatabaseBytes(database)
-        val keePassDatabase = decodeMutex.withLock {
-            KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
-        }
+        val keePassDatabase = decodeDatabase(bytes, credentials)
         return Triple(database, credentials, keePassDatabase)
     }
 
-    private fun buildCredentials(database: LocalKeePassDatabase): Credentials {
+    private suspend fun decodeDatabase(bytes: ByteArray, credentials: Credentials): KeePassDatabase {
+        return globalDecodeMutex.withLock {
+            KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
+        }
+    }
+
+    private fun buildCredentials(
+        database: LocalKeePassDatabase,
+        passwordOverride: String? = null,
+        keyFileUriOverride: Uri? = null
+    ): Credentials {
         val encryptedDbPassword = database.encryptedPassword
-        val kdbxPassword = encryptedDbPassword?.let { securityManager.decryptData(it) } ?: ""
-        val keyFileBytes = database.keyFileUri?.takeIf { it.isNotBlank() }?.let { uriString ->
+        val kdbxPassword = passwordOverride ?: (encryptedDbPassword?.let { securityManager.decryptData(it) } ?: "")
+        val keyFileBytes = keyFileUriOverride?.let { uri ->
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw Exception("无法读取密钥文件")
+        } ?: database.keyFileUri?.takeIf { it.isNotBlank() }?.let { uriString ->
             val uri = Uri.parse(uriString)
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: throw Exception("无法读取密钥文件")
@@ -789,6 +839,18 @@ class KeePassKdbxService(
             Credentials.from(EncryptedValue.fromString(kdbxPassword), keyFileBytes)
         } else {
             Credentials.from(EncryptedValue.fromString(kdbxPassword))
+        }
+    }
+
+    private fun buildCredentialsFromRaw(password: String, keyFileUri: Uri? = null): Credentials {
+        val keyFileBytes = keyFileUri?.let { uri ->
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw Exception("无法读取密钥文件")
+        }
+        return if (keyFileBytes != null) {
+            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
+        } else {
+            Credentials.from(EncryptedValue.fromString(password))
         }
     }
 
@@ -804,13 +866,13 @@ class KeePassKdbxService(
         }
     }
 
-    private fun writeDatabase(
+    private suspend fun writeDatabase(
         database: LocalKeePassDatabase,
         credentials: Credentials,
         keePassDatabase: KeePassDatabase
     ) {
         val bytes = encodeDatabase(keePassDatabase)
-        KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
+        decodeDatabase(bytes, credentials)
         if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             writeInternal(database, bytes)
         } else {

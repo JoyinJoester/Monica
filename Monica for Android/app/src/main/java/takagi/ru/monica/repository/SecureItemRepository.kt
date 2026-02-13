@@ -87,8 +87,17 @@ class SecureItemRepository(
      * - NOTE/PASSWORD: 比较 title
      * @return 找到的重复项，或 null
      */
-    suspend fun findDuplicateSecureItem(itemType: ItemType, itemData: String, title: String): takagi.ru.monica.data.SecureItem? {
-        val existingItems = secureItemDao.getActiveItemsByTypeSync(itemType)
+    suspend fun findDuplicateSecureItem(
+        itemType: ItemType,
+        itemData: String,
+        title: String,
+        localOnly: Boolean = false
+    ): takagi.ru.monica.data.SecureItem? {
+        val existingItems = if (localOnly) {
+            secureItemDao.getActiveLocalItemsByTypeSync(itemType)
+        } else {
+            secureItemDao.getActiveItemsByTypeSync(itemType)
+        }
         
         return when (itemType) {
             ItemType.DOCUMENT -> {

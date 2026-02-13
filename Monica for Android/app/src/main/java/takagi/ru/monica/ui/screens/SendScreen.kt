@@ -6,8 +6,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,7 +57,6 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -93,6 +99,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -233,14 +240,6 @@ fun SendScreen(
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
             ) {
-                SendHeroCard(
-                    sendCount = sends.size,
-                    textCount = sends.count { it.isTextType },
-                    fileCount = sends.count { it.isFileType }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
                 when (sendState) {
                     is BitwardenViewModel.SendState.Syncing -> {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -358,6 +357,14 @@ fun SendScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = 96.dp)
                         ) {
+                            item(key = "send_hero") {
+                                SendHeroCard(
+                                    sendCount = sends.size,
+                                    textCount = sends.count { it.isTextType },
+                                    fileCount = sends.count { it.isFileType }
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
                             items(
                                 items = filteredSends,
                                 key = { it.bitwardenSendId }
@@ -491,11 +498,15 @@ private fun SendItemCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+        label = "send_arrow_rotation"
+    )
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize()
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -562,13 +573,23 @@ private fun SendItemCard(
                 }
                 
                 Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    imageVector = Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.rotate(arrowRotation)
                 )
             }
 
-            if (expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(
+                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(durationMillis = 180)),
+                exit = shrinkVertically(
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(durationMillis = 140))
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 
                 val body = when {
@@ -655,6 +676,7 @@ private fun SendItemCard(
                     Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.delete))
+                }
                 }
             }
         }

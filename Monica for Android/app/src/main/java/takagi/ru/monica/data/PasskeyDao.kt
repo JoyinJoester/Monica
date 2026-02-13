@@ -28,6 +28,15 @@ interface PasskeyDao {
      */
     @Query("SELECT * FROM passkeys WHERE credential_id = :credentialId")
     suspend fun getPasskeyById(credentialId: String): PasskeyEntry?
+
+    @Query("""
+        SELECT * FROM passkeys
+        WHERE credential_id = :credentialId
+          AND bitwarden_vault_id IS NULL
+          AND keepass_database_id IS NULL
+        LIMIT 1
+    """)
+    suspend fun getLocalPasskeyById(credentialId: String): PasskeyEntry?
     
     /**
      * 根据依赖方 ID (域名) 获取 Passkeys

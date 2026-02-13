@@ -1504,6 +1504,15 @@
     <string name="local_keepass_section_title">KeePass 数据库</string>
     <string name="local_keepass_database">本地 KeePass 数据库</string>
     <string name="local_keepass_database_description">管理本地 .kdbx KeePass 数据库文件</string>
+    <string name="local_keepass_verify_status">验证状态</string>
+    <string name="local_keepass_verify_status_format">状态: %1$s</string>
+    <string name="local_keepass_status_verified">已验证</string>
+    <string name="local_keepass_status_unverified">未验证</string>
+    <string name="local_keepass_status_verifying">验证中…</string>
+    <string name="local_keepass_status_unknown">未检查</string>
+    <string name="local_keepass_reverify_password">重新验证数据库密码</string>
+    <string name="local_keepass_reverify_dialog_title">验证 KeePass 密码</string>
+    <string name="local_keepass_reverify_dialog_desc">输入密码和/或选择密钥文件进行验证，并更新已保存的凭据。</string>
     <string name="no_keepass_database">暂无 KeePass 数据库</string>
     <string name="no_keepass_database_description">创建新数据库或打开已有数据库</string>
     <string name="create_database">创建数据库</string>
@@ -2152,6 +2161,8 @@
     <string name="webdav_operation_failed">操作失败: %1$s</string>
     <string name="webdav_restore_backup_title">恢复备份</string>
     <string name="webdav_restore_backup_confirm_message">确定要从此备份恢复数据吗?\n\n%1$s\n\n注意: 这将导入备份中的所有数据到当前应用中。</string>
+    <string name="webdav_restore_local_only_dedup">仅与 Monica 本地数据去重</string>
+    <string name="webdav_restore_local_only_dedup_desc">关闭: 保持旧行为（全数据去重）。开启: 只和本地条目去重。</string>
     <string name="webdav_restore_action">恢复</string>
     <string name="webdav_restore_encrypted_hint">此备份文件已加密，请输入密码进行解密：</string>
     <string name="webdav_restore_failed">恢复失败: %1$s</string>

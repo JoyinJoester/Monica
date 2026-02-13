@@ -1662,6 +1662,15 @@
     <string name="local_keepass_section_title">KeePass Database</string>
     <string name="local_keepass_database">Local KeePass Database</string>
     <string name="local_keepass_database_description">Manage local .kdbx KeePass database files</string>
+    <string name="local_keepass_verify_status">Verification Status</string>
+    <string name="local_keepass_verify_status_format">Status: %1$s</string>
+    <string name="local_keepass_status_verified">Verified</string>
+    <string name="local_keepass_status_unverified">Unverified</string>
+    <string name="local_keepass_status_verifying">Verifying…</string>
+    <string name="local_keepass_status_unknown">Not checked</string>
+    <string name="local_keepass_reverify_password">Re-verify database password</string>
+    <string name="local_keepass_reverify_dialog_title">Verify KeePass password</string>
+    <string name="local_keepass_reverify_dialog_desc">Enter password and/or select key file to verify and update saved credentials.</string>
     <string name="no_keepass_database">No KeePass Database</string>
     <string name="no_keepass_database_description">Create a new database or open an existing one</string>
     <string name="create_database">Create Database</string>
@@ -2323,6 +2332,8 @@
     <string name="webdav_operation_failed">Operation failed: %1$s</string>
     <string name="webdav_restore_backup_title">Restore Backup</string>
     <string name="webdav_restore_backup_confirm_message">Restore data from this backup?\n\n%1$s\n\nNote: this imports all data in this backup into the current app.</string>
+    <string name="webdav_restore_local_only_dedup">Deduplicate only against Monica local data</string>
+    <string name="webdav_restore_local_only_dedup_desc">Off: keep old behavior (global dedup across all data). On: only dedup with local entries.</string>
     <string name="webdav_restore_action">Restore</string>
     <string name="webdav_restore_encrypted_hint">This backup file is encrypted. Enter password to decrypt:</string>
     <string name="webdav_restore_failed">Restore failed: %1$s</string>

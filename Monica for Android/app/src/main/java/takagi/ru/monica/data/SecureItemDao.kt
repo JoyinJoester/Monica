@@ -80,6 +80,15 @@ interface SecureItemDao {
      */
     @Query("SELECT * FROM secure_items WHERE itemType = :itemType AND isDeleted = 0")
     suspend fun getActiveItemsByTypeSync(itemType: ItemType): List<SecureItem>
+
+    @Query("""
+        SELECT * FROM secure_items
+        WHERE itemType = :itemType
+          AND isDeleted = 0
+          AND bitwarden_vault_id IS NULL
+          AND keepass_database_id IS NULL
+    """)
+    suspend fun getActiveLocalItemsByTypeSync(itemType: ItemType): List<SecureItem>
     
     /**
      * 删除指定类型的所有项目

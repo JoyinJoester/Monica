@@ -1032,12 +1032,13 @@ private fun BackupItem(
     var isRestoring by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var overwriteAll by remember { mutableStateOf(false) }
+    var restoreDedupLocalOnly by remember { mutableStateOf(false) }
     
     // New state variables for smart decryption
     var showPasswordInputDialog by remember { mutableStateOf(false) }
     var tempPassword by remember { mutableStateOf("") }
 
-    suspend fun handleRestoreResult(result: Result<RestoreResult>) {
+    suspend fun handleRestoreResult(result: Result<RestoreResult>, localOnlyDedup: Boolean) {
         if (result.isSuccess) {
             val restoreResult = result.getOrNull() ?: return
             val content = restoreResult.content
@@ -1067,11 +1068,20 @@ private fun BackupItem(
             val failedPasswordDetails = mutableListOf<String>()
             passwords.forEach { password ->
                 try {
-                    val isDuplicate = passwordRepository.isDuplicateEntry(
-                        password.title,
-                        password.username,
-                        password.website
-                    )
+                    val existingEntry = if (localOnlyDedup) {
+                        passwordRepository.getLocalDuplicateEntry(
+                            password.title,
+                            password.username,
+                            password.website
+                        )
+                    } else {
+                        passwordRepository.getDuplicateEntry(
+                            password.title,
+                            password.username,
+                            password.website
+                        )
+                    }
+                    val isDuplicate = existingEntry != null
                     
                     // Keep track of the original ID from the backup
                     val originalId = password.id
@@ -1090,11 +1100,6 @@ private fun BackupItem(
                     } else {
                         // If duplicate, try to find the existing entry to map the ID
                         // This ensures TOTP items can still bind to the existing password
-                        val existingEntry = passwordRepository.getDuplicateEntry(
-                             password.title,
-                             password.username,
-                             password.website
-                        )
                         if (existingEntry != null) {
                              passwordIdMap[originalId] = existingEntry.id
                         }
@@ -1198,7 +1203,8 @@ private fun BackupItem(
                     val existingItem = secureItemRepository.findDuplicateSecureItem(
                         itemType,
                         exportItem.itemData,
-                        exportItem.title
+                        exportItem.title,
+                        localOnly = localOnlyDedup
                     )
                     val isDuplicate = existingItem != null
                     
@@ -1254,7 +1260,11 @@ private fun BackupItem(
 
                 passkeys.forEach { passkey ->
                     try {
-                        val existing = passkeyDao.getPasskeyById(passkey.credentialId)
+                        val existing = if (localOnlyDedup) {
+                            passkeyDao.getLocalPasskeyById(passkey.credentialId)
+                        } else {
+                            passkeyDao.getPasskeyById(passkey.credentialId)
+                        }
                         if (existing == null) {
                             val mappedBoundPasswordId = passkey.boundPasswordId?.let { oldId ->
                                 passwordIdMap[oldId]
@@ -1556,6 +1566,20 @@ private fun BackupItem(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(stringResource(R.string.webdav_overwrite_local))
                     }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = restoreDedupLocalOnly,
+                            onCheckedChange = { restoreDedupLocalOnly = it }
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.webdav_restore_local_only_dedup))
+                    }
+                    Text(
+                        text = stringResource(R.string.webdav_restore_local_only_dedup_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             },
             confirmButton = {
@@ -1567,7 +1591,7 @@ private fun BackupItem(
                             try {
                                 // 下载并恢复备份
                                 val result = webDavHelper.downloadAndRestoreBackup(backup, overwrite = overwriteAll)
-                                handleRestoreResult(result)
+                                handleRestoreResult(result, localOnlyDedup = restoreDedupLocalOnly)
                             } catch (e: Exception) {
                                 isRestoring = false
                                 Toast.makeText(
@@ -1618,7 +1642,7 @@ private fun BackupItem(
                         coroutineScope.launch {
                             try {
                                 val result = webDavHelper.downloadAndRestoreBackup(backup, tempPassword, overwrite = overwriteAll)
-                                handleRestoreResult(result)
+                                handleRestoreResult(result, localOnlyDedup = restoreDedupLocalOnly)
                             } catch (e: Exception) {
                                 isRestoring = false
                                 Toast.makeText(

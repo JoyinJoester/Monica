@@ -7,6 +7,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
+import java.util.Locale
 
 /**
  * Repository for password entries
@@ -173,6 +174,17 @@ class PasswordRepository(
      */
     suspend fun getDuplicateEntry(title: String, username: String, website: String): PasswordEntry? {
         return passwordEntryDao.findDuplicateEntry(title, username, website)
+    }
+
+    /**
+     * 仅在 Monica 本地库范围内查重（排除 KeePass / Bitwarden）
+     */
+    suspend fun getLocalDuplicateEntry(title: String, username: String, website: String): PasswordEntry? {
+        return passwordEntryDao.findLocalDuplicateByKey(
+            title.lowercase(Locale.ROOT),
+            username.lowercase(Locale.ROOT),
+            website.lowercase(Locale.ROOT)
+        )
     }
 
     suspend fun getDuplicateEntryInKeePass(databaseId: Long, title: String, username: String, website: String): PasswordEntry? {

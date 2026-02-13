@@ -61,6 +61,8 @@ class LocalKeePassViewModel(
     
     /** KeePass 分组缓存，按数据库 ID 组织 */
     private val _groupsByDatabase = MutableStateFlow<Map<Long, List<KeePassGroupInfo>>>(emptyMap())
+    private val _verificationStates = MutableStateFlow<Map<Long, VerificationState>>(emptyMap())
+    val verificationStates: StateFlow<Map<Long, VerificationState>> = _verificationStates.asStateFlow()
 
     private val kdbxService = KeePassKdbxService(context, dao, securityManager)
 
@@ -74,6 +76,92 @@ class LocalKeePassViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val groups = kdbxService.listGroups(databaseId).getOrDefault(emptyList())
             _groupsByDatabase.update { current -> current + (databaseId to groups) }
+        }
+    }
+
+    fun ensureVerificationForDatabases(databaseIds: List<Long>) {
+        val idSet = databaseIds.toSet()
+        _verificationStates.update { current -> current.filterKeys { it in idSet } }
+        databaseIds.forEach { databaseId ->
+            val existing = _verificationStates.value[databaseId]
+            if (existing == null || existing is VerificationState.Unknown) {
+                verifyDatabaseCredentials(databaseId, force = false)
+            }
+        }
+    }
+
+    fun verifyDatabaseCredentials(databaseId: Long, force: Boolean = true) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = _verificationStates.value[databaseId]
+            if (!force && existing is VerificationState.Verified) {
+                return@launch
+            }
+
+            _verificationStates.update { current ->
+                current + (databaseId to VerificationState.Verifying)
+            }
+
+            val verifyResult = kdbxService.verifyDatabase(databaseId)
+            _verificationStates.update { current ->
+                current + (
+                    databaseId to if (verifyResult.isSuccess) {
+                        VerificationState.Verified(verifyResult.getOrDefault(0))
+                    } else {
+                        VerificationState.Failed(verifyResult.exceptionOrNull()?.message ?: "验证失败")
+                    }
+                )
+            }
+        }
+    }
+
+    fun reverifyDatabasePassword(databaseId: Long, password: String, keyFileUri: Uri? = null) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在验证数据库密码...")
+            _verificationStates.update { current ->
+                current + (databaseId to VerificationState.Verifying)
+            }
+            try {
+                withContext(Dispatchers.IO) {
+                    val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
+                    val passwordToUse = if (password.isNotBlank()) {
+                        password
+                    } else {
+                        database.encryptedPassword?.let { securityManager.decryptData(it) } ?: ""
+                    }
+                    val verifyResult = kdbxService.verifyDatabase(
+                        databaseId = databaseId,
+                        passwordOverride = passwordToUse,
+                        keyFileUriOverride = keyFileUri
+                    )
+                    val count = verifyResult.getOrElse { throw it }
+                    val encryptedPassword = securityManager.encryptData(passwordToUse)
+                    if (keyFileUri != null) {
+                        runCatching {
+                            context.contentResolver.takePersistableUriPermission(
+                                keyFileUri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            )
+                        }
+                    }
+                    dao.updateDatabase(
+                        database.copy(
+                            encryptedPassword = encryptedPassword,
+                            keyFileUri = keyFileUri?.toString() ?: database.keyFileUri,
+                            entryCount = count,
+                            lastAccessedAt = System.currentTimeMillis()
+                        )
+                    )
+                    _verificationStates.update { current ->
+                        current + (databaseId to VerificationState.Verified(count))
+                    }
+                }
+                _operationState.value = OperationState.Success("密码验证成功")
+            } catch (e: Exception) {
+                _verificationStates.update { current ->
+                    current + (databaseId to VerificationState.Failed(e.message ?: "验证失败"))
+                }
+                _operationState.value = OperationState.Error("验证失败: ${e.message}")
+            }
         }
     }
 
@@ -298,6 +386,15 @@ class LocalKeePassViewModel(
                     // 验证文件是否可访问
                     context.contentResolver.openInputStream(uri)?.close()
                         ?: throw Exception("无法访问文件")
+
+                    val verifyResult = kdbxService.verifyExternalDatabase(
+                        fileUri = uri,
+                        password = password,
+                        keyFileUri = keyFileUri
+                    )
+                    val entryCount = verifyResult.getOrElse {
+                        throw Exception("数据库密码或密钥文件无效: ${it.message}")
+                    }
                     
                     val encryptedPassword = if (password.isNotBlank()) securityManager.encryptData(password) else null
                     
@@ -326,6 +423,7 @@ class LocalKeePassViewModel(
                         storageLocation = KeePassStorageLocation.EXTERNAL,
                         encryptedPassword = encryptedPassword,
                         description = description,
+                        entryCount = entryCount,
                         isDefault = allDatabases.value.isEmpty()
                     )
                     
@@ -560,9 +658,21 @@ class LocalKeePassViewModel(
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
-                    
+                    val verifyResult = kdbxService.verifyDatabase(databaseId, passwordOverride = newPassword)
+                    val entryCount = verifyResult.getOrElse {
+                        throw Exception("密码验证失败: ${it.message}")
+                    }
                     val encryptedPassword = securityManager.encryptData(newPassword)
-                    dao.updateDatabase(database.copy(encryptedPassword = encryptedPassword))
+                    dao.updateDatabase(
+                        database.copy(
+                            encryptedPassword = encryptedPassword,
+                            entryCount = entryCount,
+                            lastAccessedAt = System.currentTimeMillis()
+                        )
+                    )
+                    _verificationStates.update { current ->
+                        current + (databaseId to VerificationState.Verified(entryCount))
+                    }
                 }
                 
                 _operationState.value = OperationState.Success("密码已更新")
@@ -690,5 +800,12 @@ class LocalKeePassViewModel(
         data class Loading(val message: String) : OperationState()
         data class Success(val message: String) : OperationState()
         data class Error(val message: String) : OperationState()
+    }
+
+    sealed class VerificationState {
+        object Unknown : VerificationState()
+        object Verifying : VerificationState()
+        data class Verified(val entryCount: Int) : VerificationState()
+        data class Failed(val message: String) : VerificationState()
     }
 }
