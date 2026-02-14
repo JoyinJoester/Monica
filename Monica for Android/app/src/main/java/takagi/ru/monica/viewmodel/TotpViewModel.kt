@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.Category
@@ -30,11 +31,17 @@ sealed class TotpCategoryFilter {
     object Local : TotpCategoryFilter()
     object Starred : TotpCategoryFilter()
     object Uncategorized : TotpCategoryFilter()
+    object LocalStarred : TotpCategoryFilter()
+    object LocalUncategorized : TotpCategoryFilter()
     data class Custom(val categoryId: Long) : TotpCategoryFilter()
     data class KeePassDatabase(val databaseId: Long) : TotpCategoryFilter()
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : TotpCategoryFilter()
+    data class KeePassDatabaseStarred(val databaseId: Long) : TotpCategoryFilter()
+    data class KeePassDatabaseUncategorized(val databaseId: Long) : TotpCategoryFilter()
     data class BitwardenVault(val vaultId: Long) : TotpCategoryFilter()
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : TotpCategoryFilter()
+    data class BitwardenVaultStarred(val vaultId: Long) : TotpCategoryFilter()
+    data class BitwardenVaultUncategorized(val vaultId: Long) : TotpCategoryFilter()
 }
 
 /**
@@ -65,14 +72,35 @@ class TotpViewModel(
     // 分类列表（使用 PasswordRepository 获取）
     val categories: StateFlow<List<Category>> = passwordRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * 当前 Bitwarden Vault 筛选下的文件夹集合。
+     * 兼容历史数据: 某些旧数据可能只有 folderId，没有写入 vaultId。
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val selectedBitwardenVaultFolderIds: StateFlow<Set<String>> = _categoryFilter
+        .flatMapLatest { filter ->
+            val folderFlow = when (filter) {
+                is TotpCategoryFilter.BitwardenVault -> {
+                    passwordRepository.getBitwardenFoldersByVaultId(filter.vaultId)
+                }
+                is TotpCategoryFilter.BitwardenVaultStarred -> {
+                    passwordRepository.getBitwardenFoldersByVaultId(filter.vaultId)
+                }
+                else -> flowOf(emptyList())
+            }
+            folderFlow.map { folders -> folders.mapTo(linkedSetOf()) { it.bitwardenFolderId } }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
     
     // TOTP项目列表 - 合并实际存储的TOTP和从密码authenticatorKey生成的虚拟TOTP
     val totpItems: StateFlow<List<SecureItem>> = combine(
         _searchQuery,
         _categoryFilter,
         repository.getItemsByType(ItemType.TOTP),
-        passwordRepository.getAllPasswordEntries()
-    ) { query, filter, storedTotps, allPasswords ->
+        passwordRepository.getAllPasswordEntries(),
+        selectedBitwardenVaultFolderIds
+    ) { query, filter, storedTotps, allPasswords, selectedVaultFolderIds ->
         // 收集所有已存储的TOTP密钥（用于去重）
         val existingSecrets = storedTotps.mapNotNull { item ->
             try {
@@ -126,6 +154,16 @@ class TotpViewModel(
                     Json.decodeFromString<TotpData>(it.itemData).categoryId == null
                 } catch (e: Exception) { true }
             }
+            is TotpCategoryFilter.LocalStarred -> allTotps.filter {
+                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.isFavorite
+            }
+            is TotpCategoryFilter.LocalUncategorized -> allTotps.filter {
+                it.bitwardenVaultId == null && it.keepassDatabaseId == null && (
+                    it.categoryId == null && try {
+                        Json.decodeFromString<TotpData>(it.itemData).categoryId == null
+                    } catch (e: Exception) { true }
+                )
+            }
             is TotpCategoryFilter.Custom -> allTotps.filter { item ->
                 item.categoryId == filter.categoryId || try {
                     Json.decodeFromString<TotpData>(item.itemData).categoryId == filter.categoryId
@@ -135,8 +173,34 @@ class TotpViewModel(
             is TotpCategoryFilter.KeePassGroupFilter -> allTotps.filter {
                 it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
             }
-            is TotpCategoryFilter.BitwardenVault -> allTotps.filter { it.bitwardenVaultId == filter.vaultId }
+            is TotpCategoryFilter.KeePassDatabaseStarred -> allTotps.filter {
+                it.keepassDatabaseId == filter.databaseId && it.isFavorite
+            }
+            is TotpCategoryFilter.KeePassDatabaseUncategorized -> allTotps.filter {
+                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank()
+            }
+            is TotpCategoryFilter.BitwardenVault -> allTotps.filter {
+                it.bitwardenVaultId == filter.vaultId ||
+                    (
+                        it.bitwardenVaultId == null &&
+                            !it.bitwardenFolderId.isNullOrBlank() &&
+                            it.bitwardenFolderId in selectedVaultFolderIds
+                        )
+            }
             is TotpCategoryFilter.BitwardenFolderFilter -> allTotps.filter { it.bitwardenFolderId == filter.folderId }
+            is TotpCategoryFilter.BitwardenVaultStarred -> allTotps.filter {
+                (
+                    it.bitwardenVaultId == filter.vaultId ||
+                        (
+                            it.bitwardenVaultId == null &&
+                                !it.bitwardenFolderId.isNullOrBlank() &&
+                                it.bitwardenFolderId in selectedVaultFolderIds
+                            )
+                    ) && it.isFavorite
+            }
+            is TotpCategoryFilter.BitwardenVaultUncategorized -> allTotps.filter {
+                it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null
+            }
         }
         
         // 然后应用搜索过滤
@@ -176,6 +240,8 @@ class TotpViewModel(
         when (filter) {
             is TotpCategoryFilter.KeePassDatabase -> syncKeePassTotp(filter.databaseId)
             is TotpCategoryFilter.KeePassGroupFilter -> syncKeePassTotp(filter.databaseId)
+            is TotpCategoryFilter.KeePassDatabaseStarred -> syncKeePassTotp(filter.databaseId)
+            is TotpCategoryFilter.KeePassDatabaseUncategorized -> syncKeePassTotp(filter.databaseId)
             else -> Unit
         }
     }

@@ -486,6 +486,18 @@ fun AddEditPasswordScreen(
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
+            is CategoryFilter.KeePassDatabaseStarred -> {
+                categoryId = null
+                keepassDatabaseId = filter.databaseId
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is CategoryFilter.KeePassDatabaseUncategorized -> {
+                categoryId = null
+                keepassDatabaseId = filter.databaseId
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
             is CategoryFilter.BitwardenVault -> {
                 categoryId = null
                 keepassDatabaseId = null
@@ -497,6 +509,18 @@ fun AddEditPasswordScreen(
                 keepassDatabaseId = null
                 bitwardenVaultId = filter.vaultId
                 bitwardenFolderId = filter.folderId
+            }
+            is CategoryFilter.BitwardenVaultStarred -> {
+                categoryId = null
+                keepassDatabaseId = null
+                bitwardenVaultId = filter.vaultId
+                bitwardenFolderId = null
+            }
+            is CategoryFilter.BitwardenVaultUncategorized -> {
+                categoryId = null
+                keepassDatabaseId = null
+                bitwardenVaultId = filter.vaultId
+                bitwardenFolderId = null
             }
             else -> {
                 categoryId = null

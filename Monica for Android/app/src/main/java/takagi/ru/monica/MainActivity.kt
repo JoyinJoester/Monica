@@ -765,10 +765,22 @@ fun MonicaContent(
                         is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabase -> {
                             TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
                         }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseStarred -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseUncategorized -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
                         is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> {
                             TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
                         }
                         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> {
+                            TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultStarred -> {
+                            TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized -> {
                             TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
                         }
                         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenFolderFilter -> {

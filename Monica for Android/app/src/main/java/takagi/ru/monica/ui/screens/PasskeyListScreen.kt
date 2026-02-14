@@ -201,6 +201,7 @@ fun PasskeyListScreen(
     var pendingDeletePasskey by remember { mutableStateOf<PasskeyEntry?>(null) }
     var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
+    var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var deletePasswordInput by remember { mutableStateOf("") }
@@ -215,21 +216,56 @@ fun PasskeyListScreen(
         appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
     }
     val activity = context as? FragmentActivity
+    val boundPasswordForPasskey: (PasskeyEntry) -> PasswordEntry? = remember(passwordMap) {
+        { passkey -> passkey.boundPasswordId?.let { passwordId -> passwordMap[passwordId] } }
+    }
     val effectiveCategoryId: (PasskeyEntry) -> Long? = remember(passwordMap) {
-        { passkey -> passkey.boundPasswordId?.let { passwordId -> passwordMap[passwordId]?.categoryId } ?: passkey.categoryId }
+        { passkey -> boundPasswordForPasskey(passkey)?.categoryId ?: passkey.categoryId }
+    }
+    val effectiveBitwardenVaultId: (PasskeyEntry) -> Long? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.bitwardenVaultId ?: passkey.bitwardenVaultId }
+    }
+    val effectiveBitwardenFolderId: (PasskeyEntry) -> String? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.bitwardenFolderId }
+    }
+    val effectiveKeePassDatabaseId: (PasskeyEntry) -> Long? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.keepassDatabaseId ?: passkey.keepassDatabaseId }
+    }
+    val effectiveKeePassGroupPath: (PasskeyEntry) -> String? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.keepassGroupPath }
+    }
+    val effectiveIsFavorite: (PasskeyEntry) -> Boolean = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.isFavorite == true }
     }
     val categoryFilteredPasskeys = remember(combinedPasskeys, selectedCategoryFilter, passwordMap) {
         combinedPasskeys.filter { passkey ->
+            val effectiveVaultId = effectiveBitwardenVaultId(passkey)
+            val effectiveFolderId = effectiveBitwardenFolderId(passkey)
+            val effectiveKeePassId = effectiveKeePassDatabaseId(passkey)
+            val effectiveGroupPath = effectiveKeePassGroupPath(passkey)
+            val isLocal = effectiveVaultId == null && effectiveKeePassId == null
             when (val filter = selectedCategoryFilter) {
                 UnifiedCategoryFilterSelection.All -> true
-                UnifiedCategoryFilterSelection.Local -> true
+                UnifiedCategoryFilterSelection.Local -> isLocal
                 UnifiedCategoryFilterSelection.Uncategorized -> effectiveCategoryId(passkey) == null
+                UnifiedCategoryFilterSelection.LocalStarred -> isLocal && effectiveIsFavorite(passkey)
+                UnifiedCategoryFilterSelection.LocalUncategorized -> isLocal && effectiveCategoryId(passkey) == null
                 is UnifiedCategoryFilterSelection.Custom -> effectiveCategoryId(passkey) == filter.categoryId
-                UnifiedCategoryFilterSelection.Starred -> false
-                is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> false
-                is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> false
-                is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> false
-                is UnifiedCategoryFilterSelection.KeePassGroupFilter -> false
+                UnifiedCategoryFilterSelection.Starred -> effectiveIsFavorite(passkey)
+                is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> effectiveVaultId == filter.vaultId
+                is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
+                    effectiveVaultId == filter.vaultId && effectiveFolderId == filter.folderId
+                is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
+                    effectiveVaultId == filter.vaultId && effectiveIsFavorite(passkey)
+                is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
+                    effectiveVaultId == filter.vaultId && effectiveFolderId == null
+                is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> effectiveKeePassId == filter.databaseId
+                is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
+                    effectiveKeePassId == filter.databaseId && effectiveGroupPath == filter.groupPath
+                is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
+                    effectiveKeePassId == filter.databaseId && effectiveIsFavorite(passkey)
+                is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
+                    effectiveKeePassId == filter.databaseId && effectiveGroupPath.isNullOrBlank()
             }
         }
     }
@@ -372,12 +408,18 @@ fun PasskeyListScreen(
         UnifiedCategoryFilterSelection.All -> stringResource(R.string.passkey_title)
         UnifiedCategoryFilterSelection.Local -> stringResource(R.string.passkey_title)
         UnifiedCategoryFilterSelection.Uncategorized -> stringResource(R.string.category_none)
+        UnifiedCategoryFilterSelection.LocalStarred -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_starred)}"
+        UnifiedCategoryFilterSelection.LocalUncategorized -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_uncategorized)}"
         is UnifiedCategoryFilterSelection.Custom -> categoryMap[filter.categoryId]?.name ?: stringResource(R.string.passkey_title)
         UnifiedCategoryFilterSelection.Starred -> stringResource(R.string.filter_starred)
         is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> stringResource(R.string.filter_bitwarden)
         is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> stringResource(R.string.filter_bitwarden)
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
         is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> stringResource(R.string.filter_keepass)
         is UnifiedCategoryFilterSelection.KeePassGroupFilter -> stringResource(R.string.filter_keepass)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> "${stringResource(R.string.filter_keepass)} · ${stringResource(R.string.filter_starred)}"
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> "${stringResource(R.string.filter_keepass)} · ${stringResource(R.string.filter_uncategorized)}"
     }
     
     Column(modifier = modifier.fillMaxSize()) {
@@ -390,6 +432,7 @@ fun PasskeyListScreen(
                 isSearchExpanded = isSearchExpanded,
                 onSearchExpandedChange = { isSearchExpanded = it },
                 searchHint = stringResource(R.string.passkey_search_placeholder),
+                onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
                     IconButton(onClick = { showCategoryFilterDialog = true }) {
                         Icon(
@@ -651,8 +694,8 @@ fun PasskeyListScreen(
         selected = selectedCategoryFilter,
         onSelect = { selection ->
             selectedCategoryFilter = selection
-            showCategoryFilterDialog = false
         },
+        launchAnchorBounds = categoryPillBoundsInWindow,
         categories = categories,
         keepassDatabases = keepassDatabases,
         bitwardenVaults = bitwardenVaults,

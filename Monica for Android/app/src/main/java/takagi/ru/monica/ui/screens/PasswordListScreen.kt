@@ -231,11 +231,17 @@ fun PasswordListScreen(
                                     is CategoryFilter.Local -> context.getString(R.string.filter_monica)
                                     is CategoryFilter.Starred -> context.getString(R.string.filter_starred)
                                     is CategoryFilter.Uncategorized -> context.getString(R.string.filter_uncategorized)
+                                    is CategoryFilter.LocalStarred -> "${context.getString(R.string.filter_monica)} · ${context.getString(R.string.filter_starred)}"
+                                    is CategoryFilter.LocalUncategorized -> "${context.getString(R.string.filter_monica)} · ${context.getString(R.string.filter_uncategorized)}"
                                     is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: context.getString(R.string.unknown_category)
                                     is CategoryFilter.KeePassDatabase -> "KeePass"
                                     is CategoryFilter.KeePassGroupFilter -> (currentFilter as CategoryFilter.KeePassGroupFilter).groupPath.substringAfterLast('/')
+                                    is CategoryFilter.KeePassDatabaseStarred -> "KeePass · ${context.getString(R.string.filter_starred)}"
+                                    is CategoryFilter.KeePassDatabaseUncategorized -> "KeePass · ${context.getString(R.string.filter_uncategorized)}"
                                     is CategoryFilter.BitwardenVault -> "Bitwarden"
                                     is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
+                                    is CategoryFilter.BitwardenVaultStarred -> "Bitwarden · ${context.getString(R.string.filter_starred)}"
+                                    is CategoryFilter.BitwardenVaultUncategorized -> "Bitwarden · ${context.getString(R.string.filter_uncategorized)}"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface

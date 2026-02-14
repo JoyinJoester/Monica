@@ -101,6 +101,7 @@ fun NoteListScreen(
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(setOf<Long>()) }
     var isCategorySheetVisible by remember { mutableStateOf(false) }
+    var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var categoryNameInput by rememberSaveable { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -169,12 +170,18 @@ fun NoteListScreen(
         NoteCategoryFilter.Local -> stringResource(R.string.filter_monica)
         NoteCategoryFilter.Starred -> stringResource(R.string.filter_starred)
         NoteCategoryFilter.Uncategorized -> stringResource(R.string.filter_uncategorized)
+        NoteCategoryFilter.LocalStarred -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_starred)}"
+        NoteCategoryFilter.LocalUncategorized -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_uncategorized)}"
         is NoteCategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name
             ?: stringResource(R.string.unknown_category)
         is NoteCategoryFilter.BitwardenVault -> "Bitwarden"
         is NoteCategoryFilter.BitwardenFolderFilter -> "Bitwarden"
+        is NoteCategoryFilter.BitwardenVaultStarred -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
+        is NoteCategoryFilter.BitwardenVaultUncategorized -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
         is NoteCategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
         is NoteCategoryFilter.KeePassGroupFilter -> filter.groupPath.substringAfterLast('/')
+        is NoteCategoryFilter.KeePassDatabaseStarred -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_starred)}"
+        is NoteCategoryFilter.KeePassDatabaseUncategorized -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_uncategorized)}"
     }
     
     // 过滤笔记
@@ -184,12 +191,26 @@ fun NoteListScreen(
             NoteCategoryFilter.Local -> notes.filter { it.bitwardenVaultId == null && it.keepassDatabaseId == null }
             NoteCategoryFilter.Starred -> notes.filter { it.isFavorite }
             NoteCategoryFilter.Uncategorized -> notes.filter { it.categoryId == null }
+            NoteCategoryFilter.LocalStarred -> notes.filter {
+                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.isFavorite
+            }
+            NoteCategoryFilter.LocalUncategorized -> notes.filter {
+                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.categoryId == null
+            }
             is NoteCategoryFilter.Custom -> notes.filter { it.categoryId == filter.categoryId }
             is NoteCategoryFilter.BitwardenVault -> notes.filter { it.bitwardenVaultId == filter.vaultId }
             is NoteCategoryFilter.BitwardenFolderFilter -> notes.filter { it.bitwardenFolderId == filter.folderId }
+            is NoteCategoryFilter.BitwardenVaultStarred -> notes.filter { it.bitwardenVaultId == filter.vaultId && it.isFavorite }
+            is NoteCategoryFilter.BitwardenVaultUncategorized -> notes.filter { it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null }
             is NoteCategoryFilter.KeePassDatabase -> notes.filter { it.keepassDatabaseId == filter.databaseId }
             is NoteCategoryFilter.KeePassGroupFilter -> notes.filter {
                 it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
+            }
+            is NoteCategoryFilter.KeePassDatabaseStarred -> notes.filter {
+                it.keepassDatabaseId == filter.databaseId && it.isFavorite
+            }
+            is NoteCategoryFilter.KeePassDatabaseUncategorized -> notes.filter {
+                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank()
             }
         }
         if (searchQuery.isBlank()) {
@@ -224,6 +245,7 @@ fun NoteListScreen(
                 isSearchExpanded = isSearchExpanded,
                 onSearchExpandedChange = { isSearchExpanded = it },
                 searchHint = stringResource(R.string.search),
+                onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
                     IconButton(onClick = { isCategorySheetVisible = true }) {
                         Icon(
@@ -260,11 +282,17 @@ fun NoteListScreen(
                 NoteCategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
                 NoteCategoryFilter.Starred -> UnifiedCategoryFilterSelection.Starred
                 NoteCategoryFilter.Uncategorized -> UnifiedCategoryFilterSelection.Uncategorized
+                NoteCategoryFilter.LocalStarred -> UnifiedCategoryFilterSelection.LocalStarred
+                NoteCategoryFilter.LocalUncategorized -> UnifiedCategoryFilterSelection.LocalUncategorized
                 is NoteCategoryFilter.Custom -> UnifiedCategoryFilterSelection.Custom(filter.categoryId)
                 is NoteCategoryFilter.BitwardenVault -> UnifiedCategoryFilterSelection.BitwardenVaultFilter(filter.vaultId)
                 is NoteCategoryFilter.BitwardenFolderFilter -> UnifiedCategoryFilterSelection.BitwardenFolderFilter(filter.vaultId, filter.folderId)
+                is NoteCategoryFilter.BitwardenVaultStarred -> UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(filter.vaultId)
+                is NoteCategoryFilter.BitwardenVaultUncategorized -> UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(filter.vaultId)
                 is NoteCategoryFilter.KeePassDatabase -> UnifiedCategoryFilterSelection.KeePassDatabaseFilter(filter.databaseId)
                 is NoteCategoryFilter.KeePassGroupFilter -> UnifiedCategoryFilterSelection.KeePassGroupFilter(filter.databaseId, filter.groupPath)
+                is NoteCategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
+                is NoteCategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
             }
             UnifiedCategoryFilterBottomSheet(
                 visible = isCategorySheetVisible,
@@ -276,19 +304,25 @@ fun NoteListScreen(
                         is UnifiedCategoryFilterSelection.Local -> NoteCategoryFilter.Local
                         is UnifiedCategoryFilterSelection.Starred -> NoteCategoryFilter.Starred
                         is UnifiedCategoryFilterSelection.Uncategorized -> NoteCategoryFilter.Uncategorized
+                        is UnifiedCategoryFilterSelection.LocalStarred -> NoteCategoryFilter.LocalStarred
+                        is UnifiedCategoryFilterSelection.LocalUncategorized -> NoteCategoryFilter.LocalUncategorized
                         is UnifiedCategoryFilterSelection.Custom -> NoteCategoryFilter.Custom(selection.categoryId)
                         is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> NoteCategoryFilter.BitwardenVault(selection.vaultId)
                         is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> NoteCategoryFilter.BitwardenFolderFilter(selection.folderId, selection.vaultId)
+                        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> NoteCategoryFilter.BitwardenVaultStarred(selection.vaultId)
+                        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> NoteCategoryFilter.BitwardenVaultUncategorized(selection.vaultId)
                         is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> NoteCategoryFilter.KeePassDatabase(selection.databaseId)
                         is UnifiedCategoryFilterSelection.KeePassGroupFilter -> NoteCategoryFilter.KeePassGroupFilter(selection.databaseId, selection.groupPath)
+                        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> NoteCategoryFilter.KeePassDatabaseStarred(selection.databaseId)
+                        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> NoteCategoryFilter.KeePassDatabaseUncategorized(selection.databaseId)
                     }
                     when (selection) {
                         is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> viewModel.syncKeePassNotes(selection.databaseId)
                         is UnifiedCategoryFilterSelection.KeePassGroupFilter -> viewModel.syncKeePassNotes(selection.databaseId)
                         else -> Unit
                     }
-                    isCategorySheetVisible = false
                 },
+                launchAnchorBounds = categoryPillBoundsInWindow,
                 categories = categories,
                 keepassDatabases = keepassDatabases,
                 bitwardenVaults = bitwardenVaults,
@@ -1062,26 +1096,38 @@ private sealed interface NoteCategoryFilter {
     data object Local : NoteCategoryFilter
     data object Starred : NoteCategoryFilter
     data object Uncategorized : NoteCategoryFilter
+    data object LocalStarred : NoteCategoryFilter
+    data object LocalUncategorized : NoteCategoryFilter
     data class Custom(val categoryId: Long) : NoteCategoryFilter
     data class BitwardenVault(val vaultId: Long) : NoteCategoryFilter
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : NoteCategoryFilter
+    data class BitwardenVaultStarred(val vaultId: Long) : NoteCategoryFilter
+    data class BitwardenVaultUncategorized(val vaultId: Long) : NoteCategoryFilter
     data class KeePassDatabase(val databaseId: Long) : NoteCategoryFilter
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : NoteCategoryFilter
+    data class KeePassDatabaseStarred(val databaseId: Long) : NoteCategoryFilter
+    data class KeePassDatabaseUncategorized(val databaseId: Long) : NoteCategoryFilter
 }
 
 private fun NoteCategoryFilter.toDraftStorageTarget(): NoteDraftStorageTarget = when (this) {
     NoteCategoryFilter.All,
     NoteCategoryFilter.Local,
     NoteCategoryFilter.Starred,
-    NoteCategoryFilter.Uncategorized -> NoteDraftStorageTarget()
+    NoteCategoryFilter.Uncategorized,
+    NoteCategoryFilter.LocalStarred,
+    NoteCategoryFilter.LocalUncategorized -> NoteDraftStorageTarget()
     is NoteCategoryFilter.Custom -> NoteDraftStorageTarget(categoryId = categoryId)
     is NoteCategoryFilter.BitwardenVault -> NoteDraftStorageTarget(bitwardenVaultId = vaultId)
     is NoteCategoryFilter.BitwardenFolderFilter -> NoteDraftStorageTarget(
         bitwardenVaultId = vaultId,
         bitwardenFolderId = folderId
     )
+    is NoteCategoryFilter.BitwardenVaultStarred -> NoteDraftStorageTarget(bitwardenVaultId = vaultId)
+    is NoteCategoryFilter.BitwardenVaultUncategorized -> NoteDraftStorageTarget(bitwardenVaultId = vaultId)
     is NoteCategoryFilter.KeePassDatabase -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
     is NoteCategoryFilter.KeePassGroupFilter -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
+    is NoteCategoryFilter.KeePassDatabaseStarred -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
+    is NoteCategoryFilter.KeePassDatabaseUncategorized -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
 }
 
 @Composable

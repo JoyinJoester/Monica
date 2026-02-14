@@ -324,14 +324,44 @@ interface PasswordEntryDao {
      * 根据 Bitwarden Vault ID 获取所有条目
      * 用于获取某个 Vault 的所有密码
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY title ASC")
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE isDeleted = 0
+          AND (
+            bitwarden_vault_id = :vaultId
+            OR (
+                bitwarden_vault_id IS NULL
+                AND bitwarden_folder_id IN (
+                    SELECT bitwarden_folder_id FROM bitwarden_folders WHERE vault_id = :vaultId
+                )
+            )
+          )
+        ORDER BY title ASC
+        """
+    )
     suspend fun getByBitwardenVaultId(vaultId: Long): List<PasswordEntry>
     
     /**
      * 根据 Bitwarden Vault ID 获取所有条目 (Flow 版本)
      * 用于实时观察 Vault 的密码列表变化
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY title ASC")
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE isDeleted = 0
+          AND (
+            bitwarden_vault_id = :vaultId
+            OR (
+                bitwarden_vault_id IS NULL
+                AND bitwarden_folder_id IN (
+                    SELECT bitwarden_folder_id FROM bitwarden_folders WHERE vault_id = :vaultId
+                )
+            )
+          )
+        ORDER BY title ASC
+        """
+    )
     fun getByBitwardenVaultIdFlow(vaultId: Long): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
     
     /**

@@ -36,11 +36,17 @@ sealed class CategoryFilter {
     object Local : CategoryFilter() // Pure local view (Monica)
     object Starred : CategoryFilter()
     object Uncategorized : CategoryFilter()
+    object LocalStarred : CategoryFilter()
+    object LocalUncategorized : CategoryFilter()
     data class Custom(val categoryId: Long) : CategoryFilter()
     data class KeePassDatabase(val databaseId: Long) : CategoryFilter()
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : CategoryFilter()
+    data class KeePassDatabaseStarred(val databaseId: Long) : CategoryFilter()
+    data class KeePassDatabaseUncategorized(val databaseId: Long) : CategoryFilter()
     data class BitwardenVault(val vaultId: Long) : CategoryFilter()
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : CategoryFilter()
+    data class BitwardenVaultStarred(val vaultId: Long) : CategoryFilter()
+    data class BitwardenVaultUncategorized(val vaultId: Long) : CategoryFilter()
 }
 
 /**
@@ -59,11 +65,17 @@ class PasswordViewModel(
         private const val SAVED_FILTER_LOCAL = "local"
         private const val SAVED_FILTER_STARRED = "starred"
         private const val SAVED_FILTER_UNCATEGORIZED = "uncategorized"
+        private const val SAVED_FILTER_LOCAL_STARRED = "local_starred"
+        private const val SAVED_FILTER_LOCAL_UNCATEGORIZED = "local_uncategorized"
         private const val SAVED_FILTER_CUSTOM = "custom"
         private const val SAVED_FILTER_KEEPASS_DATABASE = "keepass_database"
         private const val SAVED_FILTER_KEEPASS_GROUP = "keepass_group"
+        private const val SAVED_FILTER_KEEPASS_DATABASE_STARRED = "keepass_database_starred"
+        private const val SAVED_FILTER_KEEPASS_DATABASE_UNCATEGORIZED = "keepass_database_uncategorized"
         private const val SAVED_FILTER_BITWARDEN_VAULT = "bitwarden_vault"
         private const val SAVED_FILTER_BITWARDEN_FOLDER = "bitwarden_folder"
+        private const val SAVED_FILTER_BITWARDEN_VAULT_STARRED = "bitwarden_vault_starred"
+        private const val SAVED_FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
     }
     
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
@@ -151,11 +163,29 @@ class PasswordViewModel(
                     }
                     is CategoryFilter.Starred -> repository.getFavoritePasswordEntries()
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
+                    is CategoryFilter.LocalStarred -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.isFavorite }
+                    }
+                    is CategoryFilter.LocalUncategorized -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.categoryId == null }
+                    }
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
                     is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
                     is CategoryFilter.KeePassGroupFilter -> repository.getPasswordEntriesByKeePassGroup(filter.databaseId, filter.groupPath)
+                    is CategoryFilter.KeePassDatabaseStarred -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.keepassDatabaseId == filter.databaseId && it.isFavorite }
+                    }
+                    is CategoryFilter.KeePassDatabaseUncategorized -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank() }
+                    }
                     is CategoryFilter.BitwardenVault -> repository.getPasswordEntriesByBitwardenVault(filter.vaultId)
                     is CategoryFilter.BitwardenFolderFilter -> repository.getPasswordEntriesByBitwardenFolder(filter.folderId)
+                    is CategoryFilter.BitwardenVaultStarred -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.bitwardenVaultId == filter.vaultId && it.isFavorite }
+                    }
+                    is CategoryFilter.BitwardenVaultUncategorized -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null }
+                    }
                 }
             }
             // Combine with settings for smart deduplication logic
@@ -168,7 +198,13 @@ class PasswordViewModel(
                     is CategoryFilter.BitwardenFolderFilter -> true // Explicit folder view
                     is CategoryFilter.KeePassDatabase -> true
                     is CategoryFilter.KeePassGroupFilter -> true
+                    is CategoryFilter.KeePassDatabaseStarred -> true
+                    is CategoryFilter.KeePassDatabaseUncategorized -> true
                     is CategoryFilter.Local -> true // Local view shows all local entries
+                    is CategoryFilter.LocalStarred -> true
+                    is CategoryFilter.LocalUncategorized -> true
+                    is CategoryFilter.BitwardenVaultStarred -> true
+                    is CategoryFilter.BitwardenVaultUncategorized -> true
                     else -> false
                 }
                 
@@ -367,6 +403,8 @@ class PasswordViewModel(
         when (filter) {
             is CategoryFilter.KeePassDatabase -> syncKeePassDatabase(filter.databaseId)
             is CategoryFilter.KeePassGroupFilter -> syncKeePassDatabase(filter.databaseId)
+            is CategoryFilter.KeePassDatabaseStarred -> syncKeePassDatabase(filter.databaseId)
+            is CategoryFilter.KeePassDatabaseUncategorized -> syncKeePassDatabase(filter.databaseId)
             else -> Unit
         }
     }
@@ -393,11 +431,19 @@ class PasswordViewModel(
             SAVED_FILTER_LOCAL -> CategoryFilter.Local
             SAVED_FILTER_STARRED -> CategoryFilter.Starred
             SAVED_FILTER_UNCATEGORIZED -> CategoryFilter.Uncategorized
+            SAVED_FILTER_LOCAL_STARRED -> CategoryFilter.LocalStarred
+            SAVED_FILTER_LOCAL_UNCATEGORIZED -> CategoryFilter.LocalUncategorized
             SAVED_FILTER_CUSTOM -> settings.lastPasswordCategoryFilterPrimaryId
                 ?.let { CategoryFilter.Custom(it) }
                 ?: CategoryFilter.All
             SAVED_FILTER_KEEPASS_DATABASE -> settings.lastPasswordCategoryFilterPrimaryId
                 ?.let { CategoryFilter.KeePassDatabase(it) }
+                ?: CategoryFilter.All
+            SAVED_FILTER_KEEPASS_DATABASE_STARRED -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.KeePassDatabaseStarred(it) }
+                ?: CategoryFilter.All
+            SAVED_FILTER_KEEPASS_DATABASE_UNCATEGORIZED -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.KeePassDatabaseUncategorized(it) }
                 ?: CategoryFilter.All
             SAVED_FILTER_KEEPASS_GROUP -> {
                 val databaseId = settings.lastPasswordCategoryFilterPrimaryId
@@ -410,6 +456,12 @@ class PasswordViewModel(
             }
             SAVED_FILTER_BITWARDEN_VAULT -> settings.lastPasswordCategoryFilterPrimaryId
                 ?.let { CategoryFilter.BitwardenVault(it) }
+                ?: CategoryFilter.All
+            SAVED_FILTER_BITWARDEN_VAULT_STARRED -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.BitwardenVaultStarred(it) }
+                ?: CategoryFilter.All
+            SAVED_FILTER_BITWARDEN_VAULT_UNCATEGORIZED -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.BitwardenVaultUncategorized(it) }
                 ?: CategoryFilter.All
             SAVED_FILTER_BITWARDEN_FOLDER -> {
                 val vaultId = settings.lastPasswordCategoryFilterSecondaryId
@@ -442,12 +494,26 @@ class PasswordViewModel(
                     is CategoryFilter.Uncategorized -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_UNCATEGORIZED
                     )
+                    is CategoryFilter.LocalStarred -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_LOCAL_STARRED
+                    )
+                    is CategoryFilter.LocalUncategorized -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_LOCAL_UNCATEGORIZED
+                    )
                     is CategoryFilter.Custom -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_CUSTOM,
                         primaryId = filter.categoryId
                     )
                     is CategoryFilter.KeePassDatabase -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_KEEPASS_DATABASE,
+                        primaryId = filter.databaseId
+                    )
+                    is CategoryFilter.KeePassDatabaseStarred -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_KEEPASS_DATABASE_STARRED,
+                        primaryId = filter.databaseId
+                    )
+                    is CategoryFilter.KeePassDatabaseUncategorized -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_KEEPASS_DATABASE_UNCATEGORIZED,
                         primaryId = filter.databaseId
                     )
                     is CategoryFilter.KeePassGroupFilter -> manager.updateLastPasswordCategoryFilter(
@@ -457,6 +523,14 @@ class PasswordViewModel(
                     )
                     is CategoryFilter.BitwardenVault -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_BITWARDEN_VAULT,
+                        primaryId = filter.vaultId
+                    )
+                    is CategoryFilter.BitwardenVaultStarred -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_BITWARDEN_VAULT_STARRED,
+                        primaryId = filter.vaultId
+                    )
+                    is CategoryFilter.BitwardenVaultUncategorized -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_BITWARDEN_VAULT_UNCATEGORIZED,
                         primaryId = filter.vaultId
                     )
                     is CategoryFilter.BitwardenFolderFilter -> manager.updateLastPasswordCategoryFilter(

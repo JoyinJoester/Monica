@@ -331,7 +331,7 @@ class BitwardenSyncService(
             
             // 更新条目
             val updatedEntry = updatePasswordEntryFromCipher(
-                existingEntry, cipherApi, symmetricKey
+                existingEntry, vault.id, cipherApi, symmetricKey
             )
             if (updatedEntry != null) {
                 passwordEntryDao.update(updatedEntry)
@@ -393,6 +393,7 @@ class BitwardenSyncService(
      */
     private fun updatePasswordEntryFromCipher(
         entry: PasswordEntry,
+        vaultId: Long,
         cipher: CipherApiResponse,
         symmetricKey: SymmetricCryptoKey
     ): PasswordEntry? {
@@ -418,6 +419,7 @@ class BitwardenSyncService(
                 authenticatorKey = totp,
                 isFavorite = cipher.favorite,
                 updatedAt = Date(),
+                bitwardenVaultId = vaultId,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
                 bitwardenLocalModified = false

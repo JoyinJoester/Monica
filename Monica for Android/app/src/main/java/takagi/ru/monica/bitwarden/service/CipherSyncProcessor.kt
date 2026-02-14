@@ -139,6 +139,15 @@ class CipherSyncProcessor(
         } else {
             // 更新现有条目
             if (existing.bitwardenLocalModified) {
+                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
+                    passwordEntryDao.update(
+                        existing.copy(
+                            bitwardenVaultId = vault.id,
+                            bitwardenFolderId = cipher.folderId,
+                            updatedAt = Date()
+                        )
+                    )
+                }
                 if (existing.bitwardenRevisionDate != cipher.revisionDate) {
                     return CipherSyncResult.Conflict
                 }
@@ -154,6 +163,7 @@ class CipherSyncProcessor(
                 authenticatorKey = totp,
                 isFavorite = cipher.favorite == true,
                 updatedAt = Date(),
+                bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
                 bitwardenLocalModified = false
@@ -213,6 +223,15 @@ class CipherSyncProcessor(
             return CipherSyncResult.Added
         } else {
             if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
+                    secureItemDao.update(
+                        existing.copy(
+                            bitwardenVaultId = vault.id,
+                            bitwardenFolderId = cipher.folderId,
+                            updatedAt = Date()
+                        )
+                    )
+                }
                 if (existing.bitwardenRevisionDate != cipher.revisionDate) {
                     return CipherSyncResult.Conflict
                 }
@@ -225,6 +244,7 @@ class CipherSyncProcessor(
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
                 updatedAt = Date(),
+                bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
                 bitwardenLocalModified = false,
@@ -271,6 +291,15 @@ class CipherSyncProcessor(
             return CipherSyncResult.Added
         } else {
             if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
+                    secureItemDao.update(
+                        existing.copy(
+                            bitwardenVaultId = vault.id,
+                            bitwardenFolderId = cipher.folderId,
+                            updatedAt = Date()
+                        )
+                    )
+                }
                 if (existing.bitwardenRevisionDate != cipher.revisionDate) {
                     return CipherSyncResult.Conflict
                 }
@@ -283,6 +312,7 @@ class CipherSyncProcessor(
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
                 updatedAt = Date(),
+                bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
                 bitwardenLocalModified = false,
@@ -347,6 +377,15 @@ class CipherSyncProcessor(
             return CipherSyncResult.Added
         } else {
             if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
+                    secureItemDao.update(
+                        existing.copy(
+                            bitwardenVaultId = vault.id,
+                            bitwardenFolderId = cipher.folderId,
+                            updatedAt = Date()
+                        )
+                    )
+                }
                 if (existing.bitwardenRevisionDate != cipher.revisionDate) {
                     return CipherSyncResult.Conflict
                 }
@@ -359,6 +398,7 @@ class CipherSyncProcessor(
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
                 updatedAt = Date(),
+                bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
                 bitwardenLocalModified = false,
@@ -422,6 +462,15 @@ class CipherSyncProcessor(
             return CipherSyncResult.Added
         } else {
             if (existing.bitwardenLocalModified == true) {
+                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
+                    secureItemDao.update(
+                        existing.copy(
+                            bitwardenVaultId = vault.id,
+                            bitwardenFolderId = cipher.folderId,
+                            updatedAt = Date()
+                        )
+                    )
+                }
                 if (existing.bitwardenRevisionDate != cipher.revisionDate) {
                     return CipherSyncResult.Conflict
                 }
@@ -434,6 +483,7 @@ class CipherSyncProcessor(
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
                 updatedAt = Date(),
+                bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
                 bitwardenLocalModified = false,
@@ -477,6 +527,7 @@ class CipherSyncProcessor(
             val updated = existing.copy(
                 rpName = name.removeSuffix(" [Passkey]"),
                 userName = userName,
+                bitwardenVaultId = vault.id,
                 bitwardenCipherId = cipher.id
             )
             passkeyDao.update(updated)

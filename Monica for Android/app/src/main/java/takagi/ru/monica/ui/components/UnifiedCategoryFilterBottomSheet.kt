@@ -5,7 +5,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -14,19 +16,34 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.graphics.Color as AndroidColor
+import android.graphics.drawable.ColorDrawable
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -58,20 +75,35 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
@@ -80,17 +112,24 @@ import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.utils.KeePassGroupInfo
+import kotlin.math.roundToInt
 
 sealed interface UnifiedCategoryFilterSelection {
     data object All : UnifiedCategoryFilterSelection
     data object Local : UnifiedCategoryFilterSelection
     data object Starred : UnifiedCategoryFilterSelection
     data object Uncategorized : UnifiedCategoryFilterSelection
+    data object LocalStarred : UnifiedCategoryFilterSelection
+    data object LocalUncategorized : UnifiedCategoryFilterSelection
     data class Custom(val categoryId: Long) : UnifiedCategoryFilterSelection
     data class BitwardenVaultFilter(val vaultId: Long) : UnifiedCategoryFilterSelection
     data class BitwardenFolderFilter(val vaultId: Long, val folderId: String) : UnifiedCategoryFilterSelection
+    data class BitwardenVaultStarredFilter(val vaultId: Long) : UnifiedCategoryFilterSelection
+    data class BitwardenVaultUncategorizedFilter(val vaultId: Long) : UnifiedCategoryFilterSelection
     data class KeePassDatabaseFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : UnifiedCategoryFilterSelection
+    data class KeePassDatabaseStarredFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
+    data class KeePassDatabaseUncategorizedFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -100,6 +139,7 @@ fun UnifiedCategoryFilterBottomSheet(
     onDismiss: () -> Unit,
     selected: UnifiedCategoryFilterSelection,
     onSelect: (UnifiedCategoryFilterSelection) -> Unit,
+    launchAnchorBounds: Rect? = null,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
     bitwardenVaults: List<BitwardenVault>,
@@ -151,14 +191,28 @@ fun UnifiedCategoryFilterBottomSheet(
 
     LaunchedEffect(selected) {
         when (selected) {
-            is UnifiedCategoryFilterSelection.Custom -> monicaExpanded = true
+            is UnifiedCategoryFilterSelection.Custom,
+            is UnifiedCategoryFilterSelection.LocalStarred,
+            is UnifiedCategoryFilterSelection.LocalUncategorized -> monicaExpanded = true
             is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> {
+                bitwardenExpanded[selected.vaultId] = true
+            }
+            is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> {
+                bitwardenExpanded[selected.vaultId] = true
+            }
+            is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
                 bitwardenExpanded[selected.vaultId] = true
             }
             is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> {
                 keepassExpanded[selected.databaseId] = true
             }
             is UnifiedCategoryFilterSelection.KeePassGroupFilter -> {
+                keepassExpanded[selected.databaseId] = true
+            }
+            is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> {
+                keepassExpanded[selected.databaseId] = true
+            }
+            is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> {
                 keepassExpanded[selected.databaseId] = true
             }
             else -> Unit
@@ -169,9 +223,11 @@ fun UnifiedCategoryFilterBottomSheet(
     val canCreateBitwarden = onCreateBitwardenFolder != null && bitwardenVaults.isNotEmpty()
     val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.isNotEmpty()
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        sheetState = sheetState
     ) {
         Column(
             modifier = Modifier
@@ -185,6 +241,7 @@ fun UnifiedCategoryFilterBottomSheet(
             )
 
             LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
@@ -194,27 +251,34 @@ fun UnifiedCategoryFilterBottomSheet(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        Column(modifier = Modifier.padding(6.dp)) {
-                            UnifiedCategoryListItem(
-                                title = stringResource(R.string.category_all),
+                        FlowRow(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            QuickFilterChip(
+                                label = stringResource(R.string.category_all),
                                 icon = Icons.Default.List,
                                 selected = selected is UnifiedCategoryFilterSelection.All,
                                 onClick = { onSelect(UnifiedCategoryFilterSelection.All) }
                             )
-                            UnifiedCategoryListItem(
-                                title = stringResource(R.string.filter_starred),
+                            QuickFilterChip(
+                                label = stringResource(R.string.filter_starred),
                                 icon = Icons.Outlined.CheckCircle,
                                 selected = selected is UnifiedCategoryFilterSelection.Starred,
                                 onClick = { onSelect(UnifiedCategoryFilterSelection.Starred) }
                             )
-                            UnifiedCategoryListItem(
-                                title = stringResource(R.string.filter_uncategorized),
+                            QuickFilterChip(
+                                label = stringResource(R.string.filter_uncategorized),
                                 icon = Icons.Default.FolderOff,
                                 selected = selected is UnifiedCategoryFilterSelection.Uncategorized,
                                 onClick = { onSelect(UnifiedCategoryFilterSelection.Uncategorized) }
                             )
                         }
                     }
+                }
+                item {
+                    Spacer(modifier = Modifier.height(14.dp))
                 }
 
                 item {
@@ -239,6 +303,23 @@ fun UnifiedCategoryFilterBottomSheet(
                             exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                         ) {
                             Column {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(modifier = Modifier.padding(start = 16.dp)) {
+                                UnifiedCategoryListItem(
+                                    title = stringResource(R.string.filter_starred),
+                                    icon = Icons.Outlined.CheckCircle,
+                                    selected = selected is UnifiedCategoryFilterSelection.LocalStarred,
+                                    onClick = { onSelect(UnifiedCategoryFilterSelection.LocalStarred) }
+                                )
+                            }
+                            Box(modifier = Modifier.padding(start = 16.dp)) {
+                                UnifiedCategoryListItem(
+                                    title = stringResource(R.string.filter_uncategorized),
+                                    icon = Icons.Default.FolderOff,
+                                    selected = selected is UnifiedCategoryFilterSelection.LocalUncategorized,
+                                    onClick = { onSelect(UnifiedCategoryFilterSelection.LocalUncategorized) }
+                                )
+                            }
                             categories.forEach { category ->
                                 val isSelected = selected is UnifiedCategoryFilterSelection.Custom &&
                                     selected.categoryId == category.id
@@ -299,8 +380,19 @@ fun UnifiedCategoryFilterBottomSheet(
                                     UnifiedCategoryListItem(
                                         title = vault.email,
                                         icon = Icons.Default.CloudSync,
-                                        selected = selected is UnifiedCategoryFilterSelection.BitwardenVaultFilter &&
-                                            selected.vaultId == vault.id,
+                                        selected = (
+                                            selected is UnifiedCategoryFilterSelection.BitwardenVaultFilter &&
+                                                selected.vaultId == vault.id
+                                            ) || (
+                                            selected is UnifiedCategoryFilterSelection.BitwardenFolderFilter &&
+                                                selected.vaultId == vault.id
+                                            ) || (
+                                            selected is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter &&
+                                                selected.vaultId == vault.id
+                                            ) || (
+                                            selected is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter &&
+                                                selected.vaultId == vault.id
+                                            ),
                                         onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
                                         badge = {
                                             if (vault.isDefault) {
@@ -312,15 +404,13 @@ fun UnifiedCategoryFilterBottomSheet(
                                             }
                                         },
                                         menu = {
-                                            if (folders.isNotEmpty()) {
-                                                IconButton(onClick = {
-                                                    bitwardenExpanded[vault.id] = !expanded
-                                                }) {
-                                                    Icon(
-                                                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                        contentDescription = null
-                                                    )
-                                                }
+                                            IconButton(onClick = {
+                                                bitwardenExpanded[vault.id] = !expanded
+                                            }) {
+                                                Icon(
+                                                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                    contentDescription = null
+                                                )
                                             }
                                         }
                                     )
@@ -330,6 +420,37 @@ fun UnifiedCategoryFilterBottomSheet(
                                         exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                                     ) {
                                         Column {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Box(modifier = Modifier.padding(start = 16.dp)) {
+                                            UnifiedCategoryListItem(
+                                                title = stringResource(R.string.filter_starred),
+                                                icon = Icons.Outlined.CheckCircle,
+                                                selected = selected is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter &&
+                                                    selected.vaultId == vault.id,
+                                                onClick = {
+                                                    onSelect(
+                                                        UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(
+                                                            vault.id
+                                                        )
+                                                    )
+                                                }
+                                            )
+                                        }
+                                        Box(modifier = Modifier.padding(start = 16.dp)) {
+                                            UnifiedCategoryListItem(
+                                                title = stringResource(R.string.filter_uncategorized),
+                                                icon = Icons.Default.FolderOff,
+                                                selected = selected is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter &&
+                                                    selected.vaultId == vault.id,
+                                                onClick = {
+                                                    onSelect(
+                                                        UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(
+                                                            vault.id
+                                                        )
+                                                    )
+                                                }
+                                            )
+                                        }
                                         folders.forEach { folder ->
                                             val folderSelected = selected is UnifiedCategoryFilterSelection.BitwardenFolderFilter &&
                                                 selected.folderId == folder.bitwardenFolderId &&
@@ -423,6 +544,12 @@ fun UnifiedCategoryFilterBottomSheet(
                                             ) || (
                                             selected is UnifiedCategoryFilterSelection.KeePassGroupFilter &&
                                                 selected.databaseId == database.id
+                                            ) || (
+                                            selected is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter &&
+                                                selected.databaseId == database.id
+                                            ) || (
+                                            selected is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter &&
+                                                selected.databaseId == database.id
                                             ),
                                         onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
                                         badge = {
@@ -453,6 +580,37 @@ fun UnifiedCategoryFilterBottomSheet(
                                         exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                                     ) {
                                         Column {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Box(modifier = Modifier.padding(start = 16.dp)) {
+                                            UnifiedCategoryListItem(
+                                                title = stringResource(R.string.filter_starred),
+                                                icon = Icons.Outlined.CheckCircle,
+                                                selected = selected is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter &&
+                                                    selected.databaseId == database.id,
+                                                onClick = {
+                                                    onSelect(
+                                                        UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(
+                                                            database.id
+                                                        )
+                                                    )
+                                                }
+                                            )
+                                        }
+                                        Box(modifier = Modifier.padding(start = 16.dp)) {
+                                            UnifiedCategoryListItem(
+                                                title = stringResource(R.string.filter_uncategorized),
+                                                icon = Icons.Default.FolderOff,
+                                                selected = selected is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter &&
+                                                    selected.databaseId == database.id,
+                                                onClick = {
+                                                    onSelect(
+                                                        UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(
+                                                            database.id
+                                                        )
+                                                    )
+                                                }
+                                            )
+                                        }
                                         groups.forEach { group ->
                                             val depth = group.path.count { it == '/' }
                                             val startPadding = 16 + (depth * 10)
@@ -777,6 +935,40 @@ fun UnifiedCategoryFilterBottomSheet(
 }
 
 @Composable
+private fun rememberCategoryFilterLabel(
+    selected: UnifiedCategoryFilterSelection,
+    categories: List<Category>,
+    keepassDatabases: List<LocalKeePassDatabase>,
+    bitwardenVaults: List<BitwardenVault>
+): String {
+    val monica = stringResource(R.string.filter_monica)
+    val bitwarden = stringResource(R.string.filter_bitwarden)
+    val keepass = stringResource(R.string.filter_keepass)
+    val starred = stringResource(R.string.filter_starred)
+    val uncategorized = stringResource(R.string.filter_uncategorized)
+    return when (selected) {
+        UnifiedCategoryFilterSelection.All -> stringResource(R.string.category_all)
+        UnifiedCategoryFilterSelection.Local -> monica
+        UnifiedCategoryFilterSelection.Starred -> starred
+        UnifiedCategoryFilterSelection.Uncategorized -> uncategorized
+        UnifiedCategoryFilterSelection.LocalStarred -> "$monica · $starred"
+        UnifiedCategoryFilterSelection.LocalUncategorized -> "$monica · $uncategorized"
+        is UnifiedCategoryFilterSelection.Custom -> categories.find { it.id == selected.categoryId }?.name
+            ?: stringResource(R.string.unknown_category)
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> bitwardenVaults.find { it.id == selected.vaultId }?.email
+            ?: bitwarden
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> bitwarden
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> "$bitwarden · $starred"
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> "$bitwarden · $uncategorized"
+        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> keepassDatabases.find { it.id == selected.databaseId }?.name
+            ?: keepass
+        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> keepass
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> "$keepass · $starred"
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> "$keepass · $uncategorized"
+    }
+}
+
+@Composable
 private fun StorageSectionCard(
     title: String,
     content: @Composable () -> Unit
@@ -799,6 +991,32 @@ private fun StorageSectionCard(
             content()
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickFilterChip(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        leadingIcon = { Icon(icon, contentDescription = null) },
+        label = { Text(label) }
+    )
+}
+
+private fun lerpFloat(start: Float, end: Float, fraction: Float): Float {
+    return start + (end - start) * fraction
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private enum class CreateTarget {

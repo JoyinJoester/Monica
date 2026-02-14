@@ -24,6 +24,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,6 +54,7 @@ fun ExpressiveTopBar(
     searchHint: String? = null,
     modifier: Modifier = Modifier,
     navigationIcon: @Composable (() -> Unit)? = null,
+    onActionPillBoundsChanged: ((Rect) -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -111,6 +115,9 @@ fun ExpressiveTopBar(
                 modifier = Modifier
 
                     .height(56.dp)
+                    .onGloballyPositioned { coordinates ->
+                        onActionPillBoundsChanged?.invoke(coordinates.boundsInWindow())
+                    }
                     // 添加左滑展开/右滑关闭手势
                     .pointerInput(isSearchExpanded) {
                         var totalDrag = 0f
