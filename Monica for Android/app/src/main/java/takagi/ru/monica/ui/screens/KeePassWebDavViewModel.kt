@@ -22,11 +22,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.KeePassStorageLocation
+import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.model.TotpData
-import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.KeePassKdbxService
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -415,39 +418,72 @@ class KeePassWebDavViewModel {
                 return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
             }
             
-            Log.d(TAG, "Starting import from: ${file.name}")
-            
-            // 下载文件
+            Log.d(TAG, "Starting direct WebDAV database binding from: ${file.name}")
+
             val remotePath = "$serverUrl/$KEEPASS_FOLDER/${file.name}"
-            val tempFile = File(context.cacheDir, "import_${file.name}")
-            
-            try {
-                val currentSardine = sardine
-                    ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
-                currentSardine.get(remotePath).use { inputStream ->
-                    tempFile.outputStream().use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                }
-                
-                Log.d(TAG, "Downloaded: ${tempFile.length()} bytes")
-                
-                // TODO: 实现实际的 KDBX 解析和导入逻辑
-                // 这里需要调用 parseKdbxAndInsertToDb(inputStream, kdbxPassword) 来解析和导入
-                
-                val importedCount = tempFile.inputStream().use { inputStream ->
-                    parseKdbxAndInsertToDb(context, inputStream, kdbxPassword)
-                }
-                
-                Log.d(TAG, "Imported $importedCount entries")
-                Result.success(importedCount)
-            } finally {
-                // 清理临时文件
-                tempFile.delete()
+            val currentSardine = sardine
+                ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
+
+            // 1) 读取远端数据库并校验密码
+            val dbBytes = currentSardine.get(remotePath).use { it.readBytes() }
+            val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
+            val keepassDb = KeePassDatabase.decode(dbBytes.inputStream(), credentials)
+            val entries = mutableListOf<Entry>()
+            collectEntries(keepassDb.content.group, entries)
+            val entryCount = entries.size
+
+            // 2) 将远端 .kdbx 注册到本地 KeePass 数据库列表（之后通过 KeePassKdbxService 实时直连读写）
+            val appDb = PasswordDatabase.getDatabase(context)
+            val keepassDao = appDb.localKeePassDatabaseDao()
+            val securityManager = SecurityManager(context)
+            val encryptedPassword = if (kdbxPassword.isNotBlank()) {
+                securityManager.encryptData(kdbxPassword)
+            } else {
+                null
             }
+            val allDatabases = keepassDao.getAllDatabasesSync()
+            val encodedRemotePath = KeePassKdbxService.toWebDavFilePath(remotePath)
+            val displayName = file.name.removeSuffix(".kdbx")
+            val existing = allDatabases.firstOrNull { it.filePath == encodedRemotePath }
+
+            if (existing != null) {
+                keepassDao.updateDatabase(
+                    existing.copy(
+                        name = displayName,
+                        encryptedPassword = encryptedPassword,
+                        lastAccessedAt = System.currentTimeMillis(),
+                        entryCount = entryCount
+                    )
+                )
+            } else {
+                keepassDao.insertDatabase(
+                    LocalKeePassDatabase(
+                        name = displayName,
+                        filePath = encodedRemotePath,
+                        storageLocation = KeePassStorageLocation.EXTERNAL,
+                        encryptedPassword = encryptedPassword,
+                        description = "WebDAV: $serverUrl",
+                        entryCount = entryCount,
+                        isDefault = allDatabases.isEmpty()
+                    )
+                )
+            }
+
+            Log.d(TAG, "Bound remote database successfully: $displayName ($entryCount entries)")
+            Result.success(entryCount)
         } catch (e: Exception) {
             Log.e(TAG, "Import failed", e)
-            Result.failure(e)
+            val error = when {
+                e.message?.contains("Invalid credentials", ignoreCase = true) == true ||
+                    e.message?.contains("Wrong password", ignoreCase = true) == true ||
+                    e.message?.contains("InvalidKey", ignoreCase = true) == true ->
+                    Exception(context.getString(R.string.keepass_webdav_import_wrong_password))
+                e.message?.contains("Invalid database", ignoreCase = true) == true ||
+                    e.message?.contains("Not a valid KDBX", ignoreCase = true) == true ->
+                    Exception(context.getString(R.string.keepass_webdav_import_invalid_database))
+                else -> e
+            }
+            Result.failure(error)
         }
     }
     

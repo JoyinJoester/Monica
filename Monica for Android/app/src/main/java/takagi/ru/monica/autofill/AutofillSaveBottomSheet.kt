@@ -172,7 +172,16 @@ class AutofillSaveBottomSheet : BottomSheetDialogFragment() {
                 
                 // Step 3: 检查重复
                 android.util.Log.d("AutofillSave", "3️⃣ 检查重复密码...")
-                when (val duplicateCheck = PasswordSaveHelper.checkDuplicate(saveData, existingPasswords)) {
+                when (
+                    val duplicateCheck = PasswordSaveHelper.checkDuplicate(
+                        saveData = saveData,
+                        existingPasswords = existingPasswords,
+                        resolvePassword = { entry ->
+                            runCatching { securityManager.decryptData(entry.password) }
+                                .getOrElse { entry.password }
+                        }
+                    )
+                ) {
                     is PasswordSaveHelper.DuplicateCheckResult.SameUsernameDifferentPassword -> {
                         android.util.Log.d("AutofillSave", "   📝 发现相同用户名,更新密码")
                         // 更新现有密码

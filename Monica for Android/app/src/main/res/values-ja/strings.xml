@@ -1255,6 +1255,7 @@
     <string name="delete_item_message">%1$s「%2$s」を削除しますか？</string>
     <string name="filter_starred">スター付き</string>
     <string name="filter_uncategorized">未分類</string>
+    <string name="filter_local_only">ローカルのみ</string>
     <string name="unknown_category">不明なカテゴリ</string>
     <string name="group_by_website">ウェブサイトでグループ化</string>
     <string name="group_by_title">タイトルでグループ化</string>
@@ -1738,5 +1739,34 @@
     <string name="local_keepass_select_key_file">キーファイルを選択</string>
     <string name="local_keepass_no_key_file_selected">キーファイル未選択</string>
     <string name="local_keepass_key_file_selected">キーファイルを選択済み</string>
+    <string name="plus_feature_premium_themes_title">プレミアムテーマ</string>
+    <string name="plus_feature_premium_themes_desc">Monet などの限定テーマ配色を利用できます。</string>
+    <string name="plus_feature_notification_validator_title">通知欄認証コード</string>
+    <string name="plus_feature_notification_validator_desc">通知欄に TOTP コードを固定表示してすぐ確認できます。</string>
+    <string name="plus_feature_validator_vibration_title">認証コード更新バイブ</string>
+    <string name="plus_feature_validator_vibration_desc">コード更新直前に振動で通知し、入力タイミングを逃しません。</string>
+    <string name="plus_feature_copy_next_code_title">次のコードを自動コピー</string>
+    <string name="plus_feature_copy_next_code_desc">残り 5 秒未満でコピーすると次の TOTP コードを自動コピーします。</string>
+    <string name="plus_feature_bitwarden_sync_title">Bitwarden 同期</string>
+    <string name="plus_feature_bitwarden_sync_desc">Bitwarden に接続してパスワードやカードなどを同期します。</string>
+    <string name="plus_feature_keepass_webdav_title">KeePass WebDAV</string>
+    <string name="plus_feature_keepass_webdav_desc">WebDAV 経由で KeePass（.kdbx）データを同期します。</string>
+    <string name="monica_plus_title">Monica Plus</string>
+    <string name="monica_plus_card_desc">Monica の開発を支援して、さらに多くの高度な機能を解放します</string>
+    <string name="click_to_pay">支払いへ</string>
+    <string name="monica_plus_features_title">Plus 機能</string>
+    <string name="monica_plus_features_placeholder">さらに多くの機能を準備中です...</string>
+    <string name="plus_title">Monica Plus</string>
+    <string name="plus_subtitle_active">有効</string>
+    <string name="plus_subtitle_inactive">開発を支援</string>
+    <string name="plus_description">Monica の開発を支援して、さらに多くの高度な機能を解放します</string>
+    <string name="plus_activation_title">Plus ステータス</string>
+    <string name="plus_status_activated">有効</string>
+    <string name="plus_payment_button">支払いへ</string>
+    <string name="plus_features_title">Plus 機能</string>
+    <string name="plus_feature_unlocked">利用可能</string>
+    <string name="plus_feature_locked">Plus が必要</string>
+    <string name="plus_thank_you">ご支援ありがとうございます！</string>
+    <string name="plus_payment_links_title">支払いリンク</string>
 
 </resources>

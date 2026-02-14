@@ -1261,6 +1261,7 @@
     <string name="delete_item_message">Xóa %1$s "%2$s"?</string>
     <string name="filter_starred">Đã gắn sao</string>
     <string name="filter_uncategorized">Chưa phân loại</string>
+    <string name="filter_local_only">Chi luu cuc bo</string>
     <string name="unknown_category">Danh mục không rõ</string>
     <string name="group_by_website">Nhóm theo trang web</string>
     <string name="group_by_title">Nhóm theo tiêu đề</string>
@@ -1744,5 +1745,34 @@
     <string name="local_keepass_select_key_file">Chon tep khoa</string>
     <string name="local_keepass_no_key_file_selected">Chua chon tep khoa</string>
     <string name="local_keepass_key_file_selected">Da chon tep khoa</string>
+    <string name="plus_feature_premium_themes_title">Chu de cao cap</string>
+    <string name="plus_feature_premium_themes_desc">Mo khoa cac bang mau doc quyen nhu Monet.</string>
+    <string name="plus_feature_notification_validator_title">Trinh xac thuc tren thong bao</string>
+    <string name="plus_feature_notification_validator_desc">Ghim ma TOTP tren thanh thong bao de xem nhanh.</string>
+    <string name="plus_feature_validator_vibration_title">Rung khi ma sap doi</string>
+    <string name="plus_feature_validator_vibration_desc">Rung nhac truoc khi ma xac thuc het han de tranh bo lo.</string>
+    <string name="plus_feature_copy_next_code_title">Sao chep ma tiep theo thong minh</string>
+    <string name="plus_feature_copy_next_code_desc">Neu con duoi 5 giay, thao tac sao chep se tu dong lay ma TOTP tiep theo.</string>
+    <string name="plus_feature_bitwarden_sync_title">Dong bo Bitwarden</string>
+    <string name="plus_feature_bitwarden_sync_desc">Ket noi Bitwarden de dong bo mat khau, the va du lieu khac.</string>
+    <string name="plus_feature_keepass_webdav_title">KeePass WebDAV</string>
+    <string name="plus_feature_keepass_webdav_desc">Dong bo du lieu KeePass (.kdbx) thong qua WebDAV.</string>
+    <string name="monica_plus_title">Monica Plus</string>
+    <string name="monica_plus_card_desc">Ho tro phat trien Monica va mo khoa them tinh nang nang cao</string>
+    <string name="click_to_pay">Nhan de thanh toan</string>
+    <string name="monica_plus_features_title">Tinh nang Plus</string>
+    <string name="monica_plus_features_placeholder">Them tinh nang se duoc cap nhat som...</string>
+    <string name="plus_title">Monica Plus</string>
+    <string name="plus_subtitle_active">Da kich hoat</string>
+    <string name="plus_subtitle_inactive">Ho tro phat trien</string>
+    <string name="plus_description">Ho tro phat trien Monica va mo khoa them tinh nang nang cao</string>
+    <string name="plus_activation_title">Trang thai Plus</string>
+    <string name="plus_status_activated">Da kich hoat</string>
+    <string name="plus_payment_button">Nhan de thanh toan</string>
+    <string name="plus_features_title">Tinh nang Plus</string>
+    <string name="plus_feature_unlocked">Da mo khoa</string>
+    <string name="plus_feature_locked">Can Plus</string>
+    <string name="plus_thank_you">Cam on ban da ung ho!</string>
+    <string name="plus_payment_links_title">Lien ket thanh toan</string>
 
 </resources>

@@ -12,6 +12,8 @@ import app.keemobile.kotpass.models.Entry
 import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
+import com.thegrizzlylabs.sardineandroid.Sardine
+import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -56,6 +58,10 @@ class KeePassKdbxService(
     private val securityManager: SecurityManager
 ) {
     companion object {
+        const val WEBDAV_PATH_PREFIX = "webdav://"
+        private const val KEEPASS_WEBDAV_PREFS_NAME = "keepass_webdav_config"
+        private const val KEY_KEEPASS_USERNAME = "username"
+        private const val KEY_KEEPASS_PASSWORD = "password"
         private const val FIELD_MONICA_LOCAL_ID = "MonicaLocalId"
         private const val FIELD_MONICA_ITEM_ID = "MonicaSecureItemId"
         private const val FIELD_MONICA_ITEM_TYPE = "MonicaItemType"
@@ -64,6 +70,10 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
+
+        fun toWebDavFilePath(remotePath: String): String {
+            return WEBDAV_PATH_PREFIX + remotePath
+        }
     }
 
     suspend fun verifyDatabase(
@@ -855,6 +865,9 @@ class KeePassKdbxService(
     }
 
     private fun readDatabaseBytes(database: LocalKeePassDatabase): ByteArray {
+        if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
+            return readWebDavBytes(database.filePath.removePrefix(WEBDAV_PATH_PREFIX))
+        }
         return if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             val file = File(context.filesDir, database.filePath)
             if (!file.exists()) throw Exception("数据库文件不存在")
@@ -873,7 +886,9 @@ class KeePassKdbxService(
     ) {
         val bytes = encodeDatabase(keePassDatabase)
         decodeDatabase(bytes, credentials)
-        if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+        if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
+            writeWebDav(database.filePath.removePrefix(WEBDAV_PATH_PREFIX), bytes)
+        } else if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             writeInternal(database, bytes)
         } else {
             writeExternal(database, bytes)
@@ -921,6 +936,36 @@ class KeePassKdbxService(
                 }
             }
             throw e
+        }
+    }
+
+    private fun readWebDavBytes(remotePath: String): ByteArray {
+        val sardine = buildWebDavClient()
+        return sardine.get(remotePath).use { it.readBytes() }
+    }
+
+    private fun writeWebDav(remotePath: String, bytes: ByteArray) {
+        val sardine = buildWebDavClient()
+        val parentPath = remotePath.substringBeforeLast('/', "")
+        if (parentPath.isNotBlank()) {
+            runCatching {
+                if (!sardine.exists(parentPath)) {
+                    sardine.createDirectory(parentPath)
+                }
+            }
+        }
+        sardine.put(remotePath, bytes, "application/octet-stream")
+    }
+
+    private fun buildWebDavClient(): Sardine {
+        val prefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
+        val username = prefs.getString(KEY_KEEPASS_USERNAME, "") ?: ""
+        val password = prefs.getString(KEY_KEEPASS_PASSWORD, "") ?: ""
+        if (username.isBlank() || password.isBlank()) {
+            throw Exception("WebDAV 未配置或凭证已失效")
+        }
+        return OkHttpSardine().apply {
+            setCredentials(username, password)
         }
     }
 }

@@ -7,6 +7,8 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.api.BitwardenApiManager
@@ -42,6 +44,7 @@ class BitwardenRepository(private val context: Context) {
         private const val KEY_SYNC_ON_WIFI_ONLY = "sync_on_wifi_only"
         private const val KEY_LAST_SYNC_TIME = "last_sync_time"
         private const val KEY_NEVER_LOCK_BITWARDEN = "never_lock_bitwarden"
+        private val syncMutex = Mutex()
         
         @Volatile
         private var instance: BitwardenRepository? = null
@@ -521,70 +524,72 @@ class BitwardenRepository(private val context: Context) {
      * 3. 上传本地修改的条目到服务器
      */
     suspend fun sync(vaultId: Long): SyncResult = withContext(Dispatchers.IO) {
-        try {
-            val vault = vaultDao.getVaultById(vaultId) ?: return@withContext SyncResult.Error("Vault 不存在")
-            
-            if (!isVaultUnlocked(vaultId)) {
-                return@withContext SyncResult.Error("Vault 未解锁")
-            }
-            
-            val symmetricKey = symmetricKeyCache[vaultId] ?: return@withContext SyncResult.Error("密钥不可用")
-            var accessToken = accessTokenCache[vaultId] ?: return@withContext SyncResult.Error("令牌不可用")
-            
-            // 检查 Token 是否需要刷新
-            val expiresAt = vault.accessTokenExpiresAt ?: 0
-            if (expiresAt <= System.currentTimeMillis() + 60000) {
-                val refreshResult = refreshToken(vault)
-                if (refreshResult != null) {
-                    accessToken = refreshResult
-                    accessTokenCache[vaultId] = accessToken
-                } else {
-                    return@withContext SyncResult.Error("Token 刷新失败，请重新登录")
-                }
-            }
-            
-            // 1. 先上传本地创建的条目到服务器
-            val uploadResult = syncService.uploadLocalEntries(vault, accessToken, symmetricKey)
-            val uploadedCount = when (uploadResult) {
-                is takagi.ru.monica.bitwarden.service.UploadResult.Success -> uploadResult.uploaded
-                else -> 0
-            }
+        syncMutex.withLock {
+            try {
+                val vault = vaultDao.getVaultById(vaultId) ?: return@withLock SyncResult.Error("Vault 不存在")
 
-            // 2. 再上传本地已修改的条目到服务器
-            val modifiedUploadResult = syncService.uploadModifiedEntries(vault, accessToken, symmetricKey)
-            val modifiedUploadedCount = when (modifiedUploadResult) {
-                is takagi.ru.monica.bitwarden.service.UploadResult.Success -> modifiedUploadResult.uploaded
-                else -> 0
+                if (!isVaultUnlocked(vaultId)) {
+                    return@withLock SyncResult.Error("Vault 未解锁")
+                }
+
+                val symmetricKey = symmetricKeyCache[vaultId] ?: return@withLock SyncResult.Error("密钥不可用")
+                var accessToken = accessTokenCache[vaultId] ?: return@withLock SyncResult.Error("令牌不可用")
+
+                // 检查 Token 是否需要刷新
+                val expiresAt = vault.accessTokenExpiresAt ?: 0
+                if (expiresAt <= System.currentTimeMillis() + 60000) {
+                    val refreshResult = refreshToken(vault)
+                    if (refreshResult != null) {
+                        accessToken = refreshResult
+                        accessTokenCache[vaultId] = accessToken
+                    } else {
+                        return@withLock SyncResult.Error("Token 刷新失败，请重新登录")
+                    }
+                }
+
+                // 1. 先上传本地创建的条目到服务器
+                val uploadResult = syncService.uploadLocalEntries(vault, accessToken, symmetricKey)
+                val uploadedCount = when (uploadResult) {
+                    is takagi.ru.monica.bitwarden.service.UploadResult.Success -> uploadResult.uploaded
+                    else -> 0
+                }
+
+                // 2. 再上传本地已修改的条目到服务器
+                val modifiedUploadResult = syncService.uploadModifiedEntries(vault, accessToken, symmetricKey)
+                val modifiedUploadedCount = when (modifiedUploadResult) {
+                    is takagi.ru.monica.bitwarden.service.UploadResult.Success -> modifiedUploadResult.uploaded
+                    else -> 0
+                }
+
+                // 3. 执行同步（从服务器拉取）
+                val result = syncService.fullSync(vault, accessToken, symmetricKey)
+
+                // 更新最后同步时间
+                securePrefs.edit().putLong(KEY_LAST_SYNC_TIME, System.currentTimeMillis()).apply()
+
+                when (result) {
+                    is ServiceSyncResult.Success -> {
+                        SyncResult.Success(
+                            syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount,
+                            conflictCount = result.conflictsDetected
+                        )
+                    }
+                    is ServiceSyncResult.Error -> {
+                        SyncResult.Error(result.message)
+                    }
+                    is ServiceSyncResult.EmptyVaultBlocked -> {
+                        SyncResult.EmptyVaultBlocked(
+                            vaultId = vaultId,
+                            localCount = result.localCount,
+                            serverCount = result.serverCount,
+                            reason = result.reason
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "同步异常", e)
+                SyncResult.Error(e.message ?: "同步失败")
             }
-            
-            // 3. 执行同步（从服务器拉取）
-            val result = syncService.fullSync(vault, accessToken, symmetricKey)
-            
-            // 更新最后同步时间
-            securePrefs.edit().putLong(KEY_LAST_SYNC_TIME, System.currentTimeMillis()).apply()
-            
-            when (result) {
-                is ServiceSyncResult.Success -> {
-                    SyncResult.Success(
-                        syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount,
-                        conflictCount = result.conflictsDetected
-                    )
-                }
-                is ServiceSyncResult.Error -> {
-                    SyncResult.Error(result.message)
-                }
-                is ServiceSyncResult.EmptyVaultBlocked -> {
-                    SyncResult.EmptyVaultBlocked(
-                        vaultId = vaultId,
-                        localCount = result.localCount,
-                        serverCount = result.serverCount,
-                        reason = result.reason
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "同步异常", e)
-            SyncResult.Error(e.message ?: "同步失败")
         }
     }
     
@@ -967,8 +972,8 @@ class BitwardenRepository(private val context: Context) {
         }
     }
     
-    suspend fun getPasswordEntriesByFolder(folderId: String): List<PasswordEntry> = withContext(Dispatchers.IO) {
-        passwordEntryDao.getByBitwardenFolderId(folderId)
+    suspend fun getPasswordEntriesByFolder(vaultId: Long, folderId: String): List<PasswordEntry> = withContext(Dispatchers.IO) {
+        passwordEntryDao.getByBitwardenFolderId(vaultId, folderId)
     }
     
     suspend fun searchEntries(vaultId: Long, query: String): List<PasswordEntry> = withContext(Dispatchers.IO) {

@@ -356,7 +356,12 @@ class BitwardenSyncService(
             // 解密字段
             val name = decryptString(cipher.name, symmetricKey) ?: "Untitled"
             val username = decryptString(login.username, symmetricKey) ?: ""
-            val password = decryptString(login.password, symmetricKey) ?: ""
+            val decryptedPassword = decryptString(login.password, symmetricKey)
+            if (!login.password.isNullOrBlank() && decryptedPassword == null) {
+                android.util.Log.w(TAG, "Skip cipher ${cipher.id}: password decrypt failed")
+                return null
+            }
+            val password = decryptedPassword ?: ""
             val notes = decryptString(cipher.notes, symmetricKey) ?: ""
             val totp = decryptString(login.totp, symmetricKey) ?: ""
             val primaryUri = login.uris?.firstOrNull()?.let { 
@@ -793,6 +798,7 @@ class BitwardenSyncService(
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        val plainPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
         
         // 加密各个字段
         val encryptedName = crypto.encryptString(entry.title, symmetricKey)
@@ -805,8 +811,8 @@ class BitwardenSyncService(
             username = if (entry.username.isNotBlank()) {
                 crypto.encryptString(entry.username, symmetricKey)
             } else null,
-            password = if (entry.password.isNotBlank()) {
-                crypto.encryptString(entry.password, symmetricKey)
+            password = if (plainPassword.isNotBlank()) {
+                crypto.encryptString(plainPassword, symmetricKey)
             } else null,
             totp = if (entry.authenticatorKey.isNotBlank()) {
                 crypto.encryptString(entry.authenticatorKey, symmetricKey)
@@ -839,6 +845,7 @@ class BitwardenSyncService(
         symmetricKey: SymmetricCryptoKey
     ): CipherUpdateRequest {
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        val plainPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
         
         val encryptedName = crypto.encryptString(entry.title, symmetricKey)
         val encryptedNotes = if (entry.notes.isNotBlank()) {
@@ -849,8 +856,8 @@ class BitwardenSyncService(
             username = if (entry.username.isNotBlank()) {
                 crypto.encryptString(entry.username, symmetricKey)
             } else null,
-            password = if (entry.password.isNotBlank()) {
-                crypto.encryptString(entry.password, symmetricKey)
+            password = if (plainPassword.isNotBlank()) {
+                crypto.encryptString(plainPassword, symmetricKey)
             } else null,
             totp = if (entry.authenticatorKey.isNotBlank()) {
                 crypto.encryptString(entry.authenticatorKey, symmetricKey)
@@ -873,6 +880,39 @@ class BitwardenSyncService(
             login = loginData,
             favorite = entry.isFavorite
         )
+    }
+
+    /**
+     * Resolve local stored password to plain text before uploading to Bitwarden.
+     *
+     * Local DB stores encrypted payloads. If we upload that payload directly,
+     * it will be encrypted again by Bitwarden and eventually show as "garbled" text.
+     */
+    private fun resolvePlainPasswordForBitwardenUpload(storedPassword: String, entryId: Long): String {
+        if (storedPassword.isBlank()) return ""
+
+        var candidate = storedPassword
+        repeat(3) {
+            val decrypted = try {
+                securityManager.decryptData(candidate)
+            } catch (e: Exception) {
+                // For prefixed payloads, decrypt failure means auth/key state is invalid.
+                // Failing closed avoids uploading ciphertext as if it were plaintext.
+                if (candidate.startsWith("MDK|") || candidate.startsWith("V2|")) {
+                    throw IllegalStateException(
+                        "Cannot decrypt local password for Bitwarden upload, entryId=$entryId",
+                        e
+                    )
+                }
+                return candidate
+            }
+
+            if (decrypted == candidate) {
+                return candidate
+            }
+            candidate = decrypted
+        }
+        return candidate
     }
 }
 

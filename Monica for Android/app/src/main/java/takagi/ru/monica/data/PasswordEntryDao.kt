@@ -304,6 +304,12 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): PasswordEntry?
 
+    /**
+     * 根据 Bitwarden Cipher ID 获取所有条目（用于清理历史重复数据）
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId AND isDeleted = 0")
+    suspend fun getAllByBitwardenCipherId(cipherId: String): List<PasswordEntry>
+
         /**
          * 查找本地重复条目（仅本地库）
          * 用于 Bitwarden 同步时合并本地条目，避免重复
@@ -328,15 +334,7 @@ interface PasswordEntryDao {
         """
         SELECT * FROM password_entries
         WHERE isDeleted = 0
-          AND (
-            bitwarden_vault_id = :vaultId
-            OR (
-                bitwarden_vault_id IS NULL
-                AND bitwarden_folder_id IN (
-                    SELECT bitwarden_folder_id FROM bitwarden_folders WHERE vault_id = :vaultId
-                )
-            )
-          )
+          AND bitwarden_vault_id = :vaultId
         ORDER BY title ASC
         """
     )
@@ -350,15 +348,7 @@ interface PasswordEntryDao {
         """
         SELECT * FROM password_entries
         WHERE isDeleted = 0
-          AND (
-            bitwarden_vault_id = :vaultId
-            OR (
-                bitwarden_vault_id IS NULL
-                AND bitwarden_folder_id IN (
-                    SELECT bitwarden_folder_id FROM bitwarden_folders WHERE vault_id = :vaultId
-                )
-            )
-          )
+          AND bitwarden_vault_id = :vaultId
         ORDER BY title ASC
         """
     )
@@ -402,11 +392,33 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
     fun getByBitwardenFolderIdFlow(folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
 
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_folder_id = :folderId
+          AND isDeleted = 0
+        ORDER BY title ASC
+        """
+    )
+    fun getByBitwardenFolderIdFlow(vaultId: Long, folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
+
     /**
      * 根据 Bitwarden Folder ID 获取条目
      */
     @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
     suspend fun getByBitwardenFolderId(folderId: String): List<PasswordEntry>
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_folder_id = :folderId
+          AND isDeleted = 0
+        ORDER BY title ASC
+        """
+    )
+    suspend fun getByBitwardenFolderId(vaultId: Long, folderId: String): List<PasswordEntry>
     
     /**
      * 获取 Bitwarden 条目按类型分组

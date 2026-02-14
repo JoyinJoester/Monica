@@ -1640,7 +1640,7 @@
     <string name="sync_backup_description">Manage databases, folders and backups</string>
     <string name="sync_backup_local">Local Backup</string>
     <string name="sync_backup_cloud">Cloud Sync</string>
-    <string name="sync_backup_plus_hint">Upgrade to Monica Plus to unlock WebDAV cloud sync</string>
+    <string name="sync_backup_plus_hint">Upgrade to Monica Plus to unlock more cloud sync features</string>
 
     <string name="database_folder_management_title">Database Folder Management</string>
     <string name="folder_management_title">Folder Management</string>
@@ -1911,6 +1911,7 @@
     <string name="delete_item_message">Delete %1$s "%2$s"?</string>
     <string name="filter_starred">Starred</string>
     <string name="filter_uncategorized">Uncategorized</string>
+    <string name="filter_local_only">Local only</string>
     <string name="unknown_category">Unknown category</string>
     <string name="group_by_website">Group by website</string>
     <string name="group_by_title">Group by title</string>
@@ -2403,4 +2404,16 @@
     <string name="local_keepass_select_key_file">Select key file</string>
     <string name="local_keepass_no_key_file_selected">No key file selected</string>
     <string name="local_keepass_key_file_selected">Key file selected</string>
+    <string name="plus_feature_premium_themes_title">Premium themes</string>
+    <string name="plus_feature_premium_themes_desc">Unlock exclusive theme palettes such as Monet.</string>
+    <string name="plus_feature_notification_validator_title">Notification authenticator</string>
+    <string name="plus_feature_notification_validator_desc">Pin TOTP codes in the notification shade for quick access.</string>
+    <string name="plus_feature_validator_vibration_title">Authenticator vibration</string>
+    <string name="plus_feature_validator_vibration_desc">Vibrate before a code refreshes so you do not miss the input window.</string>
+    <string name="plus_feature_copy_next_code_title">Smart next-code copy</string>
+    <string name="plus_feature_copy_next_code_desc">If less than 5 seconds remain, copy will automatically grab the next TOTP code.</string>
+    <string name="plus_feature_bitwarden_sync_title">Bitwarden sync</string>
+    <string name="plus_feature_bitwarden_sync_desc">Connect Bitwarden to sync passwords, cards, and other data across devices.</string>
+    <string name="plus_feature_keepass_webdav_title">KeePass WebDAV</string>
+    <string name="plus_feature_keepass_webdav_desc">Sync KeePass (.kdbx) data through WebDAV.</string>
 </resources>

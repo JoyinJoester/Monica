@@ -34,6 +34,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 sealed class CategoryFilter {
     object All : CategoryFilter()
     object Local : CategoryFilter() // Pure local view (Monica)
+    object LocalOnly : CategoryFilter() // Local entries that have no matching item in Bitwarden
     object Starred : CategoryFilter()
     object Uncategorized : CategoryFilter()
     object LocalStarred : CategoryFilter()
@@ -63,6 +64,7 @@ class PasswordViewModel(
     companion object {
         private const val SAVED_FILTER_ALL = "all"
         private const val SAVED_FILTER_LOCAL = "local"
+        private const val SAVED_FILTER_LOCAL_ONLY = "local_only"
         private const val SAVED_FILTER_STARRED = "starred"
         private const val SAVED_FILTER_UNCATEGORIZED = "uncategorized"
         private const val SAVED_FILTER_LOCAL_STARRED = "local_starred"
@@ -125,9 +127,9 @@ class PasswordViewModel(
         .debounce(300)
         .distinctUntilChanged()
         .flatMapLatest { (query, filter) ->
-            val baseFlow = if (query.isNotBlank()) {
-                // Extended search
-                repository.searchPasswordEntries(query).map { baseResults ->
+            val baseFlow: Flow<List<PasswordEntry>> = if (query.isNotBlank()) {
+                // Extended search: query + custom fields, then apply current category filter in-memory.
+                val searchFlow = repository.searchPasswordEntries(query).map { baseResults ->
                     val customFieldMatchIds = try {
                         customFieldRepository?.searchEntryIdsByFieldContent(query) ?: emptyList()
                     } catch (e: Exception) {
@@ -154,12 +156,31 @@ class PasswordViewModel(
                         }
                     }
                 }
+
+                when (filter) {
+                    is CategoryFilter.LocalOnly -> combine(
+                        searchFlow,
+                        repository.getAllPasswordEntries()
+                    ) { searchResults, allEntries ->
+                        val localOnlyIds = filterLocalOnlyComparedToBitwarden(allEntries)
+                            .asSequence()
+                            .map { it.id }
+                            .toHashSet()
+                        searchResults.filter { it.id in localOnlyIds }
+                    }
+                    else -> searchFlow.map { searchResults ->
+                        applyCategoryFilterInMemory(searchResults, filter)
+                    }
+                }
             } else {
 
                 when (filter) {
                     is CategoryFilter.All -> repository.getAllPasswordEntries()
                     is CategoryFilter.Local -> repository.getAllPasswordEntries().map { list ->
                         list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
+                    }
+                    is CategoryFilter.LocalOnly -> repository.getAllPasswordEntries().map { list ->
+                        filterLocalOnlyComparedToBitwarden(list)
                     }
                     is CategoryFilter.Starred -> repository.getFavoritePasswordEntries()
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
@@ -179,7 +200,10 @@ class PasswordViewModel(
                         list.filter { it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank() }
                     }
                     is CategoryFilter.BitwardenVault -> repository.getPasswordEntriesByBitwardenVault(filter.vaultId)
-                    is CategoryFilter.BitwardenFolderFilter -> repository.getPasswordEntriesByBitwardenFolder(filter.folderId)
+                    is CategoryFilter.BitwardenFolderFilter -> repository.getPasswordEntriesByBitwardenFolder(
+                        filter.vaultId,
+                        filter.folderId
+                    )
                     is CategoryFilter.BitwardenVaultStarred -> repository.getAllPasswordEntries().map { list ->
                         list.filter { it.bitwardenVaultId == filter.vaultId && it.isFavorite }
                     }
@@ -201,6 +225,7 @@ class PasswordViewModel(
                     is CategoryFilter.KeePassDatabaseStarred -> true
                     is CategoryFilter.KeePassDatabaseUncategorized -> true
                     is CategoryFilter.Local -> true // Local view shows all local entries
+                    is CategoryFilter.LocalOnly -> true
                     is CategoryFilter.LocalStarred -> true
                     is CategoryFilter.LocalUncategorized -> true
                     is CategoryFilter.BitwardenVaultStarred -> true
@@ -216,9 +241,10 @@ class PasswordViewModel(
                 } else {
                     entries
                 }
-                filtered.map { entry ->
+                val decrypted = filtered.map { entry ->
                     entry.copy(password = decryptForDisplay(entry.password))
                 }
+                filterGhostEntriesForDisplay(decrypted)
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
@@ -283,6 +309,96 @@ class PasswordViewModel(
         return deduped.sortedBy { indexById[it.id] ?: Int.MAX_VALUE }
     }
 
+    private fun applyCategoryFilterInMemory(
+        entries: List<PasswordEntry>,
+        filter: CategoryFilter
+    ): List<PasswordEntry> {
+        return when (filter) {
+            is CategoryFilter.All -> entries
+            is CategoryFilter.Local -> entries.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
+            is CategoryFilter.LocalOnly -> entries // handled separately because it needs full dataset comparison
+            is CategoryFilter.Starred -> entries.filter { it.isFavorite }
+            is CategoryFilter.Uncategorized -> entries.filter { it.categoryId == null }
+            is CategoryFilter.LocalStarred -> entries.filter {
+                it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.isFavorite
+            }
+            is CategoryFilter.LocalUncategorized -> entries.filter {
+                it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.categoryId == null
+            }
+            is CategoryFilter.Custom -> entries.filter { it.categoryId == filter.categoryId }
+            is CategoryFilter.KeePassDatabase -> entries.filter { it.keepassDatabaseId == filter.databaseId }
+            is CategoryFilter.KeePassGroupFilter -> entries.filter {
+                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
+            }
+            is CategoryFilter.KeePassDatabaseStarred -> entries.filter {
+                it.keepassDatabaseId == filter.databaseId && it.isFavorite
+            }
+            is CategoryFilter.KeePassDatabaseUncategorized -> entries.filter {
+                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank()
+            }
+            is CategoryFilter.BitwardenVault -> entries.filter { it.bitwardenVaultId == filter.vaultId }
+            is CategoryFilter.BitwardenFolderFilter -> entries.filter {
+                it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == filter.folderId
+            }
+            is CategoryFilter.BitwardenVaultStarred -> entries.filter {
+                it.bitwardenVaultId == filter.vaultId && it.isFavorite
+            }
+            is CategoryFilter.BitwardenVaultUncategorized -> entries.filter {
+                it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null
+            }
+        }
+    }
+
+    private fun filterGhostEntriesForDisplay(entries: List<PasswordEntry>): List<PasswordEntry> {
+        if (entries.size <= 1) return entries
+
+        val groups = entries.groupBy { buildGhostGroupKey(it) }
+        val ghostIds = mutableSetOf<Long>()
+
+        groups.values.forEach { group ->
+            if (group.size <= 1) return@forEach
+            if (!group.any { it.password.isNotBlank() }) return@forEach
+
+            group.forEach { entry ->
+                val isPasswordMode = entry.loginType.equals("PASSWORD", ignoreCase = true)
+                if (isPasswordMode && entry.password.isBlank()) {
+                    ghostIds += entry.id
+                }
+            }
+        }
+
+        if (ghostIds.isEmpty()) return entries
+        return entries.filterNot { it.id in ghostIds }
+    }
+
+    private fun buildGhostGroupKey(entry: PasswordEntry): String {
+        val sourceKey = when {
+            !entry.bitwardenCipherId.isNullOrBlank() ->
+                "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId}"
+            entry.bitwardenVaultId != null ->
+                "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
+            entry.keepassDatabaseId != null ->
+                "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
+            else -> "local"
+        }
+
+        val title = normalizeComparableText(entry.title)
+        val username = normalizeComparableText(entry.username)
+        val website = normalizeWebsiteForGhostGrouping(entry.website)
+        return "$sourceKey|$title|$website|$username"
+    }
+
+    private fun normalizeWebsiteForGhostGrouping(value: String): String {
+        val raw = value.trim()
+        if (raw.isEmpty()) return ""
+        return raw
+            .lowercase(Locale.ROOT)
+            .removePrefix("http://")
+            .removePrefix("https://")
+            .removePrefix("www.")
+            .trimEnd('/')
+    }
+
     private fun pickBestEntry(candidates: List<PasswordEntry>): PasswordEntry? {
         return candidates.maxWithOrNull(
             compareBy<PasswordEntry> { it.notes.length }
@@ -292,6 +408,87 @@ class PasswordViewModel(
                 .thenBy { if (it.keepassDatabaseId != null || it.bitwardenVaultId != null) 1 else 0 }
                 .thenBy { it.updatedAt.time }
         )
+    }
+
+    private data class BitwardenComparableSignature(
+        val username: String,
+        val title: String,
+        val domain: String
+    )
+
+    /**
+     * "Local only" means:
+     * 1) not a KeePass item
+     * 2) not an already-synced Bitwarden cipher
+     * 3) no matching item exists in any Bitwarden vault
+     */
+    private fun filterLocalOnlyComparedToBitwarden(entries: List<PasswordEntry>): List<PasswordEntry> {
+        if (entries.isEmpty()) return emptyList()
+
+        val bitwardenIndexByUsername = entries
+            .asSequence()
+            .filter { it.keepassDatabaseId == null && it.bitwardenVaultId != null && it.bitwardenCipherId != null }
+            .map {
+                BitwardenComparableSignature(
+                    username = normalizeComparableText(it.username),
+                    title = normalizeComparableText(it.title),
+                    domain = extractComparableDomain(it.website)
+                )
+            }
+            .filter { it.username.isNotBlank() && (it.title.isNotBlank() || it.domain.isNotBlank()) }
+            .groupBy { it.username }
+
+        return entries.filter { entry ->
+            isLocalOnlyComparedToBitwarden(entry, bitwardenIndexByUsername)
+        }
+    }
+
+    private fun isLocalOnlyComparedToBitwarden(
+        entry: PasswordEntry,
+        bitwardenIndexByUsername: Map<String, List<BitwardenComparableSignature>>
+    ): Boolean {
+        if (entry.keepassDatabaseId != null) return false
+        if (entry.bitwardenCipherId != null) return false
+
+        val username = normalizeComparableText(entry.username)
+        if (username.isBlank()) return true
+
+        val domain = extractComparableDomain(entry.website)
+        val title = normalizeComparableText(entry.title)
+        if (domain.isBlank() && title.isBlank()) return true
+
+        val candidates = bitwardenIndexByUsername[username] ?: return true
+        val matched = candidates.any { candidate ->
+            (domain.isNotBlank() && domain == candidate.domain) ||
+                (title.isNotBlank() && title == candidate.title)
+        }
+        return !matched
+    }
+
+    private fun normalizeComparableText(value: String): String {
+        return value.trim().lowercase(Locale.ROOT)
+    }
+
+    private fun extractComparableDomain(value: String): String {
+        val raw = value.trim()
+        if (raw.isEmpty()) return ""
+
+        return runCatching {
+            val withScheme = if (raw.contains("://")) raw else "https://$raw"
+            val host = URI(withScheme).host?.lowercase(Locale.ROOT)?.removePrefix("www.") ?: ""
+            if (host.isNotBlank()) host else raw
+                .lowercase(Locale.ROOT)
+                .removePrefix("http://")
+                .removePrefix("https://")
+                .removePrefix("www.")
+                .substringBefore('/')
+        }.getOrElse {
+            raw.lowercase(Locale.ROOT)
+                .removePrefix("http://")
+                .removePrefix("https://")
+                .removePrefix("www.")
+                .substringBefore('/')
+        }.trim()
     }
 
     private fun buildDedupeKey(entry: PasswordEntry): String {
@@ -331,11 +528,25 @@ class PasswordViewModel(
     private fun decryptForDisplay(encryptedPassword: String): String {
         if (encryptedPassword.isEmpty()) return ""
         return runCatching {
-            securityManager.decryptData(encryptedPassword)
+            unwrapPasswordLayersForDisplay(encryptedPassword)
         }.getOrElse { error ->
             Log.w("PasswordViewModel", "Skip decrypt due to auth/key state: ${error.message}")
             ""
         }
+    }
+
+    /**
+     * Historical data may contain nested encrypted payloads (ciphertext saved as plaintext, then encrypted again).
+     * Try a few rounds and stop once value is stable.
+     */
+    private fun unwrapPasswordLayersForDisplay(value: String): String {
+        var current = value
+        repeat(3) {
+            val decrypted = securityManager.decryptData(current)
+            if (decrypted == current) return current
+            current = decrypted
+        }
+        return current
     }
 
     private fun syncKeePassDatabase(databaseId: Long) {
@@ -429,6 +640,7 @@ class PasswordViewModel(
         return when (type) {
             SAVED_FILTER_ALL -> CategoryFilter.All
             SAVED_FILTER_LOCAL -> CategoryFilter.Local
+            SAVED_FILTER_LOCAL_ONLY -> CategoryFilter.LocalOnly
             SAVED_FILTER_STARRED -> CategoryFilter.Starred
             SAVED_FILTER_UNCATEGORIZED -> CategoryFilter.Uncategorized
             SAVED_FILTER_LOCAL_STARRED -> CategoryFilter.LocalStarred
@@ -487,6 +699,9 @@ class PasswordViewModel(
                     )
                     is CategoryFilter.Local -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_LOCAL
+                    )
+                    is CategoryFilter.LocalOnly -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_LOCAL_ONLY
                     )
                     is CategoryFilter.Starred -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_STARRED
@@ -1081,12 +1296,35 @@ class PasswordViewModel(
     ) {
         viewModelScope.launch {
             var firstId: Long? = null
+            val normalizedInput = passwords
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+            val preservedExistingPasswords = if (normalizedInput.isEmpty() && originalIds.isNotEmpty()) {
+                originalIds.mapNotNull { id ->
+                    repository.getPasswordEntryById(id)?.let { decryptForDisplay(it.password).trim() }
+                }.filter { it.isNotEmpty() }
+            } else {
+                emptyList()
+            }
+
+            val effectivePasswords = when {
+                normalizedInput.isNotEmpty() -> normalizedInput
+                commonEntry.loginType.equals("SSO", ignoreCase = true) -> listOf("")
+                preservedExistingPasswords.isNotEmpty() -> preservedExistingPasswords
+                else -> emptyList()
+            }
+
+            if (effectivePasswords.isEmpty()) {
+                Log.w("PasswordViewModel", "Skip saveGroupedPasswords because PASSWORD mode has no non-empty password")
+                onComplete(originalIds.firstOrNull())
+                return@launch
+            }
             
             // 应用分类绑定规则
             val boundCommonEntry = applyCategoryBinding(commonEntry)
             
             // 1. Process each password
-            passwords.forEachIndexed { index, password ->
+            effectivePasswords.forEachIndexed { index, password ->
                 if (index < originalIds.size) {
                     // Update existing
                     val id = originalIds[index]
@@ -1149,8 +1387,8 @@ class PasswordViewModel(
             }
 
             // 2. Delete leftovers
-            if (originalIds.size > passwords.size) {
-                val toDelete = originalIds.subList(passwords.size, originalIds.size)
+            if (originalIds.size > effectivePasswords.size) {
+                val toDelete = originalIds.subList(effectivePasswords.size, originalIds.size)
                 toDelete.forEach { id ->
                     repository.getPasswordEntryById(id)?.let { deletePasswordEntry(it) }
                 }

@@ -579,7 +579,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 val vault = _activeVault.value ?: return@launch
                 _entries.value = repository.getPasswordEntries(vault.id)
             } else {
-                _entries.value = repository.getPasswordEntriesByFolder(folder.bitwardenFolderId)
+                _entries.value = repository.getPasswordEntriesByFolder(folder.vaultId, folder.bitwardenFolderId)
             }
         }
     }

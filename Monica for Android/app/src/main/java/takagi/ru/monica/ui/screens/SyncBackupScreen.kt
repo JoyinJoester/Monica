@@ -116,8 +116,8 @@ fun SyncBackupScreen(
                     title = stringResource(R.string.webdav_backup),
                     description = stringResource(R.string.webdav_backup_description),
                     onClick = onNavigateToWebDav,
-                    enabled = isPlusActivated,
-                    badge = if (!isPlusActivated) "Plus" else null
+                    enabled = true,
+                    badge = null
                 )
 
                 HorizontalDivider(

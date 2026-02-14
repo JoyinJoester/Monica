@@ -62,6 +62,7 @@ import takagi.ru.monica.ui.components.CustomFieldDetailCard
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
+import java.util.Locale
 
 /**
  * 密码详情页 (Password Detail Screen)
@@ -228,11 +229,11 @@ fun PasswordDetailScreen(
                 passwordEntry = entry
                 
                 // Find siblings
-                val key = "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+                val key = buildPasswordSiblingGroupKey(entry)
                 groupPasswords = allPasswords.filter { 
-                    val itKey = "${it.title}|${it.website}|${it.username}|${it.notes}|${it.appPackageName}|${it.appName}"
+                    val itKey = buildPasswordSiblingGroupKey(it)
                     itKey == key
-                }
+                }.sortedBy { it.id }
                 
                 // 加载自定义字段 (添加错误处理)
                 try {
@@ -1387,6 +1388,35 @@ private fun CollapsibleSection(
 // ============================================
 // 🔧 辅助函数
 // ============================================
+
+private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
+    val sourceKey = when {
+        !entry.bitwardenCipherId.isNullOrBlank() ->
+            "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId}"
+        entry.bitwardenVaultId != null ->
+            "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
+        entry.keepassDatabaseId != null ->
+            "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
+        else -> "local"
+    }
+
+    val title = entry.title.trim().lowercase(Locale.ROOT)
+    val username = entry.username.trim().lowercase(Locale.ROOT)
+    val website = normalizeWebsiteForSiblingGroupKey(entry.website)
+
+    return "$sourceKey|$title|$website|$username"
+}
+
+private fun normalizeWebsiteForSiblingGroupKey(value: String): String {
+    val raw = value.trim()
+    if (raw.isEmpty()) return ""
+    return raw
+        .lowercase(Locale.ROOT)
+        .removePrefix("http://")
+        .removePrefix("https://")
+        .removePrefix("www.")
+        .trimEnd('/')
+}
 
 /**
  * 检查是否有个人信息

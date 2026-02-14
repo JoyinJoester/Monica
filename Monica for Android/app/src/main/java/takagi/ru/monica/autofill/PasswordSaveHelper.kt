@@ -301,7 +301,8 @@ object PasswordSaveHelper {
      */
     fun checkDuplicate(
         saveData: SaveData,
-        existingPasswords: List<PasswordEntry>
+        existingPasswords: List<PasswordEntry>,
+        resolvePassword: (PasswordEntry) -> String = { it.password }
     ): DuplicateCheckResult {
         val finalPassword = saveData.getFinalPassword()
         
@@ -323,7 +324,7 @@ object PasswordSaveHelper {
         // 2. 检查是否有完全相同的条目(用户名和密码都匹配)
         val exactMatch = relevantPasswords.firstOrNull { entry ->
             entry.username.equals(saveData.username, ignoreCase = true) &&
-            entry.password == finalPassword
+            resolvePassword(entry) == finalPassword
         }
         
         if (exactMatch != null) {

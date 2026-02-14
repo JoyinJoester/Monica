@@ -1482,7 +1482,7 @@
     <string name="sync_backup_description">管理数据库、文件夹与备份</string>
     <string name="sync_backup_local">本地备份</string>
     <string name="sync_backup_cloud">云同步</string>
-    <string name="sync_backup_plus_hint">升级 Monica Plus 解锁 WebDAV 云同步功能</string>
+    <string name="sync_backup_plus_hint">升级 Monica Plus 解锁更多云同步功能</string>
 
     <string name="database_folder_management_title">数据库文件夹管理</string>
     <string name="folder_management_title">文件夹管理</string>
@@ -1740,6 +1740,7 @@
     <string name="delete_item_message">确认删除%1$s“%2$s”？</string>
     <string name="filter_starred">标星</string>
     <string name="filter_uncategorized">未分类</string>
+    <string name="filter_local_only">仅本地</string>
     <string name="unknown_category">未知分类</string>
     <string name="group_by_website">按网站分组</string>
     <string name="group_by_title">按标题分组</string>
@@ -2232,4 +2233,33 @@
     <string name="local_keepass_select_key_file">选择密钥文件</string>
     <string name="local_keepass_no_key_file_selected">未选择密钥文件</string>
     <string name="local_keepass_key_file_selected">已选择密钥文件</string>
+    <string name="plus_feature_premium_themes_title">会员专属主题</string>
+    <string name="plus_feature_premium_themes_desc">解锁莫奈等专属主题配色。</string>
+    <string name="plus_feature_notification_validator_title">通知栏验证器</string>
+    <string name="plus_feature_notification_validator_desc">在通知栏固定显示 TOTP 验证码，随时查看。</string>
+    <string name="plus_feature_validator_vibration_title">验证器震动提醒</string>
+    <string name="plus_feature_validator_vibration_desc">验证码即将刷新时震动提醒，避免错过窗口。</string>
+    <string name="plus_feature_copy_next_code_title">智能复制下一个验证码</string>
+    <string name="plus_feature_copy_next_code_desc">倒计时剩余不足 5 秒时复制，自动复制下一个验证码。</string>
+    <string name="plus_feature_bitwarden_sync_title">Bitwarden 同步</string>
+    <string name="plus_feature_bitwarden_sync_desc">连接 Bitwarden，跨设备同步密码、卡片等数据。</string>
+    <string name="plus_feature_keepass_webdav_title">KeePass WebDAV</string>
+    <string name="plus_feature_keepass_webdav_desc">通过 WebDAV 与 KeePass（.kdbx）同步数据。</string>
+    <string name="monica_plus_title">Monica Plus</string>
+    <string name="monica_plus_card_desc">支持 Monica 的开发，解锁更多高级能力</string>
+    <string name="click_to_pay">点击付款</string>
+    <string name="monica_plus_features_title">Plus 功能</string>
+    <string name="monica_plus_features_placeholder">更多功能敬请期待...</string>
+    <string name="plus_title">Monica Plus</string>
+    <string name="plus_subtitle_active">已激活</string>
+    <string name="plus_subtitle_inactive">支持开发</string>
+    <string name="plus_description">支持 Monica 的开发，解锁更多高级能力</string>
+    <string name="plus_activation_title">Plus 状态</string>
+    <string name="plus_status_activated">已激活</string>
+    <string name="plus_payment_button">点击付款</string>
+    <string name="plus_features_title">Plus 功能</string>
+    <string name="plus_feature_unlocked">已解锁</string>
+    <string name="plus_feature_locked">需要 Plus</string>
+    <string name="plus_thank_you">感谢你的支持！</string>
+    <string name="plus_payment_links_title">支付链接</string>
 </resources>

@@ -75,6 +75,7 @@ import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -293,11 +294,11 @@ fun AddEditPasswordScreen(
                         
                         // Fetch all passwords in the group
                         val allEntries = viewModel.allPasswords.first()
-                        val key = "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+                        val key = buildPasswordSiblingGroupKey(entry)
                         val siblings = allEntries.filter { item: PasswordEntry -> 
-                            val itKey = "${item.title}|${item.website}|${item.username}|${item.notes}|${item.appPackageName}|${item.appName}"
+                            val itKey = buildPasswordSiblingGroupKey(item)
                             itKey == key
-                        }
+                        }.sortedBy { it.id }
                         
                         passwords.clear()
                         if (siblings.isNotEmpty()) {
@@ -366,9 +367,15 @@ fun AddEditPasswordScreen(
     }
 
     val canSave = title.isNotEmpty() && !isSaving
-    val handleSave: () -> Unit = {
+    val handleSave: () -> Unit = handleSave@{
         if (title.isNotEmpty() && !isSaving) {
             isSaving = true // 防止重复点击
+            val normalizedPasswords = passwords.map { it.trim() }
+            if (loginType == "PASSWORD" && normalizedPasswords.none { it.isNotEmpty() }) {
+                Toast.makeText(context, context.getString(R.string.password_required), Toast.LENGTH_SHORT).show()
+                isSaving = false
+                return@handleSave
+            }
             // Capture values before async call
             val currentAuthKey = authenticatorKey
             val currentTitle = title
@@ -418,7 +425,7 @@ fun AddEditPasswordScreen(
             viewModel.saveGroupedPasswords(
                 originalIds = originalIds,
                 commonEntry = commonEntry,
-                passwords = passwords.toList(), // Snapshot
+                passwords = normalizedPasswords, // Snapshot (trimmed)
                 customFields = currentCustomFields, // 保存自定义字段
                 onComplete = { firstPasswordId ->
                     // Save TOTP if authenticatorKey is provided
@@ -2061,6 +2068,35 @@ private fun VaultSelector(
             }
         }
     }
+}
+
+private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
+    val sourceKey = when {
+        !entry.bitwardenCipherId.isNullOrBlank() ->
+            "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId}"
+        entry.bitwardenVaultId != null ->
+            "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
+        entry.keepassDatabaseId != null ->
+            "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
+        else -> "local"
+    }
+
+    val title = entry.title.trim().lowercase(Locale.ROOT)
+    val username = entry.username.trim().lowercase(Locale.ROOT)
+    val website = normalizeWebsiteForSiblingGroupKey(entry.website)
+
+    return "$sourceKey|$title|$website|$username"
+}
+
+private fun normalizeWebsiteForSiblingGroupKey(value: String): String {
+    val raw = value.trim()
+    if (raw.isEmpty()) return ""
+    return raw
+        .lowercase(Locale.ROOT)
+        .removePrefix("http://")
+        .removePrefix("https://")
+        .removePrefix("www.")
+        .trimEnd('/')
 }
 
 @Composable

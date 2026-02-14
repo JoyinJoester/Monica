@@ -2000,7 +2000,15 @@ class MonicaAutofillService : AutofillService() {
             
             // 7. 检查重复密码
             val allPasswords = passwordRepository.getAllPasswordEntries().first()
-            val duplicateCheck = PasswordSaveHelper.checkDuplicate(saveData, allPasswords)
+            val securityManager = takagi.ru.monica.security.SecurityManager(applicationContext)
+            val duplicateCheck = PasswordSaveHelper.checkDuplicate(
+                saveData = saveData,
+                existingPasswords = allPasswords,
+                resolvePassword = { entry ->
+                    runCatching { securityManager.decryptData(entry.password) }
+                        .getOrElse { entry.password }
+                }
+            )
             
             when (duplicateCheck) {
                 is PasswordSaveHelper.DuplicateCheckResult.ExactDuplicate -> {

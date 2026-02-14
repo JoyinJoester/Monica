@@ -100,20 +100,26 @@ class CipherSyncProcessor(
         symmetricKey: SymmetricCryptoKey
     ): CipherSyncResult {
         val login = cipher.login ?: return CipherSyncResult.Skipped("No login data")
+
+        // 先按 cipherId 收敛历史重复副本，避免“同一条目异常膨胀”。
+        val existing = resolveCanonicalPasswordEntry(cipher.id)
         
         // 解密字段
         val name = decryptString(cipher.name, symmetricKey) ?: "Untitled"
         val username = decryptString(login.username, symmetricKey) ?: ""
-        val password = decryptString(login.password, symmetricKey) ?: ""
+        val decryptedPassword = decryptString(login.password, symmetricKey)
+        // login.password 有值但无法解密时，不能回写为空，否则会制造“幽灵空密码”副本。
+        if (!login.password.isNullOrBlank() && decryptedPassword == null) {
+            android.util.Log.w(TAG, "Skip cipher ${cipher.id}: password decrypt failed")
+            return CipherSyncResult.Skipped("Password decrypt failed")
+        }
+        val password = decryptedPassword ?: ""
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
         val totp = decryptString(login.totp, symmetricKey) ?: ""
         val primaryUri = login.uris?.firstOrNull()?.let { 
             decryptString(it.uri, symmetricKey) 
         } ?: ""
         val encryptedPassword = securityManager.encryptData(password)
-        
-        // 查找本地是否存在
-        val existing = passwordEntryDao.getByBitwardenCipherId(cipher.id)
         
         if (existing == null) {
             // 创建新条目（不吞并本地同名条目，保持数据源独立）
@@ -170,6 +176,40 @@ class CipherSyncProcessor(
             )
             passwordEntryDao.update(updated)
             return CipherSyncResult.Updated
+        }
+    }
+
+    private suspend fun resolveCanonicalPasswordEntry(cipherId: String): PasswordEntry? {
+        val allEntries = passwordEntryDao.getAllByBitwardenCipherId(cipherId)
+        if (allEntries.isEmpty()) return null
+
+        val canonical = allEntries.maxWithOrNull(
+            compareBy<PasswordEntry> { if (it.bitwardenLocalModified) 1 else 0 }
+                .thenBy { if (hasLikelyNonBlankPassword(it)) 1 else 0 }
+                .thenBy { it.updatedAt.time }
+                .thenBy { it.id }
+        ) ?: allEntries.first()
+
+        if (allEntries.size > 1) {
+            val duplicates = allEntries.filter { it.id != canonical.id }
+            duplicates.forEach { passwordEntryDao.delete(it) }
+            android.util.Log.w(
+                TAG,
+                "Removed ${duplicates.size} duplicate password rows for cipherId=$cipherId"
+            )
+        }
+
+        return canonical
+    }
+
+    private fun hasLikelyNonBlankPassword(entry: PasswordEntry): Boolean {
+        if (entry.password.isBlank()) return false
+
+        val decrypted = runCatching { securityManager.decryptData(entry.password) }.getOrNull()
+        return when {
+            decrypted == null -> true
+            decrypted.isBlank() -> false
+            else -> true
         }
     }
     

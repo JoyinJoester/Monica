@@ -42,8 +42,8 @@ class PasswordRepository(
         return passwordEntryDao.getByBitwardenVaultIdFlow(vaultId)
     }
 
-    fun getPasswordEntriesByBitwardenFolder(folderId: String): Flow<List<PasswordEntry>> {
-        return passwordEntryDao.getByBitwardenFolderIdFlow(folderId)
+    fun getPasswordEntriesByBitwardenFolder(vaultId: Long, folderId: String): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getByBitwardenFolderIdFlow(vaultId, folderId)
     }
     
     fun getBitwardenFoldersByVaultId(vaultId: Long): Flow<List<BitwardenFolder>> {

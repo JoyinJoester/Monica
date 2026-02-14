@@ -139,6 +139,9 @@ fun UnifiedCategoryFilterBottomSheet(
     onDismiss: () -> Unit,
     selected: UnifiedCategoryFilterSelection,
     onSelect: (UnifiedCategoryFilterSelection) -> Unit,
+    showLocalOnlyQuickFilter: Boolean = false,
+    isLocalOnlyQuickFilterSelected: Boolean = false,
+    onSelectLocalOnlyQuickFilter: (() -> Unit)? = null,
     launchAnchorBounds: Rect? = null,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
@@ -274,6 +277,14 @@ fun UnifiedCategoryFilterBottomSheet(
                                 selected = selected is UnifiedCategoryFilterSelection.Uncategorized,
                                 onClick = { onSelect(UnifiedCategoryFilterSelection.Uncategorized) }
                             )
+                            if (showLocalOnlyQuickFilter && onSelectLocalOnlyQuickFilter != null) {
+                                QuickFilterChip(
+                                    label = stringResource(R.string.filter_local_only),
+                                    icon = Icons.Default.Smartphone,
+                                    selected = isLocalOnlyQuickFilterSelected,
+                                    onClick = onSelectLocalOnlyQuickFilter
+                                )
+                            }
                         }
                     }
                 }

@@ -229,6 +229,7 @@ fun PasswordListScreen(
                                 text = when(currentFilter) {
                                     is CategoryFilter.All -> context.getString(R.string.filter_all)
                                     is CategoryFilter.Local -> context.getString(R.string.filter_monica)
+                                    is CategoryFilter.LocalOnly -> context.getString(R.string.filter_local_only)
                                     is CategoryFilter.Starred -> context.getString(R.string.filter_starred)
                                     is CategoryFilter.Uncategorized -> context.getString(R.string.filter_uncategorized)
                                     is CategoryFilter.LocalStarred -> "${context.getString(R.string.filter_monica)} · ${context.getString(R.string.filter_starred)}"

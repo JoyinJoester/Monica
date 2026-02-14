@@ -120,7 +120,6 @@ import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import kotlin.math.absoluteValue
 import java.text.SimpleDateFormat
-import java.net.URI
 import java.util.Date
 import java.util.Locale
 
@@ -2642,8 +2641,15 @@ private fun PasswordListContent(
     val passwordEntries by viewModel.passwordEntries.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val currentFilter by viewModel.categoryFilter.collectAsState()
     // settings
     val appSettings by settingsViewModel.settings.collectAsState()
+
+    // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
+    // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
+    val isLocalOnlyView = currentFilter is CategoryFilter.LocalOnly
+    val effectiveGroupMode = if (isLocalOnlyView) "none" else groupMode
+    val effectiveStackCardMode = if (isLocalOnlyView) StackCardMode.ALWAYS_EXPANDED else stackCardMode
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -2766,16 +2772,16 @@ private fun PasswordListContent(
     var expandedGroups by remember { mutableStateOf(setOf<String>()) }
     
     // 当分组模式改变时,重置展开状态
-    LaunchedEffect(groupMode, stackCardMode) {
+    LaunchedEffect(effectiveGroupMode, effectiveStackCardMode) {
         expandedGroups = setOf()
     }
     
     // 根据分组模式对密码进行分组
-    val groupedPasswords = remember(passwordEntries, deletedItemIds, groupMode, stackCardMode) {
+    val groupedPasswords = remember(passwordEntries, deletedItemIds, effectiveGroupMode, effectiveStackCardMode) {
         val filteredEntries = passwordEntries.filter { it.id !in deletedItemIds }
         
         // 步骤1: 先按"除密码外的信息"合并；始终展开模式下跳过合并，逐条显示
-        val mergedByInfo = if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+        val mergedByInfo = if (effectiveStackCardMode == StackCardMode.ALWAYS_EXPANDED) {
             filteredEntries.sortedBy { it.sortOrder }.map { listOf(it) }
         } else {
             filteredEntries
@@ -2787,76 +2793,83 @@ private fun PasswordListContent(
         }
         
         // 步骤2: 再按显示模式分组
-        val groupedAndSorted = when (groupMode) {
-            "title" -> {
-                // 按完整标题分组
-                mergedByInfo
-                    .groupBy { entries -> entries.first().title.ifBlank { context.getString(R.string.untitled) } }
-                    .mapValues { (_, groups) -> groups.flatten() }
-                    .toList()
-                    .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
-                        // 计算卡片类型优先级
-                        val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
-                        val cardType = when {
-                            // 堆叠卡片: 多个不同信息的密码
-                            infoKeyGroups.size > 1 -> 3
-                            // 多密码卡片: 除密码外信息相同的多个密码
-                            infoKeyGroups.size == 1 && passwords.size > 1 -> 2
-                            // 单密码卡片: 只有一个密码
-                            else -> 1
-                        }
-                        
-                        // 计算收藏优先级 (收藏状态为主要优先级)
-                        val anyFavorited = passwords.any { it.isFavorite }
-                        val favoriteBonus = if (anyFavorited) 10 else 0
-                        
-                        // 组合分数: 收藏状态(主要) + 卡片类型(次要)
-                        favoriteBonus.toDouble() + cardType.toDouble()
-                    }.thenBy { (title, _) ->
-                        // 同优先级内按标题排序
-                        title
-                    })
-                    .toMap()
-            }
-            
-            else -> {
-                // 按所选维度分组，并按优先级排序
-                mergedByInfo
-                    .groupBy { entries -> getGroupKeyForMode(entries.first(), groupMode) }
-                    .mapValues { (_, groups) -> groups.flatten() }
-                    .toList()
-                    .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
-                        // 计算卡片类型优先级
-                        val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
-                        val cardType = when {
-                            // 堆叠卡片: 多个不同信息的密码
-                            infoKeyGroups.size > 1 -> 3
-                            // 多密码卡片: 除密码外信息相同的多个密码
-                            infoKeyGroups.size == 1 && passwords.size > 1 -> 2
-                            // 单密码卡片: 只有一个密码
-                            else -> 1
-                        }
-                        
-                        // 计算收藏优先级
-                        val favoriteCount = passwords.count { it.isFavorite }
-                        val totalCount = passwords.size
-                        
-                        // 计算收藏优先级 (收藏状态为主要优先级)
-                        val anyFavorited = passwords.any { it.isFavorite }
-                        val favoriteBonus = if (anyFavorited) 10 else 0
-                        
-                        // 组合分数: 收藏状态(主要) + 卡片类型(次要)
-                        favoriteBonus.toDouble() + cardType.toDouble()
-                    }.thenBy { (_, passwords) ->
-                        // 同优先级内按第一个卡片的 sortOrder 排序
-                        passwords.firstOrNull()?.sortOrder ?: Int.MAX_VALUE
-                    })
-                    .toMap()
+        val groupedAndSorted = if (isLocalOnlyView) {
+            // 本筛选是“待上传清单”，直接扁平显示，禁止堆叠/二次分组。
+            filteredEntries
+                .sortedBy { it.sortOrder }
+                .associate { entry -> "entry_${entry.id}" to listOf(entry) }
+        } else {
+            when (effectiveGroupMode) {
+                "title" -> {
+                    // 按完整标题分组
+                    mergedByInfo
+                        .groupBy { entries -> entries.first().title.ifBlank { context.getString(R.string.untitled) } }
+                        .mapValues { (_, groups) -> groups.flatten() }
+                        .toList()
+                        .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
+                            // 计算卡片类型优先级
+                            val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
+                            val cardType = when {
+                                // 堆叠卡片: 多个不同信息的密码
+                                infoKeyGroups.size > 1 -> 3
+                                // 多密码卡片: 除密码外信息相同的多个密码
+                                infoKeyGroups.size == 1 && passwords.size > 1 -> 2
+                                // 单密码卡片: 只有一个密码
+                                else -> 1
+                            }
+                            
+                            // 计算收藏优先级 (收藏状态为主要优先级)
+                            val anyFavorited = passwords.any { it.isFavorite }
+                            val favoriteBonus = if (anyFavorited) 10 else 0
+                            
+                            // 组合分数: 收藏状态(主要) + 卡片类型(次要)
+                            favoriteBonus.toDouble() + cardType.toDouble()
+                        }.thenBy { (title, _) ->
+                            // 同优先级内按标题排序
+                            title
+                        })
+                        .toMap()
+                }
+                
+                else -> {
+                    // 按所选维度分组，并按优先级排序
+                    mergedByInfo
+                        .groupBy { entries -> getGroupKeyForMode(entries.first(), effectiveGroupMode) }
+                        .mapValues { (_, groups) -> groups.flatten() }
+                        .toList()
+                        .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
+                            // 计算卡片类型优先级
+                            val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
+                            val cardType = when {
+                                // 堆叠卡片: 多个不同信息的密码
+                                infoKeyGroups.size > 1 -> 3
+                                // 多密码卡片: 除密码外信息相同的多个密码
+                                infoKeyGroups.size == 1 && passwords.size > 1 -> 2
+                                // 单密码卡片: 只有一个密码
+                                else -> 1
+                            }
+                            
+                            // 计算收藏优先级
+                            val favoriteCount = passwords.count { it.isFavorite }
+                            val totalCount = passwords.size
+                            
+                            // 计算收藏优先级 (收藏状态为主要优先级)
+                            val anyFavorited = passwords.any { it.isFavorite }
+                            val favoriteBonus = if (anyFavorited) 10 else 0
+                            
+                            // 组合分数: 收藏状态(主要) + 卡片类型(次要)
+                            favoriteBonus.toDouble() + cardType.toDouble()
+                        }.thenBy { (_, passwords) ->
+                            // 同优先级内按第一个卡片的 sortOrder 排序
+                            passwords.firstOrNull()?.sortOrder ?: Int.MAX_VALUE
+                        })
+                        .toMap()
+                }
             }
         }
 
         // 如果是始终展开模式，强制拆分为单项列表，但保持排序顺序
-        if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+        if (effectiveStackCardMode == StackCardMode.ALWAYS_EXPANDED) {
             groupedAndSorted.values.flatten()
                 .map { entry -> 
                     // 使用唯一ID作为键，确保LazyColumn正确渲染
@@ -3039,10 +3052,10 @@ private fun PasswordListContent(
     
     Column {
         // M3E Top Bar with integrated search - 始终显示
-        val currentFilter by viewModel.categoryFilter.collectAsState()
         val title = when(val filter = currentFilter) {
             is CategoryFilter.All -> stringResource(R.string.filter_all)
             is CategoryFilter.Local -> stringResource(R.string.filter_monica)
+            is CategoryFilter.LocalOnly -> stringResource(R.string.filter_local_only)
             is CategoryFilter.Starred -> stringResource(R.string.filter_starred)
             is CategoryFilter.Uncategorized -> stringResource(R.string.filter_uncategorized)
             is CategoryFilter.LocalStarred -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_starred)}"
@@ -3099,6 +3112,7 @@ private fun PasswordListContent(
             val unifiedSelectedFilter = when (val filter = currentFilter) {
                 is CategoryFilter.All -> UnifiedCategoryFilterSelection.All
                 is CategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
+                is CategoryFilter.LocalOnly -> UnifiedCategoryFilterSelection.Local
                 is CategoryFilter.Starred -> UnifiedCategoryFilterSelection.Starred
                 is CategoryFilter.Uncategorized -> UnifiedCategoryFilterSelection.Uncategorized
                 is CategoryFilter.LocalStarred -> UnifiedCategoryFilterSelection.LocalStarred
@@ -3117,6 +3131,9 @@ private fun PasswordListContent(
                 visible = isCategorySheetVisible,
                 onDismiss = { isCategorySheetVisible = false },
                 selected = unifiedSelectedFilter,
+                showLocalOnlyQuickFilter = true,
+                isLocalOnlyQuickFilterSelected = currentFilter is CategoryFilter.LocalOnly,
+                onSelectLocalOnlyQuickFilter = { viewModel.setCategoryFilter(CategoryFilter.LocalOnly) },
                 onSelect = { selection ->
                     when (selection) {
                         is UnifiedCategoryFilterSelection.All -> viewModel.setCategoryFilter(CategoryFilter.All)
@@ -3484,7 +3501,7 @@ private fun PasswordListContent(
                     contentPadding = PaddingValues(horizontal = 16.dp)
                 ) {
                     groupedPasswords.forEach { (groupKey, passwords) ->
-                    val isExpanded = when (stackCardMode) {
+                    val isExpanded = when (effectiveStackCardMode) {
                         StackCardMode.AUTO -> expandedGroups.contains(groupKey)
                         StackCardMode.ALWAYS_EXPANDED -> true
                     }
@@ -3494,10 +3511,10 @@ private fun PasswordListContent(
                             website = groupKey,
                             passwords = passwords,
                             isExpanded = isExpanded,
-                            stackCardMode = stackCardMode,
+                            stackCardMode = effectiveStackCardMode,
                             swipedItemId = itemToDelete?.id,
                             onToggleExpand = {
-                                if (stackCardMode == StackCardMode.AUTO) {
+                                if (effectiveStackCardMode == StackCardMode.AUTO) {
                                     expandedGroups = if (expandedGroups.contains(groupKey)) {
                                         expandedGroups - groupKey
                                     } else {
@@ -3639,7 +3656,8 @@ private fun PasswordListContent(
                             }
                         },
                         iconCardsEnabled = appSettings.iconCardsEnabled,
-                        passwordCardDisplayMode = appSettings.passwordCardDisplayMode
+                        passwordCardDisplayMode = appSettings.passwordCardDisplayMode,
+                        enableSharedBounds = !isLocalOnlyView
                     )
                     
                     Spacer(modifier = Modifier.height(12.dp))
@@ -5469,7 +5487,8 @@ private fun StackedPasswordGroup(
     onOpenMultiPasswordDialog: (List<takagi.ru.monica.data.PasswordEntry>) -> Unit,
     onLongClick: (takagi.ru.monica.data.PasswordEntry) -> Unit, // 新增：长按进入多选模式
     iconCardsEnabled: Boolean = false,
-    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
+    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
+    enableSharedBounds: Boolean = true
 ) {
     // 检查是否为多密码合并卡片(除密码外信息完全相同)
     val isMergedPasswordCard = passwords.size > 1 && 
@@ -5478,32 +5497,35 @@ private fun StackedPasswordGroup(
     // 如果选择“始终展开”，则直接平铺展示，不使用堆叠容器
     if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
         passwords.forEach { password ->
-            takagi.ru.monica.ui.gestures.SwipeActions(
-                onSwipeLeft = { onSwipeLeft(password) },
-                onSwipeRight = { onSwipeRight(password) },
-                isSwiped = password.id == swipedItemId,
-                enabled = true
-            ) {
-                PasswordEntryCard(
-                    entry = password,
-                    onClick = {
-                        if (isSelectionMode) {
-                            onToggleSelection(password.id)
-                        } else {
-                            onPasswordClick(password)
-                        }
-                    },
-                    onLongClick = { onLongClick(password) },
-                    onToggleFavorite = { onToggleFavorite(password) },
-                    onToggleGroupCover = null,
-                    isSelectionMode = isSelectionMode,
-                    isSelected = selectedPasswords.contains(password.id),
-                    canSetGroupCover = false,
-                    isInExpandedGroup = false,
-                    isSingleCard = true,
-                    iconCardsEnabled = iconCardsEnabled,
-                    passwordCardDisplayMode = passwordCardDisplayMode
-                )
+            key(password.id) {
+                takagi.ru.monica.ui.gestures.SwipeActions(
+                    onSwipeLeft = { onSwipeLeft(password) },
+                    onSwipeRight = { onSwipeRight(password) },
+                    isSwiped = password.id == swipedItemId,
+                    enabled = true
+                ) {
+                    PasswordEntryCard(
+                        entry = password,
+                        onClick = {
+                            if (isSelectionMode) {
+                                onToggleSelection(password.id)
+                            } else {
+                                onPasswordClick(password)
+                            }
+                        },
+                        onLongClick = { onLongClick(password) },
+                        onToggleFavorite = { onToggleFavorite(password) },
+                        onToggleGroupCover = null,
+                        isSelectionMode = isSelectionMode,
+                        isSelected = selectedPasswords.contains(password.id),
+                        canSetGroupCover = false,
+                        isInExpandedGroup = false,
+                        isSingleCard = true,
+                        iconCardsEnabled = iconCardsEnabled,
+                        passwordCardDisplayMode = passwordCardDisplayMode,
+                        enableSharedBounds = enableSharedBounds
+                    )
+                }
             }
         }
         return
@@ -5536,7 +5558,8 @@ private fun StackedPasswordGroup(
                 isInExpandedGroup = false,
                 isSingleCard = true,
                 iconCardsEnabled = iconCardsEnabled,
-                passwordCardDisplayMode = passwordCardDisplayMode
+                passwordCardDisplayMode = passwordCardDisplayMode,
+                enableSharedBounds = enableSharedBounds
             )
         }
         return
@@ -5953,7 +5976,8 @@ private fun StackedPasswordGroup(
                                                         isInExpandedGroup = true, // We are inside the expanded container
                                                         isSingleCard = false,
                                                         iconCardsEnabled = iconCardsEnabled,
-                                                        passwordCardDisplayMode = passwordCardDisplayMode
+                                                        passwordCardDisplayMode = passwordCardDisplayMode,
+                                                        enableSharedBounds = enableSharedBounds
                                                     )
                                                 } else {
                                                     MultiPasswordEntryCard(
@@ -6041,6 +6065,7 @@ private fun MultiPasswordEntryCard(
 ) {
     // 使用第一个条目的共同信息
     val firstEntry = passwords.first()
+    val firstEntryTitle = firstEntry.title.ifBlank { stringResource(R.string.untitled) }
     
     Card(
         modifier = Modifier
@@ -6109,7 +6134,7 @@ private fun MultiPasswordEntryCard(
 
                 // 标题
                 Text(
-                    text = firstEntry.title,
+                    text = firstEntryTitle,
                     style = if (isInExpandedGroup) {
                         MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold
@@ -6404,14 +6429,16 @@ private fun PasswordEntryCard(
     isInExpandedGroup: Boolean = false,
     isSingleCard: Boolean = false,
     iconCardsEnabled: Boolean = false,
-    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
+    passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
+    enableSharedBounds: Boolean = true
 ) {
+    val displayTitle = entry.title.ifBlank { stringResource(R.string.untitled) }
     val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
     val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
     val reduceAnimations = takagi.ru.monica.ui.LocalReduceAnimations.current
     var sharedModifier: Modifier = Modifier
     // 当减少动画模式开启时，不使用 sharedBounds 以解决部分设备上的动画卡顿问题
-    if (!reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
+    if (enableSharedBounds && !reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "password_card_${entry.id}"),
@@ -6520,7 +6547,7 @@ private fun PasswordEntryCard(
                 ) {
                     // 标题 - 优化样式
                     Text(
-                        text = entry.title,
+                        text = displayTitle,
                         style = if (isSingleCard) {
                             MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold
@@ -7084,33 +7111,40 @@ private fun DeleteConfirmDialog(
 }
 
 /**
- * 为密码条目生成唯一键(除密码外的所有关键字段)
- * 用于将除密码外其它信息相同的条目合并显示
+ * 为密码条目生成“同一信息组”键（不含密码值）。
+ *
+ * 这里必须与详情页/编辑页的 sibling 分组规则保持一致，
+ * 否则会出现“列表显示多密码，点进去只有一条”的不一致。
  */
 private fun getPasswordInfoKey(entry: takagi.ru.monica.data.PasswordEntry): String {
+    val sourceKey = buildPasswordSourceKey(entry)
     val title = entry.title.trim().lowercase(Locale.ROOT)
     val username = entry.username.trim().lowercase(Locale.ROOT)
-    val website = normalizeWebsiteForInfoKey(entry.website)
-    return "$title|$website|$username"
+    val website = normalizeWebsiteForGroupKey(entry.website)
+    return "$sourceKey|$title|$website|$username"
 }
 
-private fun normalizeWebsiteForInfoKey(value: String): String {
+private fun buildPasswordSourceKey(entry: takagi.ru.monica.data.PasswordEntry): String {
+    return when {
+        !entry.bitwardenCipherId.isNullOrBlank() ->
+            "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId}"
+        entry.bitwardenVaultId != null ->
+            "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
+        entry.keepassDatabaseId != null ->
+            "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
+        else -> "local"
+    }
+}
+
+private fun normalizeWebsiteForGroupKey(value: String): String {
     val raw = value.trim()
     if (raw.isEmpty()) return ""
-    return runCatching {
-        val withScheme = if (raw.contains("://")) raw else "https://$raw"
-        val uri = URI(withScheme)
-        val host = (uri.host ?: "").lowercase(Locale.ROOT).removePrefix("www.")
-        if (host.isEmpty()) return@runCatching raw.lowercase(Locale.ROOT).trimEnd('/')
-        val path = (uri.path ?: "").trim().trimEnd('/').lowercase(Locale.ROOT)
-        if (path.isBlank()) host else "$host$path"
-    }.getOrElse {
-        raw.lowercase(Locale.ROOT)
-            .removePrefix("http://")
-            .removePrefix("https://")
-            .removePrefix("www.")
-            .trimEnd('/')
-    }
+    return raw
+        .lowercase(Locale.ROOT)
+        .removePrefix("http://")
+        .removePrefix("https://")
+        .removePrefix("www.")
+        .trimEnd('/')
 }
 
 /**

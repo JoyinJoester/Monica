@@ -147,7 +147,16 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
                     keepassDatabaseId = keepassDatabaseId
                 )
                 
-                when (val duplicateCheck = PasswordSaveHelper.checkDuplicate(saveData, existingPasswords)) {
+                when (
+                    val duplicateCheck = PasswordSaveHelper.checkDuplicate(
+                        saveData = saveData,
+                        existingPasswords = existingPasswords,
+                        resolvePassword = { entry ->
+                            runCatching { securityManager.decryptData(entry.password) }
+                                .getOrElse { entry.password }
+                        }
+                    )
+                ) {
                     is PasswordSaveHelper.DuplicateCheckResult.SameUsernameDifferentPassword -> {
                         // 更新现有密码
                         val updated = PasswordSaveHelper.updatePasswordEntry(
