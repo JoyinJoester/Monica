@@ -65,7 +65,9 @@ data class LocalKeePassDatabase(
     /** 排序顺序 */
     @ColumnInfo(name = "sort_order")
     val sortOrder: Int = 0
-)
+) {
+    fun isWebDavDatabase(): Boolean = filePath.startsWith("webdav://")
+}
 
 /**
  * 本地 KeePass 数据库 DAO

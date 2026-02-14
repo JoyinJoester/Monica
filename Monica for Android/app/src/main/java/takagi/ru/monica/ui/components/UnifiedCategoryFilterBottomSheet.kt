@@ -225,6 +225,168 @@ fun UnifiedCategoryFilterBottomSheet(
     val canCreateLocal = onCreateCategoryWithName != null || onCreateCategory != null
     val canCreateBitwarden = onCreateBitwardenFolder != null && bitwardenVaults.isNotEmpty()
     val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.isNotEmpty()
+    val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
+    val webDavKeePassDatabases = keepassDatabases.filter { it.isWebDavDatabase() }
+
+    @Composable
+    fun KeePassDatabaseItems(databases: List<LocalKeePassDatabase>, forceWebDavBadge: Boolean) {
+        databases.forEach { database ->
+            val expanded = keepassExpanded[database.id] ?: false
+            val groups by (
+                if (expanded) {
+                    getKeePassGroups?.invoke(database.id)
+                        ?: kotlinx.coroutines.flow.flowOf(emptyList())
+                } else {
+                    kotlinx.coroutines.flow.flowOf(emptyList())
+                }
+            ).collectAsState(initial = emptyList())
+            Column {
+                UnifiedCategoryListItem(
+                    title = database.name,
+                    icon = Icons.Default.Key,
+                    selected = (
+                        selected is UnifiedCategoryFilterSelection.KeePassDatabaseFilter &&
+                            selected.databaseId == database.id
+                        ) || (
+                        selected is UnifiedCategoryFilterSelection.KeePassGroupFilter &&
+                            selected.databaseId == database.id
+                        ) || (
+                        selected is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter &&
+                            selected.databaseId == database.id
+                        ) || (
+                        selected is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter &&
+                            selected.databaseId == database.id
+                        ),
+                    onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
+                    badge = {
+                        Text(
+                            text = when {
+                                forceWebDavBadge || database.isWebDavDatabase() -> stringResource(R.string.keepass_webdav_database_badge)
+                                database.storageLocation == KeePassStorageLocation.EXTERNAL -> stringResource(R.string.external_storage)
+                                else -> stringResource(R.string.internal_storage)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    menu = {
+                        IconButton(onClick = {
+                            keepassExpanded[database.id] = !expanded
+                        }) {
+                            Icon(
+                                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null
+                            )
+                        }
+                    }
+                )
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                    exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(modifier = Modifier.padding(start = 16.dp)) {
+                            UnifiedCategoryListItem(
+                                title = stringResource(R.string.filter_starred),
+                                icon = Icons.Outlined.CheckCircle,
+                                selected = selected is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter &&
+                                    selected.databaseId == database.id,
+                                onClick = {
+                                    onSelect(
+                                        UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(
+                                            database.id
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                        Box(modifier = Modifier.padding(start = 16.dp)) {
+                            UnifiedCategoryListItem(
+                                title = stringResource(R.string.filter_uncategorized),
+                                icon = Icons.Default.FolderOff,
+                                selected = selected is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter &&
+                                    selected.databaseId == database.id,
+                                onClick = {
+                                    onSelect(
+                                        UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(
+                                            database.id
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                        groups.forEach { group ->
+                            val depth = group.path.count { it == '/' }
+                            val startPadding = 16 + (depth * 10)
+                            val groupSelected = selected is UnifiedCategoryFilterSelection.KeePassGroupFilter &&
+                                selected.databaseId == database.id &&
+                                selected.groupPath == group.path
+                            Box(modifier = Modifier.padding(start = startPadding.dp)) {
+                                UnifiedCategoryListItem(
+                                    title = group.name,
+                                    icon = Icons.Default.Folder,
+                                    selected = groupSelected,
+                                    onClick = {
+                                        onSelect(
+                                            UnifiedCategoryFilterSelection.KeePassGroupFilter(
+                                                databaseId = database.id,
+                                                groupPath = group.path
+                                            )
+                                        )
+                                    },
+                                    menu = if (onRenameKeePassGroup != null || onDeleteKeePassGroup != null) {
+                                        {
+                                            IconButton(onClick = { expandedMenuId = database.id * 1_000_000 + group.path.hashCode().toLong() }) {
+                                                Icon(Icons.Default.MoreVert, contentDescription = null)
+                                            }
+                                            val menuId = database.id * 1_000_000 + group.path.hashCode().toLong()
+                                            DropdownMenu(
+                                                expanded = expandedMenuId == menuId,
+                                                onDismissRequest = { expandedMenuId = null },
+                                                modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                                            ) {
+                                                if (onRenameKeePassGroup != null) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.edit)) },
+                                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                                        onClick = {
+                                                            expandedMenuId = null
+                                                            renameInput = group.name
+                                                            renameAction = RenameAction.KeePassGroup(database.id, group.path)
+                                                        }
+                                                    )
+                                                }
+                                                if (onDeleteKeePassGroup != null) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.delete)) },
+                                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                                        onClick = {
+                                                            expandedMenuId = null
+                                                            deletePasswordInput = ""
+                                                            deletePasswordError = false
+                                                            deleteAction = DeleteAction.KeePassGroup(
+                                                                databaseId = database.id,
+                                                                groupPath = group.path,
+                                                                displayName = group.name
+                                                            )
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -532,165 +694,18 @@ fun UnifiedCategoryFilterBottomSheet(
                     }
                 }
 
-                if (keepassDatabases.isNotEmpty()) {
+                if (localKeePassDatabases.isNotEmpty()) {
                     item {
                         StorageSectionCard(title = stringResource(R.string.local_keepass_database)) {
-                            keepassDatabases.forEach { database ->
-                                val expanded = keepassExpanded[database.id] ?: false
-                                val groups by (
-                                    if (expanded) {
-                                        getKeePassGroups?.invoke(database.id)
-                                            ?: kotlinx.coroutines.flow.flowOf(emptyList())
-                                    } else {
-                                        kotlinx.coroutines.flow.flowOf(emptyList())
-                                    }
-                                ).collectAsState(initial = emptyList())
-                                Column {
-                                    UnifiedCategoryListItem(
-                                        title = database.name,
-                                        icon = Icons.Default.Key,
-                                        selected = (
-                                            selected is UnifiedCategoryFilterSelection.KeePassDatabaseFilter &&
-                                                selected.databaseId == database.id
-                                            ) || (
-                                            selected is UnifiedCategoryFilterSelection.KeePassGroupFilter &&
-                                                selected.databaseId == database.id
-                                            ) || (
-                                            selected is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter &&
-                                                selected.databaseId == database.id
-                                            ) || (
-                                            selected is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter &&
-                                                selected.databaseId == database.id
-                                            ),
-                                        onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
-                                        badge = {
-                                            Text(
-                                                text = if (database.storageLocation == KeePassStorageLocation.EXTERNAL) {
-                                                    stringResource(R.string.external_storage)
-                                                } else {
-                                                    stringResource(R.string.internal_storage)
-                                                },
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        },
-                                        menu = {
-                                            IconButton(onClick = {
-                                                keepassExpanded[database.id] = !expanded
-                                            }) {
-                                                Icon(
-                                                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                    contentDescription = null
-                                                )
-                                            }
-                                        }
-                                    )
-                                    AnimatedVisibility(
-                                        visible = expanded,
-                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
-                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
-                                    ) {
-                                        Column {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Box(modifier = Modifier.padding(start = 16.dp)) {
-                                            UnifiedCategoryListItem(
-                                                title = stringResource(R.string.filter_starred),
-                                                icon = Icons.Outlined.CheckCircle,
-                                                selected = selected is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter &&
-                                                    selected.databaseId == database.id,
-                                                onClick = {
-                                                    onSelect(
-                                                        UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(
-                                                            database.id
-                                                        )
-                                                    )
-                                                }
-                                            )
-                                        }
-                                        Box(modifier = Modifier.padding(start = 16.dp)) {
-                                            UnifiedCategoryListItem(
-                                                title = stringResource(R.string.filter_uncategorized),
-                                                icon = Icons.Default.FolderOff,
-                                                selected = selected is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter &&
-                                                    selected.databaseId == database.id,
-                                                onClick = {
-                                                    onSelect(
-                                                        UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(
-                                                            database.id
-                                                        )
-                                                    )
-                                                }
-                                            )
-                                        }
-                                        groups.forEach { group ->
-                                            val depth = group.path.count { it == '/' }
-                                            val startPadding = 16 + (depth * 10)
-                                            val groupSelected = selected is UnifiedCategoryFilterSelection.KeePassGroupFilter &&
-                                                selected.databaseId == database.id &&
-                                                selected.groupPath == group.path
-                                            Box(modifier = Modifier.padding(start = startPadding.dp)) {
-                                                UnifiedCategoryListItem(
-                                                    title = group.name,
-                                                    icon = Icons.Default.Folder,
-                                                    selected = groupSelected,
-                                                    onClick = {
-                                                        onSelect(
-                                                            UnifiedCategoryFilterSelection.KeePassGroupFilter(
-                                                                databaseId = database.id,
-                                                                groupPath = group.path
-                                                            )
-                                                        )
-                                                    },
-                                                    menu = if (onRenameKeePassGroup != null || onDeleteKeePassGroup != null) {
-                                                        {
-                                                            IconButton(onClick = { expandedMenuId = database.id * 1_000_000 + group.path.hashCode().toLong() }) {
-                                                                Icon(Icons.Default.MoreVert, contentDescription = null)
-                                                            }
-                                                            val menuId = database.id * 1_000_000 + group.path.hashCode().toLong()
-                                                            DropdownMenu(
-                                                                expanded = expandedMenuId == menuId,
-                                                                onDismissRequest = { expandedMenuId = null },
-                                                                modifier = Modifier.clip(RoundedCornerShape(18.dp))
-                                                            ) {
-                                                                if (onRenameKeePassGroup != null) {
-                                                                    DropdownMenuItem(
-                                                                        text = { Text(stringResource(R.string.edit)) },
-                                                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                                                        onClick = {
-                                                                            expandedMenuId = null
-                                                                            renameInput = group.name
-                                                                            renameAction = RenameAction.KeePassGroup(database.id, group.path)
-                                                                        }
-                                                                    )
-                                                                }
-                                                                if (onDeleteKeePassGroup != null) {
-                                                                    DropdownMenuItem(
-                                                                        text = { Text(stringResource(R.string.delete)) },
-                                                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                                                                        onClick = {
-                                                                            expandedMenuId = null
-                                                                            deletePasswordInput = ""
-                                                                            deletePasswordError = false
-                                                                            deleteAction = DeleteAction.KeePassGroup(
-                                                                                databaseId = database.id,
-                                                                                groupPath = group.path,
-                                                                                displayName = group.name
-                                                                            )
-                                                                        }
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                    } else {
-                                                        null
-                                                    }
-                                                )
-                                            }
-                                        }
-                                        }
-                                    }
-                                }
-                            }
+                            KeePassDatabaseItems(localKeePassDatabases, forceWebDavBadge = false)
+                        }
+                    }
+                }
+
+                if (webDavKeePassDatabases.isNotEmpty()) {
+                    item {
+                        StorageSectionCard(title = stringResource(R.string.keepass_webdav_database)) {
+                            KeePassDatabaseItems(webDavKeePassDatabases, forceWebDavBadge = true)
                         }
                     }
                 }

@@ -187,8 +187,18 @@ class PasswordRepository(
         )
     }
 
-    suspend fun getDuplicateEntryInKeePass(databaseId: Long, title: String, username: String, website: String): PasswordEntry? {
-        return passwordEntryDao.findDuplicateEntryInKeePass(databaseId, title, username, website)
+    suspend fun getDuplicateEntryInKeePass(
+        databaseId: Long,
+        title: String,
+        username: String,
+        website: String,
+        groupPath: String?
+    ): PasswordEntry? {
+        return passwordEntryDao.findDuplicateEntryInKeePass(databaseId, title, username, website, groupPath)
+    }
+
+    suspend fun getPasswordEntriesByKeePassDatabaseSync(databaseId: Long): List<PasswordEntry> {
+        return passwordEntryDao.getPasswordEntriesByKeePassDatabaseSync(databaseId)
     }
     
     /**

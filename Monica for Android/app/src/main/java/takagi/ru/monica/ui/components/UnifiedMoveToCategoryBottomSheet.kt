@@ -21,17 +21,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -52,6 +56,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -80,13 +85,15 @@ fun UnifiedMoveToCategoryBottomSheet(
 ) {
     if (!visible) return
 
-    val monicaExpanded = remember { mutableStateMapOf<String, Boolean>() }
+    var monicaExpanded = remember { androidx.compose.runtime.mutableStateOf(false) }
     val bitwardenExpanded = remember { mutableStateMapOf<Long, Boolean>() }
     val keepassExpanded = remember { mutableStateMapOf<Long, Boolean>() }
     val expandCollapseSpec = spring<IntSize>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMediumLow
     )
+    val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
+    val webDavKeePassDatabases = keepassDatabases.filter { it.isWebDavDatabase() }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -119,13 +126,13 @@ fun UnifiedMoveToCategoryBottomSheet(
             ) {
                 item {
                     MoveSectionCard(title = stringResource(R.string.filter_monica)) {
-                        val expanded = monicaExpanded["monica"] ?: false
+                        val expanded = monicaExpanded.value
                         MoveTargetItem(
                             title = stringResource(R.string.filter_monica),
-                            icon = Icons.Default.Folder,
-                            onClick = { monicaExpanded["monica"] = !expanded },
-                            trailing = {
-                                IconButton(onClick = { monicaExpanded["monica"] = !expanded }) {
+                            icon = Icons.Default.Smartphone,
+                            onClick = { monicaExpanded.value = !expanded },
+                            menu = {
+                                IconButton(onClick = { monicaExpanded.value = !expanded }) {
                                     Icon(
                                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                         contentDescription = null
@@ -139,22 +146,26 @@ fun UnifiedMoveToCategoryBottomSheet(
                             exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                         ) {
                             Column(
-                                modifier = Modifier.padding(start = 12.dp, top = 6.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                MoveTargetItem(
-                                    title = stringResource(R.string.category_none),
-                                    icon = Icons.Default.FolderOff,
-                                    onClick = { onTargetSelected(UnifiedMoveCategoryTarget.Uncategorized) }
-                                )
-                                categories.forEach { category ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(modifier = Modifier.padding(start = 16.dp)) {
                                     MoveTargetItem(
-                                        title = category.name,
-                                        icon = Icons.Default.Folder,
-                                        onClick = {
-                                            onTargetSelected(UnifiedMoveCategoryTarget.MonicaCategory(category.id))
-                                        }
+                                        title = stringResource(R.string.category_none),
+                                        icon = Icons.Default.FolderOff,
+                                        onClick = { onTargetSelected(UnifiedMoveCategoryTarget.Uncategorized) }
                                     )
+                                }
+                                categories.forEach { category ->
+                                    Box(modifier = Modifier.padding(start = 16.dp)) {
+                                        MoveTargetItem(
+                                            title = category.name,
+                                            icon = Icons.Default.Folder,
+                                            onClick = {
+                                                onTargetSelected(UnifiedMoveCategoryTarget.MonicaCategory(category.id))
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -176,7 +187,18 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         onClick = {
                                             onTargetSelected(UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id))
                                         },
-                                        trailing = {
+                                        badge = if (vault.isDefault) {
+                                            {
+                                                Text(
+                                                    text = stringResource(R.string.default_label),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                        menu = {
                                             IconButton(onClick = { bitwardenExpanded[vault.id] = !expanded }) {
                                                 Icon(
                                                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -191,22 +213,24 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                                     ) {
                                         Column(
-                                            modifier = Modifier.padding(start = 12.dp, top = 6.dp),
                                             verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
+                                            Spacer(modifier = Modifier.height(8.dp))
                                             folders.forEach { folder ->
-                                                MoveTargetItem(
-                                                    title = folder.name,
-                                                    icon = Icons.Default.Folder,
-                                                    onClick = {
-                                                        onTargetSelected(
-                                                            UnifiedMoveCategoryTarget.BitwardenFolderTarget(
-                                                                vaultId = vault.id,
-                                                                folderId = folder.bitwardenFolderId
+                                                Box(modifier = Modifier.padding(start = 16.dp)) {
+                                                    MoveTargetItem(
+                                                        title = folder.name,
+                                                        icon = Icons.Default.Folder,
+                                                        onClick = {
+                                                            onTargetSelected(
+                                                                UnifiedMoveCategoryTarget.BitwardenFolderTarget(
+                                                                    vaultId = vault.id,
+                                                                    folderId = folder.bitwardenFolderId
+                                                                )
                                                             )
-                                                        )
-                                                    }
-                                                )
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -216,10 +240,10 @@ fun UnifiedMoveToCategoryBottomSheet(
                     }
                 }
 
-                if (keepassDatabases.isNotEmpty()) {
+                if (localKeePassDatabases.isNotEmpty()) {
                     item {
                         MoveSectionCard(title = stringResource(R.string.local_keepass_database)) {
-                            keepassDatabases.forEachIndexed { index, database ->
+                            localKeePassDatabases.forEachIndexed { index, database ->
                                 val expanded = keepassExpanded[database.id] ?: false
                                 val groups by (
                                     if (expanded) getKeePassGroups(database.id) else flowOf(emptyList())
@@ -228,11 +252,21 @@ fun UnifiedMoveToCategoryBottomSheet(
                                     MoveTargetItem(
                                         title = database.name,
                                         icon = Icons.Default.Key,
-                                        subtitle = if (database.isDefault) stringResource(R.string.default_label) else null,
                                         onClick = {
                                             onTargetSelected(UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id))
                                         },
-                                        trailing = {
+                                        badge = {
+                                            Text(
+                                                text = when {
+                                                    database.storageLocation == KeePassStorageLocation.EXTERNAL ->
+                                                        stringResource(R.string.external_storage)
+                                                    else -> stringResource(R.string.internal_storage)
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        },
+                                        menu = {
                                             IconButton(onClick = { keepassExpanded[database.id] = !expanded }) {
                                                 Icon(
                                                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -247,27 +281,96 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
                                     ) {
                                         Column(
-                                            modifier = Modifier.padding(start = 12.dp, top = 6.dp),
                                             verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
+                                            Spacer(modifier = Modifier.height(8.dp))
                                             groups.forEach { group ->
-                                                MoveTargetItem(
-                                                    title = group.name,
-                                                    icon = Icons.Default.Folder,
-                                                    onClick = {
-                                                        onTargetSelected(
-                                                            UnifiedMoveCategoryTarget.KeePassGroupTarget(
-                                                                databaseId = database.id,
-                                                                groupPath = group.path
+                                                Box(modifier = Modifier.padding(start = 16.dp)) {
+                                                    MoveTargetItem(
+                                                        title = group.name,
+                                                        icon = Icons.Default.Folder,
+                                                        onClick = {
+                                                            onTargetSelected(
+                                                                UnifiedMoveCategoryTarget.KeePassGroupTarget(
+                                                                    databaseId = database.id,
+                                                                    groupPath = group.path
+                                                                )
                                                             )
-                                                        )
-                                                    }
-                                                )
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
-                                if (index < keepassDatabases.lastIndex) {
+                                if (index < localKeePassDatabases.lastIndex) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (webDavKeePassDatabases.isNotEmpty()) {
+                    item {
+                        MoveSectionCard(title = stringResource(R.string.keepass_webdav_database)) {
+                            webDavKeePassDatabases.forEachIndexed { index, database ->
+                                val expanded = keepassExpanded[database.id] ?: false
+                                val groups by (
+                                    if (expanded) getKeePassGroups(database.id) else flowOf(emptyList())
+                                ).collectAsState(initial = emptyList())
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    MoveTargetItem(
+                                        title = database.name,
+                                        icon = Icons.Default.Key,
+                                        onClick = {
+                                            onTargetSelected(UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id))
+                                        },
+                                        badge = {
+                                            Text(
+                                                text = stringResource(R.string.keepass_webdav_database_badge),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        },
+                                        menu = {
+                                            IconButton(onClick = { keepassExpanded[database.id] = !expanded }) {
+                                                Icon(
+                                                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                    contentDescription = null
+                                                )
+                                            }
+                                        }
+                                    )
+                                    AnimatedVisibility(
+                                        visible = expanded,
+                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
+                                    ) {
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            groups.forEach { group ->
+                                                Box(modifier = Modifier.padding(start = 16.dp)) {
+                                                    MoveTargetItem(
+                                                        title = group.name,
+                                                        icon = Icons.Default.Folder,
+                                                        onClick = {
+                                                            onTargetSelected(
+                                                                UnifiedMoveCategoryTarget.KeePassGroupTarget(
+                                                                    databaseId = database.id,
+                                                                    groupPath = group.path
+                                                                )
+                                                            )
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (index < webDavKeePassDatabases.lastIndex) {
                                     Spacer(modifier = Modifier.height(6.dp))
                                 }
                             }
@@ -306,44 +409,30 @@ private fun MoveTargetItem(
     title: String,
     icon: ImageVector,
     onClick: () -> Unit,
-    subtitle: String? = null,
-    trailing: (@Composable () -> Unit)? = null
+    badge: (@Composable () -> Unit)? = null,
+    menu: (@Composable () -> Unit)? = null
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                if (!subtitle.isNullOrBlank()) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            trailing?.let {
-                Box { it() }
+    ListItem(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+            headlineColor = MaterialTheme.colorScheme.onSurface,
+            leadingIconColor = MaterialTheme.colorScheme.onSurface,
+            trailingIconColor = MaterialTheme.colorScheme.onSurface
+        ),
+        leadingContent = { Icon(icon, contentDescription = null) },
+        headlineContent = { Text(title, style = MaterialTheme.typography.bodyLarge) },
+        supportingContent = badge,
+        trailingContent = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                menu?.invoke()
             }
         }
-    }
+    )
 }

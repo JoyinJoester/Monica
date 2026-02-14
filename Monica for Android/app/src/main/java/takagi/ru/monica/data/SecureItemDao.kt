@@ -81,6 +81,9 @@ interface SecureItemDao {
     @Query("SELECT * FROM secure_items WHERE itemType = :itemType AND isDeleted = 0")
     suspend fun getActiveItemsByTypeSync(itemType: ItemType): List<SecureItem>
 
+    @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND keepass_database_id = :databaseId ORDER BY updatedAt DESC")
+    suspend fun getByKeePassDatabaseIdSync(databaseId: Long): List<SecureItem>
+
     @Query("""
         SELECT * FROM secure_items
         WHERE itemType = :itemType

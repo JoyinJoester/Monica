@@ -552,21 +552,39 @@ class PasswordViewModel(
     private fun syncKeePassDatabase(databaseId: Long) {
         val service = keepassService ?: return
         viewModelScope.launch {
-            val result = service.readPasswordEntries(databaseId)
-            val data = result.getOrNull() ?: return@launch
-            upsertKeePassEntries(databaseId, data)
+            runCatching {
+                val result = service.readPasswordEntries(databaseId)
+                val data = result.getOrNull() ?: return@launch
+                upsertKeePassEntries(databaseId, data)
+                syncKeePassTotpEntries(databaseId)
+            }.onFailure { error ->
+                Log.w("PasswordViewModel", "KeePass sync failed for databaseId=$databaseId", error)
+            }
         }
     }
 
     private suspend fun upsertKeePassEntries(databaseId: Long, entries: List<KeePassEntryData>) {
-        entries.forEach { item ->
+        val incomingEntries = entries.filter { shouldImportKeePassPasswordEntry(it) }
+        val incomingKeys = incomingEntries
+            .asSequence()
+            .map { buildKeePassSyncKey(it.title, it.username, it.url, it.groupPath) }
+            .toSet()
+
+        incomingEntries.forEach { item ->
             val existingById = item.monicaLocalId?.let { repository.getPasswordEntryById(it) }
             val existing = if (existingById != null && existingById.keepassDatabaseId == databaseId) {
                 existingById
             } else {
-                repository.getDuplicateEntryInKeePass(databaseId, item.title, item.username, item.url)
+                repository.getDuplicateEntryInKeePass(
+                    databaseId = databaseId,
+                    title = item.title,
+                    username = item.username,
+                    website = item.url,
+                    groupPath = item.groupPath
+                )
             }
-            val encryptedPassword = securityManager.encryptData(item.password)
+            val normalizedPassword = normalizeIncomingKeePassPassword(item.password)
+            val encryptedPassword = securityManager.encryptData(normalizedPassword)
             if (existing != null) {
                 val updated = existing.copy(
                     title = item.title,
@@ -596,6 +614,110 @@ class PasswordViewModel(
                 repository.insertPasswordEntry(newEntry)
             }
         }
+
+        reconcileKeePassEntries(databaseId, incomingKeys)
+    }
+
+    private suspend fun syncKeePassTotpEntries(databaseId: Long) {
+        val service = keepassService ?: return
+        val secureRepo = secureItemRepository ?: return
+
+        val snapshots = service
+            .readSecureItems(databaseId, setOf(ItemType.TOTP))
+            .getOrNull()
+            ?: return
+
+        val existingTotp = secureRepo.getItemsByType(ItemType.TOTP).first()
+        snapshots.forEach { snapshot ->
+            val incoming = snapshot.item
+            val existingBySource = snapshot.sourceMonicaId
+                ?.takeIf { it > 0 }
+                ?.let { sourceId -> secureRepo.getItemById(sourceId) }
+                ?.takeIf { it.itemType == ItemType.TOTP }
+
+            val existing = existingBySource ?: existingTotp.firstOrNull {
+                it.itemType == ItemType.TOTP &&
+                    it.keepassDatabaseId == databaseId &&
+                    it.keepassGroupPath == incoming.keepassGroupPath &&
+                    it.title == incoming.title
+            }
+
+            if (existing == null) {
+                secureRepo.insertItem(incoming)
+            } else {
+                secureRepo.updateItem(
+                    existing.copy(
+                        title = incoming.title,
+                        notes = incoming.notes,
+                        itemData = incoming.itemData,
+                        isFavorite = incoming.isFavorite,
+                        imagePaths = incoming.imagePaths,
+                        keepassDatabaseId = incoming.keepassDatabaseId,
+                        keepassGroupPath = incoming.keepassGroupPath,
+                        isDeleted = false,
+                        deletedAt = null,
+                        updatedAt = Date()
+                    )
+                )
+            }
+        }
+    }
+
+    private fun normalizeIncomingKeePassPassword(raw: String): String {
+        if (raw.isBlank()) return raw
+        var current = raw
+        repeat(3) {
+            val decrypted = runCatching { securityManager.decryptData(current) }.getOrNull() ?: return current
+            if (decrypted == current) return current
+            current = decrypted
+        }
+        return current
+    }
+
+    private fun shouldImportKeePassPasswordEntry(item: KeePassEntryData): Boolean {
+        // 仅导入“密码型”条目：至少有 username/password/url 之一。
+        // 这样可避免把安全项/备注型条目误导入密码列表形成幽灵卡片。
+        return item.username.isNotBlank() || item.password.isNotBlank() || item.url.isNotBlank()
+    }
+
+    private fun buildKeePassSyncKey(
+        title: String,
+        username: String,
+        website: String,
+        groupPath: String?
+    ): String {
+        val normalizedTitle = title.trim().lowercase(Locale.ROOT)
+        val normalizedUsername = username.trim().lowercase(Locale.ROOT)
+        val normalizedWebsite = normalizeWebsiteForDedupe(website)
+        val normalizedGroup = groupPath?.trim().orEmpty()
+        return "$normalizedGroup|$normalizedTitle|$normalizedUsername|$normalizedWebsite"
+    }
+
+    private suspend fun reconcileKeePassEntries(databaseId: Long, incomingKeys: Set<String>) {
+        val localEntries = repository.getPasswordEntriesByKeePassDatabaseSync(databaseId)
+        if (localEntries.isEmpty()) return
+
+        val grouped = localEntries.groupBy { entry ->
+            buildKeePassSyncKey(entry.title, entry.username, entry.website, entry.keepassGroupPath)
+        }
+
+        val keepIds = mutableSetOf<Long>()
+        grouped.forEach { (key, candidates) ->
+            if (key !in incomingKeys) return@forEach
+            val keep = candidates.maxWithOrNull(
+                compareBy<PasswordEntry> { if (decryptForDisplay(it.password).isNotBlank()) 1 else 0 }
+                    .thenBy { it.updatedAt.time }
+                    .thenBy { it.id }
+            ) ?: candidates.first()
+            keepIds += keep.id
+        }
+
+        val stale = localEntries.filter { entry ->
+            val key = buildKeePassSyncKey(entry.title, entry.username, entry.website, entry.keepassGroupPath)
+            key !in incomingKeys || entry.id !in keepIds
+        }
+
+        stale.forEach { repository.deletePasswordEntry(it) }
     }
     
     fun updateSearchQuery(query: String) {

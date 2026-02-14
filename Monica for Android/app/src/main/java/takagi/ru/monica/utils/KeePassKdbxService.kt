@@ -12,23 +12,36 @@ import app.keemobile.kotpass.models.Entry
 import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
+import app.keemobile.kotpass.models.Meta
 import com.thegrizzlylabs.sardineandroid.Sardine
 import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.Credentials as HttpCredentials
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.serialization.json.Json
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.OtpType
+import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URI
+import java.net.URLDecoder
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 data class KeePassEntryData(
@@ -62,6 +75,7 @@ class KeePassKdbxService(
         private const val KEEPASS_WEBDAV_PREFS_NAME = "keepass_webdav_config"
         private const val KEY_KEEPASS_USERNAME = "username"
         private const val KEY_KEEPASS_PASSWORD = "password"
+        private const val KEY_CONFLICT_PROTECTION_ENABLED = "conflict_protection_enabled"
         private const val FIELD_MONICA_LOCAL_ID = "MonicaLocalId"
         private const val FIELD_MONICA_ITEM_ID = "MonicaSecureItemId"
         private const val FIELD_MONICA_ITEM_TYPE = "MonicaItemType"
@@ -70,11 +84,25 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
+        // WebDAV 写入需要“读-改-写”原子化，避免同进程并发导致 ETag 冲突。
+        private val globalMutationMutex = Mutex()
 
         fun toWebDavFilePath(remotePath: String): String {
             return WEBDAV_PATH_PREFIX + remotePath
         }
     }
+
+    private data class LoadedDatabase(
+        val database: LocalKeePassDatabase,
+        val credentials: Credentials,
+        val keePassDatabase: KeePassDatabase,
+        val sourceEtag: String?
+    )
+
+    private data class DatabaseSnapshot(
+        val bytes: ByteArray,
+        val etag: String?
+    )
 
     suspend fun verifyDatabase(
         databaseId: Long,
@@ -90,9 +118,10 @@ class KeePassKdbxService(
             )
             val bytes = readDatabaseBytes(database)
             val keePassDatabase = decodeDatabase(bytes, credentials)
-            val entries = mutableListOf<Entry>()
-            collectEntries(keePassDatabase.content.group, entries)
-            Result.success(entries.size)
+            val entries = mutableListOf<Pair<Entry, String?>>()
+            collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
+            val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
+            Result.success(count)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -108,9 +137,10 @@ class KeePassKdbxService(
             val bytes = context.contentResolver.openInputStream(fileUri)?.use { it.readBytes() }
                 ?: throw Exception("无法打开数据库文件")
             val keePassDatabase = decodeDatabase(bytes, credentials)
-            val entries = mutableListOf<Entry>()
-            collectEntries(keePassDatabase.content.group, entries)
-            Result.success(entries.size)
+            val entries = mutableListOf<Pair<Entry, String?>>()
+            collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
+            val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
+            Result.success(count)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -127,7 +157,7 @@ class KeePassKdbxService(
                 throw IllegalArgumentException("分组名称不能为空")
             }
 
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             val parentSegments = parentPath
                 ?.split("/")
                 ?.map { it.trim() }
@@ -141,7 +171,7 @@ class KeePassKdbxService(
                 currentPath = ""
             )
             val updatedDatabase = keePassDatabase.modifyParentGroup { result.first }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(result.second)
         } catch (e: Exception) {
             Result.failure(e)
@@ -165,7 +195,7 @@ class KeePassKdbxService(
                 throw IllegalArgumentException("分组路径无效")
             }
 
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             val result = renameGroupByPath(
                 group = keePassDatabase.content.group,
                 pathSegments = pathSegments,
@@ -173,7 +203,7 @@ class KeePassKdbxService(
                 currentPath = ""
             )
             val updatedDatabase = keePassDatabase.modifyParentGroup { result.first }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(result.second)
         } catch (e: Exception) {
             Result.failure(e)
@@ -192,7 +222,7 @@ class KeePassKdbxService(
                 throw IllegalArgumentException("分组路径无效")
             }
 
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             val result = removeGroupByPath(
                 group = keePassDatabase.content.group,
                 pathSegments = pathSegments
@@ -202,7 +232,7 @@ class KeePassKdbxService(
             }
 
             val updatedDatabase = keePassDatabase.modifyParentGroup { result.first }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -241,7 +271,7 @@ class KeePassKdbxService(
         resolvePassword: (PasswordEntry) -> String
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             var updatedDatabase = keePassDatabase
             var addedCount = 0
             entries.forEach { entry ->
@@ -257,7 +287,7 @@ class KeePassKdbxService(
                     addedCount++
                 }
             }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             val allEntries = mutableListOf<Entry>()
             collectEntries(updatedDatabase.content.group, allEntries)
             dao.updateEntryCount(database.id, allEntries.size)
@@ -273,7 +303,7 @@ class KeePassKdbxService(
         resolvePassword: (PasswordEntry) -> String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             val plainPassword = resolvePassword(entry)
             val updateResult = updateEntry(keePassDatabase, entry, plainPassword)
             val updatedDatabase = if (updateResult.second) updateResult.first else {
@@ -282,7 +312,7 @@ class KeePassKdbxService(
                     copy(entries = this.entries + newEntry)
                 }
             }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -293,22 +323,35 @@ class KeePassKdbxService(
         databaseId: Long,
         entries: List<PasswordEntry>
     ): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
-            var updatedDatabase = keePassDatabase
-            var removedCount = 0
-            entries.forEach { entry ->
-                val result = removeEntry(updatedDatabase, entry)
-                updatedDatabase = result.first
-                removedCount += result.second
+        globalMutationMutex.withLock {
+            var lastConflict: Exception? = null
+
+            repeat(2) { attempt ->
+                try {
+                    val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
+                    var updatedDatabase = keePassDatabase
+                    var removedCount = 0
+                    entries.forEach { entry ->
+                        val result = removeEntry(updatedDatabase, entry)
+                        updatedDatabase = result.first
+                        removedCount += result.second
+                    }
+                    writeDatabase(database, credentials, updatedDatabase, sourceEtag)
+                    val allEntries = mutableListOf<Entry>()
+                    collectEntries(updatedDatabase.content.group, allEntries)
+                    dao.updateEntryCount(database.id, allEntries.size)
+                    return@withLock Result.success(removedCount)
+                } catch (e: Exception) {
+                    val canRetry = attempt == 0 && isWebDavConflictError(e)
+                    if (canRetry) {
+                        lastConflict = e
+                    } else {
+                        return@withLock Result.failure(e)
+                    }
+                }
             }
-            writeDatabase(database, credentials, updatedDatabase)
-            val allEntries = mutableListOf<Entry>()
-            collectEntries(updatedDatabase.content.group, allEntries)
-            dao.updateEntryCount(database.id, allEntries.size)
-            Result.success(removedCount)
-        } catch (e: Exception) {
-            Result.failure(e)
+
+            Result.failure(lastConflict ?: Exception("KeePass 删除失败"))
         }
     }
 
@@ -334,7 +377,7 @@ class KeePassKdbxService(
         items: List<SecureItem>
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             var updatedDatabase = keePassDatabase
             var addedCount = 0
             items.forEach { item ->
@@ -349,7 +392,7 @@ class KeePassKdbxService(
                     addedCount++
                 }
             }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(addedCount)
         } catch (e: Exception) {
             Result.failure(e)
@@ -361,7 +404,7 @@ class KeePassKdbxService(
         item: SecureItem
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             val updateResult = updateSecureItemInternal(keePassDatabase, item)
             val updatedDatabase = if (updateResult.second) {
                 updateResult.first
@@ -371,7 +414,7 @@ class KeePassKdbxService(
                     copy(entries = this.entries + newEntry)
                 }
             }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -383,7 +426,7 @@ class KeePassKdbxService(
         items: List<SecureItem>
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase) = loadDatabase(databaseId)
+            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
             var updatedDatabase = keePassDatabase
             var removedCount = 0
             items.forEach { item ->
@@ -391,10 +434,60 @@ class KeePassKdbxService(
                 updatedDatabase = result.first
                 removedCount += result.second
             }
-            writeDatabase(database, credentials, updatedDatabase)
+            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(removedCount)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun forceOverwriteWebDavDatabaseFromLocal(
+        databaseId: Long,
+        passwordEntries: List<PasswordEntry>,
+        secureItems: List<SecureItem>,
+        resolvePassword: (PasswordEntry) -> String
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        globalMutationMutex.withLock {
+            try {
+                val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
+                if (!database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
+                    throw Exception("仅支持 WebDAV 数据库")
+                }
+
+                val credentials = buildCredentials(database)
+                val rootName = database.name.ifBlank { "Monica" }
+                var rebuilt: KeePassDatabase = KeePassDatabase.Ver4x.create(
+                    rootName = rootName,
+                    meta = Meta(generator = "Monica Password Manager", name = rootName),
+                    credentials = credentials
+                )
+                var rootGroup = rebuilt.content.group
+
+                passwordEntries.forEach { entry ->
+                    val plainPassword = resolvePassword(entry)
+                    val newEntry = buildEntry(entry, plainPassword)
+                    rootGroup = addEntryToGroupPath(rootGroup, entry.keepassGroupPath, newEntry)
+                }
+
+                secureItems.forEach { item ->
+                    val newEntry = buildSecureItemEntry(item)
+                    rootGroup = addEntryToGroupPath(rootGroup, item.keepassGroupPath, newEntry)
+                }
+
+                rebuilt = rebuilt.modifyParentGroup { rootGroup }
+                writeDatabase(
+                    database = database,
+                    credentials = credentials,
+                    keePassDatabase = rebuilt,
+                    sourceEtag = null,
+                    forceOverwriteWebDav = true
+                )
+                val total = passwordEntries.size + secureItems.size
+                dao.updateEntryCount(database.id, total)
+                Result.success(total)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         }
     }
 
@@ -575,6 +668,51 @@ class KeePassKdbxService(
         return group.copy(entries = filteredEntries, groups = newGroups) to removedCount
     }
 
+    private fun addEntryToGroupPath(
+        rootGroup: Group,
+        groupPath: String?,
+        entry: Entry
+    ): Group {
+        val segments = groupPath
+            ?.split("/")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+        return addEntryToGroupPathSegments(rootGroup, segments, entry)
+    }
+
+    private fun addEntryToGroupPathSegments(
+        group: Group,
+        segments: List<String>,
+        entry: Entry
+    ): Group {
+        if (segments.isEmpty()) {
+            return group.copy(entries = group.entries + entry)
+        }
+
+        val childName = segments.first()
+        val childIndex = group.groups.indexOfFirst { it.name == childName }
+        val childGroup = if (childIndex >= 0) {
+            group.groups[childIndex]
+        } else {
+            Group(uuid = UUID.randomUUID(), name = childName)
+        }
+
+        val updatedChild = addEntryToGroupPathSegments(
+            group = childGroup,
+            segments = segments.drop(1),
+            entry = entry
+        )
+
+        val updatedGroups = group.groups.toMutableList()
+        if (childIndex >= 0) {
+            updatedGroups[childIndex] = updatedChild
+        } else {
+            updatedGroups.add(updatedChild)
+        }
+        return group.copy(groups = updatedGroups)
+    }
+
     private fun matchByKey(entry: Entry, target: PasswordEntry): Boolean {
         val title = getFieldValue(entry, "Title")
         val username = getFieldValue(entry, "UserName")
@@ -592,12 +730,21 @@ class KeePassKdbxService(
     }
 
     private fun entryToData(entry: Entry, groupPath: String?): KeePassEntryData? {
+        // Monica 安全项（TOTP/笔记/卡片等）会写入 MonicaItemType，不应进入密码列表。
+        if (getFieldValue(entry, FIELD_MONICA_ITEM_TYPE).isNotBlank()) {
+            return null
+        }
+
         val title = getFieldValue(entry, "Title")
         val username = getFieldValue(entry, "UserName")
         val password = getFieldValue(entry, "Password")
         val url = getFieldValue(entry, "URL")
         val notes = getFieldValue(entry, "Notes")
         if (title.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty()) {
+            return null
+        }
+        // 过滤备注型/空登录条目，避免空密码幽灵进入密码页。
+        if (username.isBlank() && password.isBlank() && url.isBlank()) {
             return null
         }
         val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
@@ -619,41 +766,230 @@ class KeePassKdbxService(
         allowedTypes: Set<ItemType>?
     ): KeePassSecureItemData? {
         val typeRaw = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE)
-        if (typeRaw.isBlank()) return null
-        val itemType = runCatching { ItemType.valueOf(typeRaw) }.getOrNull() ?: return null
-        if (allowedTypes != null && itemType !in allowedTypes) return null
+        if (typeRaw.isNotBlank()) {
+            val itemType = runCatching { ItemType.valueOf(typeRaw) }.getOrNull() ?: return null
+            if (allowedTypes != null && itemType !in allowedTypes) return null
 
-        val itemData = getFieldValue(entry, FIELD_MONICA_ITEM_DATA)
-        if (itemData.isBlank()) return null
+            val itemData = getFieldValue(entry, FIELD_MONICA_ITEM_DATA)
+            if (itemData.isBlank()) return null
 
+            val title = getFieldValue(entry, "Title")
+            val notes = getFieldValue(entry, "Notes")
+            val imagePaths = getFieldValue(entry, FIELD_MONICA_IMAGE_PATHS)
+            val isFavorite = getFieldValue(entry, FIELD_MONICA_IS_FAVORITE).toBoolean()
+            val sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
+            val now = Date()
+
+            return KeePassSecureItemData(
+                item = SecureItem(
+                    id = 0,
+                    itemType = itemType,
+                    title = title.ifBlank { "Untitled" },
+                    notes = notes,
+                    isFavorite = isFavorite,
+                    createdAt = now,
+                    updatedAt = now,
+                    itemData = itemData,
+                    imagePaths = imagePaths,
+                    keepassDatabaseId = databaseId,
+                    keepassGroupPath = groupPath
+                ),
+                sourceMonicaId = sourceMonicaId
+            )
+        }
+
+        val allowTotp = allowedTypes == null || allowedTypes.contains(ItemType.TOTP)
+        if (!allowTotp) return null
+
+        val parsedTotp = parseStandardTotpFromEntry(entry) ?: return null
         val title = getFieldValue(entry, "Title")
         val notes = getFieldValue(entry, "Notes")
-        val imagePaths = getFieldValue(entry, FIELD_MONICA_IMAGE_PATHS)
-        val isFavorite = getFieldValue(entry, FIELD_MONICA_IS_FAVORITE).toBoolean()
-        val sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
-        val now = java.util.Date()
+        val now = Date()
+        val fallbackTitle = parsedTotp.issuer.ifBlank { parsedTotp.accountName }.ifBlank { "Untitled" }
 
         return KeePassSecureItemData(
             item = SecureItem(
                 id = 0,
-                itemType = itemType,
-                title = title.ifBlank { "Untitled" },
+                itemType = ItemType.TOTP,
+                title = title.ifBlank { fallbackTitle },
                 notes = notes,
-                isFavorite = isFavorite,
+                isFavorite = false,
                 createdAt = now,
                 updatedAt = now,
-                itemData = itemData,
-                imagePaths = imagePaths,
+                itemData = Json.encodeToString(TotpData.serializer(), parsedTotp),
+                imagePaths = "",
                 keepassDatabaseId = databaseId,
                 keepassGroupPath = groupPath
             ),
-            sourceMonicaId = sourceMonicaId
+            sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
         )
     }
 
     private fun getFieldValue(entry: Entry, key: String): String {
         val value = entry.fields[key]
         return if (value == null) "" else value.content
+    }
+
+    private fun getFieldValueIgnoreCase(entry: Entry, vararg keys: String): String {
+        if (keys.isEmpty()) return ""
+        val direct = keys.firstNotNullOfOrNull { key ->
+            entry.fields[key]?.content?.takeIf { it.isNotBlank() }
+        }
+        if (direct != null) return direct
+        return entry.fields.entries.firstOrNull { (fieldKey, _) ->
+            keys.any { it.equals(fieldKey, ignoreCase = true) }
+        }?.value?.content.orEmpty()
+    }
+
+    private fun parseStandardTotpFromEntry(entry: Entry): TotpData? {
+        val otpField = getFieldValueIgnoreCase(entry, "otp")
+        val seedField = getFieldValueIgnoreCase(entry, "TOTP Seed", "TOTPSeed")
+        val settingsField = getFieldValueIgnoreCase(entry, "TOTP Settings", "TOTPSettings")
+        if (otpField.isBlank() && seedField.isBlank()) return null
+
+        val title = getFieldValue(entry, "Title")
+        val username = getFieldValue(entry, "UserName")
+        val url = getFieldValue(entry, "URL")
+
+        parseOtpAuthUri(otpField, title, username, url)?.let { return it }
+
+        val seed = normalizeTotpSecret(
+            when {
+                seedField.isNotBlank() -> seedField
+                otpField.isNotBlank() && !otpField.contains("://") -> otpField
+                else -> ""
+            }
+        )
+        if (seed.isBlank()) return null
+
+        val settings = parseTotpSettings(settingsField)
+        return TotpData(
+            secret = seed,
+            issuer = title,
+            accountName = username,
+            period = settings.period,
+            digits = settings.digits,
+            algorithm = settings.algorithm,
+            otpType = settings.otpType,
+            counter = settings.counter,
+            link = url
+        )
+    }
+
+    private data class TotpSettingsParsed(
+        val period: Int = 30,
+        val digits: Int = 6,
+        val algorithm: String = "SHA1",
+        val otpType: OtpType = OtpType.TOTP,
+        val counter: Long = 0L
+    )
+
+    private fun parseTotpSettings(settings: String): TotpSettingsParsed {
+        if (settings.isBlank()) return TotpSettingsParsed()
+
+        var period = 30
+        var digits = 6
+        var algorithm = "SHA1"
+        var otpType = OtpType.TOTP
+        var counter = 0L
+
+        val tokens = settings.split(";", ",", " ")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        tokens.forEach { token ->
+            if (token.contains("=")) {
+                val parts = token.split("=", limit = 2)
+                val key = parts[0].trim().lowercase(Locale.ROOT)
+                val value = parts.getOrNull(1)?.trim().orEmpty()
+                when (key) {
+                    "period", "step", "time_step" -> value.toIntOrNull()?.let { period = it }
+                    "digits", "length" -> value.toIntOrNull()?.let { digits = it }
+                    "algorithm", "algo", "digest" -> if (value.isNotBlank()) algorithm = value.uppercase(Locale.ROOT)
+                    "counter" -> value.toLongOrNull()?.let {
+                        counter = it
+                        otpType = OtpType.HOTP
+                    }
+                    "type" -> if (value.equals("hotp", ignoreCase = true)) otpType = OtpType.HOTP
+                }
+            } else {
+                token.toIntOrNull()?.let { number ->
+                    when {
+                        period == 30 -> period = number
+                        digits == 6 -> digits = number
+                    }
+                }
+                if (token.startsWith("SHA", ignoreCase = true)) {
+                    algorithm = token.uppercase(Locale.ROOT)
+                }
+            }
+        }
+
+        return TotpSettingsParsed(
+            period = period,
+            digits = digits,
+            algorithm = algorithm,
+            otpType = otpType,
+            counter = counter
+        )
+    }
+
+    private fun parseOtpAuthUri(
+        uri: String,
+        fallbackIssuer: String,
+        fallbackAccount: String,
+        fallbackLink: String
+    ): TotpData? {
+        if (!uri.startsWith("otpauth://", ignoreCase = true)) return null
+        return runCatching {
+            val parsed = URI(uri)
+            val typeRaw = parsed.host?.lowercase(Locale.ROOT).orEmpty()
+            val otpType = if (typeRaw == "hotp") OtpType.HOTP else OtpType.TOTP
+
+            val decodedLabel = URLDecoder.decode(parsed.path.trimStart('/'), "UTF-8")
+            val (labelIssuer, labelAccount) = if (decodedLabel.contains(":")) {
+                val parts = decodedLabel.split(":", limit = 2)
+                parts[0] to parts[1]
+            } else {
+                "" to decodedLabel
+            }
+
+            val params = mutableMapOf<String, String>()
+            parsed.query?.split("&")?.forEach { pair ->
+                val kv = pair.split("=", limit = 2)
+                if (kv.size == 2) {
+                    params[kv[0].lowercase(Locale.ROOT)] = URLDecoder.decode(kv[1], "UTF-8")
+                }
+            }
+
+            val secret = normalizeTotpSecret(params["secret"].orEmpty())
+            if (secret.isBlank()) return null
+
+            val issuer = params["issuer"].orEmpty().ifBlank { labelIssuer }.ifBlank { fallbackIssuer }
+            val account = labelAccount.ifBlank { fallbackAccount }
+            val algorithm = params["algorithm"]?.uppercase(Locale.ROOT) ?: "SHA1"
+            val digits = params["digits"]?.toIntOrNull() ?: 6
+            val period = params["period"]?.toIntOrNull() ?: 30
+            val counter = params["counter"]?.toLongOrNull() ?: 0L
+
+            TotpData(
+                secret = secret,
+                issuer = issuer,
+                accountName = account,
+                period = period,
+                digits = digits,
+                algorithm = algorithm,
+                otpType = otpType,
+                counter = counter,
+                link = fallbackLink
+            )
+        }.getOrNull()
+    }
+
+    private fun normalizeTotpSecret(value: String): String {
+        return value
+            .replace(Regex("[\\s\\-]"), "")
+            .uppercase(Locale.ROOT)
     }
 
     private fun collectEntries(group: Group, entries: MutableList<Entry>) {
@@ -816,12 +1152,12 @@ class KeePassKdbxService(
         return false
     }
 
-    private suspend fun loadDatabase(databaseId: Long): Triple<LocalKeePassDatabase, Credentials, KeePassDatabase> {
+    private suspend fun loadDatabase(databaseId: Long): LoadedDatabase {
         val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
         val credentials = buildCredentials(database)
-        val bytes = readDatabaseBytes(database)
-        val keePassDatabase = decodeDatabase(bytes, credentials)
-        return Triple(database, credentials, keePassDatabase)
+        val snapshot = readDatabaseSnapshot(database)
+        val keePassDatabase = decodeDatabase(snapshot.bytes, credentials)
+        return LoadedDatabase(database, credentials, keePassDatabase, snapshot.etag)
     }
 
     private suspend fun decodeDatabase(bytes: ByteArray, credentials: Credentials): KeePassDatabase {
@@ -865,16 +1201,21 @@ class KeePassKdbxService(
     }
 
     private fun readDatabaseBytes(database: LocalKeePassDatabase): ByteArray {
+        return readDatabaseSnapshot(database).bytes
+    }
+
+    private fun readDatabaseSnapshot(database: LocalKeePassDatabase): DatabaseSnapshot {
         if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
-            return readWebDavBytes(database.filePath.removePrefix(WEBDAV_PATH_PREFIX))
+            return readWebDavSnapshot(database.filePath.removePrefix(WEBDAV_PATH_PREFIX))
         }
         return if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             val file = File(context.filesDir, database.filePath)
             if (!file.exists()) throw Exception("数据库文件不存在")
-            file.readBytes()
+            DatabaseSnapshot(bytes = file.readBytes(), etag = null)
         } else {
             val uri = Uri.parse(database.filePath)
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?.let { DatabaseSnapshot(bytes = it, etag = null) }
                 ?: throw Exception("无法打开数据库文件")
         }
     }
@@ -882,12 +1223,19 @@ class KeePassKdbxService(
     private suspend fun writeDatabase(
         database: LocalKeePassDatabase,
         credentials: Credentials,
-        keePassDatabase: KeePassDatabase
+        keePassDatabase: KeePassDatabase,
+        sourceEtag: String? = null,
+        forceOverwriteWebDav: Boolean = false
     ) {
         val bytes = encodeDatabase(keePassDatabase)
         decodeDatabase(bytes, credentials)
         if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
-            writeWebDav(database.filePath.removePrefix(WEBDAV_PATH_PREFIX), bytes)
+            writeWebDav(
+                remotePath = database.filePath.removePrefix(WEBDAV_PATH_PREFIX),
+                bytes = bytes,
+                expectedEtag = sourceEtag,
+                forceOverwrite = forceOverwriteWebDav
+            )
         } else if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             writeInternal(database, bytes)
         } else {
@@ -939,12 +1287,30 @@ class KeePassKdbxService(
         }
     }
 
-    private fun readWebDavBytes(remotePath: String): ByteArray {
-        val sardine = buildWebDavClient()
-        return sardine.get(remotePath).use { it.readBytes() }
+    private fun readWebDavSnapshot(remotePath: String): DatabaseSnapshot {
+        val (username, password) = loadWebDavCredentials()
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url(remotePath)
+            .get()
+            .header("Authorization", HttpCredentials.basic(username, password))
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("WebDAV 读取失败: HTTP ${response.code}")
+            }
+            val data = response.body?.bytes() ?: throw Exception("WebDAV 返回空内容")
+            val etag = response.header("ETag")
+            return DatabaseSnapshot(bytes = data, etag = etag)
+        }
     }
 
-    private fun writeWebDav(remotePath: String, bytes: ByteArray) {
+    private fun writeWebDav(
+        remotePath: String,
+        bytes: ByteArray,
+        expectedEtag: String?,
+        forceOverwrite: Boolean = false
+    ) {
         val sardine = buildWebDavClient()
         val parentPath = remotePath.substringBeforeLast('/', "")
         if (parentPath.isNotBlank()) {
@@ -954,18 +1320,63 @@ class KeePassKdbxService(
                 }
             }
         }
-        sardine.put(remotePath, bytes, "application/octet-stream")
+        if (forceOverwrite || !isConflictProtectionEnabled()) {
+            sardine.put(remotePath, bytes, "application/octet-stream")
+            return
+        }
+        if (expectedEtag.isNullOrBlank()) {
+            throw Exception("服务器不支持 ETag 冲突保护，已阻止写入")
+        }
+
+        val (username, password) = loadWebDavCredentials()
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url(remotePath)
+            .put(bytes.toRequestBody("application/octet-stream".toMediaType()))
+            .header("Authorization", HttpCredentials.basic(username, password))
+            .header("If-Match", expectedEtag)
+            .build()
+        client.newCall(request).execute().use { response ->
+            when {
+                response.code == 412 -> {
+                    throw Exception("远端数据库已变化，已阻止覆盖。请先刷新后重试")
+                }
+                !response.isSuccessful -> {
+                    throw Exception("WebDAV 写入失败: HTTP ${response.code}")
+                }
+                else -> Unit
+            }
+        }
     }
 
     private fun buildWebDavClient(): Sardine {
+        val (username, password) = loadWebDavCredentials()
+        return OkHttpSardine().apply {
+            setCredentials(username, password)
+        }
+    }
+
+    private fun loadWebDavCredentials(): Pair<String, String> {
         val prefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
         val username = prefs.getString(KEY_KEEPASS_USERNAME, "") ?: ""
         val password = prefs.getString(KEY_KEEPASS_PASSWORD, "") ?: ""
         if (username.isBlank() || password.isBlank()) {
             throw Exception("WebDAV 未配置或凭证已失效")
         }
-        return OkHttpSardine().apply {
-            setCredentials(username, password)
-        }
+        return username to password
+    }
+
+    private fun isConflictProtectionEnabled(): Boolean {
+        val prefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_CONFLICT_PROTECTION_ENABLED, true)
+    }
+
+    private fun isWebDavConflictError(error: Throwable): Boolean {
+        val message = error.message.orEmpty()
+        return message.contains("412") ||
+            message.contains("If-Match", ignoreCase = true) ||
+            message.contains("远端数据库已变化") ||
+            message.contains("已阻止覆盖")
     }
 }
+
