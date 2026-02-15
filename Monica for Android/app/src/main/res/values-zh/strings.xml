@@ -1273,6 +1273,10 @@
     <string name="developer_loading_logs">正在加载日志...</string>
     <string name="developer_no_logs">暂无日志\n\n提示: 确保应用已运行过一些操作</string>
     <string name="developer_load_failed">加载失败: %s\n\n可能需要调试权限才能读取日志</string>
+    <string name="developer_filter_all">全部</string>
+    <string name="developer_filter_errors">错误</string>
+    <string name="developer_filter_warnings">警告</string>
+    <string name="developer_share_file_hint">已附加 Monica 日志报告文件。</string>
     <string name="developer_refresh">刷新</string>
     <string name="developer_close">关闭</string>
 

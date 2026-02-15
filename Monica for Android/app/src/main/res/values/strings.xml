@@ -1429,6 +1429,10 @@
     <string name="developer_loading_logs">Loading logs...</string>
     <string name="developer_no_logs">No logs\n\nTip: Make sure the app has run some operations</string>
     <string name="developer_load_failed">Load failed: %s\n\nDebug permissions may be required to read logs</string>
+    <string name="developer_filter_all">All</string>
+    <string name="developer_filter_errors">Errors</string>
+    <string name="developer_filter_warnings">Warnings</string>
+    <string name="developer_share_file_hint">Attached Monica log report file.</string>
     <string name="developer_refresh">Refresh</string>
     <string name="developer_close">Close</string>
 
