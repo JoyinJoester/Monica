@@ -71,6 +71,14 @@ data class PasswordEntry(
     val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
     @ColumnInfo(defaultValue = "NULL")
     val ssoRefEntryId: Long? = null,     // 引用的账号条目ID
+
+    // 自定义图标字段
+    @ColumnInfo(defaultValue = "NONE")
+    val customIconType: String = "NONE", // NONE / SIMPLE_ICON / UPLOADED
+    @ColumnInfo(defaultValue = "NULL")
+    val customIconValue: String? = null, // SIMPLE_ICON: slug, UPLOADED: local file name
+    @ColumnInfo(defaultValue = "0")
+    val customIconUpdatedAt: Long = 0L,
     
     // 回收站功能 - 软删除字段
     @ColumnInfo(defaultValue = "0")

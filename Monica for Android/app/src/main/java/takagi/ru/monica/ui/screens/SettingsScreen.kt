@@ -79,6 +79,18 @@ fun SettingsScreen(
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
     val context = LocalContext.current
+    val openExternalLink: (String) -> Unit = { url ->
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.cannot_open_browser),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
     
     // 直接使用 LocalContext.current as? ComponentActivity 获取 Activity
     val activity = context as? FragmentActivity
@@ -94,6 +106,7 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showAutoLockDialog by remember { mutableStateOf(false) }
+    var showVersionInfoDialog by remember { mutableStateOf(false) }
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
     var previewFeaturesExpanded by remember { mutableStateOf(false) }
     var developerPasswordInput by remember { mutableStateOf("") }
@@ -491,19 +504,7 @@ fun SettingsScreen(
                     icon = Icons.Default.Info,
                     title = context.getString(R.string.version),
                     subtitle = context.getString(R.string.settings_version_number),
-                    onClick = {
-                        // 打开 GitHub 仓库链接
-                        try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/JoyinJoester/Monica"))
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.cannot_open_browser),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
+                    onClick = { showVersionInfoDialog = true }
                 )
             }
             
@@ -772,6 +773,61 @@ fun SettingsScreen(
                     onClick = { showWeakBiometricWarning = false }
                 ) {
                     Text(stringResource(R.string.biometric_weak_warning_cancel))
+                }
+            }
+        )
+    }
+
+    if (showVersionInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionInfoDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text(stringResource(R.string.version_info_dialog_title)) },
+            text = {
+                Column {
+                    val githubUrl = "https://github.com/JoyinJoester/Monica"
+                    val websiteUrl = "https://joyinjoester.github.io/Monica/"
+
+                    Text(
+                        text = stringResource(R.string.version_info_github_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = githubUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(githubUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_website_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = websiteUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(websiteUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_simple_icons_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionInfoDialog = false }) {
+                    Text(stringResource(R.string.close))
                 }
             }
         )

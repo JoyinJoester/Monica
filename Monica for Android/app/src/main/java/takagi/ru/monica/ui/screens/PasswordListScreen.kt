@@ -976,30 +976,45 @@ fun PasswordEntryCard(
                     
                     // 应用图标或默认密钥图标
                     if (iconCardsEnabled) {
-                        android.util.Log.d("PasswordEntryCard", "Entry: title=${entry.title}, appPackageName=${entry.appPackageName}")
+                        val simpleIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+                            takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
+                                slug = entry.customIconValue,
+                                tintColor = MaterialTheme.colorScheme.primary,
+                                enabled = true
+                            )
+                        } else {
+                            null
+                        }
+                        val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+                            takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(entry.customIconValue)
+                        } else {
+                            null
+                        }
                         val appIcon = rememberAppIcon(context, entry.appPackageName)
-                        
-                        // 尝试加载 Favicon
                         val favicon = if (entry.website.isNotBlank()) {
                             takagi.ru.monica.autofill.ui.rememberFavicon(url = entry.website, enabled = true)
                         } else {
                             null
                         }
 
-                        android.util.Log.d("PasswordEntryCard", "AppIcon loaded: ${appIcon != null}")
-                        
-                        if (appIcon != null) {
-                            // 显示应用图标
+                        if (simpleIcon != null) {
                             Image(
-                                painter = rememberDrawablePainter(drawable = appIcon),
-                                contentDescription = "App Icon",
+                                bitmap = simpleIcon,
+                                contentDescription = "Simple Icon",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .padding(end = 12.dp)
+                            )
+                        } else if (uploadedIcon != null) {
+                            Image(
+                                bitmap = uploadedIcon,
+                                contentDescription = "Uploaded Icon",
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(CircleShape)
                                     .padding(end = 12.dp)
                             )
                         } else if (favicon != null) {
-                             // 显示网站图标
                             Image(
                                 bitmap = favicon,
                                 contentDescription = "Website Icon",
@@ -1008,8 +1023,16 @@ fun PasswordEntryCard(
                                     .clip(CircleShape)
                                     .padding(end = 12.dp)
                             )
+                        } else if (appIcon != null) {
+                            Image(
+                                painter = rememberDrawablePainter(drawable = appIcon),
+                                contentDescription = "App Icon",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .padding(end = 12.dp)
+                            )
                         } else {
-                            // 显示默认密钥图标
                             Icon(
                                 imageVector = Icons.Default.Key,
                                 contentDescription = "Password Icon",

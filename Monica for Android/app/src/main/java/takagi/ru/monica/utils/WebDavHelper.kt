@@ -76,6 +76,9 @@ private data class PasswordBackupEntry(
     val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
     val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
     val ssoRefEntryId: Long? = null,     // 引用的账号条目ID
+    val customIconType: String = "NONE",
+    val customIconValue: String? = null,
+    val customIconUpdatedAt: Long = 0L,
     // ✅ 自定义字段
     val customFields: List<CustomFieldBackupEntry> = emptyList()
 )
@@ -181,7 +184,10 @@ private data class TrashPasswordBackupEntry(
     // ✅ 第三方登录(SSO)字段
     val loginType: String = "PASSWORD",
     val ssoProvider: String = "",
-    val ssoRefEntryId: Long? = null
+    val ssoRefEntryId: Long? = null,
+    val customIconType: String = "NONE",
+    val customIconValue: String? = null,
+    val customIconUpdatedAt: Long = 0L
 )
 
 @Serializable
@@ -750,6 +756,10 @@ class WebDavHelper(
                 val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
                 val categoryMap = allCategories.associateBy { it.id }
                 val passwordCategoryById = filteredPasswords.associate { it.id to it.categoryId }
+                val pendingZipEntries = mutableListOf<String>()
+                fun addFileToZipPending(entryName: String) {
+                    pendingZipEntries.add(entryName)
+                }
 
                 // 4. 导出密码数据到JSON
                 if (preferences.includePasswords && filteredPasswords.isNotEmpty()) {
@@ -757,6 +767,7 @@ class WebDavHelper(
                     
                     // 收集所有自定义字段用于CSV导出
                     val allCustomFieldsMap = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
+                    val uploadedPasswordIconFiles = mutableSetOf<String>()
                     
                     filteredPasswords.forEach { password ->
                         try {
@@ -804,9 +815,18 @@ class WebDavHelper(
                                 loginType = password.loginType,
                                 ssoProvider = password.ssoProvider,
                                 ssoRefEntryId = password.ssoRefEntryId,
+                                customIconType = password.customIconType,
+                                customIconValue = password.customIconValue,
+                                customIconUpdatedAt = password.customIconUpdatedAt,
                                 // ✅ 自定义字段
                                 customFields = fields
                             )
+                            if (
+                                password.customIconType.equals("UPLOADED", ignoreCase = true) &&
+                                !password.customIconValue.isNullOrBlank()
+                            ) {
+                                uploadedPasswordIconFiles.add(File(password.customIconValue).name)
+                            }
                             val folderKey = toFolderKey(categoryName)
                             val targetDir = File(foldersRootDir, "$folderKey/passwords")
                             if (!targetDir.exists()) targetDir.mkdirs()
@@ -829,6 +849,18 @@ class WebDavHelper(
                         exportPasswordsToCSV(filteredPasswords, passwordsCsvFile, allCustomFieldsMap)
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavHelper", "CSV backup failed: ${e.message}")
+                    }
+
+                    if (uploadedPasswordIconFiles.isNotEmpty()) {
+                        val iconDir = File(context.filesDir, "password_icons")
+                        uploadedPasswordIconFiles.forEach { fileName ->
+                            val iconFile = File(iconDir, fileName)
+                            if (iconFile.exists()) {
+                                addFileToZipPending("password_icons/$fileName")
+                            } else {
+                                warnings.add("自定义图标文件缺失: $fileName")
+                            }
+                        }
                     }
                     
                     try {
@@ -1017,6 +1049,19 @@ class WebDavHelper(
                             warnings.add("图片备份失败: ${e.message}")
                         }
                     }
+
+                    if (pendingZipEntries.isNotEmpty()) {
+                        val iconDir = File(context.filesDir, "password_icons")
+                        pendingZipEntries.forEach { entryName ->
+                            val fileName = entryName.substringAfterLast("/")
+                            val iconFile = File(iconDir, fileName)
+                            if (iconFile.exists()) {
+                                addFileToZip(zipOut, iconFile, entryName)
+                            } else {
+                                warnings.add("自定义图标文件缺失: $fileName")
+                            }
+                        }
+                    }
                     
                     // 7.5 备份操作历史记录 (时间线)
                     if (preferences.includeTimeline) {
@@ -1101,7 +1146,10 @@ class WebDavHelper(
                                         // ✅ 第三方登录(SSO)字段
                                         loginType = password.loginType,
                                         ssoProvider = password.ssoProvider,
-                                        ssoRefEntryId = password.ssoRefEntryId
+                                        ssoRefEntryId = password.ssoRefEntryId,
+                                        customIconType = password.customIconType,
+                                        customIconValue = password.customIconValue,
+                                        customIconUpdatedAt = password.customIconUpdatedAt
                                     )
                                 }
                                 val trashPasswordsFile = File(trashDir, "trash_passwords.json")
@@ -1920,7 +1968,10 @@ class WebDavHelper(
                                                             // ✅ 第三方登录(SSO)字段
                                                             loginType = backup.loginType,
                                                             ssoProvider = backup.ssoProvider,
-                                                            ssoRefEntryId = backup.ssoRefEntryId
+                                                            ssoRefEntryId = backup.ssoRefEntryId,
+                                                            customIconType = backup.customIconType,
+                                                            customIconValue = backup.customIconValue,
+                                                            customIconUpdatedAt = backup.customIconUpdatedAt
                                                         )
                                                         passwordEntryDao.insertPasswordEntry(entry)
                                                         importedCount++
@@ -1987,6 +2038,18 @@ class WebDavHelper(
                                     } catch (e: Exception) {
                                         android.util.Log.w("WebDavHelper", "Failed to restore trash secure items: ${e.message}")
                                         warnings.add("回收站项目恢复失败: ${e.message}")
+                                    }
+                                }
+                                normalizedEntryName.contains("/password_icons/") || normalizedEntryName.startsWith("password_icons/") -> {
+                                    try {
+                                        val iconDir = File(context.filesDir, "password_icons")
+                                        if (!iconDir.exists()) {
+                                            iconDir.mkdirs()
+                                        }
+                                        val destFile = File(iconDir, entryName)
+                                        tempFile.copyTo(destFile, overwrite = true)
+                                    } catch (e: Exception) {
+                                        warnings.add("自定义图标恢复失败: $entryName - ${e.message}")
                                     }
                                 }
                                 normalizedEntryName.contains("/images/") || entryName.endsWith(".enc") -> {
@@ -2339,6 +2402,7 @@ class WebDavHelper(
                             csvFile.delete()
                         }
                     }
+
                 }
                 
                 // 5. 向后兼容：如果没有JSON密码，使用CSV（支持旧版本备份）
@@ -2612,7 +2676,10 @@ class WebDavHelper(
                 // ✅ 第三方登录(SSO)字段
                 loginType = backup.loginType,
                 ssoProvider = backup.ssoProvider,
-                ssoRefEntryId = backup.ssoRefEntryId
+                ssoRefEntryId = backup.ssoRefEntryId,
+                customIconType = backup.customIconType,
+                customIconValue = backup.customIconValue,
+                customIconUpdatedAt = backup.customIconUpdatedAt
             )
             // 临时存储自定义字段到全局 map（将在恢复时使用）
             if (backup.customFields.isNotEmpty()) {

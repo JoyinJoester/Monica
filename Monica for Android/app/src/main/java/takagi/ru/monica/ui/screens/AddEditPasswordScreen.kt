@@ -1,5 +1,7 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -9,6 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -64,6 +67,12 @@ import takagi.ru.monica.ui.components.CustomFieldEditCard
 import takagi.ru.monica.ui.components.CustomFieldSectionHeader
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
+import takagi.ru.monica.ui.icons.PasswordCustomIconStore
+import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
+import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -75,6 +84,8 @@ import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.autofill.ui.rememberFavicon
+import java.io.File
 import java.util.Locale
 
 private const val MONICA_USERNAME_ALIAS_FIELD_TITLE = "__monica_username_alias"
@@ -185,6 +196,16 @@ fun AddEditPasswordScreen(
     var customFieldsExpanded by remember { mutableStateOf(false) }
     var separatedUsername by rememberSaveable { mutableStateOf("") }
 
+    // 自定义图标状态
+    var customIconType by rememberSaveable { mutableStateOf(PASSWORD_ICON_TYPE_NONE) }
+    var customIconValue by rememberSaveable { mutableStateOf<String?>(null) }
+    var customIconUpdatedAt by rememberSaveable { mutableStateOf(0L) }
+    var originalCustomIconType by remember { mutableStateOf(PASSWORD_ICON_TYPE_NONE) }
+    var originalCustomIconValue by remember { mutableStateOf<String?>(null) }
+    var hasSavedSuccessfully by remember { mutableStateOf(false) }
+
+    var showCustomIconDialog by remember { mutableStateOf(false) }
+
     // 折叠面板状态
     var personalInfoExpanded by remember { mutableStateOf(false) }
     var addressInfoExpanded by remember { mutableStateOf(false) }
@@ -193,9 +214,30 @@ fun AddEditPasswordScreen(
     val isEditing = passwordId != null && passwordId > 0
     var hasAppliedFilterStorageDefaults by rememberSaveable(passwordId) { mutableStateOf(false) }
     val usernameLabel = stringResource(R.string.autofill_username)
+    val selectedSimpleIconBitmap = rememberSimpleIconBitmap(
+        slug = if (customIconType == PASSWORD_ICON_TYPE_SIMPLE) customIconValue else null,
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = settings.iconCardsEnabled
+    )
+    val selectedUploadedIconBitmap = rememberUploadedPasswordIcon(
+        value = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) customIconValue else null
+    )
+    val fallbackWebsiteFavicon = rememberFavicon(
+        url = website,
+        enabled = settings.iconCardsEnabled && customIconType == PASSWORD_ICON_TYPE_NONE
+    )
     
     // 字段可见性设置
     val fieldVisibility = settings.passwordFieldVisibility
+    
+    fun normalizedIconFileName(value: String?): String? = value?.takeIf { it.isNotBlank() }?.let { File(it).name }
+    fun isOriginalUploadedIconFile(value: String?): Boolean {
+        val current = normalizedIconFileName(value)
+        val original = normalizedIconFileName(originalCustomIconValue)
+        return originalCustomIconType == PASSWORD_ICON_TYPE_UPLOADED &&
+            !original.isNullOrBlank() &&
+            current == original
+    }
     
     // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
     fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorKey.isNotEmpty()
@@ -212,6 +254,48 @@ fun AddEditPasswordScreen(
     
     // 新建条目时的自动填充标记（只执行一次）
     var hasAutoFilled by rememberSaveable { mutableStateOf(false) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val imported = PasswordCustomIconStore.importAndCompress(context, uri)
+            imported.onSuccess { fileName ->
+                if (customIconType == PASSWORD_ICON_TYPE_UPLOADED && customIconValue != fileName) {
+                    val previous = normalizedIconFileName(customIconValue)
+                    if (!previous.isNullOrBlank() && !isOriginalUploadedIconFile(previous)) {
+                        PasswordCustomIconStore.deleteIconFile(context, previous)
+                    }
+                }
+                customIconType = PASSWORD_ICON_TYPE_UPLOADED
+                customIconValue = fileName
+                customIconUpdatedAt = System.currentTimeMillis()
+                Toast.makeText(context, context.getString(R.string.custom_icon_upload_success), Toast.LENGTH_SHORT).show()
+            }.onFailure { error ->
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.custom_icon_upload_failed, error.message ?: ""),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+    
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!hasSavedSuccessfully) {
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
+                }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+            }
+        }
+    }
     
     // 新建条目时自动填充常用账号信息
     LaunchedEffect(commonAccountInfo, isEditing, hasAutoFilled) {
@@ -294,6 +378,11 @@ fun AddEditPasswordScreen(
                     loginType = entry.loginType
                     ssoProvider = entry.ssoProvider
                     ssoRefEntryId = entry.ssoRefEntryId
+                    customIconType = entry.customIconType
+                    customIconValue = normalizedIconFileName(entry.customIconValue)
+                    customIconUpdatedAt = entry.customIconUpdatedAt
+                    originalCustomIconType = entry.customIconType
+                    originalCustomIconValue = normalizedIconFileName(entry.customIconValue)
 
                     if (isEditing) {
                         isFavorite = entry.isFavorite
@@ -440,7 +529,10 @@ fun AddEditPasswordScreen(
                 passkeyBindings = passkeyBindings,
                 loginType = loginType,
                 ssoProvider = ssoProvider,
-                ssoRefEntryId = ssoRefEntryId
+                ssoRefEntryId = ssoRefEntryId,
+                customIconType = customIconType,
+                customIconValue = normalizedIconFileName(customIconValue),
+                customIconUpdatedAt = customIconUpdatedAt
             )
 
             // 快照自定义字段，并追加“用户名分离”内部转换字段（带标记）
@@ -512,6 +604,20 @@ fun AddEditPasswordScreen(
                             viewModel.updateAppAssociationByTitle(currentTitle, currentAppPackageName, currentAppName)
                         }
                     }
+                    val originalUploaded = if (originalCustomIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                        normalizedIconFileName(originalCustomIconValue)
+                    } else {
+                        null
+                    }
+                    val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                        normalizedIconFileName(customIconValue)
+                    } else {
+                        null
+                    }
+                    if (!originalUploaded.isNullOrBlank() && originalUploaded != currentUploaded) {
+                        PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
+                    }
+                    hasSavedSuccessfully = true
                     onNavigateBack()
                 }
             )
@@ -701,16 +807,73 @@ fun AddEditPasswordScreen(
                 InfoCard(title = stringResource(R.string.section_credentials)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Title
-                        OutlinedTextField(
-                            value = title,
-                            onValueChange = { title = it },
-                            label = { Text(stringResource(R.string.title_required)) },
-                            leadingIcon = { Icon(Icons.Default.Label, null) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                        if (settings.iconCardsEnabled) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                FilledTonalIconButton(
+                                    onClick = { showCustomIconDialog = true },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    when {
+                                        selectedSimpleIconBitmap != null -> {
+                                            Image(
+                                                bitmap = selectedSimpleIconBitmap,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        selectedUploadedIconBitmap != null -> {
+                                            Image(
+                                                bitmap = selectedUploadedIconBitmap,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+                                        fallbackWebsiteFavicon != null -> {
+                                            Image(
+                                                bitmap = fallbackWebsiteFavicon,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+                                        else -> {
+                                            Icon(
+                                                imageVector = Icons.Default.Image,
+                                                contentDescription = stringResource(R.string.custom_icon_button)
+                                            )
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = title,
+                                    onValueChange = { title = it },
+                                    label = { Text(stringResource(R.string.title_required)) },
+                                    leadingIcon = { Icon(Icons.Default.Label, null) },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = title,
+                                onValueChange = { title = it },
+                                label = { Text(stringResource(R.string.title_required)) },
+                                leadingIcon = { Icon(Icons.Default.Label, null) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
 
                         // Website
                         OutlinedTextField(
@@ -1330,6 +1493,56 @@ fun AddEditPasswordScreen(
             }
         )
     }
+
+    if (showCustomIconDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomIconDialog = false },
+            title = { Text(stringResource(R.string.custom_icon_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            showCustomIconDialog = false
+                            imagePickerLauncher.launch("image/*")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.custom_icon_upload_image))
+                    }
+                    if (customIconType != PASSWORD_ICON_TYPE_NONE) {
+                        TextButton(
+                            onClick = {
+                                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                                    normalizedIconFileName(customIconValue)
+                                } else {
+                                    null
+                                }
+                                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                                }
+                                customIconType = PASSWORD_ICON_TYPE_NONE
+                                customIconValue = null
+                                customIconUpdatedAt = System.currentTimeMillis()
+                                showCustomIconDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.custom_icon_clear),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCustomIconDialog = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        )
+    }
+
 }
 
 /**

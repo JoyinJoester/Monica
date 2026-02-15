@@ -6107,6 +6107,20 @@ private fun MultiPasswordEntryCard(
             ) {
                 // Icon (NEW) - only show if enabled
                 if (iconCardsEnabled) {
+                    val simpleIcon = if (firstEntry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+                        takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
+                            slug = firstEntry.customIconValue,
+                            tintColor = MaterialTheme.colorScheme.primary,
+                            enabled = true
+                        )
+                    } else {
+                        null
+                    }
+                    val uploadedIcon = if (firstEntry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+                        takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(firstEntry.customIconValue)
+                    } else {
+                        null
+                    }
                     val appIcon = if (!firstEntry.appPackageName.isNullOrBlank()) {
                          takagi.ru.monica.autofill.ui.rememberAppIcon(firstEntry.appPackageName)
                     } else null
@@ -6115,9 +6129,16 @@ private fun MultiPasswordEntryCard(
                         takagi.ru.monica.autofill.ui.rememberFavicon(url = firstEntry.website, enabled = true)
                     } else null
                     
-                    if (appIcon != null) {
+                    if (simpleIcon != null) {
                          Image(
-                            bitmap = appIcon,
+                            bitmap = simpleIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
+                         )
+                         Spacer(modifier = Modifier.width(12.dp))
+                    } else if (uploadedIcon != null) {
+                         Image(
+                            bitmap = uploadedIcon,
                             contentDescription = null,
                             modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
                          )
@@ -6125,6 +6146,13 @@ private fun MultiPasswordEntryCard(
                     } else if (favicon != null) {
                          Image(
                             bitmap = favicon,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                         )
+                         Spacer(modifier = Modifier.width(12.dp))
+                    } else if (appIcon != null) {
+                         Image(
+                            bitmap = appIcon,
                             contentDescription = null,
                             modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
                          )
@@ -6492,6 +6520,20 @@ private fun PasswordEntryCard(
         ) {
             // Icon - only show if enabled
             if (iconCardsEnabled) {
+                val simpleIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+                    takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
+                        slug = entry.customIconValue,
+                        tintColor = MaterialTheme.colorScheme.primary,
+                        enabled = true
+                    )
+                } else {
+                    null
+                }
+                val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+                    takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(entry.customIconValue)
+                } else {
+                    null
+                }
                 val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
                      takagi.ru.monica.autofill.ui.rememberAppIcon(entry.appPackageName)
                 } else null
@@ -6500,9 +6542,16 @@ private fun PasswordEntryCard(
                     takagi.ru.monica.autofill.ui.rememberFavicon(url = entry.website, enabled = true)
                 } else null
                 
-                if (appIcon != null) {
+                if (simpleIcon != null) {
                      Image(
-                        bitmap = appIcon,
+                        bitmap = simpleIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp)
+                     )
+                     Spacer(modifier = Modifier.width(16.dp))
+                } else if (uploadedIcon != null) {
+                     Image(
+                        bitmap = uploadedIcon,
                         contentDescription = null,
                         modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
                      )
@@ -6510,6 +6559,13 @@ private fun PasswordEntryCard(
                 } else if (favicon != null) {
                      Image(
                         bitmap = favicon,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                     )
+                     Spacer(modifier = Modifier.width(16.dp))
+                } else if (appIcon != null) {
+                     Image(
+                        bitmap = appIcon,
                         contentDescription = null,
                         modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
                      )

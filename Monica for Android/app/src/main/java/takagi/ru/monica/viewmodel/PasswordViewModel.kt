@@ -1560,7 +1560,10 @@ class PasswordViewModel(
                         loginType = draftEntry.loginType,
                         ssoProvider = draftEntry.ssoProvider,
                         ssoRefEntryId = draftEntry.ssoRefEntryId,
-                        bitwardenVaultId = draftEntry.bitwardenVaultId
+                        bitwardenVaultId = draftEntry.bitwardenVaultId,
+                        customIconType = draftEntry.customIconType,
+                        customIconValue = draftEntry.customIconValue,
+                        customIconUpdatedAt = draftEntry.customIconUpdatedAt
                     ) ?: draftEntry
                     updatePasswordEntryInternal(updatedEntry)
                 } else {

@@ -27,7 +27,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 38,
+    version = 39,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -982,6 +982,30 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 38 -> 39:
+         * 为 password_entries 添加自定义图标字段
+         */
+        private val MIGRATION_38_39 = object : androidx.room.migration.Migration(38, 39) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 38→39: custom password icons")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN customIconType TEXT NOT NULL DEFAULT 'NONE'"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN customIconValue TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN customIconUpdatedAt INTEGER NOT NULL DEFAULT 0"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 38→39 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 38→39 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1026,7 +1050,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_34_35,  // Bitwarden Send 本地缓存
                         MIGRATION_35_36,  // Passkey 分类字段（统一文件夹）
                         MIGRATION_36_37,  // secure_items/passkeys KeePass 归属字段
-                        MIGRATION_37_38   // keepass 分组路径字段
+                        MIGRATION_37_38,  // keepass 分组路径字段
+                        MIGRATION_38_39   // 自定义密码图标字段
                     )
                     .build()
                 INSTANCE = instance

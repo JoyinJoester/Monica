@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -144,11 +145,18 @@ fun rememberFavicon(url: String, enabled: Boolean): ImageBitmap? {
 
     LaunchedEffect(url, enabled) {
         if (!enabled || url.isBlank()) return@LaunchedEffect
-        
-        // Try to fetch icon
-        val loadedIcon = FaviconCache.getIcon(context, url)
-        if (loadedIcon != null) {
-            icon = loadedIcon
+
+        // 首次加载失败时自动做短重试，避免用户必须手动关开开关触发第二次请求。
+        val maxAttempts = 3
+        repeat(maxAttempts) { index ->
+            val loadedIcon = FaviconCache.getIcon(context, url)
+            if (loadedIcon != null) {
+                icon = loadedIcon
+                return@LaunchedEffect
+            }
+            if (index < maxAttempts - 1) {
+                delay((index + 1) * 600L)
+            }
         }
     }
 

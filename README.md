@@ -120,3 +120,8 @@ Android:
 Copyright (c) 2025 JoyinJoester
 
 Monica 基于 [GNU General Public License v3.0](LICENSE) 开源发布。
+
+## 第三方图标标注
+
+- 本项目包含来自 [Simple Icons](https://github.com/simple-icons/simple-icons) 的图标资源（CC0-1.0）。
+- 品牌名称与 Logo 的商标权归各自权利人所有。
