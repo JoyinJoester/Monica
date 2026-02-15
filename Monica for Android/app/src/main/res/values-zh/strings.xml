@@ -2194,8 +2194,12 @@
     <string name="keepass_webdav_database_password_hint">输入 .kdbx 密码</string>
     <string name="keepass_webdav_remember_password">记住密码</string>
     <string name="keepass_webdav_conflict_protection">冲突保护（ETag/If-Match）</string>
-    <string name="keepass_webdav_conflict_protection_enabled_hint">已开启：远端文件有变化时会阻止覆盖写入。</string>
-    <string name="keepass_webdav_conflict_protection_disabled_hint">已关闭：会直接覆盖写入，多设备同时修改可能导致数据丢失。</string>
+    <string name="keepass_webdav_conflict_mode_auto_title">自动模式（推荐）</string>
+    <string name="keepass_webdav_conflict_mode_auto_desc">接近 KeePassDX 体验：可用时走条件写入，不可用时尽力保存。</string>
+    <string name="keepass_webdav_conflict_mode_strict_title">严格模式</string>
+    <string name="keepass_webdav_conflict_mode_strict_desc">要求服务器提供冲突元数据；更安全，但部分 WebDAV 服务器可能会阻止写入。</string>
+    <string name="keepass_webdav_conflict_protection_enabled_hint">严格模式：若服务器未返回 ETag 或远端已变化，会阻止写入。</string>
+    <string name="keepass_webdav_conflict_protection_disabled_hint">自动模式（推荐）：有 ETag 时使用 If-Match，无 ETag 时尽力保护后再写入。</string>
     <string name="keepass_webdav_create_action">新建远端数据库</string>
     <string name="keepass_webdav_creating">创建中...</string>
     <string name="keepass_webdav_create_title">新建远端 .kdbx</string>

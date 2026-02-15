@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui.screens
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import app.keemobile.kotpass.constants.BasicField
 import app.keemobile.kotpass.cryptography.EncryptedValue
@@ -54,6 +55,9 @@ class KeePassWebDavViewModel {
         private const val KEY_PASSWORD = "password"
         private const val KEY_KDBX_PASSWORD = "kdbx_password"  // KeePass 数据库密码
         private const val KEY_CONFLICT_PROTECTION_ENABLED = "conflict_protection_enabled"
+        private const val KEY_CONFLICT_PROTECTION_MODE = "conflict_protection_mode"
+        private const val CONFLICT_MODE_AUTO = "auto"
+        private const val CONFLICT_MODE_STRICT = "strict"
         
         // KeePass 文件夹名称
         private const val KEEPASS_FOLDER = "KeePass_Monica"
@@ -71,7 +75,7 @@ class KeePassWebDavViewModel {
         val serverUrl: String,
         val username: String,
         val kdbxPassword: String = "",  // KeePass 数据库密码
-        val conflictProtectionEnabled: Boolean = true
+        val conflictProtectionEnabled: Boolean = false
     )
     
     /**
@@ -83,7 +87,7 @@ class KeePassWebDavViewModel {
         val user = prefs.getString(KEY_USERNAME, "") ?: ""
         val pass = prefs.getString(KEY_PASSWORD, "") ?: ""
         val kdbxPass = prefs.getString(KEY_KDBX_PASSWORD, "") ?: ""
-        val conflictProtectionEnabled = prefs.getBoolean(KEY_CONFLICT_PROTECTION_ENABLED, true)
+        val conflictProtectionEnabled = isStrictConflictProtectionEnabled(prefs)
         
         if (url.isNotEmpty() && user.isNotEmpty() && pass.isNotEmpty()) {
             serverUrl = url
@@ -120,12 +124,31 @@ class KeePassWebDavViewModel {
 
     fun isConflictProtectionEnabled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(KEY_CONFLICT_PROTECTION_ENABLED, true)
+        return isStrictConflictProtectionEnabled(prefs)
     }
 
     fun setConflictProtectionEnabled(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean(KEY_CONFLICT_PROTECTION_ENABLED, enabled).apply()
+        prefs.edit()
+            .putBoolean(KEY_CONFLICT_PROTECTION_ENABLED, enabled)
+            .putString(
+                KEY_CONFLICT_PROTECTION_MODE,
+                if (enabled) CONFLICT_MODE_STRICT else CONFLICT_MODE_AUTO
+            )
+            .apply()
+    }
+
+    private fun isStrictConflictProtectionEnabled(prefs: SharedPreferences): Boolean {
+        val mode = prefs.getString(KEY_CONFLICT_PROTECTION_MODE, null)
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+        if (!mode.isNullOrBlank()) {
+            return mode == CONFLICT_MODE_STRICT
+        }
+        if (prefs.contains(KEY_CONFLICT_PROTECTION_ENABLED)) {
+            return prefs.getBoolean(KEY_CONFLICT_PROTECTION_ENABLED, false)
+        }
+        return false
     }
     
     /**

@@ -64,6 +64,7 @@ import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -208,6 +209,10 @@ fun PasskeyListScreen(
     var deletePasswordError by remember { mutableStateOf(false) }
     val haptic = rememberHapticFeedback()
     val settingsManager = remember { SettingsManager(context) }
+    val savedCategoryFilterState by settingsManager
+        .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.PASSKEY)
+        .collectAsState(initial = SavedCategoryFilterState())
+    var hasRestoredCategoryFilter by remember { mutableStateOf(false) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = AppSettings(biometricEnabled = false)
     )
@@ -268,6 +273,18 @@ fun PasskeyListScreen(
                     effectiveKeePassId == filter.databaseId && effectiveGroupPath.isNullOrBlank()
             }
         }
+    }
+    LaunchedEffect(savedCategoryFilterState, hasRestoredCategoryFilter) {
+        if (hasRestoredCategoryFilter) return@LaunchedEffect
+        selectedCategoryFilter = decodePasskeyCategoryFilter(savedCategoryFilterState)
+        hasRestoredCategoryFilter = true
+    }
+    LaunchedEffect(selectedCategoryFilter, hasRestoredCategoryFilter) {
+        if (!hasRestoredCategoryFilter) return@LaunchedEffect
+        settingsManager.updateCategoryFilterState(
+            scope = SettingsManager.CategoryFilterScope.PASSKEY,
+            state = encodePasskeyCategoryFilter(selectedCategoryFilter)
+        )
     }
     val visiblePasskeys = remember(categoryFilteredPasskeys, pendingDeletePasskey) {
         val deletingId = pendingDeletePasskey?.credentialId
@@ -947,6 +964,61 @@ fun PasskeyListScreen(
             selectedPasskeys = emptySet()
         }
     )
+}
+
+private fun encodePasskeyCategoryFilter(filter: UnifiedCategoryFilterSelection): SavedCategoryFilterState = when (filter) {
+    UnifiedCategoryFilterSelection.All -> SavedCategoryFilterState(type = "all")
+    UnifiedCategoryFilterSelection.Local -> SavedCategoryFilterState(type = "local")
+    UnifiedCategoryFilterSelection.Starred -> SavedCategoryFilterState(type = "starred")
+    UnifiedCategoryFilterSelection.Uncategorized -> SavedCategoryFilterState(type = "uncategorized")
+    UnifiedCategoryFilterSelection.LocalStarred -> SavedCategoryFilterState(type = "local_starred")
+    UnifiedCategoryFilterSelection.LocalUncategorized -> SavedCategoryFilterState(type = "local_uncategorized")
+    is UnifiedCategoryFilterSelection.Custom -> SavedCategoryFilterState(type = "custom", primaryId = filter.categoryId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> SavedCategoryFilterState(type = "bitwarden_vault", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> SavedCategoryFilterState(type = "bitwarden_folder", primaryId = filter.vaultId, text = filter.folderId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> SavedCategoryFilterState(type = "bitwarden_vault_starred", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> SavedCategoryFilterState(type = "bitwarden_vault_uncategorized", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> SavedCategoryFilterState(type = "keepass_database", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+}
+
+private fun decodePasskeyCategoryFilter(state: SavedCategoryFilterState): UnifiedCategoryFilterSelection {
+    return when (state.type) {
+        "all" -> UnifiedCategoryFilterSelection.All
+        "local" -> UnifiedCategoryFilterSelection.Local
+        "starred" -> UnifiedCategoryFilterSelection.Starred
+        "uncategorized" -> UnifiedCategoryFilterSelection.Uncategorized
+        "local_starred" -> UnifiedCategoryFilterSelection.LocalStarred
+        "local_uncategorized" -> UnifiedCategoryFilterSelection.LocalUncategorized
+        "custom" -> state.primaryId?.let { UnifiedCategoryFilterSelection.Custom(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_vault" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_folder" -> {
+            val vaultId = state.primaryId
+            val folderId = state.text
+            if (vaultId != null && !folderId.isNullOrBlank()) {
+                UnifiedCategoryFilterSelection.BitwardenFolderFilter(vaultId, folderId)
+            } else {
+                UnifiedCategoryFilterSelection.All
+            }
+        }
+        "bitwarden_vault_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_vault_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_database" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_group" -> {
+            val databaseId = state.primaryId
+            val groupPath = state.text
+            if (databaseId != null && !groupPath.isNullOrBlank()) {
+                UnifiedCategoryFilterSelection.KeePassGroupFilter(databaseId, groupPath)
+            } else {
+                UnifiedCategoryFilterSelection.All
+            }
+        }
+        "keepass_database_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_database_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        else -> UnifiedCategoryFilterSelection.All
+    }
 }
 
 private fun formatPasswordSummary(entry: PasswordEntry): String {

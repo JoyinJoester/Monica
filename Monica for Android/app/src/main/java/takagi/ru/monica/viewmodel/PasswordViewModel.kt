@@ -109,6 +109,7 @@ class PasswordViewModel(
     
     private val _isAuthenticated = MutableStateFlow(false)
     val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
+    private var hasLoggedDecryptAuthStateWarning = false
 
     init {
         restoreLastCategoryFilter()
@@ -530,7 +531,10 @@ class PasswordViewModel(
         return runCatching {
             unwrapPasswordLayersForDisplay(encryptedPassword)
         }.getOrElse { error ->
-            Log.w("PasswordViewModel", "Skip decrypt due to auth/key state: ${error.message}")
+            if (!hasLoggedDecryptAuthStateWarning) {
+                Log.w("PasswordViewModel", "Skip decrypt due to auth/key state: ${error.message}")
+                hasLoggedDecryptAuthStateWarning = true
+            }
             ""
         }
     }
@@ -749,11 +753,34 @@ class PasswordViewModel(
                 .onSuccess { settings ->
                     if (_categoryFilter.value !is CategoryFilter.All) return@onSuccess
                     val restoredFilter = decodeSavedCategoryFilter(settings)
-                    applyCategoryFilter(restoredFilter, persist = false)
+                    val sanitizedFilter = sanitizeRestoredCategoryFilter(restoredFilter)
+                    if (sanitizedFilter != restoredFilter) {
+                        applyCategoryFilter(CategoryFilter.All, persist = true)
+                    } else {
+                        applyCategoryFilter(sanitizedFilter, persist = false)
+                    }
                 }
                 .onFailure { error ->
                     Log.w("PasswordViewModel", "Failed to restore last category filter", error)
                 }
+        }
+    }
+
+    private suspend fun sanitizeRestoredCategoryFilter(filter: CategoryFilter): CategoryFilter {
+        val keepassDatabaseId = when (filter) {
+            is CategoryFilter.KeePassDatabase -> filter.databaseId
+            is CategoryFilter.KeePassGroupFilter -> filter.databaseId
+            is CategoryFilter.KeePassDatabaseStarred -> filter.databaseId
+            is CategoryFilter.KeePassDatabaseUncategorized -> filter.databaseId
+            else -> null
+        } ?: return filter
+
+        val dao = localKeePassDatabaseDao ?: return CategoryFilter.All
+        val database = dao.getDatabaseById(keepassDatabaseId) ?: return CategoryFilter.All
+        return if (database.isWebDavDatabase()) {
+            CategoryFilter.All
+        } else {
+            filter
         }
     }
 
@@ -978,51 +1005,76 @@ class PasswordViewModel(
     
     fun addPasswordEntry(entry: PasswordEntry, onResult: (Long) -> Unit = {}) {
         viewModelScope.launch {
-            val boundEntry = applyCategoryBinding(entry)
-            val encryptedEntry = boundEntry.copy(
-                password = securityManager.encryptData(entry.password),
-                createdAt = Date(),
-                updatedAt = Date()
+            val id = createPasswordEntryInternal(entry, includeDetailedLog = true) ?: return@launch
+            onResult(id)
+        }
+    }
+
+    private suspend fun createPasswordEntryInternal(
+        entry: PasswordEntry,
+        includeDetailedLog: Boolean
+    ): Long? {
+        val boundEntry = applyCategoryBinding(entry)
+        val encryptedEntry = boundEntry.copy(
+            password = securityManager.encryptData(boundEntry.password),
+            createdAt = Date(),
+            updatedAt = Date()
+        )
+        val id = repository.insertPasswordEntry(encryptedEntry)
+
+        val keepassId = boundEntry.keepassDatabaseId
+        if (keepassId != null) {
+            Log.d(
+                "PasswordViewModel",
+                "Create entry id=$id will sync to KeePass db=$keepassId group=${boundEntry.keepassGroupPath ?: "<root>"}"
             )
-            val id = repository.insertPasswordEntry(encryptedEntry)
-            if (entry.keepassDatabaseId != null) {
-                val service = keepassService
-                if (service != null) {
-                    val syncResult = service.updatePasswordEntry(
-                        databaseId = entry.keepassDatabaseId,
-                        entry = entry.copy(id = id),
-                        resolvePassword = { it.password }
-                    )
-                    if (syncResult.isFailure) {
-                        repository.deletePasswordEntryById(id)
-                        Log.e("PasswordViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
-                        return@launch
-                    }
+            val service = keepassService
+            if (service != null) {
+                val syncResult = service.addPasswordEntry(
+                    databaseId = keepassId,
+                    entry = boundEntry.copy(id = id),
+                    resolvePassword = { it.password }
+                )
+                if (syncResult.isFailure) {
+                    repository.deletePasswordEntryById(id)
+                    Log.e("PasswordViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
+                    return null
                 }
+                Log.d("PasswordViewModel", "KeePass write success for entry id=$id db=$keepassId")
             }
-            // 记录创建操作（包含详细字段信息）
+        } else {
+            Log.w("PasswordViewModel", "Create entry id=$id skipped KeePass sync because keepassDatabaseId is null")
+        }
+
+        if (includeDetailedLog) {
             val createDetails = mutableListOf<takagi.ru.monica.utils.FieldChange>()
-            if (entry.username.isNotBlank()) {
-                createDetails.add(takagi.ru.monica.utils.FieldChange("用户名", "", entry.username))
+            if (boundEntry.username.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("用户名", "", boundEntry.username))
             }
-            if (entry.website.isNotBlank()) {
-                createDetails.add(takagi.ru.monica.utils.FieldChange("网站", "", entry.website))
+            if (boundEntry.website.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("网站", "", boundEntry.website))
             }
-            if (entry.password.isNotBlank()) {
+            if (boundEntry.password.isNotBlank()) {
                 // 记录真实密码，在UI层隐藏显示
-                createDetails.add(takagi.ru.monica.utils.FieldChange("密码", "", entry.password))
+                createDetails.add(takagi.ru.monica.utils.FieldChange("密码", "", boundEntry.password))
             }
-            if (entry.notes.isNotBlank()) {
-                createDetails.add(takagi.ru.monica.utils.FieldChange("备注", "", entry.notes.take(50)))
+            if (boundEntry.notes.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("备注", "", boundEntry.notes.take(50)))
             }
             takagi.ru.monica.utils.OperationLogger.logCreate(
                 itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
                 itemId = id,
-                itemTitle = entry.title,
+                itemTitle = boundEntry.title,
                 details = createDetails
             )
-            onResult(id)
+        } else {
+            takagi.ru.monica.utils.OperationLogger.logCreate(
+                itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                itemId = id,
+                itemTitle = boundEntry.title
+            )
         }
+        return id
     }
 
     fun addSecureItem(item: SecureItem) {
@@ -1372,34 +1424,59 @@ class PasswordViewModel(
     }
 
     private fun applyCategoryBinding(entry: PasswordEntry): PasswordEntry {
+        val filterBoundEntry = when (val filter = _categoryFilter.value) {
+            is CategoryFilter.KeePassDatabase -> {
+                if (entry.keepassDatabaseId == null) entry.copy(keepassDatabaseId = filter.databaseId) else entry
+            }
+            is CategoryFilter.KeePassDatabaseStarred -> {
+                if (entry.keepassDatabaseId == null) entry.copy(keepassDatabaseId = filter.databaseId) else entry
+            }
+            is CategoryFilter.KeePassDatabaseUncategorized -> {
+                if (entry.keepassDatabaseId == null) entry.copy(keepassDatabaseId = filter.databaseId) else entry
+            }
+            is CategoryFilter.KeePassGroupFilter -> {
+                if (entry.keepassDatabaseId == null) {
+                    entry.copy(
+                        keepassDatabaseId = filter.databaseId,
+                        keepassGroupPath = entry.keepassGroupPath ?: filter.groupPath
+                    )
+                } else if (entry.keepassGroupPath.isNullOrBlank()) {
+                    entry.copy(keepassGroupPath = filter.groupPath)
+                } else {
+                    entry
+                }
+            }
+            else -> entry
+        }
+
         // 如果条目已指派到 Bitwarden Vault，且没有指定文件夹，尝试从分类继承
         // 或者，如果条目是在本地创建（无 Vault），但分类绑定了 Bitwarden，则自动指派
-        
-        val categoryId = entry.categoryId ?: return entry
-        val category = categories.value.find { it.id == categoryId } ?: return entry
+
+        val categoryId = filterBoundEntry.categoryId ?: return filterBoundEntry
+        val category = categories.value.find { it.id == categoryId } ?: return filterBoundEntry
 
         // KeePass 条目保持独立，不参与 Bitwarden 自动绑定
-        if (entry.keepassDatabaseId != null) return entry
+        if (filterBoundEntry.keepassDatabaseId != null) return filterBoundEntry
 
         // 分类未绑定 Bitwarden：清理“待上传”绑定（已同步条目保持映射不动）
         if (category.bitwardenVaultId == null || category.bitwardenFolderId == null) {
-            return if (entry.bitwardenCipherId == null) {
-                entry.copy(
+            return if (filterBoundEntry.bitwardenCipherId == null) {
+                filterBoundEntry.copy(
                     bitwardenVaultId = null,
                     bitwardenFolderId = null,
                     bitwardenLocalModified = false
                 )
             } else {
-                entry
+                filterBoundEntry
             }
         }
         
         // 自动绑定到分类关联的 Bitwarden 文件夹
-        return entry.copy(
+        return filterBoundEntry.copy(
             bitwardenVaultId = category.bitwardenVaultId,
             bitwardenFolderId = category.bitwardenFolderId,
             // 如果是已同步的条目，且文件夹改变了，标记为本地修改
-            bitwardenLocalModified = if (entry.bitwardenCipherId != null && entry.bitwardenFolderId != category.bitwardenFolderId) true else entry.bitwardenLocalModified
+            bitwardenLocalModified = if (filterBoundEntry.bitwardenCipherId != null && filterBoundEntry.bitwardenFolderId != category.bitwardenFolderId) true else filterBoundEntry.bitwardenLocalModified
         )
     }
 
@@ -1492,19 +1569,13 @@ class PasswordViewModel(
                         id = 0, // Reset ID for new entry
                         password = password
                     )
-                    val newId = repository.insertPasswordEntry(newEntry.copy(
-                        password = securityManager.encryptData(newEntry.password),
-                        createdAt = java.util.Date(),
-                        updatedAt = java.util.Date()
-                    ))
+                    val newId = createPasswordEntryInternal(newEntry, includeDetailedLog = false)
+                    if (newId == null) {
+                        Log.e("PasswordViewModel", "saveGroupedPasswords aborted due to KeePass write failure")
+                        onComplete(firstId ?: originalIds.firstOrNull())
+                        return@launch
+                    }
                     if (index == 0) firstId = newId
-                    
-                    // 记录创建操作
-                    takagi.ru.monica.utils.OperationLogger.logCreate(
-                        itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                        itemId = newId,
-                        itemTitle = newEntry.title
-                    )
                 }
             }
 

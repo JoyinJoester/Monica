@@ -39,16 +39,19 @@ class LocalKeePassViewModel(
     
     /** 所有数据库列表 */
     val allDatabases: StateFlow<List<LocalKeePassDatabase>> = dao.getAllDatabases()
+        .map { list -> list.filterNot { it.isWebDavDatabase() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 内部数据库列表 */
     val internalDatabases: StateFlow<List<LocalKeePassDatabase>> = 
         dao.getDatabasesByLocation(KeePassStorageLocation.INTERNAL)
+            .map { list -> list.filterNot { it.isWebDavDatabase() } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 外部数据库列表 */
     val externalDatabases: StateFlow<List<LocalKeePassDatabase>> = 
         dao.getDatabasesByLocation(KeePassStorageLocation.EXTERNAL)
+            .map { list -> list.filterNot { it.isWebDavDatabase() } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 操作状态 */

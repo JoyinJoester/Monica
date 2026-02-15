@@ -1351,14 +1351,6 @@ fun MonicaContent(
             )
         }
 
-        composable(Screen.KeePassWebDav.route) {
-            takagi.ru.monica.ui.screens.KeePassWebDavScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
         composable(
             route = Screen.AutofillSettings.route,
             enterTransition = { fadeIn() },
@@ -1544,9 +1536,6 @@ fun MonicaContent(
                 },
                 onNavigateToWebDav = {
                     navController.navigate(Screen.WebDavBackup.route)
-                },
-                onNavigateToKeePass = {
-                    navController.navigate(Screen.KeePassWebDav.route)
                 },
                 onNavigateToLocalKeePass = {
                     navController.navigate(Screen.LocalKeePass.route)

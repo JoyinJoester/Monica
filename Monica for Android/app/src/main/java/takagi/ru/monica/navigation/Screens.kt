@@ -82,7 +82,6 @@ sealed class Screen(val route: String) {
     object SecurityQuestionsVerification : Screen("security_questions_verification")
     object SupportAuthor : Screen("support_author")
     object WebDavBackup : Screen("webdav_backup")
-    object KeePassWebDav : Screen("keepass_webdav")  // KeePass 兼容性配置页面
     object ExportData : Screen("export_data")
     object ImportData : Screen("import_data")
     object ChangePassword : Screen("change_password")

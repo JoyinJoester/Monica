@@ -93,7 +93,6 @@ fun UnifiedMoveToCategoryBottomSheet(
         stiffness = Spring.StiffnessMediumLow
     )
     val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
-    val webDavKeePassDatabases = keepassDatabases.filter { it.isWebDavDatabase() }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -311,72 +310,6 @@ fun UnifiedMoveToCategoryBottomSheet(
                     }
                 }
 
-                if (webDavKeePassDatabases.isNotEmpty()) {
-                    item {
-                        MoveSectionCard(title = stringResource(R.string.keepass_webdav_database)) {
-                            webDavKeePassDatabases.forEachIndexed { index, database ->
-                                val expanded = keepassExpanded[database.id] ?: false
-                                val groups by (
-                                    if (expanded) getKeePassGroups(database.id) else flowOf(emptyList())
-                                ).collectAsState(initial = emptyList())
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    MoveTargetItem(
-                                        title = database.name,
-                                        icon = Icons.Default.Key,
-                                        onClick = {
-                                            onTargetSelected(UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id))
-                                        },
-                                        badge = {
-                                            Text(
-                                                text = stringResource(R.string.keepass_webdav_database_badge),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        },
-                                        menu = {
-                                            IconButton(onClick = { keepassExpanded[database.id] = !expanded }) {
-                                                Icon(
-                                                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                    contentDescription = null
-                                                )
-                                            }
-                                        }
-                                    )
-                                    AnimatedVisibility(
-                                        visible = expanded,
-                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
-                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
-                                    ) {
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            groups.forEach { group ->
-                                                Box(modifier = Modifier.padding(start = 16.dp)) {
-                                                    MoveTargetItem(
-                                                        title = group.name,
-                                                        icon = Icons.Default.Folder,
-                                                        onClick = {
-                                                            onTargetSelected(
-                                                                UnifiedMoveCategoryTarget.KeePassGroupTarget(
-                                                                    databaseId = database.id,
-                                                                    groupPath = group.path
-                                                                )
-                                                            )
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (index < webDavKeePassDatabases.lastIndex) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }

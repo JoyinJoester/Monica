@@ -98,6 +98,7 @@ import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.util.PhotoPickerHelper
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.NoteViewModel
 
@@ -168,6 +169,9 @@ fun AddEditNoteScreen(
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
     val draftStorageTarget by viewModel.draftStorageTarget.collectAsState()
+    val rememberedStorageTarget by settingsManager
+        .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.NOTE)
+        .collectAsState(initial = null as RememberedStorageTarget?)
     
     LaunchedEffect(Unit) {
         bitwardenVaults = bitwardenRepository.getAllVaults()
@@ -220,13 +224,15 @@ fun AddEditNoteScreen(
         initialKeePassDatabaseId,
         initialBitwardenVaultId,
         initialBitwardenFolderId,
-        draftStorageTarget
+        draftStorageTarget,
+        rememberedStorageTarget
     ) {
         if (isEditing || hasAppliedInitialStorage) return@LaunchedEffect
-        selectedCategoryId = initialCategoryId ?: draftStorageTarget.categoryId
-        keepassDatabaseId = initialKeePassDatabaseId ?: draftStorageTarget.keepassDatabaseId
-        bitwardenVaultId = initialBitwardenVaultId ?: draftStorageTarget.bitwardenVaultId
-        bitwardenFolderId = initialBitwardenFolderId ?: draftStorageTarget.bitwardenFolderId
+        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
+        selectedCategoryId = initialCategoryId ?: draftStorageTarget.categoryId ?: remembered.categoryId
+        keepassDatabaseId = initialKeePassDatabaseId ?: draftStorageTarget.keepassDatabaseId ?: remembered.keepassDatabaseId
+        bitwardenVaultId = initialBitwardenVaultId ?: draftStorageTarget.bitwardenVaultId ?: remembered.bitwardenVaultId
+        bitwardenFolderId = initialBitwardenFolderId ?: draftStorageTarget.bitwardenFolderId ?: remembered.bitwardenFolderId
         hasAppliedInitialStorage = true
     }
 
@@ -325,6 +331,17 @@ fun AddEditNoteScreen(
                 keepassDatabaseId = keepassDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
+            )
+        }
+        scope.launch {
+            settingsManager.updateRememberedStorageTarget(
+                scope = SettingsManager.StorageTargetScope.NOTE,
+                target = RememberedStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
             )
         }
         onNavigateBack()

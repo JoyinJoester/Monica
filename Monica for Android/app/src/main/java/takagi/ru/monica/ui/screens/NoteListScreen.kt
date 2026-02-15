@@ -70,6 +70,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.SettingsManager
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
@@ -83,6 +84,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
 import takagi.ru.monica.util.VibrationPatterns
+import takagi.ru.monica.utils.SavedCategoryFilterState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -124,6 +126,7 @@ fun NoteListScreen(
     
     val context = LocalContext.current
     val database = remember { PasswordDatabase.getDatabase(context) }
+    val settingsManager = remember { SettingsManager(context) }
     val scope = rememberCoroutineScope()
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
@@ -160,9 +163,25 @@ fun NoteListScreen(
     
     val notes by viewModel.allNotes.collectAsState(initial = emptyList())
     var selectedCategoryFilter by remember { mutableStateOf<NoteCategoryFilter>(NoteCategoryFilter.All) }
+    val savedCategoryFilterState by settingsManager
+        .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.NOTE)
+        .collectAsState(initial = SavedCategoryFilterState())
+    var hasRestoredCategoryFilter by remember { mutableStateOf(false) }
+
+    LaunchedEffect(savedCategoryFilterState, hasRestoredCategoryFilter) {
+        if (hasRestoredCategoryFilter) return@LaunchedEffect
+        selectedCategoryFilter = decodeNoteCategoryFilter(savedCategoryFilterState)
+        hasRestoredCategoryFilter = true
+    }
 
     LaunchedEffect(selectedCategoryFilter) {
         viewModel.setDraftStorageTarget(selectedCategoryFilter.toDraftStorageTarget())
+        if (hasRestoredCategoryFilter) {
+            settingsManager.updateCategoryFilterState(
+                scope = SettingsManager.CategoryFilterScope.NOTE,
+                state = encodeNoteCategoryFilter(selectedCategoryFilter)
+            )
+        }
     }
 
     val title = when (val filter = selectedCategoryFilter) {
@@ -1128,6 +1147,53 @@ private fun NoteCategoryFilter.toDraftStorageTarget(): NoteDraftStorageTarget = 
     is NoteCategoryFilter.KeePassGroupFilter -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
     is NoteCategoryFilter.KeePassDatabaseStarred -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
     is NoteCategoryFilter.KeePassDatabaseUncategorized -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
+}
+
+private fun encodeNoteCategoryFilter(filter: NoteCategoryFilter): SavedCategoryFilterState = when (filter) {
+    NoteCategoryFilter.All -> SavedCategoryFilterState(type = "all")
+    NoteCategoryFilter.Local -> SavedCategoryFilterState(type = "local")
+    NoteCategoryFilter.Starred -> SavedCategoryFilterState(type = "starred")
+    NoteCategoryFilter.Uncategorized -> SavedCategoryFilterState(type = "uncategorized")
+    NoteCategoryFilter.LocalStarred -> SavedCategoryFilterState(type = "local_starred")
+    NoteCategoryFilter.LocalUncategorized -> SavedCategoryFilterState(type = "local_uncategorized")
+    is NoteCategoryFilter.Custom -> SavedCategoryFilterState(type = "custom", primaryId = filter.categoryId)
+    is NoteCategoryFilter.BitwardenVault -> SavedCategoryFilterState(type = "bitwarden_vault", primaryId = filter.vaultId)
+    is NoteCategoryFilter.BitwardenFolderFilter -> SavedCategoryFilterState(type = "bitwarden_folder", primaryId = filter.vaultId, text = filter.folderId)
+    is NoteCategoryFilter.BitwardenVaultStarred -> SavedCategoryFilterState(type = "bitwarden_vault_starred", primaryId = filter.vaultId)
+    is NoteCategoryFilter.BitwardenVaultUncategorized -> SavedCategoryFilterState(type = "bitwarden_vault_uncategorized", primaryId = filter.vaultId)
+    is NoteCategoryFilter.KeePassDatabase -> SavedCategoryFilterState(type = "keepass_database", primaryId = filter.databaseId)
+    is NoteCategoryFilter.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
+    is NoteCategoryFilter.KeePassDatabaseStarred -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
+    is NoteCategoryFilter.KeePassDatabaseUncategorized -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+}
+
+private fun decodeNoteCategoryFilter(state: SavedCategoryFilterState): NoteCategoryFilter {
+    return when (state.type) {
+        "all" -> NoteCategoryFilter.All
+        "local" -> NoteCategoryFilter.Local
+        "starred" -> NoteCategoryFilter.Starred
+        "uncategorized" -> NoteCategoryFilter.Uncategorized
+        "local_starred" -> NoteCategoryFilter.LocalStarred
+        "local_uncategorized" -> NoteCategoryFilter.LocalUncategorized
+        "custom" -> state.primaryId?.let { NoteCategoryFilter.Custom(it) } ?: NoteCategoryFilter.All
+        "bitwarden_vault" -> state.primaryId?.let { NoteCategoryFilter.BitwardenVault(it) } ?: NoteCategoryFilter.All
+        "bitwarden_folder" -> {
+            val vaultId = state.primaryId
+            val folderId = state.text
+            if (vaultId != null && !folderId.isNullOrBlank()) NoteCategoryFilter.BitwardenFolderFilter(folderId, vaultId) else NoteCategoryFilter.All
+        }
+        "bitwarden_vault_starred" -> state.primaryId?.let { NoteCategoryFilter.BitwardenVaultStarred(it) } ?: NoteCategoryFilter.All
+        "bitwarden_vault_uncategorized" -> state.primaryId?.let { NoteCategoryFilter.BitwardenVaultUncategorized(it) } ?: NoteCategoryFilter.All
+        "keepass_database" -> state.primaryId?.let { NoteCategoryFilter.KeePassDatabase(it) } ?: NoteCategoryFilter.All
+        "keepass_group" -> {
+            val databaseId = state.primaryId
+            val groupPath = state.text
+            if (databaseId != null && !groupPath.isNullOrBlank()) NoteCategoryFilter.KeePassGroupFilter(databaseId, groupPath) else NoteCategoryFilter.All
+        }
+        "keepass_database_starred" -> state.primaryId?.let { NoteCategoryFilter.KeePassDatabaseStarred(it) } ?: NoteCategoryFilter.All
+        "keepass_database_uncategorized" -> state.primaryId?.let { NoteCategoryFilter.KeePassDatabaseUncategorized(it) } ?: NoteCategoryFilter.All
+        else -> NoteCategoryFilter.All
+    }
 }
 
 @Composable

@@ -3,12 +3,11 @@
 - webdav功能不再属于Monica plus
 - 支持通行秘钥
 - 优化keepass数据库的体验，可以用密钥文件验证
-- 优化keepass webdav的逻辑
 - 数据库互相独立管理
 - 支持stratumauth导入验证器
 - 优化自动填充账号密码填充错误
 - 新增通知栏自动填充磁贴
-- keepass webdav改为直接读写webdav中的数据库
+- keepass webdav因为一些原因在这个版本已经被移除
 ## UI/UX更新优化
 - 统一指纹验证组件
 - 添加按钮自定义开启下滑隐藏
@@ -22,10 +21,3 @@
 - 支持bitwarden导入csv
 - 支持bitwarden数据库
 - send功能支持
-
-
-
-
-
-
-

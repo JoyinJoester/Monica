@@ -50,13 +50,6 @@ object PlusFeatures {
             titleRes = R.string.plus_feature_bitwarden_sync_title,
             descriptionRes = R.string.plus_feature_bitwarden_sync_desc,
             isAvailable = true
-        ),
-        PlusFeature(
-            id = "keepass_webdav",
-            icon = Icons.Default.Sync,
-            titleRes = R.string.plus_feature_keepass_webdav_title,
-            descriptionRes = R.string.plus_feature_keepass_webdav_desc,
-            isAvailable = true
         )
     )
 }

@@ -99,6 +99,10 @@ fun SelectiveBackupCard(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // KeePass WebDAV feature has been removed. Keep parameter for call-site compatibility.
+    if (isKeePassWebDavConfigured) {
+        // no-op
+    }
     
     Card(
         modifier = modifier.fillMaxWidth()
@@ -139,7 +143,6 @@ fun SelectiveBackupCard(
                         val extras = mutableListOf<String>()
                         if (preferences.includeWebDavConfig && isWebDavConfigured) extras.add("WebDAV")
                         if (preferences.includeLocalKeePass && localKeePassCount > 0) extras.add("KeePass")
-                        if (preferences.includeKeePassWebDavConfig && isKeePassWebDavConfigured) extras.add("KeePass WebDAV")
                         val extrasText = if (extras.isNotEmpty()) " (+${extras.joinToString(", ")})" else ""
                         
                         Text(
@@ -279,26 +282,6 @@ fun SelectiveBackupCard(
                         ),
                         modifier = Modifier.padding(start = 4.dp)
                     )
-                    
-                    // KeePass WebDAV 配置选项
-                    if (isKeePassWebDavConfigured) {
-                        
-                        ContentTypeSwitch(
-                            label = stringResource(R.string.backup_content_keepass_webdav_config),
-                            count = null,
-                            checked = preferences.includeKeePassWebDavConfig,
-                            onCheckedChange = { 
-                                onPreferencesChange(preferences.copy(includeKeePassWebDavConfig = it))
-                            }
-                        )
-                        
-                        Text(
-                            text = stringResource(R.string.backup_content_keepass_webdav_config_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
-                    }
                     
                     // WebDAV 配置选项（仅在已配置时显示）
                     if (isWebDavConfigured) {

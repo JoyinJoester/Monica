@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
@@ -46,6 +47,8 @@ import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.utils.RememberedStorageTarget
+import takagi.ru.monica.utils.SettingsManager
 
 /**
  * 添加/编辑TOTP验证器页面 (Refactored to M3E)
@@ -92,6 +95,11 @@ fun AddEditTotpScreen(
     }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager(context) }
+    val rememberedStorageTarget by settingsManager
+        .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.TOTP)
+        .collectAsState(initial = null as RememberedStorageTarget?)
     var bitwardenVaultId by rememberSaveable { mutableStateOf(initialBitwardenVaultId) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf(initialBitwardenFolderId) }
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
@@ -120,6 +128,7 @@ fun AddEditTotpScreen(
     var showAssociation by remember { mutableStateOf(false) }
     var expandedOtpType by remember { mutableStateOf(false) }
     var showPasswordSelectionDialog by remember { mutableStateOf(false) }
+    var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -135,6 +144,24 @@ fun AddEditTotpScreen(
     }
     
     val isEditing = totpId != null && totpId > 0
+    LaunchedEffect(
+        isEditing,
+        hasAppliedInitialStorage,
+        initialCategoryId,
+        initialKeePassDatabaseId,
+        initialBitwardenVaultId,
+        initialBitwardenFolderId,
+        rememberedStorageTarget
+    ) {
+        if (isEditing || hasAppliedInitialStorage) return@LaunchedEffect
+        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
+        selectedCategoryId = initialCategoryId ?: remembered.categoryId
+        keepassDatabaseId = initialKeePassDatabaseId ?: remembered.keepassDatabaseId
+        bitwardenVaultId = initialBitwardenVaultId ?: remembered.bitwardenVaultId
+        bitwardenFolderId = initialBitwardenFolderId ?: remembered.bitwardenFolderId
+        hasAppliedInitialStorage = true
+    }
+
     val canSave = title.isNotBlank() && secret.isNotBlank()
     val save: () -> Unit = saveAction@{
         if (!canSave || isSaving) return@saveAction
@@ -156,6 +183,17 @@ fun AddEditTotpScreen(
             keepassDatabaseId = keepassDatabaseId
         )
         onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId)
+        coroutineScope.launch {
+            settingsManager.updateRememberedStorageTarget(
+                scope = SettingsManager.StorageTargetScope.TOTP,
+                target = RememberedStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        }
     }
     
     Scaffold(

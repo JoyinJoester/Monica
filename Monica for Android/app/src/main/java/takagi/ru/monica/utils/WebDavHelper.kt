@@ -123,6 +123,23 @@ private data class PasskeyBackupEntry(
 )
 
 @Serializable
+private data class TotpBackupEntry(
+    val id: Long = 0,
+    val title: String = "",
+    val itemData: String = "",
+    val notes: String = "",
+    val isFavorite: Boolean = false,
+    val imagePaths: String = "",
+    val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val categoryName: String? = null
+)
+
+@Serializable
 private data class CategoryBackupEntry(
     val id: Long = 0,
     val name: String = "",
@@ -214,7 +231,8 @@ private data class KeePassWebDavConfigBackupEntry(
     val serverUrl: String = "",
     val username: String = "",
     val encryptedPassword: String = "",
-    val encryptedKdbxPassword: String = ""
+    val encryptedKdbxPassword: String = "",
+    val conflictProtectionMode: String = "auto"
 )
 
 /**
@@ -282,6 +300,10 @@ class WebDavHelper(
         private const val KEY_KEEPASS_USERNAME = "username"
         private const val KEY_KEEPASS_PASSWORD = "password"
         private const val KEY_KEEPASS_KDBX_PASSWORD = "kdbx_password"
+        private const val KEY_KEEPASS_CONFLICT_PROTECTION_ENABLED = "conflict_protection_enabled"
+        private const val KEY_KEEPASS_CONFLICT_PROTECTION_MODE = "conflict_protection_mode"
+        private const val KEEPASS_CONFLICT_MODE_AUTO = "auto"
+        private const val KEEPASS_CONFLICT_MODE_STRICT = "strict"
     }
     
     // 加密相关
@@ -690,7 +712,6 @@ class WebDavHelper(
             if (!cacheBackupDir.exists()) cacheBackupDir.mkdirs()
 
             val passwordsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_password.csv")
-            val totpCsvFile = File(cacheBackupDir, "Monica_${timestamp}_totp.csv")
             val cardsDocsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_cards_docs.csv")
             val foldersRootDir = File(cacheBackupDir, "folders")
             
@@ -826,11 +847,44 @@ class WebDavHelper(
                     }
                 }
 
-                // 5. 导出TOTP
+                // 5. 导出 TOTP（新格式：folders/<category>/authenticators/*.json）
                 if (totpItems.isNotEmpty()) {
-                    val exportManager = DataExportImportManager(context)
-                    val exportResult = exportManager.exportData(totpItems, Uri.fromFile(totpCsvFile))
-                    if (exportResult.isFailure) throw exportResult.exceptionOrNull()!!
+                    val json = Json { prettyPrint = false }
+                    totpItems.forEach { item ->
+                        try {
+                            val categoryName = item.categoryId?.let { id -> categoryMap[id]?.name }
+                            val backup = TotpBackupEntry(
+                                id = item.id,
+                                title = item.title,
+                                itemData = item.itemData,
+                                notes = item.notes,
+                                isFavorite = item.isFavorite,
+                                imagePaths = item.imagePaths,
+                                keepassDatabaseId = item.keepassDatabaseId,
+                                keepassGroupPath = item.keepassGroupPath,
+                                bitwardenVaultId = item.bitwardenVaultId,
+                                bitwardenFolderId = item.bitwardenFolderId,
+                                createdAt = item.createdAt.time,
+                                updatedAt = item.updatedAt.time,
+                                categoryName = categoryName
+                            )
+                            val folderKey = toFolderKey(categoryName)
+                            val targetDir = File(foldersRootDir, "$folderKey/authenticators")
+                            if (!targetDir.exists()) targetDir.mkdirs()
+                            val fileName = "totp_${item.id}_${item.createdAt.time}.json"
+                            val target = File(targetDir, fileName)
+                            target.writeText(json.encodeToString(TotpBackupEntry.serializer(), backup), Charsets.UTF_8)
+                        } catch (e: Exception) {
+                            failedItems.add(
+                                FailedItem(
+                                    id = item.id,
+                                    type = "验证器",
+                                    title = item.title,
+                                    reason = "序列化失败: ${e.message}"
+                                )
+                            )
+                        }
+                    }
                 }
 
                 // 6. 导出 Cards & Docs
@@ -935,7 +989,6 @@ class WebDavHelper(
                     if (preferences.includePasswords && passwordsCsvFile.exists()) {
                         addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
                     }
-                    if (totpCsvFile.exists()) addFileToZip(zipOut, totpCsvFile, totpCsvFile.name)
                     if (cardsDocsCsvFile.exists()) addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
                     if (preferences.includeGeneratorHistory) {
                         try {
@@ -1176,6 +1229,18 @@ class WebDavHelper(
                         val keepassUsername = keepassPrefs.getString(KEY_KEEPASS_USERNAME, "") ?: ""
                         val keepassPassword = keepassPrefs.getString(KEY_KEEPASS_PASSWORD, "") ?: ""
                         val keepassKdbxPassword = keepassPrefs.getString(KEY_KEEPASS_KDBX_PASSWORD, "") ?: ""
+                        val keepassConflictModeRaw = keepassPrefs
+                            .getString(KEY_KEEPASS_CONFLICT_PROTECTION_MODE, null)
+                            ?.trim()
+                            ?.lowercase(Locale.ROOT)
+                        val keepassConflictMode = when {
+                            keepassConflictModeRaw == KEEPASS_CONFLICT_MODE_STRICT -> KEEPASS_CONFLICT_MODE_STRICT
+                            keepassConflictModeRaw == KEEPASS_CONFLICT_MODE_AUTO -> KEEPASS_CONFLICT_MODE_AUTO
+                            keepassPrefs.contains(KEY_KEEPASS_CONFLICT_PROTECTION_ENABLED) &&
+                                keepassPrefs.getBoolean(KEY_KEEPASS_CONFLICT_PROTECTION_ENABLED, false) ->
+                                KEEPASS_CONFLICT_MODE_STRICT
+                            else -> KEEPASS_CONFLICT_MODE_AUTO
+                        }
                         
                         if (keepassServerUrl.isNotEmpty() && keepassUsername.isNotEmpty() && keepassPassword.isNotEmpty()) {
                             try {
@@ -1196,7 +1261,8 @@ class WebDavHelper(
                                     serverUrl = keepassServerUrl,
                                     username = keepassUsername,
                                     encryptedPassword = encryptedKeepassPassword,
-                                    encryptedKdbxPassword = encryptedKdbxPassword
+                                    encryptedKdbxPassword = encryptedKdbxPassword,
+                                    conflictProtectionMode = keepassConflictMode
                                 )
                                 
                                 val json = Json { prettyPrint = false }
@@ -1328,7 +1394,6 @@ class WebDavHelper(
             } finally {
                 // 清理临时文件 (保留 finalFile 即 ZIP 文件)
                 passwordsCsvFile.delete()
-                totpCsvFile.delete()
                 cardsDocsCsvFile.delete()
                 foldersRootDir.deleteRecursively()
                 historyJsonFile.delete()
@@ -1605,6 +1670,7 @@ class WebDavHelper(
             try {
                 val passwordsWithMetadata = mutableListOf<Pair<PasswordEntry, String?>>()  // ✅ 存储密码和分类名称
                 val notesWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
+                val totpWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
                 val passkeysWithMetadata = mutableListOf<Pair<PasskeyEntry, String?>>()
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
@@ -1612,6 +1678,7 @@ class WebDavHelper(
                 
                 // 临时存储CSV文件路径，延后处理
                 var passwordsCsvFile: File? = null
+                val secureCsvFiles = mutableListOf<File>()
                 
                 // 3. 解压ZIP文件并读取JSON/CSV、密码历史和图片
                 ZipInputStream(FileInputStream(zipFile)).use { zipIn ->
@@ -1672,14 +1739,7 @@ class WebDavHelper(
                                     (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_totp.csv", ignoreCase = true)) ||
                                     (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_cards_docs.csv", ignoreCase = true)) ||
                                     (entryName.startsWith("Monica_", ignoreCase = true) && entryName.endsWith("_notes.csv", ignoreCase = true)) -> {
-                                    val exportManager = DataExportImportManager(context)
-                                    val csvUri = Uri.fromFile(tempFile)
-                                    val importResult = exportManager.importData(csvUri)
-                                    if (importResult.isSuccess) {
-                                        secureItems.addAll(importResult.getOrNull() ?: emptyList())
-                                    } else {
-                                        warnings.add("导入CSV失败 $entryName: ${importResult.exceptionOrNull()?.message}")
-                                    }
+                                    secureCsvFiles.add(tempFile)
                                 }
                                 normalizedEntryName.contains("/notes/") || normalizedEntryName.startsWith("notes/") -> {
                                     backupNoteCount++
@@ -1691,6 +1751,23 @@ class WebDavHelper(
                                         failedItems.add(FailedItem(
                                             id = 0,
                                             type = "笔记",
+                                            title = entryName,
+                                            reason = "JSON解析失败"
+                                        ))
+                                    }
+                                }
+                                normalizedEntryName.contains("/authenticators/") ||
+                                    normalizedEntryName.startsWith("authenticators/") ||
+                                    normalizedEntryName.contains("/totp/") ||
+                                    normalizedEntryName.startsWith("totp/") -> {
+                                    backupTotpCount++
+                                    val totpItem = restoreTotpFromJson(tempFile)
+                                    if (totpItem != null) {
+                                        totpWithMetadata.add(totpItem)
+                                    } else {
+                                        failedItems.add(FailedItem(
+                                            id = 0,
+                                            type = "验证器",
                                             title = entryName,
                                             reason = "JSON解析失败"
                                         ))
@@ -2056,11 +2133,26 @@ class WebDavHelper(
                                                     keepassWebDavConfigBackup.username.isNotEmpty() &&
                                                     decryptedKeepassPassword.isNotEmpty()
                                                 ) {
+                                                    val restoredMode = keepassWebDavConfigBackup.conflictProtectionMode
+                                                        .trim()
+                                                        .lowercase(Locale.ROOT)
+                                                        .let { mode ->
+                                                            if (mode == KEEPASS_CONFLICT_MODE_STRICT) {
+                                                                KEEPASS_CONFLICT_MODE_STRICT
+                                                            } else {
+                                                                KEEPASS_CONFLICT_MODE_AUTO
+                                                            }
+                                                        }
                                                     keepassPrefs.edit().apply {
                                                         putString(KEY_KEEPASS_SERVER_URL, keepassWebDavConfigBackup.serverUrl)
                                                         putString(KEY_KEEPASS_USERNAME, keepassWebDavConfigBackup.username)
                                                         putString(KEY_KEEPASS_PASSWORD, decryptedKeepassPassword)
                                                         putString(KEY_KEEPASS_KDBX_PASSWORD, decryptedKdbxPassword)
+                                                        putString(KEY_KEEPASS_CONFLICT_PROTECTION_MODE, restoredMode)
+                                                        putBoolean(
+                                                            KEY_KEEPASS_CONFLICT_PROTECTION_ENABLED,
+                                                            restoredMode == KEEPASS_CONFLICT_MODE_STRICT
+                                                        )
                                                         apply()
                                                     }
                                                     warnings.add("✓ KeePass WebDAV配置已恢复: ${keepassWebDavConfigBackup.serverUrl}")
@@ -2141,7 +2233,7 @@ class WebDavHelper(
                             }
                         } finally {
                             // 只有当 tempFile 不是 passwordsCsvFile 时才删除
-                            if (tempFile != passwordsCsvFile) {
+                            if (tempFile != passwordsCsvFile && tempFile !in secureCsvFiles) {
                                 tempFile.delete()
                             }
                         }
@@ -2151,7 +2243,7 @@ class WebDavHelper(
                 }
                 
                 // ✅ 解析分类并创建缺失的分类，同时处理跨类型文件夹归属
-                if (passwordsWithMetadata.isNotEmpty() || notesWithMetadata.isNotEmpty() || passkeysWithMetadata.isNotEmpty()) {
+                if (passwordsWithMetadata.isNotEmpty() || notesWithMetadata.isNotEmpty() || totpWithMetadata.isNotEmpty() || passkeysWithMetadata.isNotEmpty()) {
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                     val categoryDao = database.categoryDao()
                     
@@ -2162,6 +2254,7 @@ class WebDavHelper(
                     // 收集需要创建的分类名称
                     val categoryNamesToCreate = (passwordsWithMetadata.mapNotNull { it.second } +
                         notesWithMetadata.mapNotNull { it.second } +
+                        totpWithMetadata.mapNotNull { it.second } +
                         passkeysWithMetadata.mapNotNull { it.second })
                         .distinct()
                         .filter { it.isNotBlank() && !categoryByName.containsKey(it) }
@@ -2196,6 +2289,12 @@ class WebDavHelper(
                         secureItems.add(entry.copy(categoryId = categoryId))
                     }
 
+                    // 将验证器与分类关联
+                    totpWithMetadata.forEach { (entry, categoryName) ->
+                        val categoryId = categoryName?.let { categoryByName[it]?.id }
+                        secureItems.add(entry.copy(categoryId = categoryId))
+                    }
+
                     // 将通行密钥与分类关联
                     passkeysWithMetadata.forEach { (entry, categoryName) ->
                         val categoryId = categoryName?.let { categoryByName[it]?.id }
@@ -2204,15 +2303,42 @@ class WebDavHelper(
                     
                     android.util.Log.d(
                         "WebDavHelper",
-                        "Resolved categories for passwords=${passwords.size}, notes=${secureItems.size}, passkeys=${passkeys.size}"
+                        "Resolved categories for passwords=${passwords.size}, secureItems=${secureItems.size}, passkeys=${passkeys.size}"
                     )
                 }
 
                 if (notesWithMetadata.isNotEmpty() && secureItems.isEmpty()) {
                     secureItems.addAll(notesWithMetadata.map { it.first })
                 }
+                if (totpWithMetadata.isNotEmpty() && secureItems.none { it.itemType == ItemType.TOTP.name }) {
+                    secureItems.addAll(totpWithMetadata.map { it.first })
+                }
                 if (passkeysWithMetadata.isNotEmpty() && passkeys.isEmpty()) {
                     passkeys.addAll(passkeysWithMetadata.map { it.first })
+                }
+
+                // 导入旧版 CSV（向后兼容）：放到扫描结束后统一处理，避免与 JSON 顺序耦合
+                if (secureCsvFiles.isNotEmpty()) {
+                    val exportManager = DataExportImportManager(context)
+                    secureCsvFiles.forEach { csvFile ->
+                        try {
+                            val importResult = exportManager.importData(Uri.fromFile(csvFile))
+                            if (importResult.isSuccess) {
+                                val imported = importResult.getOrNull() ?: emptyList()
+                                if (totpWithMetadata.isNotEmpty()) {
+                                    secureItems.addAll(imported.filterNot { it.itemType == ItemType.TOTP.name })
+                                } else {
+                                    secureItems.addAll(imported)
+                                }
+                            } else {
+                                warnings.add("导入CSV失败 ${csvFile.name}: ${importResult.exceptionOrNull()?.message}")
+                            }
+                        } catch (e: Exception) {
+                            warnings.add("导入CSV失败 ${csvFile.name}: ${e.message}")
+                        } finally {
+                            csvFile.delete()
+                        }
+                    }
                 }
                 
                 // 5. 向后兼容：如果没有JSON密码，使用CSV（支持旧版本备份）
@@ -2527,6 +2653,35 @@ class WebDavHelper(
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore note from ${file.name}: ${e.message}")
+            null
+        }
+    }
+
+    private fun restoreTotpFromJson(file: File): Pair<DataExportImportManager.ExportItem, String?>? {
+        return try {
+            val json = Json { ignoreUnknownKeys = true }
+            val text = file.readText(Charsets.UTF_8)
+            val entry = json.decodeFromString(TotpBackupEntry.serializer(), text)
+            Pair(
+                DataExportImportManager.ExportItem(
+                    id = entry.id,
+                    itemType = ItemType.TOTP.name,
+                    title = entry.title,
+                    itemData = entry.itemData,
+                    notes = entry.notes,
+                    isFavorite = entry.isFavorite,
+                    imagePaths = entry.imagePaths,
+                    createdAt = entry.createdAt,
+                    updatedAt = entry.updatedAt,
+                    keepassDatabaseId = entry.keepassDatabaseId,
+                    keepassGroupPath = entry.keepassGroupPath,
+                    bitwardenVaultId = entry.bitwardenVaultId,
+                    bitwardenFolderId = entry.bitwardenFolderId
+                ),
+                entry.categoryName
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("WebDavHelper", "Failed to restore totp from ${file.name}: ${e.message}")
             null
         }
     }

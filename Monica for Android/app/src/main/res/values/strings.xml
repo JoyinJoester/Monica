@@ -2365,8 +2365,12 @@
     <string name="keepass_webdav_database_password_hint">Enter .kdbx password</string>
     <string name="keepass_webdav_remember_password">Remember password</string>
     <string name="keepass_webdav_conflict_protection">Conflict protection (ETag/If-Match)</string>
-    <string name="keepass_webdav_conflict_protection_enabled_hint">Enabled: writes are blocked if the remote file changed.</string>
-    <string name="keepass_webdav_conflict_protection_disabled_hint">Disabled: uses direct overwrite, which may cause data loss in multi-device writes.</string>
+    <string name="keepass_webdav_conflict_mode_auto_title">Auto mode (Recommended)</string>
+    <string name="keepass_webdav_conflict_mode_auto_desc">KeePassDX-like behavior: use conditional write when possible, otherwise best-effort save.</string>
+    <string name="keepass_webdav_conflict_mode_strict_title">Strict mode</string>
+    <string name="keepass_webdav_conflict_mode_strict_desc">Require server-side conflict metadata; safer but may block writes on some WebDAV servers.</string>
+    <string name="keepass_webdav_conflict_protection_enabled_hint">Strict mode: blocks writes if ETag is missing or the remote file changed.</string>
+    <string name="keepass_webdav_conflict_protection_disabled_hint">Auto mode (recommended): uses If-Match when ETag exists; otherwise falls back to best-effort overwrite.</string>
     <string name="keepass_webdav_create_action">Create Remote Database</string>
     <string name="keepass_webdav_creating">Creating...</string>
     <string name="keepass_webdav_create_title">Create Remote .kdbx</string>

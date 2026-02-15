@@ -76,6 +76,9 @@ class KeePassKdbxService(
         private const val KEY_KEEPASS_USERNAME = "username"
         private const val KEY_KEEPASS_PASSWORD = "password"
         private const val KEY_CONFLICT_PROTECTION_ENABLED = "conflict_protection_enabled"
+        private const val KEY_CONFLICT_PROTECTION_MODE = "conflict_protection_mode"
+        private const val CONFLICT_MODE_AUTO = "auto"
+        private const val CONFLICT_MODE_STRICT = "strict"
         private const val FIELD_MONICA_LOCAL_ID = "MonicaLocalId"
         private const val FIELD_MONICA_ITEM_ID = "MonicaSecureItemId"
         private const val FIELD_MONICA_ITEM_TYPE = "MonicaItemType"
@@ -92,17 +95,46 @@ class KeePassKdbxService(
         }
     }
 
+    private fun ensureWebDavKeepassEnabled(): Nothing {
+        throw UnsupportedOperationException("KeePass WebDAV has been removed")
+    }
+
     private data class LoadedDatabase(
         val database: LocalKeePassDatabase,
         val credentials: Credentials,
         val keePassDatabase: KeePassDatabase,
-        val sourceEtag: String?
+        val sourceEtag: String?,
+        val sourceLastModified: String?
     )
 
     private data class DatabaseSnapshot(
         val bytes: ByteArray,
-        val etag: String?
+        val etag: String?,
+        val lastModified: String?
     )
+
+    private data class MutationPlan<T>(
+        val updatedDatabase: KeePassDatabase,
+        val result: T,
+        val forceOverwriteWebDav: Boolean = false,
+        val afterWrite: (suspend (LocalKeePassDatabase, KeePassDatabase) -> Unit)? = null
+    )
+
+    private class WebDavHttpException(
+        val statusCode: Int,
+        message: String
+    ) : Exception(message)
+
+    private enum class ConflictProtectionMode {
+        AUTO,
+        STRICT
+    }
+
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .retryOnConnectionFailure(true)
+            .build()
+    }
 
     suspend fun verifyDatabase(
         databaseId: Long,
@@ -156,23 +188,25 @@ class KeePassKdbxService(
             if (normalizedName.isBlank()) {
                 throw IllegalArgumentException("分组名称不能为空")
             }
+            val groupInfo = mutateDatabase(databaseId) { loaded ->
+                val parentSegments = parentPath
+                    ?.split("/")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotBlank() }
+                    ?: emptyList()
 
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            val parentSegments = parentPath
-                ?.split("/")
-                ?.map { it.trim() }
-                ?.filter { it.isNotBlank() }
-                ?: emptyList()
-
-            val result = addGroupToPath(
-                group = keePassDatabase.content.group,
-                parentSegments = parentSegments,
-                newGroupName = normalizedName,
-                currentPath = ""
-            )
-            val updatedDatabase = keePassDatabase.modifyParentGroup { result.first }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
-            Result.success(result.second)
+                val result = addGroupToPath(
+                    group = loaded.keePassDatabase.content.group,
+                    parentSegments = parentSegments,
+                    newGroupName = normalizedName,
+                    currentPath = ""
+                )
+                MutationPlan(
+                    updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
+                    result = result.second
+                )
+            }
+            Result.success(groupInfo)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -194,17 +228,19 @@ class KeePassKdbxService(
             if (pathSegments.isEmpty()) {
                 throw IllegalArgumentException("分组路径无效")
             }
-
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            val result = renameGroupByPath(
-                group = keePassDatabase.content.group,
-                pathSegments = pathSegments,
-                newName = normalizedName,
-                currentPath = ""
-            )
-            val updatedDatabase = keePassDatabase.modifyParentGroup { result.first }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
-            Result.success(result.second)
+            val groupInfo = mutateDatabase(databaseId) { loaded ->
+                val result = renameGroupByPath(
+                    group = loaded.keePassDatabase.content.group,
+                    pathSegments = pathSegments,
+                    newName = normalizedName,
+                    currentPath = ""
+                )
+                MutationPlan(
+                    updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
+                    result = result.second
+                )
+            }
+            Result.success(groupInfo)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -221,18 +257,19 @@ class KeePassKdbxService(
             if (pathSegments.isEmpty()) {
                 throw IllegalArgumentException("分组路径无效")
             }
-
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            val result = removeGroupByPath(
-                group = keePassDatabase.content.group,
-                pathSegments = pathSegments
-            )
-            if (!result.second) {
-                throw IllegalArgumentException("分组不存在: $groupPath")
+            mutateDatabase(databaseId) { loaded ->
+                val result = removeGroupByPath(
+                    group = loaded.keePassDatabase.content.group,
+                    pathSegments = pathSegments
+                )
+                if (!result.second) {
+                    throw IllegalArgumentException("分组不存在: $groupPath")
+                }
+                MutationPlan(
+                    updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
+                    result = Unit
+                )
             }
-
-            val updatedDatabase = keePassDatabase.modifyParentGroup { result.first }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -271,26 +308,32 @@ class KeePassKdbxService(
         resolvePassword: (PasswordEntry) -> String
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            var updatedDatabase = keePassDatabase
-            var addedCount = 0
-            entries.forEach { entry ->
-                val plainPassword = resolvePassword(entry)
-                val updateResult = updateEntry(updatedDatabase, entry, plainPassword)
-                if (updateResult.second) {
-                    updatedDatabase = updateResult.first
-                } else {
-                    val newEntry = buildEntry(entry, plainPassword)
-                    updatedDatabase = updatedDatabase.modifyParentGroup {
-                        copy(entries = this.entries + newEntry)
+            val addedCount = mutateDatabase(databaseId) { loaded ->
+                var updatedDatabase = loaded.keePassDatabase
+                var addedCount = 0
+                entries.forEach { entry ->
+                    val plainPassword = resolvePassword(entry)
+                    val updateResult = updateEntry(updatedDatabase, entry, plainPassword)
+                    if (updateResult.second) {
+                        updatedDatabase = updateResult.first
+                    } else {
+                        val newEntry = buildEntry(entry, plainPassword)
+                        updatedDatabase = updatedDatabase.modifyParentGroup {
+                            copy(entries = this.entries + newEntry)
+                        }
+                        addedCount++
                     }
-                    addedCount++
                 }
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = addedCount,
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
+                )
             }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
-            val allEntries = mutableListOf<Entry>()
-            collectEntries(updatedDatabase.content.group, allEntries)
-            dao.updateEntryCount(database.id, allEntries.size)
             Result.success(addedCount)
         } catch (e: Exception) {
             Result.failure(e)
@@ -303,16 +346,40 @@ class KeePassKdbxService(
         resolvePassword: (PasswordEntry) -> String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            val plainPassword = resolvePassword(entry)
-            val updateResult = updateEntry(keePassDatabase, entry, plainPassword)
-            val updatedDatabase = if (updateResult.second) updateResult.first else {
-                val newEntry = buildEntry(entry, plainPassword)
-                keePassDatabase.modifyParentGroup {
-                    copy(entries = this.entries + newEntry)
+            mutateDatabase(databaseId) { loaded ->
+                val plainPassword = resolvePassword(entry)
+                val updateResult = updateEntry(loaded.keePassDatabase, entry, plainPassword)
+                val updatedDatabase = if (updateResult.second) updateResult.first else {
+                    val newEntry = buildEntry(entry, plainPassword)
+                    loaded.keePassDatabase.modifyParentGroup {
+                        copy(entries = this.entries + newEntry)
+                    }
                 }
+                MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
             }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun addPasswordEntry(
+        databaseId: Long,
+        entry: PasswordEntry,
+        resolvePassword: (PasswordEntry) -> String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            mutateDatabase(databaseId) { loaded ->
+                val plainPassword = resolvePassword(entry)
+                val newEntry = buildEntry(entry, plainPassword)
+                val updatedRoot = addEntryToGroupPath(
+                    rootGroup = loaded.keePassDatabase.content.group,
+                    groupPath = entry.keepassGroupPath,
+                    entry = newEntry
+                )
+                val updatedDatabase = loaded.keePassDatabase.modifyParentGroup { updatedRoot }
+                MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -323,35 +390,28 @@ class KeePassKdbxService(
         databaseId: Long,
         entries: List<PasswordEntry>
     ): Result<Int> = withContext(Dispatchers.IO) {
-        globalMutationMutex.withLock {
-            var lastConflict: Exception? = null
-
-            repeat(2) { attempt ->
-                try {
-                    val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-                    var updatedDatabase = keePassDatabase
-                    var removedCount = 0
-                    entries.forEach { entry ->
-                        val result = removeEntry(updatedDatabase, entry)
-                        updatedDatabase = result.first
-                        removedCount += result.second
-                    }
-                    writeDatabase(database, credentials, updatedDatabase, sourceEtag)
-                    val allEntries = mutableListOf<Entry>()
-                    collectEntries(updatedDatabase.content.group, allEntries)
-                    dao.updateEntryCount(database.id, allEntries.size)
-                    return@withLock Result.success(removedCount)
-                } catch (e: Exception) {
-                    val canRetry = attempt == 0 && isWebDavConflictError(e)
-                    if (canRetry) {
-                        lastConflict = e
-                    } else {
-                        return@withLock Result.failure(e)
-                    }
+        try {
+            val removedCount = mutateDatabase(databaseId) { loaded ->
+                var updatedDatabase = loaded.keePassDatabase
+                var removedCount = 0
+                entries.forEach { entry ->
+                    val result = removeEntry(updatedDatabase, entry)
+                    updatedDatabase = result.first
+                    removedCount += result.second
                 }
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = removedCount,
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
+                )
             }
-
-            Result.failure(lastConflict ?: Exception("KeePass 删除失败"))
+            Result.success(removedCount)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
@@ -377,22 +437,23 @@ class KeePassKdbxService(
         items: List<SecureItem>
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            var updatedDatabase = keePassDatabase
-            var addedCount = 0
-            items.forEach { item ->
-                val updateResult = updateSecureItemInternal(updatedDatabase, item)
-                if (updateResult.second) {
-                    updatedDatabase = updateResult.first
-                } else {
-                    val newEntry = buildSecureItemEntry(item)
-                    updatedDatabase = updatedDatabase.modifyParentGroup {
-                        copy(entries = this.entries + newEntry)
+            val addedCount = mutateDatabase(databaseId) { loaded ->
+                var updatedDatabase = loaded.keePassDatabase
+                var addedCount = 0
+                items.forEach { item ->
+                    val updateResult = updateSecureItemInternal(updatedDatabase, item)
+                    if (updateResult.second) {
+                        updatedDatabase = updateResult.first
+                    } else {
+                        val newEntry = buildSecureItemEntry(item)
+                        updatedDatabase = updatedDatabase.modifyParentGroup {
+                            copy(entries = this.entries + newEntry)
+                        }
+                        addedCount++
                     }
-                    addedCount++
                 }
+                MutationPlan(updatedDatabase = updatedDatabase, result = addedCount)
             }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(addedCount)
         } catch (e: Exception) {
             Result.failure(e)
@@ -404,17 +465,18 @@ class KeePassKdbxService(
         item: SecureItem
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            val updateResult = updateSecureItemInternal(keePassDatabase, item)
-            val updatedDatabase = if (updateResult.second) {
-                updateResult.first
-            } else {
-                val newEntry = buildSecureItemEntry(item)
-                keePassDatabase.modifyParentGroup {
-                    copy(entries = this.entries + newEntry)
+            mutateDatabase(databaseId) { loaded ->
+                val updateResult = updateSecureItemInternal(loaded.keePassDatabase, item)
+                val updatedDatabase = if (updateResult.second) {
+                    updateResult.first
+                } else {
+                    val newEntry = buildSecureItemEntry(item)
+                    loaded.keePassDatabase.modifyParentGroup {
+                        copy(entries = this.entries + newEntry)
+                    }
                 }
+                MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
             }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -426,15 +488,16 @@ class KeePassKdbxService(
         items: List<SecureItem>
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val (database, credentials, keePassDatabase, sourceEtag) = loadDatabase(databaseId)
-            var updatedDatabase = keePassDatabase
-            var removedCount = 0
-            items.forEach { item ->
-                val result = removeSecureItem(updatedDatabase, item)
-                updatedDatabase = result.first
-                removedCount += result.second
+            val removedCount = mutateDatabase(databaseId) { loaded ->
+                var updatedDatabase = loaded.keePassDatabase
+                var removedCount = 0
+                items.forEach { item ->
+                    val result = removeSecureItem(updatedDatabase, item)
+                    updatedDatabase = result.first
+                    removedCount += result.second
+                }
+                MutationPlan(updatedDatabase = updatedDatabase, result = removedCount)
             }
-            writeDatabase(database, credentials, updatedDatabase, sourceEtag)
             Result.success(removedCount)
         } catch (e: Exception) {
             Result.failure(e)
@@ -1152,12 +1215,55 @@ class KeePassKdbxService(
         return false
     }
 
+    private suspend fun <T> mutateDatabase(
+        databaseId: Long,
+        retryOnConflict: Boolean = true,
+        mutation: (LoadedDatabase) -> MutationPlan<T>
+    ): T {
+        return globalMutationMutex.withLock {
+            var lastConflict: Exception? = null
+            val attempts = if (retryOnConflict) 2 else 1
+            repeat(attempts) { attempt ->
+                try {
+                    val loaded = loadDatabase(databaseId)
+                    val plan = mutation(loaded)
+                    writeDatabase(
+                        database = loaded.database,
+                        credentials = loaded.credentials,
+                        keePassDatabase = plan.updatedDatabase,
+                        sourceEtag = loaded.sourceEtag,
+                        sourceLastModified = loaded.sourceLastModified,
+                        forceOverwriteWebDav = plan.forceOverwriteWebDav
+                    )
+                    plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
+                    return@withLock plan.result
+                } catch (e: Exception) {
+                    val shouldRetry = retryOnConflict &&
+                        attempt == 0 &&
+                        isWebDavConflictError(e)
+                    if (shouldRetry) {
+                        lastConflict = e
+                    } else {
+                        throw e
+                    }
+                }
+            }
+            throw (lastConflict ?: Exception("KeePass 写入失败"))
+        }
+    }
+
     private suspend fun loadDatabase(databaseId: Long): LoadedDatabase {
         val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
         val credentials = buildCredentials(database)
         val snapshot = readDatabaseSnapshot(database)
         val keePassDatabase = decodeDatabase(snapshot.bytes, credentials)
-        return LoadedDatabase(database, credentials, keePassDatabase, snapshot.etag)
+        return LoadedDatabase(
+            database = database,
+            credentials = credentials,
+            keePassDatabase = keePassDatabase,
+            sourceEtag = snapshot.etag,
+            sourceLastModified = snapshot.lastModified
+        )
     }
 
     private suspend fun decodeDatabase(bytes: ByteArray, credentials: Credentials): KeePassDatabase {
@@ -1206,16 +1312,16 @@ class KeePassKdbxService(
 
     private fun readDatabaseSnapshot(database: LocalKeePassDatabase): DatabaseSnapshot {
         if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
-            return readWebDavSnapshot(database.filePath.removePrefix(WEBDAV_PATH_PREFIX))
+            ensureWebDavKeepassEnabled()
         }
         return if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             val file = File(context.filesDir, database.filePath)
             if (!file.exists()) throw Exception("数据库文件不存在")
-            DatabaseSnapshot(bytes = file.readBytes(), etag = null)
+            DatabaseSnapshot(bytes = file.readBytes(), etag = null, lastModified = null)
         } else {
             val uri = Uri.parse(database.filePath)
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?.let { DatabaseSnapshot(bytes = it, etag = null) }
+                ?.let { DatabaseSnapshot(bytes = it, etag = null, lastModified = null) }
                 ?: throw Exception("无法打开数据库文件")
         }
     }
@@ -1225,17 +1331,13 @@ class KeePassKdbxService(
         credentials: Credentials,
         keePassDatabase: KeePassDatabase,
         sourceEtag: String? = null,
+        sourceLastModified: String? = null,
         forceOverwriteWebDav: Boolean = false
     ) {
         val bytes = encodeDatabase(keePassDatabase)
         decodeDatabase(bytes, credentials)
         if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
-            writeWebDav(
-                remotePath = database.filePath.removePrefix(WEBDAV_PATH_PREFIX),
-                bytes = bytes,
-                expectedEtag = sourceEtag,
-                forceOverwrite = forceOverwriteWebDav
-            )
+            ensureWebDavKeepassEnabled()
         } else if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             writeInternal(database, bytes)
         } else {
@@ -1289,19 +1391,19 @@ class KeePassKdbxService(
 
     private fun readWebDavSnapshot(remotePath: String): DatabaseSnapshot {
         val (username, password) = loadWebDavCredentials()
-        val client = OkHttpClient()
         val request = Request.Builder()
             .url(remotePath)
             .get()
             .header("Authorization", HttpCredentials.basic(username, password))
             .build()
-        client.newCall(request).execute().use { response ->
+        httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw Exception("WebDAV 读取失败: HTTP ${response.code}")
             }
             val data = response.body?.bytes() ?: throw Exception("WebDAV 返回空内容")
             val etag = response.header("ETag")
-            return DatabaseSnapshot(bytes = data, etag = etag)
+            val lastModified = response.header("Last-Modified")
+            return DatabaseSnapshot(bytes = data, etag = etag, lastModified = lastModified)
         }
     }
 
@@ -1309,6 +1411,7 @@ class KeePassKdbxService(
         remotePath: String,
         bytes: ByteArray,
         expectedEtag: String?,
+        expectedLastModified: String?,
         forceOverwrite: Boolean = false
     ) {
         val sardine = buildWebDavClient()
@@ -1320,29 +1423,79 @@ class KeePassKdbxService(
                 }
             }
         }
-        if (forceOverwrite || !isConflictProtectionEnabled()) {
+        if (forceOverwrite) {
             sardine.put(remotePath, bytes, "application/octet-stream")
             return
         }
-        if (expectedEtag.isNullOrBlank()) {
-            throw Exception("服务器不支持 ETag 冲突保护，已阻止写入")
+
+        val conflictMode = getConflictProtectionMode()
+        if (!expectedEtag.isNullOrBlank()) {
+            putWithConditionalHeaders(
+                remotePath = remotePath,
+                bytes = bytes,
+                ifMatch = expectedEtag,
+                ifUnmodifiedSince = null
+            )
+            return
         }
 
+        if (conflictMode == ConflictProtectionMode.STRICT) {
+            throw Exception("服务器未返回 ETag，严格模式下已阻止写入。可切换为自动模式后重试")
+        }
+
+        // AUTO 模式：ETag 缺失时尽力使用 Last-Modified 保护，失败则降级为直接写入。
+        if (!expectedLastModified.isNullOrBlank()) {
+            runCatching {
+                putWithConditionalHeaders(
+                    remotePath = remotePath,
+                    bytes = bytes,
+                    ifMatch = null,
+                    ifUnmodifiedSince = expectedLastModified
+                )
+            }.onSuccess {
+                return
+            }.onFailure { error ->
+                if (isWebDavConflictError(error)) throw error
+                val httpStatus = (error as? WebDavHttpException)?.statusCode
+                // 仅在服务器明确不支持条件头时才降级到直接写入。
+                val serverDoesNotSupportHeader = httpStatus == 400 || httpStatus == 405 || httpStatus == 501
+                if (!serverDoesNotSupportHeader) throw error
+            }
+        }
+
+        sardine.put(remotePath, bytes, "application/octet-stream")
+    }
+
+    private fun putWithConditionalHeaders(
+        remotePath: String,
+        bytes: ByteArray,
+        ifMatch: String?,
+        ifUnmodifiedSince: String?
+    ) {
         val (username, password) = loadWebDavCredentials()
-        val client = OkHttpClient()
         val request = Request.Builder()
             .url(remotePath)
             .put(bytes.toRequestBody("application/octet-stream".toMediaType()))
             .header("Authorization", HttpCredentials.basic(username, password))
-            .header("If-Match", expectedEtag)
+            .apply {
+                if (!ifMatch.isNullOrBlank()) {
+                    header("If-Match", ifMatch)
+                }
+                if (!ifUnmodifiedSince.isNullOrBlank()) {
+                    header("If-Unmodified-Since", ifUnmodifiedSince)
+                }
+            }
             .build()
-        client.newCall(request).execute().use { response ->
+        httpClient.newCall(request).execute().use { response ->
             when {
-                response.code == 412 -> {
+                response.code == 412 || response.code == 428 -> {
                     throw Exception("远端数据库已变化，已阻止覆盖。请先刷新后重试")
                 }
                 !response.isSuccessful -> {
-                    throw Exception("WebDAV 写入失败: HTTP ${response.code}")
+                    throw WebDavHttpException(
+                        statusCode = response.code,
+                        message = "WebDAV 写入失败: HTTP ${response.code}"
+                    )
                 }
                 else -> Unit
             }
@@ -1366,15 +1519,28 @@ class KeePassKdbxService(
         return username to password
     }
 
-    private fun isConflictProtectionEnabled(): Boolean {
+    private fun getConflictProtectionMode(): ConflictProtectionMode {
         val prefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(KEY_CONFLICT_PROTECTION_ENABLED, true)
+        val rawMode = prefs.getString(KEY_CONFLICT_PROTECTION_MODE, null)?.lowercase(Locale.ROOT)
+        if (!rawMode.isNullOrBlank()) {
+            return if (rawMode == CONFLICT_MODE_STRICT) {
+                ConflictProtectionMode.STRICT
+            } else {
+                ConflictProtectionMode.AUTO
+            }
+        }
+        // Legacy boolean preference is ignored as default source.
+        // Without an explicit mode selection, AUTO provides better
+        // compatibility across WebDAV servers (closer to KeePassDX behavior).
+        return ConflictProtectionMode.AUTO
     }
 
     private fun isWebDavConflictError(error: Throwable): Boolean {
         val message = error.message.orEmpty()
         return message.contains("412") ||
+            message.contains("428") ||
             message.contains("If-Match", ignoreCase = true) ||
+            message.contains("If-Unmodified-Since", ignoreCase = true) ||
             message.contains("远端数据库已变化") ||
             message.contains("已阻止覆盖")
     }

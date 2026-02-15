@@ -17,6 +17,20 @@ import takagi.ru.monica.data.AutofillSource
 
 private val Context.dataStore by preferencesDataStore("settings")
 
+data class RememberedStorageTarget(
+    val categoryId: Long? = null,
+    val keepassDatabaseId: Long? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null
+)
+
+data class SavedCategoryFilterState(
+    val type: String = "all",
+    val primaryId: Long? = null,
+    val secondaryId: Long? = null,
+    val text: String? = null
+)
+
 /**
  * Settings manager using DataStore
  */
@@ -93,8 +107,31 @@ class SettingsManager(private val context: Context) {
         
         private val AUTOFILL_SOURCES_KEY = stringPreferencesKey("autofill_sources")
         private val AUTOFILL_PRIORITY_KEY = stringPreferencesKey("autofill_priority")
-        
+
     }
+
+    object StorageTargetScope {
+        const val NOTE = "note"
+        const val TOTP = "totp"
+        const val BANK_CARD = "bank_card"
+        const val PASSKEY = "passkey"
+    }
+
+    object CategoryFilterScope {
+        const val NOTE = "note"
+        const val TOTP = "totp"
+        const val PASSKEY = "passkey"
+    }
+
+    private fun storageCategoryKey(scope: String) = longPreferencesKey("last_storage_${scope}_category_id")
+    private fun storageKeePassKey(scope: String) = longPreferencesKey("last_storage_${scope}_keepass_database_id")
+    private fun storageBitwardenVaultKey(scope: String) = longPreferencesKey("last_storage_${scope}_bitwarden_vault_id")
+    private fun storageBitwardenFolderKey(scope: String) = stringPreferencesKey("last_storage_${scope}_bitwarden_folder_id")
+
+    private fun categoryFilterTypeKey(scope: String) = stringPreferencesKey("last_category_filter_${scope}_type")
+    private fun categoryFilterPrimaryKey(scope: String) = longPreferencesKey("last_category_filter_${scope}_primary_id")
+    private fun categoryFilterSecondaryKey(scope: String) = longPreferencesKey("last_category_filter_${scope}_secondary_id")
+    private fun categoryFilterTextKey(scope: String) = stringPreferencesKey("last_category_filter_${scope}_text")
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
         val storedOrder = preferences[BOTTOM_NAV_ORDER_KEY]
@@ -539,6 +576,52 @@ class SettingsManager(private val context: Context) {
             } else {
                 preferences[LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY] = text
             }
+        }
+    }
+
+    fun rememberedStorageTargetFlow(scope: String): Flow<RememberedStorageTarget> = dataStore.data.map { preferences ->
+        RememberedStorageTarget(
+            categoryId = preferences[storageCategoryKey(scope)],
+            keepassDatabaseId = preferences[storageKeePassKey(scope)],
+            bitwardenVaultId = preferences[storageBitwardenVaultKey(scope)],
+            bitwardenFolderId = preferences[storageBitwardenFolderKey(scope)]
+        )
+    }
+
+    suspend fun updateRememberedStorageTarget(scope: String, target: RememberedStorageTarget) {
+        dataStore.edit { preferences ->
+            val categoryKey = storageCategoryKey(scope)
+            val keepassKey = storageKeePassKey(scope)
+            val bitwardenVaultKey = storageBitwardenVaultKey(scope)
+            val bitwardenFolderKey = storageBitwardenFolderKey(scope)
+
+            if (target.categoryId != null) preferences[categoryKey] = target.categoryId else preferences.remove(categoryKey)
+            if (target.keepassDatabaseId != null) preferences[keepassKey] = target.keepassDatabaseId else preferences.remove(keepassKey)
+            if (target.bitwardenVaultId != null) preferences[bitwardenVaultKey] = target.bitwardenVaultId else preferences.remove(bitwardenVaultKey)
+            if (target.bitwardenFolderId.isNullOrBlank()) preferences.remove(bitwardenFolderKey) else preferences[bitwardenFolderKey] = target.bitwardenFolderId
+        }
+    }
+
+    fun categoryFilterStateFlow(scope: String): Flow<SavedCategoryFilterState> = dataStore.data.map { preferences ->
+        SavedCategoryFilterState(
+            type = preferences[categoryFilterTypeKey(scope)] ?: "all",
+            primaryId = preferences[categoryFilterPrimaryKey(scope)],
+            secondaryId = preferences[categoryFilterSecondaryKey(scope)],
+            text = preferences[categoryFilterTextKey(scope)]
+        )
+    }
+
+    suspend fun updateCategoryFilterState(scope: String, state: SavedCategoryFilterState) {
+        dataStore.edit { preferences ->
+            val typeKey = categoryFilterTypeKey(scope)
+            val primaryKey = categoryFilterPrimaryKey(scope)
+            val secondaryKey = categoryFilterSecondaryKey(scope)
+            val textKey = categoryFilterTextKey(scope)
+
+            preferences[typeKey] = state.type
+            if (state.primaryId != null) preferences[primaryKey] = state.primaryId else preferences.remove(primaryKey)
+            if (state.secondaryId != null) preferences[secondaryKey] = state.secondaryId else preferences.remove(secondaryKey)
+            if (state.text.isNullOrBlank()) preferences.remove(textKey) else preferences[textKey] = state.text
         }
     }
     

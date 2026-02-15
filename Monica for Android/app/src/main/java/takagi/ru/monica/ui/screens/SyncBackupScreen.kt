@@ -29,7 +29,6 @@ fun SyncBackupScreen(
     onNavigateToExportData: () -> Unit = {},
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
-    onNavigateToKeePass: () -> Unit = {},  // KeePass 兼容性配置入口
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
     isPlusActivated: Boolean = false
@@ -144,20 +143,6 @@ fun SyncBackupScreen(
                     title = stringResource(R.string.local_keepass_database),
                     description = stringResource(R.string.local_keepass_database_description),
                     onClick = onNavigateToLocalKeePass
-                )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 72.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                )
-
-                SyncBackupItem(
-                    icon = Icons.Default.Sync,
-                    title = stringResource(R.string.sync_backup_keepass_webdav_title),
-                    description = stringResource(R.string.sync_backup_keepass_webdav_desc),
-                    onClick = onNavigateToKeePass,
-                    enabled = isPlusActivated,
-                    badge = if (!isPlusActivated) "Plus" else null
                 )
             }
 

@@ -22,6 +22,9 @@ import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
+import java.util.Locale
+import takagi.ru.monica.utils.SavedCategoryFilterState
+import takagi.ru.monica.utils.SettingsManager
 
 /**
  * 验证器分类过滤器
@@ -54,12 +57,30 @@ class TotpViewModel(
     localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
     securityManager: SecurityManager? = null
 ) : ViewModel() {
+    companion object {
+        private const val FILTER_ALL = "all"
+        private const val FILTER_LOCAL = "local"
+        private const val FILTER_STARRED = "starred"
+        private const val FILTER_UNCATEGORIZED = "uncategorized"
+        private const val FILTER_LOCAL_STARRED = "local_starred"
+        private const val FILTER_LOCAL_UNCATEGORIZED = "local_uncategorized"
+        private const val FILTER_CUSTOM = "custom"
+        private const val FILTER_KEEPASS_DATABASE = "keepass_database"
+        private const val FILTER_KEEPASS_GROUP = "keepass_group"
+        private const val FILTER_KEEPASS_DATABASE_STARRED = "keepass_database_starred"
+        private const val FILTER_KEEPASS_DATABASE_UNCATEGORIZED = "keepass_database_uncategorized"
+        private const val FILTER_BITWARDEN_VAULT = "bitwarden_vault"
+        private const val FILTER_BITWARDEN_FOLDER = "bitwarden_folder"
+        private const val FILTER_BITWARDEN_VAULT_STARRED = "bitwarden_vault_starred"
+        private const val FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
+    }
 
     private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
         KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
     } else {
         null
     }
+    private val settingsManager = context?.let { SettingsManager(it.applicationContext) }
     
     // 搜索查询
     private val _searchQuery = MutableStateFlow("")
@@ -68,6 +89,10 @@ class TotpViewModel(
     // 分类过滤器
     private val _categoryFilter = MutableStateFlow<TotpCategoryFilter>(TotpCategoryFilter.All)
     val categoryFilter: StateFlow<TotpCategoryFilter> = _categoryFilter.asStateFlow()
+
+    init {
+        restoreLastCategoryFilter()
+    }
     
     // 分类列表（使用 PasswordRepository 获取）
     val categories: StateFlow<List<Category>> = passwordRepository.getAllCategories()
@@ -237,12 +262,81 @@ class TotpViewModel(
      */
     fun setCategoryFilter(filter: TotpCategoryFilter) {
         _categoryFilter.value = filter
+        persistCategoryFilter(filter)
         when (filter) {
             is TotpCategoryFilter.KeePassDatabase -> syncKeePassTotp(filter.databaseId)
             is TotpCategoryFilter.KeePassGroupFilter -> syncKeePassTotp(filter.databaseId)
             is TotpCategoryFilter.KeePassDatabaseStarred -> syncKeePassTotp(filter.databaseId)
             is TotpCategoryFilter.KeePassDatabaseUncategorized -> syncKeePassTotp(filter.databaseId)
             else -> Unit
+        }
+    }
+
+    private fun persistCategoryFilter(filter: TotpCategoryFilter) {
+        val manager = settingsManager ?: return
+        viewModelScope.launch {
+            manager.updateCategoryFilterState(
+                scope = SettingsManager.CategoryFilterScope.TOTP,
+                state = encodeCategoryFilter(filter)
+            )
+        }
+    }
+
+    private fun restoreLastCategoryFilter() {
+        val manager = settingsManager ?: return
+        viewModelScope.launch {
+            runCatching {
+                manager.categoryFilterStateFlow(SettingsManager.CategoryFilterScope.TOTP).first()
+            }.onSuccess { state ->
+                _categoryFilter.value = decodeCategoryFilter(state)
+            }
+        }
+    }
+
+    private fun encodeCategoryFilter(filter: TotpCategoryFilter): SavedCategoryFilterState = when (filter) {
+        TotpCategoryFilter.All -> SavedCategoryFilterState(type = FILTER_ALL)
+        TotpCategoryFilter.Local -> SavedCategoryFilterState(type = FILTER_LOCAL)
+        TotpCategoryFilter.Starred -> SavedCategoryFilterState(type = FILTER_STARRED)
+        TotpCategoryFilter.Uncategorized -> SavedCategoryFilterState(type = FILTER_UNCATEGORIZED)
+        TotpCategoryFilter.LocalStarred -> SavedCategoryFilterState(type = FILTER_LOCAL_STARRED)
+        TotpCategoryFilter.LocalUncategorized -> SavedCategoryFilterState(type = FILTER_LOCAL_UNCATEGORIZED)
+        is TotpCategoryFilter.Custom -> SavedCategoryFilterState(type = FILTER_CUSTOM, primaryId = filter.categoryId)
+        is TotpCategoryFilter.KeePassDatabase -> SavedCategoryFilterState(type = FILTER_KEEPASS_DATABASE, primaryId = filter.databaseId)
+        is TotpCategoryFilter.KeePassGroupFilter -> SavedCategoryFilterState(type = FILTER_KEEPASS_GROUP, primaryId = filter.databaseId, text = filter.groupPath)
+        is TotpCategoryFilter.KeePassDatabaseStarred -> SavedCategoryFilterState(type = FILTER_KEEPASS_DATABASE_STARRED, primaryId = filter.databaseId)
+        is TotpCategoryFilter.KeePassDatabaseUncategorized -> SavedCategoryFilterState(type = FILTER_KEEPASS_DATABASE_UNCATEGORIZED, primaryId = filter.databaseId)
+        is TotpCategoryFilter.BitwardenVault -> SavedCategoryFilterState(type = FILTER_BITWARDEN_VAULT, primaryId = filter.vaultId)
+        is TotpCategoryFilter.BitwardenFolderFilter -> SavedCategoryFilterState(type = FILTER_BITWARDEN_FOLDER, primaryId = filter.vaultId, text = filter.folderId)
+        is TotpCategoryFilter.BitwardenVaultStarred -> SavedCategoryFilterState(type = FILTER_BITWARDEN_VAULT_STARRED, primaryId = filter.vaultId)
+        is TotpCategoryFilter.BitwardenVaultUncategorized -> SavedCategoryFilterState(type = FILTER_BITWARDEN_VAULT_UNCATEGORIZED, primaryId = filter.vaultId)
+    }
+
+    private fun decodeCategoryFilter(state: SavedCategoryFilterState): TotpCategoryFilter {
+        return when (state.type.lowercase(Locale.ROOT)) {
+            FILTER_ALL -> TotpCategoryFilter.All
+            FILTER_LOCAL -> TotpCategoryFilter.Local
+            FILTER_STARRED -> TotpCategoryFilter.Starred
+            FILTER_UNCATEGORIZED -> TotpCategoryFilter.Uncategorized
+            FILTER_LOCAL_STARRED -> TotpCategoryFilter.LocalStarred
+            FILTER_LOCAL_UNCATEGORIZED -> TotpCategoryFilter.LocalUncategorized
+            FILTER_CUSTOM -> state.primaryId?.let { TotpCategoryFilter.Custom(it) } ?: TotpCategoryFilter.All
+            FILTER_KEEPASS_DATABASE -> state.primaryId?.let { TotpCategoryFilter.KeePassDatabase(it) } ?: TotpCategoryFilter.All
+            FILTER_KEEPASS_GROUP -> {
+                val databaseId = state.primaryId
+                val groupPath = state.text
+                if (databaseId != null && !groupPath.isNullOrBlank()) TotpCategoryFilter.KeePassGroupFilter(databaseId, groupPath) else TotpCategoryFilter.All
+            }
+            FILTER_KEEPASS_DATABASE_STARRED -> state.primaryId?.let { TotpCategoryFilter.KeePassDatabaseStarred(it) } ?: TotpCategoryFilter.All
+            FILTER_KEEPASS_DATABASE_UNCATEGORIZED -> state.primaryId?.let { TotpCategoryFilter.KeePassDatabaseUncategorized(it) } ?: TotpCategoryFilter.All
+            FILTER_BITWARDEN_VAULT -> state.primaryId?.let { TotpCategoryFilter.BitwardenVault(it) } ?: TotpCategoryFilter.All
+            FILTER_BITWARDEN_FOLDER -> {
+                val vaultId = state.primaryId
+                val folderId = state.text
+                if (vaultId != null && !folderId.isNullOrBlank()) TotpCategoryFilter.BitwardenFolderFilter(folderId, vaultId) else TotpCategoryFilter.All
+            }
+            FILTER_BITWARDEN_VAULT_STARRED -> state.primaryId?.let { TotpCategoryFilter.BitwardenVaultStarred(it) } ?: TotpCategoryFilter.All
+            FILTER_BITWARDEN_VAULT_UNCATEGORIZED -> state.primaryId?.let { TotpCategoryFilter.BitwardenVaultUncategorized(it) } ?: TotpCategoryFilter.All
+            else -> TotpCategoryFilter.All
         }
     }
 

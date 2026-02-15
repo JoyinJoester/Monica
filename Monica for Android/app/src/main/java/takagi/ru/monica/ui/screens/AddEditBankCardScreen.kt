@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.PasswordDatabase
@@ -32,6 +33,8 @@ import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.ui.components.DualPhotoPicker
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.utils.RememberedStorageTarget
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +46,8 @@ fun AddEditBankCardScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager(context) }
     
     var title by rememberSaveable { mutableStateOf("") }
     var cardNumber by rememberSaveable { mutableStateOf("") }
@@ -71,14 +76,28 @@ fun AddEditBankCardScreen(
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val rememberedStorageTarget by settingsManager
+        .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.BANK_CARD)
+        .collectAsState(initial = null as RememberedStorageTarget?)
 
     LaunchedEffect(Unit) {
         bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
+    LaunchedEffect(cardId, hasAppliedInitialStorage, rememberedStorageTarget) {
+        if (cardId != null || hasAppliedInitialStorage) return@LaunchedEffect
+        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
+        selectedCategoryId = remembered.categoryId
+        keepassDatabaseId = remembered.keepassDatabaseId
+        bitwardenVaultId = remembered.bitwardenVaultId
+        bitwardenFolderId = remembered.bitwardenFolderId
+        hasAppliedInitialStorage = true
     }
     
     // 如果是编辑模式，加载现有数据
@@ -183,6 +202,17 @@ fun AddEditBankCardScreen(
                 keepassDatabaseId = keepassDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
+            )
+        }
+        coroutineScope.launch {
+            settingsManager.updateRememberedStorageTarget(
+                scope = SettingsManager.StorageTargetScope.BANK_CARD,
+                target = RememberedStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
             )
         }
         onNavigateBack()

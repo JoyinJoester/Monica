@@ -224,9 +224,8 @@ fun UnifiedCategoryFilterBottomSheet(
 
     val canCreateLocal = onCreateCategoryWithName != null || onCreateCategory != null
     val canCreateBitwarden = onCreateBitwardenFolder != null && bitwardenVaults.isNotEmpty()
-    val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.isNotEmpty()
+    val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.any { !it.isWebDavDatabase() }
     val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
-    val webDavKeePassDatabases = keepassDatabases.filter { it.isWebDavDatabase() }
 
     @Composable
     fun KeePassDatabaseItems(databases: List<LocalKeePassDatabase>, forceWebDavBadge: Boolean) {
@@ -698,14 +697,6 @@ fun UnifiedCategoryFilterBottomSheet(
                     item {
                         StorageSectionCard(title = stringResource(R.string.local_keepass_database)) {
                             KeePassDatabaseItems(localKeePassDatabases, forceWebDavBadge = false)
-                        }
-                    }
-                }
-
-                if (webDavKeePassDatabases.isNotEmpty()) {
-                    item {
-                        StorageSectionCard(title = stringResource(R.string.keepass_webdav_database)) {
-                            KeePassDatabaseItems(webDavKeePassDatabases, forceWebDavBadge = true)
                         }
                     }
                 }

@@ -102,7 +102,7 @@ fun KeePassWebDavScreen(
     var isForcingOverwrite by remember { mutableStateOf(false) }
     var selectedFile by remember { mutableStateOf<KdbxFileInfo?>(null) }
     var forceOverwriteFile by remember { mutableStateOf<KdbxFileInfo?>(null) }
-    var conflictProtectionEnabled by remember { mutableStateOf(true) }
+    var conflictProtectionEnabled by remember { mutableStateOf(false) }
     var attachedRemotePaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     // 对话框状态
@@ -899,17 +899,26 @@ private fun ActionsCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Switch(
-                    checked = conflictProtectionEnabled,
-                    onCheckedChange = onConflictProtectionChange
-                )
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.keepass_webdav_conflict_protection),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.clickable { onConflictProtectionChange(!conflictProtectionEnabled) }
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
+
+            ConflictModeOption(
+                title = stringResource(R.string.keepass_webdav_conflict_mode_auto_title),
+                description = stringResource(R.string.keepass_webdav_conflict_mode_auto_desc),
+                selected = !conflictProtectionEnabled,
+                onClick = { onConflictProtectionChange(false) }
+            )
+
+            ConflictModeOption(
+                title = stringResource(R.string.keepass_webdav_conflict_mode_strict_title),
+                description = stringResource(R.string.keepass_webdav_conflict_mode_strict_desc),
+                selected = conflictProtectionEnabled,
+                onClick = { onConflictProtectionChange(true) }
+            )
+
             Text(
                 text = if (conflictProtectionEnabled) {
                     stringResource(R.string.keepass_webdav_conflict_protection_enabled_hint)
@@ -1149,6 +1158,42 @@ private fun KdbxFileItem(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ConflictModeOption(
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onClick
+        )
+        Column(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .fillMaxWidth()
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

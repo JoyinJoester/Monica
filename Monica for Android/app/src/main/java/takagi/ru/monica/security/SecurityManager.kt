@@ -33,6 +33,12 @@ class SecurityManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isVerificationDisabled = false
     private var cachedMdk: ByteArray? = null
+    @Volatile
+    private var mdkAuthUnavailableUntilMillis: Long = 0L
+    @Volatile
+    private var hasLoggedMdkAuthExpiredWarning = false
+    @Volatile
+    private var hasLoggedMdkFallbackEncryption = false
 
     init {
         scope.launch {
@@ -446,6 +452,10 @@ class SecurityManager(private val context: Context) {
 
     private fun getMdkForCrypto(): ByteArray? {
         cachedMdk?.let { return it }
+        val now = System.currentTimeMillis()
+        if (now < mdkAuthUnavailableUntilMillis) {
+            return null
+        }
         val ready = sharedPreferences.getBoolean(MDK_READY_KEY, false)
         if (!ready) return null
         val ksBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null) ?: return null
@@ -459,6 +469,9 @@ class SecurityManager(private val context: Context) {
             cipher.init(Cipher.DECRYPT_MODE, ksKey, spec)
             val mdk = cipher.doFinal(enc)
             cachedMdk = mdk
+            mdkAuthUnavailableUntilMillis = 0L
+            hasLoggedMdkAuthExpiredWarning = false
+            hasLoggedMdkFallbackEncryption = false
             mdk
         } catch (e: Exception) {
             // KeyPermanentlyInvalidatedException: 生物识别已更改，密钥永久失效
@@ -467,7 +480,12 @@ class SecurityManager(private val context: Context) {
                 throw e  // 密钥永久失效，必须抛出让用户重新设置
             }
             if (e is UserNotAuthenticatedException) {
-                android.util.Log.w("SecurityManager", "User authentication expired, MDK not available")
+                if (!hasLoggedMdkAuthExpiredWarning) {
+                    android.util.Log.w("SecurityManager", "User authentication expired, MDK not available")
+                    hasLoggedMdkAuthExpiredWarning = true
+                }
+                // Cooldown to avoid hot-looping keystore access when auth is expired.
+                mdkAuthUnavailableUntilMillis = System.currentTimeMillis() + 30_000L
                 return null  // 认证过期，返回 null 让调用方降级处理
             }
             null
@@ -507,7 +525,10 @@ class SecurityManager(private val context: Context) {
         
         // MDK 不可用，降级到 V1 加密
         // 注意：V1 使用主密钥派生，安全性较低但不需要生物识别认证
-        android.util.Log.d("SecurityManager", "MDK not available, using V1 encryption")
+        if (!hasLoggedMdkFallbackEncryption) {
+            android.util.Log.d("SecurityManager", "MDK not available, using V1 encryption")
+            hasLoggedMdkFallbackEncryption = true
+        }
         return encryptDataV1(data)
     }
 
