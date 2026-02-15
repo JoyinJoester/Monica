@@ -166,8 +166,8 @@ class BitwardenSyncWorker(
             val syncManager = getSyncQueueManager()
             
             if (syncManager == null) {
-                Log.w(TAG, "SyncQueueManager not available")
-                return Result.retry()
+                Log.w(TAG, "SyncQueueManager not available, skip this run")
+                return Result.success()
             }
             
             when (syncType) {

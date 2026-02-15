@@ -134,6 +134,18 @@ interface PasswordEntryDao {
     @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = :groupPath WHERE id IN (:ids)")
     suspend fun updateKeePassGroupForPasswords(ids: List<Long>, databaseId: Long, groupPath: String)
 
+    @Query(
+        """
+        UPDATE password_entries
+        SET bitwarden_vault_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_local_modified = 0
+        WHERE id IN (:ids)
+          AND isDeleted = 0
+        """
+    )
+    suspend fun clearBitwardenBindingForPasswords(ids: List<Long>)
+
     @Transaction
     suspend fun setGroupCover(id: Long, website: String) {
         // 先清除该分组的所有封面标记
@@ -414,7 +426,7 @@ interface PasswordEntryDao {
             bitwarden_local_modified = 0 
         WHERE id = :entryId
     """)
-    suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: Long)
+    suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: String?)
     
     @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
     fun getByBitwardenFolderIdFlow(folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
@@ -483,7 +495,7 @@ interface PasswordEntryDao {
      * 获取指定 Vault 的最后修改时间
      */
     @Query("SELECT MAX(bitwarden_revision_date) FROM password_entries WHERE bitwarden_vault_id = :vaultId")
-    suspend fun getLastBitwardenRevisionDate(vaultId: Long): Long?
+    suspend fun getLastBitwardenRevisionDate(vaultId: Long): String?
     
     // ==================== V2 多源密码库相关方法 ====================
     

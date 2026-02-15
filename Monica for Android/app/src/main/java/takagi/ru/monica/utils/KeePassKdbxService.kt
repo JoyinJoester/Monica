@@ -2,6 +2,7 @@ package takagi.ru.monica.utils
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import app.keemobile.kotpass.cryptography.EncryptedValue
 import app.keemobile.kotpass.database.Credentials
 import app.keemobile.kotpass.database.KeePassDatabase
@@ -15,7 +16,12 @@ import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
 import com.thegrizzlylabs.sardineandroid.Sardine
 import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -71,7 +77,17 @@ class KeePassKdbxService(
     private val securityManager: SecurityManager
 ) {
     companion object {
+        private const val TAG = "KeePassKdbxService"
         const val WEBDAV_PATH_PREFIX = "webdav://"
+        // Keep unknown-source cache short, but keep known internal files effectively "always warm".
+        private const val UNKNOWN_SOURCE_CACHE_TTL_MS = 60_000L
+        // DX-like strategy: apply mutation in memory first, persist to file asynchronously.
+        private const val ENABLE_ASYNC_MUTATION_COMMIT = true
+        private const val ASYNC_PERSIST_MAX_RETRY = 2
+        private const val ASYNC_PERSIST_RETRY_DELAY_MS = 250L
+        // Disable post-write full decode verification for normal writes to reduce save latency.
+        // The database is still encoded by the library and written atomically/with rollback paths.
+        private const val ENABLE_POST_WRITE_DECODE_VERIFICATION = false
         private const val KEEPASS_WEBDAV_PREFS_NAME = "keepass_webdav_config"
         private const val KEY_KEEPASS_USERNAME = "username"
         private const val KEY_KEEPASS_PASSWORD = "password"
@@ -89,10 +105,31 @@ class KeePassKdbxService(
         private val globalDecodeMutex = Mutex()
         // WebDAV 写入需要“读-改-写”原子化，避免同进程并发导致 ETag 冲突。
         private val globalMutationMutex = Mutex()
+        // Global single-writer queue, shared across all service instances.
+        private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val persistQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+        @Volatile
+        private var persistWorkerStarted = false
+
+        @Synchronized
+        private fun ensurePersistWorkerStarted() {
+            if (persistWorkerStarted) return
+            persistWorkerStarted = true
+            persistScope.launch {
+                for (task in persistQueue) {
+                    runCatching { task() }
+                        .onFailure { Log.e(TAG, "Async persist task failed", it) }
+                }
+            }
+        }
 
         fun toWebDavFilePath(remotePath: String): String {
             return WEBDAV_PATH_PREFIX + remotePath
         }
+    }
+    
+    init {
+        ensurePersistWorkerStarted()
     }
 
     private fun ensureWebDavKeepassEnabled(): Nothing {
@@ -104,13 +141,25 @@ class KeePassKdbxService(
         val credentials: Credentials,
         val keePassDatabase: KeePassDatabase,
         val sourceEtag: String?,
-        val sourceLastModified: String?
+        val sourceLastModified: String?,
+        val sourceSignature: DatabaseSourceSignature?
+    )
+
+    private data class CachedLoadedDatabase(
+        val loaded: LoadedDatabase,
+        val cachedAtMs: Long
+    )
+
+    private data class DatabaseSourceSignature(
+        val sizeBytes: Long,
+        val lastModifiedEpochMs: Long
     )
 
     private data class DatabaseSnapshot(
         val bytes: ByteArray,
         val etag: String?,
-        val lastModified: String?
+        val lastModified: String?,
+        val signature: DatabaseSourceSignature?
     )
 
     private data class MutationPlan<T>(
@@ -135,6 +184,7 @@ class KeePassKdbxService(
             .retryOnConnectionFailure(true)
             .build()
     }
+    private val loadedDatabaseCache = mutableMapOf<Long, CachedLoadedDatabase>()
 
     suspend fun verifyDatabase(
         databaseId: Long,
@@ -1221,49 +1271,71 @@ class KeePassKdbxService(
         mutation: (LoadedDatabase) -> MutationPlan<T>
     ): T {
         return globalMutationMutex.withLock {
-            var lastConflict: Exception? = null
-            val attempts = if (retryOnConflict) 2 else 1
-            repeat(attempts) { attempt ->
-                try {
-                    val loaded = loadDatabase(databaseId)
-                    val plan = mutation(loaded)
-                    writeDatabase(
-                        database = loaded.database,
-                        credentials = loaded.credentials,
-                        keePassDatabase = plan.updatedDatabase,
-                        sourceEtag = loaded.sourceEtag,
-                        sourceLastModified = loaded.sourceLastModified,
-                        forceOverwriteWebDav = plan.forceOverwriteWebDav
-                    )
-                    plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
-                    return@withLock plan.result
-                } catch (e: Exception) {
-                    val shouldRetry = retryOnConflict &&
-                        attempt == 0 &&
-                        isWebDavConflictError(e)
-                    if (shouldRetry) {
-                        lastConflict = e
-                    } else {
-                        throw e
+            if (ENABLE_ASYNC_MUTATION_COMMIT) {
+                val loaded = getCachedLoadedDatabase(databaseId) ?: loadDatabase(databaseId)
+                val plan = mutation(loaded)
+                val latestLoaded = LoadedDatabase(
+                    database = loaded.database,
+                    credentials = loaded.credentials,
+                    keePassDatabase = plan.updatedDatabase,
+                    sourceEtag = loaded.sourceEtag,
+                    sourceLastModified = loaded.sourceLastModified,
+                    sourceSignature = loaded.sourceSignature
+                )
+                cacheLoadedDatabase(latestLoaded)
+                plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
+                enqueueAsyncPersist(latestLoaded, plan.forceOverwriteWebDav)
+                return@withLock plan.result
+            } else {
+                var lastConflict: Exception? = null
+                val attempts = if (retryOnConflict) 2 else 1
+                repeat(attempts) { attempt ->
+                    try {
+                        val loaded = getCachedLoadedDatabase(databaseId) ?: loadDatabase(databaseId)
+                        val plan = mutation(loaded)
+                        writeDatabase(
+                            database = loaded.database,
+                            credentials = loaded.credentials,
+                            keePassDatabase = plan.updatedDatabase,
+                            sourceEtag = loaded.sourceEtag,
+                            sourceLastModified = loaded.sourceLastModified,
+                            forceOverwriteWebDav = plan.forceOverwriteWebDav
+                        )
+                        plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
+                        return@withLock plan.result
+                    } catch (e: Exception) {
+                        val shouldRetry = retryOnConflict &&
+                            attempt == 0 &&
+                            isWebDavConflictError(e)
+                        if (shouldRetry) {
+                            lastConflict = e
+                        } else {
+                            invalidateLoadedDatabaseCache(databaseId)
+                            throw e
+                        }
                     }
                 }
+                throw (lastConflict ?: Exception("KeePass 写入失败"))
             }
-            throw (lastConflict ?: Exception("KeePass 写入失败"))
         }
     }
 
     private suspend fun loadDatabase(databaseId: Long): LoadedDatabase {
+        getCachedLoadedDatabase(databaseId)?.let { return it }
         val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
         val credentials = buildCredentials(database)
         val snapshot = readDatabaseSnapshot(database)
         val keePassDatabase = decodeDatabase(snapshot.bytes, credentials)
-        return LoadedDatabase(
+        val loaded = LoadedDatabase(
             database = database,
             credentials = credentials,
             keePassDatabase = keePassDatabase,
             sourceEtag = snapshot.etag,
-            sourceLastModified = snapshot.lastModified
+            sourceLastModified = snapshot.lastModified,
+            sourceSignature = snapshot.signature
         )
+        cacheLoadedDatabase(loaded)
+        return loaded
     }
 
     private suspend fun decodeDatabase(bytes: ByteArray, credentials: Credentials): KeePassDatabase {
@@ -1317,11 +1389,15 @@ class KeePassKdbxService(
         return if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             val file = File(context.filesDir, database.filePath)
             if (!file.exists()) throw Exception("数据库文件不存在")
-            DatabaseSnapshot(bytes = file.readBytes(), etag = null, lastModified = null)
+            val signature = DatabaseSourceSignature(
+                sizeBytes = file.length(),
+                lastModifiedEpochMs = file.lastModified()
+            )
+            DatabaseSnapshot(bytes = file.readBytes(), etag = null, lastModified = null, signature = signature)
         } else {
             val uri = Uri.parse(database.filePath)
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?.let { DatabaseSnapshot(bytes = it, etag = null, lastModified = null) }
+                ?.let { DatabaseSnapshot(bytes = it, etag = null, lastModified = null, signature = null) }
                 ?: throw Exception("无法打开数据库文件")
         }
     }
@@ -1335,13 +1411,120 @@ class KeePassKdbxService(
         forceOverwriteWebDav: Boolean = false
     ) {
         val bytes = encodeDatabase(keePassDatabase)
-        decodeDatabase(bytes, credentials)
+        if (ENABLE_POST_WRITE_DECODE_VERIFICATION) {
+            decodeDatabase(bytes, credentials)
+        }
         if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
             ensureWebDavKeepassEnabled()
         } else if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             writeInternal(database, bytes)
         } else {
             writeExternal(database, bytes)
+        }
+        val updatedSignature = currentSourceSignature(database)
+        cacheLoadedDatabase(
+            LoadedDatabase(
+                database = database,
+                credentials = credentials,
+                keePassDatabase = keePassDatabase,
+                sourceEtag = sourceEtag,
+                sourceLastModified = sourceLastModified,
+                sourceSignature = updatedSignature
+            )
+        )
+    }
+
+    private suspend fun getCachedLoadedDatabase(databaseId: Long): LoadedDatabase? {
+        val now = System.currentTimeMillis()
+        val cached = synchronized(loadedDatabaseCache) { loadedDatabaseCache[databaseId] } ?: return null
+
+        val latestDatabase = runCatching { dao.getDatabaseById(databaseId) }.getOrNull() ?: return null
+        val previous = cached.loaded.database
+        val configChanged =
+            latestDatabase.filePath != previous.filePath ||
+                latestDatabase.storageLocation != previous.storageLocation ||
+                latestDatabase.keyFileUri != previous.keyFileUri ||
+                latestDatabase.encryptedPassword != previous.encryptedPassword
+        if (configChanged) {
+            invalidateLoadedDatabaseCache(databaseId)
+            return null
+        }
+
+        // Internal storage: keep cache warm as long as underlying file signature is unchanged.
+        val cachedSignature = cached.loaded.sourceSignature
+        if (cachedSignature != null) {
+            val currentSignature = currentSourceSignature(latestDatabase)
+            if (currentSignature == null || currentSignature != cachedSignature) {
+                invalidateLoadedDatabaseCache(databaseId)
+                return null
+            }
+        } else if (now - cached.cachedAtMs > UNKNOWN_SOURCE_CACHE_TTL_MS) {
+            // External URI source does not have cheap signature checks, so keep a bounded cache window.
+            invalidateLoadedDatabaseCache(databaseId)
+            return null
+        }
+
+        return cached.loaded.copy(database = latestDatabase)
+    }
+
+    private fun currentSourceSignature(database: LocalKeePassDatabase): DatabaseSourceSignature? {
+        if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) return null
+        if (database.storageLocation != KeePassStorageLocation.INTERNAL) return null
+        val file = File(context.filesDir, database.filePath)
+        if (!file.exists()) return null
+        return DatabaseSourceSignature(
+            sizeBytes = file.length(),
+            lastModifiedEpochMs = file.lastModified()
+        )
+    }
+
+    private fun cacheLoadedDatabase(loaded: LoadedDatabase) {
+        synchronized(loadedDatabaseCache) {
+            loadedDatabaseCache[loaded.database.id] = CachedLoadedDatabase(
+                loaded = loaded,
+                cachedAtMs = System.currentTimeMillis()
+            )
+        }
+    }
+
+    private fun invalidateLoadedDatabaseCache(databaseId: Long) {
+        synchronized(loadedDatabaseCache) {
+            loadedDatabaseCache.remove(databaseId)
+        }
+    }
+
+    private suspend fun enqueueAsyncPersist(
+        loaded: LoadedDatabase,
+        forceOverwriteWebDav: Boolean
+    ) {
+        val db = loaded.database
+        val credentials = loaded.credentials
+        val updated = loaded.keePassDatabase
+        val etag = loaded.sourceEtag
+        val lastModified = loaded.sourceLastModified
+        persistQueue.send {
+            var attempts = 0
+            var lastError: Exception? = null
+            while (attempts < ASYNC_PERSIST_MAX_RETRY) {
+                attempts++
+                try {
+                    writeDatabase(
+                        database = db,
+                        credentials = credentials,
+                        keePassDatabase = updated,
+                        sourceEtag = etag,
+                        sourceLastModified = lastModified,
+                        forceOverwriteWebDav = forceOverwriteWebDav
+                    )
+                    return@send
+                } catch (e: Exception) {
+                    lastError = e
+                    if (attempts < ASYNC_PERSIST_MAX_RETRY) {
+                        delay(ASYNC_PERSIST_RETRY_DELAY_MS)
+                    }
+                }
+            }
+            Log.e(TAG, "Async persist failed for databaseId=${db.id}", lastError)
         }
     }
 
@@ -1403,7 +1586,7 @@ class KeePassKdbxService(
             val data = response.body?.bytes() ?: throw Exception("WebDAV 返回空内容")
             val etag = response.header("ETag")
             val lastModified = response.header("Last-Modified")
-            return DatabaseSnapshot(bytes = data, etag = etag, lastModified = lastModified)
+            return DatabaseSnapshot(bytes = data, etag = etag, lastModified = lastModified, signature = null)
         }
     }
 

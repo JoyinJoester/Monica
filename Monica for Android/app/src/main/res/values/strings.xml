@@ -1634,7 +1634,6 @@
     <string name="extensions_more_coming_soon">More features coming soon…</string>
     <string name="copy_next_code_when_expiring">Copy next code when expiring</string>
     <string name="copy_next_code_when_expiring_description">When countdown is within 5 seconds, copy the next verification code</string>
-
     <!-- Sync &amp; Backup Page -->
     <string name="sync_backup_title">Database &amp; Backup</string>
     <string name="sync_backup_description">Manage databases, folders and backups</string>

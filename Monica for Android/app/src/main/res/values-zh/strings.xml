@@ -1476,7 +1476,7 @@
     <string name="extensions_more_coming_soon">更多功能即将推出…</string>
     <string name="copy_next_code_when_expiring">即将过期时复制新验证码</string>
     <string name="copy_next_code_when_expiring_description">倒计时剩余 5 秒内点击复制时，自动复制下一个验证码</string>
-    
+
     <!-- 同步与备份页面 -->
     <string name="sync_backup_title">数据库与备份</string>
     <string name="sync_backup_description">管理数据库、文件夹与备份</string>

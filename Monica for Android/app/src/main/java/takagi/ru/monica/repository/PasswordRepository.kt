@@ -105,6 +105,10 @@ class PasswordRepository(
     suspend fun updateKeePassGroupForPasswords(ids: List<Long>, databaseId: Long, groupPath: String) {
         passwordEntryDao.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
     }
+
+    suspend fun clearBitwardenBindingForPasswords(ids: List<Long>) {
+        passwordEntryDao.clearBitwardenBindingForPasswords(ids)
+    }
     
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>> {
         return passwordEntryDao.searchPasswordEntries(query)
