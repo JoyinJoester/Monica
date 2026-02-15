@@ -77,6 +77,10 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import java.util.Locale
 
+private const val MONICA_USERNAME_ALIAS_FIELD_TITLE = "__monica_username_alias"
+private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_alias_meta"
+private const val MONICA_USERNAME_ALIAS_META_VALUE = "migrated_v1"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditPasswordScreen(
@@ -179,6 +183,7 @@ fun AddEditPasswordScreen(
     // 自定义字段状态
     val customFields = remember { mutableStateListOf<CustomFieldDraft>() }
     var customFieldsExpanded by remember { mutableStateOf(false) }
+    var separatedUsername by rememberSaveable { mutableStateOf("") }
 
     // 折叠面板状态
     var personalInfoExpanded by remember { mutableStateOf(false) }
@@ -187,6 +192,7 @@ fun AddEditPasswordScreen(
 
     val isEditing = passwordId != null && passwordId > 0
     var hasAppliedFilterStorageDefaults by rememberSaveable(passwordId) { mutableStateOf(false) }
+    val usernameLabel = stringResource(R.string.autofill_username)
     
     // 字段可见性设置
     val fieldVisibility = settings.passwordFieldVisibility
@@ -317,6 +323,24 @@ fun AddEditPasswordScreen(
                         val existingDrafts = existingFields.map { field ->
                             CustomFieldDraft.fromCustomField(field)
                         }.toMutableList()
+
+                        val hasAliasMeta = existingDrafts.any {
+                            it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE &&
+                                it.value == MONICA_USERNAME_ALIAS_META_VALUE
+                        }
+                        val aliasDraft = existingDrafts.firstOrNull {
+                            it.title == MONICA_USERNAME_ALIAS_FIELD_TITLE ||
+                                (hasAliasMeta && it.title == usernameLabel)
+                        }
+                        if (aliasDraft != null) {
+                            separatedUsername = aliasDraft.value
+                        }
+
+                        // 内部转换字段始终不在普通自定义字段列表中显示
+                        existingDrafts.removeAll {
+                            it.title == MONICA_USERNAME_ALIAS_FIELD_TITLE ||
+                                it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE
+                        }
                         
                         // 获取预设字段并标记
                         // 检查现有字段是否匹配预设（按标题匹配）
@@ -419,8 +443,30 @@ fun AddEditPasswordScreen(
                 ssoRefEntryId = ssoRefEntryId
             )
 
-            // 快照自定义字段
-            val currentCustomFields = customFields.toList()
+            // 快照自定义字段，并追加“用户名分离”内部转换字段（带标记）
+            val currentCustomFields = customFields.toMutableList().apply {
+                removeAll {
+                    it.title == MONICA_USERNAME_ALIAS_FIELD_TITLE ||
+                        it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE
+                }
+                val normalizedSeparatedUsername = separatedUsername.trim()
+                if (normalizedSeparatedUsername.isNotEmpty()) {
+                    add(
+                        CustomFieldDraft(
+                            id = CustomFieldDraft.nextTempId(),
+                            title = MONICA_USERNAME_ALIAS_FIELD_TITLE,
+                            value = normalizedSeparatedUsername
+                        )
+                    )
+                    add(
+                        CustomFieldDraft(
+                            id = CustomFieldDraft.nextTempId(),
+                            title = MONICA_USERNAME_ALIAS_META_FIELD_TITLE,
+                            value = MONICA_USERNAME_ALIAS_META_VALUE
+                        )
+                    )
+                }
+            }
 
             viewModel.saveGroupedPasswords(
                 originalIds = originalIds,
@@ -686,7 +732,7 @@ fun AddEditPasswordScreen(
                             OutlinedTextField(
                                 value = username,
                                 onValueChange = { username = it },
-                                label = { Text(stringResource(R.string.username_email)) },
+                                label = { Text(stringResource(R.string.field_account)) },
                                 leadingIcon = { Icon(Icons.Default.Person, null) },
                                 trailingIcon = {
                                     Row {
@@ -717,6 +763,19 @@ fun AddEditPasswordScreen(
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+
+                        AnimatedVisibility(visible = settings.separateUsernameAccountEnabled) {
+                            OutlinedTextField(
+                                value = separatedUsername,
+                                onValueChange = { separatedUsername = it },
+                                label = { Text(stringResource(R.string.autofill_username)) },
+                                leadingIcon = { Icon(Icons.Default.Badge, null) },
+                                modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                                 shape = RoundedCornerShape(12.dp)

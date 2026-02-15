@@ -280,6 +280,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateSeparateUsernameAccountEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateSeparateUsernameAccountEnabled(enabled)
+        }
+    }
+
     fun updateBitwardenUploadAll(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBitwardenUploadAll(enabled)

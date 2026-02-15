@@ -183,13 +183,9 @@ class AutofillPickerActivity : ComponentActivity() {
         android.util.Log.d("AutofillPicker", "Autofill IDs count: ${autofillIds?.size}")
         
         val securityManager = takagi.ru.monica.security.SecurityManager(applicationContext)
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(applicationContext)
         
-        // 解密
-        val decryptedUsername = if (password.username.contains("==") && password.username.length > 20) {
-            securityManager.decryptData(password.username)
-        } else {
-            password.username
-        }
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
         } catch (e: Exception) {
@@ -207,13 +203,14 @@ class AutofillPickerActivity : ComponentActivity() {
             autofillIds.forEachIndexed { index, autofillId ->
                 val hint = autofillHints?.getOrNull(index)
                 val value = when (hint) {
-                    EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name,
-                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name -> decryptedUsername
+                    EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
+                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
+                        if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
                     EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
                     EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name -> decryptedPassword
                     else -> {
                         if (autofillHints.isNullOrEmpty()) {
-                            if (index % 2 == 0) decryptedUsername else decryptedPassword
+                            if (index % 2 == 0) accountValue else decryptedPassword
                         } else {
                             null
                         }
@@ -227,7 +224,7 @@ class AutofillPickerActivity : ComponentActivity() {
 
             if (filledCount == 0) {
                 autofillIds.forEachIndexed { index, autofillId ->
-                    val fallbackValue = if (index % 2 == 0) decryptedUsername else decryptedPassword
+                    val fallbackValue = if (index % 2 == 0) accountValue else decryptedPassword
                     selectedDatasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
                 }
             }

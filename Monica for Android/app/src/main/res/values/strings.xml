@@ -143,6 +143,8 @@
     <string name="group_mode_smart">Smart (notes > web > app > title)</string>
     <string name="smart_deduplication">Smart Deduplication</string>
     <string name="smart_deduplication_desc">Merge duplicate entries from different sources in \'All\' view</string>
+    <string name="separate_username_account_title">Separate Username/Account</string>
+    <string name="separate_username_account_desc">Experimental: treat account as an independent login identifier; autofill account instead of email aliases</string>
     <string name="filter_title">Filter</string>
     <string name="filter_monica">Monica</string>
     <string name="filter_bitwarden">Bitwarden</string>
@@ -164,6 +166,7 @@
     <string name="title_required">Title *</string>
     <string name="website_url">Website/URL</string>
     <string name="username_email">Username/Email</string>
+    <string name="field_account">Account</string>
     <string name="password_required">Password *</string>
     <string name="notes">Notes</string>
     <string name="generate_password">Generate password</string>

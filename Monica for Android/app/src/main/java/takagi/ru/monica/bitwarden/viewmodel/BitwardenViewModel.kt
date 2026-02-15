@@ -1,6 +1,8 @@
 package takagi.ru.monica.bitwarden.viewmodel
 
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -36,6 +38,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     
     companion object {
         private const val TAG = "BitwardenViewModel"
+        // Auto-sync is intentionally throttled to avoid UI jitter on frequent vault switching.
+        private const val AUTO_SYNC_MIN_INTERVAL_MS = 2 * 60 * 1000L
+        private const val AUTO_SYNC_DEDUP_WINDOW_MS = 15 * 1000L
     }
     
     // 仓库
@@ -109,6 +114,10 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // 一次性事件
     private val _events = MutableSharedFlow<BitwardenEvent>()
     val events = _events.asSharedFlow()
+
+    // Auto-sync runtime throttling state.
+    private val lastAutoSyncAttemptAtByVault = mutableMapOf<Long, Long>()
+    private val lastSuccessfulSyncAtByVault = mutableMapOf<Long, Long>()
     
     init {
         // 加载永不锁定设置
@@ -139,6 +148,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                         _unlockState.value = UnlockState.Unlocked
                         _sendState.value = SendState.Idle
                         loadVaultData(active.id)
+                        maybeTriggerSilentAutoSync(active, trigger = "loadVaults:activeUnlocked")
                     } else if (_isNeverLockEnabled.value) {
                         // 永不锁定模式：尝试从存储恢复解锁状态
                         Log.d(TAG, "永不锁定模式：尝试恢复 Vault 解锁状态")
@@ -147,6 +157,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                             _unlockState.value = UnlockState.Unlocked
                             _sendState.value = SendState.Idle
                             loadVaultData(active.id)
+                            maybeTriggerSilentAutoSync(active, trigger = "loadVaults:restoredUnlock")
                             Log.d(TAG, "成功恢复 Vault 解锁状态")
                         } else {
                             _unlockState.value = UnlockState.Locked
@@ -289,6 +300,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     _unlockState.value = UnlockState.Unlocked
                     _sendState.value = SendState.Idle
                     loadVaultData(vault.id)
+                    maybeTriggerSilentAutoSync(vault, trigger = "unlock")
                     _events.emit(BitwardenEvent.ShowSuccess("Vault 已解锁"))
                 }
                 
@@ -365,6 +377,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             _unlockState.value = UnlockState.Unlocked
             viewModelScope.launch {
                 loadVaultData(vault.id)
+                maybeTriggerSilentAutoSync(vault, trigger = "setActiveVault")
             }
         } else {
             _unlockState.value = UnlockState.Locked
@@ -388,33 +401,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         }
         
         viewModelScope.launch {
-            _syncState.value = SyncState.Syncing
-            
-            when (val result = repository.sync(vault.id)) {
-                is BitwardenRepository.SyncResult.Success -> {
-                    _syncState.value = SyncState.Success(result.syncedCount, result.conflictCount)
-                    loadVaultData(vault.id)
-                    
-                    if (result.conflictCount > 0) {
-                        _events.emit(BitwardenEvent.ShowWarning("同步完成，但有 ${result.conflictCount} 个冲突需要处理"))
-                    } else {
-                        _events.emit(BitwardenEvent.ShowSuccess("同步完成，共 ${result.syncedCount} 条记录"))
-                    }
-                }
-                
-                is BitwardenRepository.SyncResult.Error -> {
-                    _syncState.value = SyncState.Error(result.message)
-                    _events.emit(BitwardenEvent.ShowError("同步失败: ${result.message}"))
-                }
-                
-                is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
-                    _syncState.value = SyncState.Error("空 Vault 保护已触发")
-                    _events.emit(BitwardenEvent.ShowWarning(
-                        "服务器返回空数据，本地有 ${result.localCount} 条记录。" +
-                        "请使用 V2 界面处理此情况。"
-                    ))
-                }
-            }
+            runSync(vault = vault, silent = false)
         }
     }
 
@@ -679,6 +666,101 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun loadConflicts() {
         val vault = _activeVault.value ?: return
         _conflicts.value = repository.getConflictBackups(vault.id)
+    }
+
+    private fun maybeTriggerSilentAutoSync(vault: BitwardenVault, trigger: String) {
+        if (!shouldRunSilentAutoSync(vault)) return
+        viewModelScope.launch {
+            Log.d(TAG, "Trigger silent auto sync: vault=${vault.id}, reason=$trigger")
+            runSync(vault = vault, silent = true)
+        }
+    }
+
+    private fun shouldRunSilentAutoSync(vault: BitwardenVault): Boolean {
+        if (!_isAutoSyncEnabled.value) return false
+        if (_syncState.value is SyncState.Syncing) return false
+        if (!repository.isVaultUnlocked(vault.id)) return false
+        if (!canSyncOnCurrentNetwork()) return false
+
+        val now = System.currentTimeMillis()
+        val lastAttempt = lastAutoSyncAttemptAtByVault[vault.id] ?: 0L
+        if (now - lastAttempt < AUTO_SYNC_DEDUP_WINDOW_MS) return false
+
+        val lastSuccessful = lastSuccessfulSyncAtByVault[vault.id]
+            ?: vault.lastSyncAt
+            ?: 0L
+        if (lastSuccessful > 0L && now - lastSuccessful < AUTO_SYNC_MIN_INTERVAL_MS) return false
+
+        lastAutoSyncAttemptAtByVault[vault.id] = now
+        return true
+    }
+
+    private fun canSyncOnCurrentNetwork(): Boolean {
+        val connectivityManager = getApplication<Application>()
+            .getSystemService(ConnectivityManager::class.java) ?: return false
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false
+        if (_isSyncOnWifiOnly.value &&
+            !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        ) {
+            return false
+        }
+        return true
+    }
+
+    private suspend fun runSync(vault: BitwardenVault, silent: Boolean) {
+        if (!silent) {
+            _syncState.value = SyncState.Syncing
+        }
+
+        when (val result = repository.sync(vault.id)) {
+            is BitwardenRepository.SyncResult.Success -> {
+                if (!silent) {
+                    _syncState.value = SyncState.Success(result.syncedCount, result.conflictCount)
+                }
+                lastSuccessfulSyncAtByVault[vault.id] = System.currentTimeMillis()
+                if (!silent) {
+                    loadVaultData(vault.id)
+                }
+
+                if (!silent) {
+                    if (result.conflictCount > 0) {
+                        _events.emit(BitwardenEvent.ShowWarning("同步完成，但有 ${result.conflictCount} 个冲突需要处理"))
+                    } else {
+                        _events.emit(BitwardenEvent.ShowSuccess("同步完成，共 ${result.syncedCount} 条记录"))
+                    }
+                }
+            }
+
+            is BitwardenRepository.SyncResult.Error -> {
+                if (!silent) {
+                    _syncState.value = SyncState.Error(result.message)
+                }
+                if (!silent) {
+                    _events.emit(BitwardenEvent.ShowError("同步失败: ${result.message}"))
+                } else {
+                    Log.w(TAG, "Silent auto sync failed: ${result.message}")
+                }
+            }
+
+            is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                if (!silent) {
+                    _syncState.value = SyncState.Error("空 Vault 保护已触发")
+                }
+                if (!silent) {
+                    _events.emit(BitwardenEvent.ShowWarning(
+                        "服务器返回空数据，本地有 ${result.localCount} 条记录。" +
+                            "请使用 V2 界面处理此情况。"
+                    ))
+                } else {
+                    Log.w(
+                        TAG,
+                        "Silent auto sync blocked by empty-vault protection: local=${result.localCount}, server=${result.serverCount}"
+                    )
+                }
+            }
+        }
     }
     
     // ==================== 状态类型 ====================

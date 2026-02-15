@@ -1469,6 +1469,10 @@ fun MonicaContent(
                 onSmartDeduplicationEnabledChange = { enabled ->
                     settingsViewModel.updateSmartDeduplicationEnabled(enabled)
                 },
+                separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
+                onSeparateUsernameAccountEnabledChange = { enabled ->
+                    settingsViewModel.updateSeparateUsernameAccountEnabled(enabled)
+                },
                 passwordCardDisplayMode = settings.passwordCardDisplayMode,
                 onPasswordCardDisplayModeChange = { mode ->
                     settingsViewModel.updatePasswordCardDisplayMode(mode)

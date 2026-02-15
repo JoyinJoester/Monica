@@ -549,15 +549,8 @@ object AutofillPickerLauncher {
         if (fillTargets.isEmpty()) return null
 
         val securityManager = takagi.ru.monica.security.SecurityManager(context)
-        val decryptedUsername = try {
-            if (password.username.contains("==") && password.username.length > 20) {
-                securityManager.decryptData(password.username)
-            } else {
-                password.username
-            }
-        } catch (_: Exception) {
-            password.username
-        }
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(context)
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
         } catch (_: Exception) {
@@ -565,8 +558,8 @@ object AutofillPickerLauncher {
         }
 
         val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
-            setTextViewText(R.id.text_title, password.title.ifBlank { decryptedUsername })
-            setTextViewText(R.id.text_username, decryptedUsername)
+            setTextViewText(R.id.text_title, password.title.ifBlank { accountValue })
+            setTextViewText(R.id.text_username, accountValue)
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
 
@@ -574,8 +567,9 @@ object AutofillPickerLauncher {
         var hasValue = false
         fillTargets.forEach { item ->
             val value = when (item.hint) {
-                EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> decryptedUsername
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME -> accountValue
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ->
+                    if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
                 EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> decryptedPassword
                 else -> null
@@ -603,10 +597,12 @@ object AutofillPickerLauncher {
         
         // 初始化 SecurityManager 用于解密密码
         val securityManager = takagi.ru.monica.security.SecurityManager(context)
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(context)
         
         // 创建RemoteViews
         val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
-            setTextViewText(R.id.text_title, password.title.ifEmpty { password.username })
+            setTextViewText(R.id.text_title, password.title.ifEmpty { accountValue })
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
         
@@ -616,18 +612,19 @@ object AutofillPickerLauncher {
         // 填充字段
         parsedStructure.items.forEach { item ->
             when (item.hint) {
-                EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
-                    // 用户名可能也需要解密
-                    val decryptedUsername = if (password.username.contains("==") && password.username.length > 20) {
-                        securityManager.decryptData(password.username)
-                    } else {
-                        password.username
-                    }
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME -> {
                     datasetBuilder.setValue(
                         item.id,
-                        android.view.autofill.AutofillValue.forText(decryptedUsername)
+                        android.view.autofill.AutofillValue.forText(accountValue)
                     )
+                }
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                    if (fillEmailWithAccount || accountValue.contains("@")) {
+                        datasetBuilder.setValue(
+                            item.id,
+                            android.view.autofill.AutofillValue.forText(accountValue)
+                        )
+                    }
                 }
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
                 EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {

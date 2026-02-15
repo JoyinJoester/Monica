@@ -97,6 +97,7 @@ class SettingsManager(private val context: Context) {
 
         // 智能去重
         private val SMART_DEDUPLICATION_ENABLED_KEY = booleanPreferencesKey("smart_deduplication_enabled")
+        private val SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY = booleanPreferencesKey("separate_username_account_enabled")
         private val LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY = stringPreferencesKey("last_password_category_filter_type")
         private val LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY = longPreferencesKey("last_password_category_filter_primary_id")
         private val LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY = longPreferencesKey("last_password_category_filter_secondary_id")
@@ -217,6 +218,7 @@ class SettingsManager(private val context: Context) {
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
             smartDeduplicationEnabled = preferences[SMART_DEDUPLICATION_ENABLED_KEY] ?: true,
+            separateUsernameAccountEnabled = preferences[SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY] ?: false,
             lastPasswordCategoryFilterType = preferences[LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY] ?: "all",
             lastPasswordCategoryFilterPrimaryId = preferences[LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY],
             lastPasswordCategoryFilterSecondaryId = preferences[LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY],
@@ -550,6 +552,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateSmartDeduplicationEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[SMART_DEDUPLICATION_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateSeparateUsernameAccountEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY] = enabled
         }
     }
 

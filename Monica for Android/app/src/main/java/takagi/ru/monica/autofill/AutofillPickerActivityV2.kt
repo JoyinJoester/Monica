@@ -197,16 +197,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     private fun handleSmartCopy(password: PasswordEntry, usernameFirst: Boolean) {
         val securityManager = SecurityManager(applicationContext)
-        
-        val decryptedUsername = try {
-            if (password.username.contains("==") && password.username.length > 20) {
-                securityManager.decryptData(password.username)
-            } else {
-                password.username
-            }
-        } catch (e: Exception) {
-            password.username
-        }
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
         
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
@@ -218,7 +209,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             // Copy username first, queue password for notification
             SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
-                firstValue = decryptedUsername,
+                firstValue = accountValue,
                 firstLabel = getString(R.string.autofill_username),
                 secondValue = decryptedPassword,
                 secondLabel = getString(R.string.autofill_password)
@@ -230,7 +221,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 context = this,
                 firstValue = decryptedPassword,
                 firstLabel = getString(R.string.autofill_password),
-                secondValue = decryptedUsername,
+                secondValue = accountValue,
                 secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
@@ -245,17 +236,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     private fun handleAutofill(password: PasswordEntry, forceAddUri: Boolean) {
         val securityManager = SecurityManager(applicationContext)
-        
-        // 解密
-        val decryptedUsername = try {
-            if (password.username.contains("==") && password.username.length > 20) {
-                securityManager.decryptData(password.username)
-            } else {
-                password.username
-            }
-        } catch (e: Exception) {
-            password.username
-        }
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(applicationContext)
         
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
@@ -270,7 +252,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 context = this,
                 firstValue = decryptedPassword,
                 firstLabel = getString(R.string.autofill_password),
-                secondValue = decryptedUsername,
+                secondValue = accountValue,
                 secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
@@ -293,13 +275,14 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         autofillIds.forEachIndexed { index, autofillId ->
             val hint = hints?.getOrNull(index)
             val value = when (hint) {
-                EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name,
-                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name -> decryptedUsername
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
+                    if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
                 EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name -> decryptedPassword
                 else -> {
                     if (hints.isNullOrEmpty()) {
-                        if (index % 2 == 0) decryptedUsername else decryptedPassword
+                        if (index % 2 == 0) accountValue else decryptedPassword
                     } else {
                         null
                     }
@@ -313,7 +296,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         if (filledCount == 0) {
             autofillIds.forEachIndexed { index, autofillId ->
-                val fallbackValue = if (index % 2 == 0) decryptedUsername else decryptedPassword
+                val fallbackValue = if (index % 2 == 0) accountValue else decryptedPassword
                 datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
             }
         }

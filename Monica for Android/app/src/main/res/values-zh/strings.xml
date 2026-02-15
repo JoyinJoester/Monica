@@ -138,6 +138,8 @@
     <string name="display_options_menu_title">显示与分组</string>
     <string name="smart_deduplication">智能去重</string>
     <string name="smart_deduplication_desc">在“全部”视图中合并来自不同来源的重复条目</string>
+    <string name="separate_username_account_title">用户名/账号分离</string>
+    <string name="separate_username_account_desc">实验功能：将“账号”作为独立登录标识，自动填充时优先填账号而不是邮箱别名</string>
     <string name="group_mode_menu_title">堆叠方式</string>
     <string name="group_mode_smart">智能堆叠（备注>网站>应用>标题）</string>
     <string name="group_mode_smart_desc">优先备注，其次网站/应用，最后标题</string>
@@ -156,6 +158,7 @@
     <string name="title_required">标题 *</string>
     <string name="website_url">网站/网址</string>
     <string name="username_email">用户名/邮箱</string>
+    <string name="field_account">账号</string>
     <string name="password_required">密码 *</string>
     <string name="notes">备注</string>
     <string name="generate_password">生成密码</string>
