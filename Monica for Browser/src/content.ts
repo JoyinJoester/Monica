@@ -4,10 +4,10 @@
  */
 
 // Prevent duplicate injection - if already loaded, do nothing
-if ((window as Record<string, unknown>).__monica_content_loaded__) {
+if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
   console.log('[Monica] Content script already loaded, skipping');
 } else {
-  (window as Record<string, unknown>).__monica_content_loaded__ = true;
+  (window as unknown as Record<string, unknown>).__monica_content_loaded__ = true;
 
   // Types
   interface PasswordItem {
@@ -1020,10 +1020,9 @@ if ((window as Record<string, unknown>).__monica_content_loaded__) {
       const secret = item.getAttribute('data-secret') || '';
       const period = parseInt(item.getAttribute('data-period') || '30');
       const digits = parseInt(item.getAttribute('data-digits') || '6');
-      const algorithm = item.getAttribute('data-algorithm') || 'SHA1';
 
       // Start generating TOTP code
-      generate2FACode(item as HTMLElement, secret, period, digits, algorithm);
+      generate2FACode(item as HTMLElement, secret, period, digits);
 
       // Click to fill
       item.addEventListener('click', () => {
