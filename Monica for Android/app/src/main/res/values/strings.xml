@@ -786,7 +786,9 @@
     <string name="version_info_dialog_title">Version &amp; Links</string>
     <string name="version_info_github_label">GitHub</string>
     <string name="version_info_website_label">Website</string>
-    <string name="version_info_simple_icons_note">Includes icons from Simple Icons (CC0-1.0). Brand names and logos are trademarks of their respective owners.</string>
+    <string name="version_info_icon_source_label">Icon source</string>
+    <string name="version_info_icon_release_label">Icon version</string>
+    <string name="version_info_simple_icons_note">Includes locally bundled icons from Stratum Auth app (v1.4.0, GPL-3.0). Brand names and logos are trademarks of their respective owners.</string>
     <string name="custom_icon_button">Custom icon</string>
     <string name="custom_icon_dialog_title">Set custom icon</string>
     <string name="custom_icon_pick_simple">Choose from icon library</string>
@@ -794,6 +796,7 @@
     <string name="custom_icon_clear">Use website icon</string>
     <string name="custom_icon_search_hint">Search icons</string>
     <string name="custom_icon_search_empty">No matching icons found</string>
+    <string name="custom_icon_load_more">Load more icons (%1$d remaining)</string>
     <string name="custom_icon_upload_success">Icon uploaded</string>
     <string name="custom_icon_upload_failed">Upload failed: %1$s</string>
     

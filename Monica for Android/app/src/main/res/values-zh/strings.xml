@@ -739,7 +739,9 @@
     <string name="version_info_dialog_title">版本与链接</string>
     <string name="version_info_github_label">GitHub</string>
     <string name="version_info_website_label">官方网站</string>
-    <string name="version_info_simple_icons_note">图标资源包含 Simple Icons（CC0-1.0）。品牌名称与 Logo 的商标权归各自权利人所有。</string>
+    <string name="version_info_icon_source_label">图标来源</string>
+    <string name="version_info_icon_release_label">图标版本</string>
+    <string name="version_info_simple_icons_note">图标资源已本地打包，来源于 Stratum Auth app（v1.4.0，GPL-3.0）。品牌名称与 Logo 的商标权归各自权利人所有。</string>
     <string name="custom_icon_button">自定义图标</string>
     <string name="custom_icon_dialog_title">设置自定义图标</string>
     <string name="custom_icon_pick_simple">从图标库选择</string>
@@ -747,6 +749,7 @@
     <string name="custom_icon_clear">使用网站图标</string>
     <string name="custom_icon_search_hint">搜索图标</string>
     <string name="custom_icon_search_empty">没有匹配的图标</string>
+    <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
     <string name="settings_version_number">V1.0.25</string>

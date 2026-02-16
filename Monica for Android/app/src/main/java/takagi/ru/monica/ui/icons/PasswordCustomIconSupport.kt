@@ -1,17 +1,13 @@
 package takagi.ru.monica.ui.icons
 
 import android.content.Context
-import android.graphics.Color as AndroidColor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.net.Uri
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
 import android.util.Log
 import android.util.LruCache
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,21 +17,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import com.caverock.androidsvg.SVG
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.LinkedHashSet
 import java.util.Locale
 import kotlin.random.Random
 
 const val PASSWORD_ICON_TYPE_NONE = "NONE"
 const val PASSWORD_ICON_TYPE_SIMPLE = "SIMPLE_ICON"
 const val PASSWORD_ICON_TYPE_UPLOADED = "UPLOADED"
+private const val STRATUM_ICON_ASSET_ROOT = "stratum_icons"
+private const val STRATUM_ICON_ASSET_MAIN_DIR = "$STRATUM_ICON_ASSET_ROOT/icons"
+private const val STRATUM_ICON_ASSET_EXTRA_DIR = "$STRATUM_ICON_ASSET_ROOT/extraicons"
 
 data class SimpleIconOption(
     val slug: String,
@@ -43,83 +39,58 @@ data class SimpleIconOption(
 )
 
 object SimpleIconCatalog {
-    val options: List<SimpleIconOption> = listOf(
-        SimpleIconOption("google", "Google"),
-        SimpleIconOption("apple", "Apple"),
-        SimpleIconOption("microsoft", "Microsoft"),
-        SimpleIconOption("amazon", "Amazon"),
-        SimpleIconOption("adobe", "Adobe"),
-        SimpleIconOption("facebook", "Facebook"),
-        SimpleIconOption("instagram", "Instagram"),
-        SimpleIconOption("x", "X"),
-        SimpleIconOption("reddit", "Reddit"),
-        SimpleIconOption("tiktok", "TikTok"),
-        SimpleIconOption("youtube", "YouTube"),
-        SimpleIconOption("twitch", "Twitch"),
-        SimpleIconOption("discord", "Discord"),
-        SimpleIconOption("telegram", "Telegram"),
-        SimpleIconOption("wechat", "WeChat"),
-        SimpleIconOption("whatsapp", "WhatsApp"),
-        SimpleIconOption("line", "LINE"),
-        SimpleIconOption("github", "GitHub"),
-        SimpleIconOption("gitlab", "GitLab"),
-        SimpleIconOption("bitbucket", "Bitbucket"),
-        SimpleIconOption("stackoverflow", "Stack Overflow"),
-        SimpleIconOption("android", "Android"),
-        SimpleIconOption("androidstudio", "Android Studio"),
-        SimpleIconOption("jetpackcompose", "Jetpack Compose"),
-        SimpleIconOption("kotlin", "Kotlin"),
-        SimpleIconOption("java", "Java"),
-        SimpleIconOption("python", "Python"),
-        SimpleIconOption("javascript", "JavaScript"),
-        SimpleIconOption("typescript", "TypeScript"),
-        SimpleIconOption("react", "React"),
-        SimpleIconOption("vuejs", "Vue"),
-        SimpleIconOption("nextdotjs", "Next.js"),
-        SimpleIconOption("flutter", "Flutter"),
-        SimpleIconOption("docker", "Docker"),
-        SimpleIconOption("kubernetes", "Kubernetes"),
-        SimpleIconOption("nginx", "Nginx"),
-        SimpleIconOption("cloudflare", "Cloudflare"),
-        SimpleIconOption("digitalocean", "DigitalOcean"),
-        SimpleIconOption("vercel", "Vercel"),
-        SimpleIconOption("netlify", "Netlify"),
-        SimpleIconOption("aws", "AWS"),
-        SimpleIconOption("googlecloud", "Google Cloud"),
-        SimpleIconOption("firebase", "Firebase"),
-        SimpleIconOption("mysql", "MySQL"),
-        SimpleIconOption("postgresql", "PostgreSQL"),
-        SimpleIconOption("redis", "Redis"),
-        SimpleIconOption("mongodb", "MongoDB"),
-        SimpleIconOption("sqlite", "SQLite"),
-        SimpleIconOption("notion", "Notion"),
-        SimpleIconOption("slack", "Slack"),
-        SimpleIconOption("zoom", "Zoom"),
-        SimpleIconOption("dropbox", "Dropbox"),
-        SimpleIconOption("googledrive", "Google Drive"),
-        SimpleIconOption("onedrive", "OneDrive"),
-        SimpleIconOption("spotify", "Spotify"),
-        SimpleIconOption("steam", "Steam"),
-        SimpleIconOption("epicgames", "Epic Games"),
-        SimpleIconOption("playstation", "PlayStation"),
-        SimpleIconOption("nintendo", "Nintendo"),
-        SimpleIconOption("bitwarden", "Bitwarden"),
-        SimpleIconOption("keepassxc", "KeePassXC"),
-        SimpleIconOption("1password", "1Password"),
-        SimpleIconOption("paypal", "PayPal"),
-        SimpleIconOption("visa", "Visa"),
-        SimpleIconOption("mastercard", "Mastercard"),
-        SimpleIconOption("alipay", "Alipay"),
-        SimpleIconOption("wechatpay", "WeChat Pay")
-    ).sortedBy { it.label.lowercase(Locale.ROOT) }
+    @Volatile
+    private var cachedOptions: List<SimpleIconOption>? = null
 
-    fun search(query: String): List<SimpleIconOption> {
+    fun search(context: Context, query: String): List<SimpleIconOption> {
         val q = query.trim().lowercase(Locale.ROOT)
+        val options = getOptions(context)
         if (q.isEmpty()) return options
         return options.filter { option ->
             option.label.lowercase(Locale.ROOT).contains(q) ||
                 option.slug.lowercase(Locale.ROOT).contains(q)
         }
+    }
+
+    private fun getOptions(context: Context): List<SimpleIconOption> {
+        cachedOptions?.let { return it }
+        val slugs = LinkedHashSet<String>()
+        collectSlugs(context, STRATUM_ICON_ASSET_MAIN_DIR, slugs)
+        collectSlugs(context, STRATUM_ICON_ASSET_EXTRA_DIR, slugs)
+
+        val resolved = slugs.map { slug ->
+            SimpleIconOption(slug = slug, label = prettyLabel(slug))
+        }.sortedBy { it.label.lowercase(Locale.ROOT) }
+
+        cachedOptions = resolved
+        return resolved
+    }
+
+    private fun collectSlugs(context: Context, assetDir: String, output: MutableSet<String>) {
+        val files = runCatching { context.assets.list(assetDir).orEmpty() }.getOrDefault(emptyArray())
+        files.forEach { name ->
+            if (!name.endsWith(".png", ignoreCase = true)) return@forEach
+            val raw = name.removeSuffix(".png")
+            val normalized = if (raw.endsWith("_dark")) raw.removeSuffix("_dark") else raw
+            if (normalized.isNotBlank()) {
+                output.add(normalized.lowercase(Locale.ROOT))
+            }
+        }
+    }
+
+    private fun prettyLabel(slug: String): String {
+        val parts = slug.replace('_', ' ').replace('-', ' ')
+            .split(" ")
+            .filter { it.isNotBlank() }
+        return parts.joinToString(" ") { part ->
+            if (part.length <= 3) {
+                part.uppercase(Locale.ROOT)
+            } else {
+                part.replaceFirstChar { c ->
+                    if (c.isLowerCase()) c.titlecase(Locale.ROOT) else c.toString()
+                }
+            }
+        }.ifBlank { slug }
     }
 }
 
@@ -225,16 +196,14 @@ object PasswordCustomIconStore {
 
 private object SimpleIconCache {
     private const val TAG = "SimpleIconCache"
-    private const val DISK_DIR = "simple_icons"
-    private const val RENDER_SIZE_PX = 256
-    private const val SAFE_INSET_PX = 12
-    private const val CACHE_VERSION = "v4"
+    private const val DISK_DIR = "stratum_icons"
+    private const val CACHE_VERSION = "stratum_v1_4_0"
     private val memory = LruCache<String, ImageBitmap>(80)
 
-    suspend fun getIcon(context: Context, slug: String, hexColor: String): ImageBitmap? {
+    suspend fun getIcon(context: Context, slug: String, darkTheme: Boolean): ImageBitmap? {
         val normalizedSlug = normalizeSimpleIconSlug(slug)
         if (normalizedSlug.isEmpty()) return null
-        val key = "${normalizedSlug}_${hexColor}_$CACHE_VERSION"
+        val key = "${normalizedSlug}_${if (darkTheme) "dark" else "light"}_$CACHE_VERSION"
 
         memory.get(key)?.let { return it }
 
@@ -250,7 +219,7 @@ private object SimpleIconCache {
 
         return withContext(Dispatchers.IO) {
             runCatching {
-                val bitmap = fetchSimpleIconBitmap(normalizedSlug, hexColor) ?: return@runCatching null
+                val bitmap = fetchSimpleIconBitmap(context, normalizedSlug, darkTheme) ?: return@runCatching null
                 FileOutputStream(diskFile).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                     out.flush()
@@ -259,70 +228,39 @@ private object SimpleIconCache {
                 memory.put(key, image)
                 image
             }.onFailure { error ->
-                Log.w(TAG, "Failed to load simple icon: slug=$slug", error)
+                Log.w(TAG, "Failed to load stratum icon: slug=$slug", error)
             }.getOrNull()
         }
     }
 
-    private fun fetchSimpleIconBitmap(normalizedSlug: String, hexColor: String): Bitmap? {
-        val endpoints = listOf(
-            "https://api.iconify.design/simple-icons:$normalizedSlug.svg?color=$hexColor",
-            "https://api.iconify.design/simple-icons/$normalizedSlug.svg?color=$hexColor",
-            "https://cdn.simpleicons.org/$normalizedSlug/$hexColor"
-        )
+    private fun fetchSimpleIconBitmap(context: Context, normalizedSlug: String, darkTheme: Boolean): Bitmap? {
+        val candidates = if (darkTheme) {
+            listOf(
+                "$STRATUM_ICON_ASSET_MAIN_DIR/${normalizedSlug}_dark.png",
+                "$STRATUM_ICON_ASSET_EXTRA_DIR/${normalizedSlug}_dark.png",
+                "$STRATUM_ICON_ASSET_MAIN_DIR/$normalizedSlug.png",
+                "$STRATUM_ICON_ASSET_EXTRA_DIR/$normalizedSlug.png"
+            )
+        } else {
+            listOf(
+                "$STRATUM_ICON_ASSET_MAIN_DIR/$normalizedSlug.png",
+                "$STRATUM_ICON_ASSET_EXTRA_DIR/$normalizedSlug.png",
+                "$STRATUM_ICON_ASSET_MAIN_DIR/${normalizedSlug}_dark.png",
+                "$STRATUM_ICON_ASSET_EXTRA_DIR/${normalizedSlug}_dark.png"
+            )
+        }
 
-        var lastError: Throwable? = null
-        for (endpoint in endpoints) {
+        for (assetPath in candidates) {
             val bitmap = runCatching {
-                val connection = URL(endpoint).openConnection() as HttpURLConnection
-                connection.connectTimeout = 6000
-                connection.readTimeout = 6000
-                connection.instanceFollowRedirects = true
-                try {
-                    connection.inputStream.use { stream ->
-                        val svg = SVG.getFromInputStream(stream)
-                        val innerSize = (RENDER_SIZE_PX - SAFE_INSET_PX * 2).toFloat().coerceAtLeast(1f)
-                        svg.setDocumentWidth(innerSize)
-                        svg.setDocumentHeight(innerSize)
-                        Bitmap.createBitmap(RENDER_SIZE_PX, RENDER_SIZE_PX, Bitmap.Config.ARGB_8888).apply {
-                            val canvas = Canvas(this)
-                            canvas.translate(SAFE_INSET_PX.toFloat(), SAFE_INSET_PX.toFloat())
-                            svg.renderToCanvas(canvas)
-                        }
-                    }
-                } finally {
-                    connection.disconnect()
+                context.assets.open(assetPath).use { stream ->
+                    BitmapFactory.decodeStream(stream)
                 }
-            }.onFailure {
-                lastError = it
             }.getOrNull()
-
             if (bitmap != null) {
-                return tintBitmap(bitmap, hexColor)
+                return bitmap
             }
         }
-
-        lastError?.let { throw it }
         return null
-    }
-
-    private fun tintBitmap(source: Bitmap, hexColor: String): Bitmap {
-        val targetColor = runCatching {
-            AndroidColor.parseColor("#$hexColor")
-        }.getOrElse {
-            return source
-        }
-
-        val tinted = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            colorFilter = PorterDuffColorFilter(targetColor, PorterDuff.Mode.SRC_IN)
-        }
-        val canvas = Canvas(tinted)
-        canvas.drawBitmap(source, 0f, 0f, paint)
-        if (source != tinted) {
-            source.recycle()
-        }
-        return tinted
     }
 }
 
@@ -348,18 +286,17 @@ fun rememberUploadedPasswordIcon(value: String?): ImageBitmap? {
 }
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun rememberSimpleIconBitmap(slug: String?, tintColor: Color, enabled: Boolean = true): ImageBitmap? {
     val context = LocalContext.current
-    val colorHex = remember(tintColor) {
-        String.format("%06X", (0xFFFFFF and tintColor.toArgb()))
-    }
-    var icon by remember(slug, colorHex, enabled) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(slug, colorHex, enabled) {
+    val darkTheme = isSystemInDarkTheme()
+    var icon by remember(slug, darkTheme, enabled) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(slug, darkTheme, enabled) {
         if (!enabled || slug.isNullOrBlank()) {
             icon = null
             return@LaunchedEffect
         }
-        icon = SimpleIconCache.getIcon(context, slug, colorHex)
+        icon = SimpleIconCache.getIcon(context, slug, darkTheme)
     }
     return icon
 }

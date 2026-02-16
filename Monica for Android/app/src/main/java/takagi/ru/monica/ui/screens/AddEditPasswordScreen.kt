@@ -71,6 +71,7 @@ import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
 import takagi.ru.monica.ui.icons.PasswordCustomIconStore
+import takagi.ru.monica.ui.icons.SimpleIconCatalog
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.utils.PasswordGenerator
@@ -91,6 +92,7 @@ import java.util.Locale
 private const val MONICA_USERNAME_ALIAS_FIELD_TITLE = "__monica_username_alias"
 private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_alias_meta"
 private const val MONICA_USERNAME_ALIAS_META_VALUE = "migrated_v1"
+private const val ICON_PICKER_PAGE_SIZE = 120
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -205,6 +207,8 @@ fun AddEditPasswordScreen(
     var hasSavedSuccessfully by remember { mutableStateOf(false) }
 
     var showCustomIconDialog by remember { mutableStateOf(false) }
+    var showSimpleIconPicker by remember { mutableStateOf(false) }
+    var customIconSearchQuery by rememberSaveable { mutableStateOf("") }
 
     // 折叠面板状态
     var personalInfoExpanded by remember { mutableStateOf(false) }
@@ -1502,6 +1506,16 @@ fun AddEditPasswordScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = {
+                            customIconSearchQuery = ""
+                            showCustomIconDialog = false
+                            showSimpleIconPicker = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.custom_icon_pick_simple))
+                    }
+                    TextButton(
+                        onClick = {
                             showCustomIconDialog = false
                             imagePickerLauncher.launch("image/*")
                         },
@@ -1537,6 +1551,137 @@ fun AddEditPasswordScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showCustomIconDialog = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        )
+    }
+
+    if (showSimpleIconPicker) {
+        var iconVisibleCount by rememberSaveable { mutableStateOf(ICON_PICKER_PAGE_SIZE) }
+        val iconOptions = remember(context, customIconSearchQuery) {
+            SimpleIconCatalog.search(context, customIconSearchQuery)
+        }
+        LaunchedEffect(customIconSearchQuery, showSimpleIconPicker) {
+            if (showSimpleIconPicker) {
+                iconVisibleCount = ICON_PICKER_PAGE_SIZE
+            }
+        }
+        val visibleOptions = remember(iconOptions, iconVisibleCount) {
+            iconOptions.take(iconVisibleCount.coerceAtMost(iconOptions.size))
+        }
+        AlertDialog(
+            onDismissRequest = { showSimpleIconPicker = false },
+            title = { Text(stringResource(R.string.custom_icon_pick_simple)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = customIconSearchQuery,
+                        onValueChange = {
+                            customIconSearchQuery = it
+                            iconVisibleCount = ICON_PICKER_PAGE_SIZE
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        placeholder = { Text(stringResource(R.string.custom_icon_search_hint)) }
+                    )
+                    if (iconOptions.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.custom_icon_search_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(visibleOptions, key = { it.slug }) { option ->
+                                val optionBitmap = rememberSimpleIconBitmap(
+                                    slug = option.slug,
+                                    tintColor = MaterialTheme.colorScheme.primary,
+                                    enabled = settings.iconCardsEnabled
+                                )
+                                val selected = customIconType == PASSWORD_ICON_TYPE_SIMPLE && customIconValue == option.slug
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                                                normalizedIconFileName(customIconValue)
+                                            } else {
+                                                null
+                                            }
+                                            if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                                                PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                                            }
+                                            customIconType = PASSWORD_ICON_TYPE_SIMPLE
+                                            customIconValue = option.slug
+                                            customIconUpdatedAt = System.currentTimeMillis()
+                                            showSimpleIconPicker = false
+                                        },
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceContainerLow
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        if (optionBitmap != null) {
+                                            Image(
+                                                bitmap = optionBitmap,
+                                                contentDescription = option.label,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.Image,
+                                                contentDescription = option.label,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = option.label,
+                                            modifier = Modifier.weight(1f),
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                }
+                            }
+                            if (visibleOptions.size < iconOptions.size) {
+                                item("load_more_icons") {
+                                    TextButton(
+                                        onClick = {
+                                            iconVisibleCount = (iconVisibleCount + ICON_PICKER_PAGE_SIZE)
+                                                .coerceAtMost(iconOptions.size)
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.custom_icon_load_more,
+                                                iconOptions.size - visibleOptions.size
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSimpleIconPicker = false }) {
                     Text(stringResource(R.string.close))
                 }
             }

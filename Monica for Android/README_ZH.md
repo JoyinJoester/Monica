@@ -284,7 +284,7 @@ cd Monica
 
 ## 🧩 第三方图标标注
 
-- 本项目包含来自 [Simple Icons](https://github.com/simple-icons/simple-icons) 的图标资源（CC0-1.0）。
+- 本项目已本地打包来自 [Stratum Auth app](https://github.com/stratumauth/app) 的图标资源（版本 [v1.4.0](https://github.com/stratumauth/app/releases/tag/v1.4.0)，目录 [icons](https://github.com/stratumauth/app/tree/v1.4.0/icons) / [extraicons](https://github.com/stratumauth/app/tree/v1.4.0/extraicons)，GPL-3.0）。
 - 品牌名称与 Logo 的商标权归各自权利人所有。
 
 ## 📄 许可证

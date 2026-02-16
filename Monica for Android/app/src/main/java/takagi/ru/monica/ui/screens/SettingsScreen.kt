@@ -793,6 +793,8 @@ fun SettingsScreen(
                 Column {
                     val githubUrl = "https://github.com/JoyinJoester/Monica"
                     val websiteUrl = "https://joyinjoester.github.io/Monica/"
+                    val iconSourceUrl = "https://github.com/stratumauth/app/tree/v1.4.0/icons"
+                    val iconReleaseUrl = "https://github.com/stratumauth/app/releases/tag/v1.4.0"
 
                     Text(
                         text = stringResource(R.string.version_info_github_label),
@@ -816,6 +818,30 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.clickable { openExternalLink(websiteUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_icon_source_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = iconSourceUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(iconSourceUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_icon_release_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = iconReleaseUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(iconReleaseUrl) }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(

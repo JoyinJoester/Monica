@@ -178,8 +178,7 @@ dependencies {
     // BouncyCastle for Argon2 (Bitwarden KDF support)
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
 
-    // SVG parsing (for simple-icons remote SVG rendering)
-    implementation 'com.caverock:androidsvg-aar:1.4'
+    // Brand icon loading now uses remote PNG assets from Stratum Auth app
     
     // Testing
     testImplementation libs.junit
