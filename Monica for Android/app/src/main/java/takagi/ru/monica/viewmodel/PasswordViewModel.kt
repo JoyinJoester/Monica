@@ -29,6 +29,7 @@ import java.util.Date
 import java.net.URI
 import java.util.Locale
 
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 
 sealed class CategoryFilter {
@@ -82,6 +83,7 @@ class PasswordViewModel(
     
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
     private val settingsManager: takagi.ru.monica.utils.SettingsManager? = context?.let { takagi.ru.monica.utils.SettingsManager(it) }
+    private val bitwardenRepository: BitwardenRepository? = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
     private val keepassService = if (context != null && localKeePassDatabaseDao != null) {
         KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
     } else {
@@ -1190,7 +1192,49 @@ class PasswordViewModel(
             val trashEnabled = trashSettings?.value?.first ?: true
             val service = keepassService
             val keepassId = entry.keepassDatabaseId
-            
+            val bitwardenVaultId = entry.bitwardenVaultId
+            val bitwardenCipherId = entry.bitwardenCipherId
+            val isBitwardenCipher = bitwardenVaultId != null && !bitwardenCipherId.isNullOrBlank()
+
+            if (isBitwardenCipher) {
+                val queueResult = bitwardenRepository?.queueCipherDelete(
+                    vaultId = bitwardenVaultId!!,
+                    cipherId = bitwardenCipherId!!,
+                    entryId = entry.id
+                )
+                if (queueResult?.isFailure == true) {
+                    Log.e(
+                        "PasswordViewModel",
+                        "Queue Bitwarden delete failed: ${queueResult.exceptionOrNull()?.message}"
+                    )
+                    return@launch
+                }
+
+                if (service != null && keepassId != null) {
+                    val deleteResult = service.deletePasswordEntries(keepassId, listOf(entry))
+                    if (deleteResult.isFailure) {
+                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        return@launch
+                    }
+                }
+
+                // Bitwarden 删除采用 tombstone，防止下一次拉取把条目复活。
+                val softDeletedEntry = entry.copy(
+                    isDeleted = true,
+                    deletedAt = Date(),
+                    updatedAt = Date(),
+                    bitwardenLocalModified = true
+                )
+                repository.updatePasswordEntry(softDeletedEntry)
+                takagi.ru.monica.utils.OperationLogger.logDelete(
+                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+                    itemId = entry.id,
+                    itemTitle = entry.title,
+                    detail = "移入回收站（待同步删除）"
+                )
+                return@launch
+            }
+             
             if (trashEnabled) {
                 if (service != null && keepassId != null) {
                     val deleteResult = service.deletePasswordEntries(keepassId, listOf(entry))

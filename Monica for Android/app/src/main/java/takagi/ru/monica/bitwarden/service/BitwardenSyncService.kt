@@ -45,6 +45,7 @@ class BitwardenSyncService(
     private val conflictDao = database.bitwardenConflictBackupDao()
     private val pendingOpDao = database.bitwardenPendingOperationDao()
     private val passwordEntryDao = database.passwordEntryDao()
+    private val secureItemDao = database.secureItemDao()
     private val securityManager = SecurityManager(context)
     
     // 多类型 Cipher 同步处理器
@@ -161,6 +162,11 @@ class BitwardenSyncService(
         var ciphersUpdated = 0
         var conflictsDetected = 0
         var sendsSynced = 0
+        val activeServerCipherIds = response.ciphers
+            .asSequence()
+            .filter { it.deletedDate == null }
+            .map { it.id }
+            .toList()
         
         // 1. 同步文件夹
         response.folders.forEach { folderApi ->
@@ -214,7 +220,16 @@ class BitwardenSyncService(
                 android.util.Log.w(TAG, "Failed to sync cipher ${cipherApi.id}: ${e.message}")
             }
         }
-        
+
+        // 2.1 清理服务器已不存在的本地 Cipher（delete-wins）
+        if (activeServerCipherIds.isEmpty()) {
+            passwordEntryDao.deleteAllSyncedBitwardenEntries(vault.id)
+            secureItemDao.deleteAllSyncedBitwardenEntries(vault.id)
+        } else {
+            passwordEntryDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
+            secureItemDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
+        }
+
         // 3. 清理已删除的文件夹 (服务器上不存在的)
         val serverFolderIds = response.folders.map { it.id }
         folderDao.deleteNotIn(vault.id, serverFolderIds)
@@ -516,7 +531,7 @@ class BitwardenSyncService(
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
     ): Int = withContext(Dispatchers.IO) {
-        val pendingOps = pendingOpDao.getPendingOperationsByVault(vault.id)
+        val pendingOps = pendingOpDao.getRunnableOperationsByVault(vault.id)
         var processed = 0
         
         for (op in pendingOps) {
@@ -525,6 +540,7 @@ class BitwardenSyncService(
                     BitwardenPendingOperation.OP_CREATE -> processCreateOperation(vault, op, accessToken, symmetricKey)
                     BitwardenPendingOperation.OP_UPDATE -> processUpdateOperation(vault, op, accessToken, symmetricKey)
                     BitwardenPendingOperation.OP_DELETE -> processDeleteOperation(vault, op, accessToken)
+                    BitwardenPendingOperation.OP_RESTORE -> processRestoreOperation(vault, op, accessToken)
                     else -> false
                 }
                 
@@ -577,6 +593,15 @@ class BitwardenSyncService(
     ): Boolean {
         val cipherId = op.bitwardenCipherId ?: return false
         return deleteRemoteCipher(vault, cipherId, accessToken)
+    }
+
+    private suspend fun processRestoreOperation(
+        vault: BitwardenVault,
+        op: BitwardenPendingOperation,
+        accessToken: String
+    ): Boolean {
+        val cipherId = op.bitwardenCipherId ?: return false
+        return restoreRemoteCipher(vault, cipherId, accessToken)
     }
     
     // ========== 上传本地条目到 Bitwarden ==========
@@ -782,10 +807,29 @@ class BitwardenSyncService(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId
             )
-            
-            return response.isSuccessful
+             
+            return response.isSuccessful || response.code() == 404
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Delete remote cipher failed: ${e.message}", e)
+            return false
+        }
+    }
+
+    private suspend fun restoreRemoteCipher(
+        vault: BitwardenVault,
+        cipherId: String,
+        accessToken: String
+    ): Boolean {
+        try {
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.restoreCipher(
+                authorization = "Bearer $accessToken",
+                cipherId = cipherId
+            )
+
+            return response.isSuccessful || response.code() == 400 || response.code() == 404
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Restore remote cipher failed: ${e.message}", e)
             return false
         }
     }

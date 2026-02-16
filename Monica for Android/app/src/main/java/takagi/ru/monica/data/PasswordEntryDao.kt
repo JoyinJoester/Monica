@@ -346,8 +346,40 @@ interface PasswordEntryDao {
     /**
      * 根据 Bitwarden Cipher ID 获取所有条目（用于清理历史重复数据）
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId AND isDeleted = 0")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId")
     suspend fun getAllByBitwardenCipherId(cipherId: String): List<PasswordEntry>
+
+    /**
+     * 删除指定 Vault 下所有已同步的 Bitwarden 密码条目。
+     * 仅删除未进入回收站的条目，避免覆盖本地删除墓碑。
+     */
+    @Query("""
+        DELETE FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id IS NOT NULL
+          AND isDeleted = 0
+    """)
+    suspend fun deleteAllSyncedBitwardenEntries(vaultId: Long)
+
+    /**
+     * 清理服务器不存在的 Bitwarden 密码条目（delete-wins）。
+     */
+    @Query("""
+        DELETE FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id IS NOT NULL
+          AND isDeleted = 0
+          AND bitwarden_cipher_id NOT IN (:keepIds)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM bitwarden_pending_operations op
+              WHERE op.vault_id = :vaultId
+                AND op.bitwarden_cipher_id = password_entries.bitwarden_cipher_id
+                AND op.operation_type = 'RESTORE'
+                AND op.status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+          )
+    """)
+    suspend fun deleteBitwardenEntriesNotIn(vaultId: Long, keepIds: List<String>)
 
         /**
          * 查找本地重复条目（仅本地库）

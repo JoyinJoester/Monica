@@ -519,9 +519,10 @@ class BitwardenRepository(private val context: Context) {
      * 执行完整同步
      * 
      * 同步流程：
-     * 1. 从服务器拉取最新数据
-     * 2. 上传本地创建的条目到服务器
-     * 3. 上传本地修改的条目到服务器
+     * 1. 先处理本地待删除操作（delete）
+     * 2. 上传本地创建的条目到服务器（create）
+     * 3. 上传本地修改的条目到服务器（update）
+     * 4. 从服务器拉取最新数据（pull）
      */
     suspend fun sync(vaultId: Long): SyncResult = withContext(Dispatchers.IO) {
         syncMutex.withLock {
@@ -547,21 +548,24 @@ class BitwardenRepository(private val context: Context) {
                     }
                 }
 
-                // 1. 先上传本地创建的条目到服务器
+                // 1. 先处理本地待删除操作（delete）
+                val processedDeleteCount = syncService.processPendingOperations(vault, accessToken, symmetricKey)
+
+                // 2. 再上传本地创建的条目到服务器（create）
                 val uploadResult = syncService.uploadLocalEntries(vault, accessToken, symmetricKey)
                 val uploadedCount = when (uploadResult) {
                     is takagi.ru.monica.bitwarden.service.UploadResult.Success -> uploadResult.uploaded
                     else -> 0
                 }
 
-                // 2. 再上传本地已修改的条目到服务器
+                // 3. 上传本地已修改的条目到服务器（update）
                 val modifiedUploadResult = syncService.uploadModifiedEntries(vault, accessToken, symmetricKey)
                 val modifiedUploadedCount = when (modifiedUploadResult) {
                     is takagi.ru.monica.bitwarden.service.UploadResult.Success -> modifiedUploadResult.uploaded
                     else -> 0
                 }
 
-                // 3. 执行同步（从服务器拉取）
+                // 4. 执行同步（pull）
                 val result = syncService.fullSync(vault, accessToken, symmetricKey)
 
                 // 更新最后同步时间
@@ -570,7 +574,7 @@ class BitwardenRepository(private val context: Context) {
                 when (result) {
                     is ServiceSyncResult.Success -> {
                         SyncResult.Success(
-                            syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount,
+                            syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount + processedDeleteCount,
                             conflictCount = result.conflictsDetected
                         )
                     }
@@ -777,6 +781,103 @@ class BitwardenRepository(private val context: Context) {
         }
     }
 
+    suspend fun queueCipherDelete(
+        vaultId: Long,
+        cipherId: String,
+        entryId: Long? = null,
+        itemType: String = BitwardenPendingOperation.ITEM_TYPE_PASSWORD
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+            // 已有待删除操作时直接复用，保证幂等。
+            val existingDelete = pendingOpDao.findActiveDeleteByCipher(vaultId, cipherId)
+            if (existingDelete != null) {
+                return@withContext Result.success(Unit)
+            }
+
+            pendingOpDao.cancelActiveRestoreByCipher(vaultId, cipherId)
+
+            entryId?.let { id ->
+                pendingOpDao.deletePendingForEntryAndType(id, itemType)
+            }
+
+            pendingOpDao.insert(
+                BitwardenPendingOperation(
+                    vaultId = vault.id,
+                    entryId = entryId,
+                    bitwardenCipherId = cipherId,
+                    itemType = itemType,
+                    operationType = BitwardenPendingOperation.OP_DELETE,
+                    targetType = BitwardenPendingOperation.TARGET_CIPHER,
+                    payloadJson = "{}",
+                    status = BitwardenPendingOperation.STATUS_PENDING
+                )
+            )
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "加入 Bitwarden 删除队列失败", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun queueCipherRestore(
+        vaultId: Long,
+        cipherId: String,
+        entryId: Long? = null,
+        itemType: String = BitwardenPendingOperation.ITEM_TYPE_PASSWORD
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+            val existingRestore = pendingOpDao.findActiveRestoreByCipher(vaultId, cipherId)
+            if (existingRestore != null) {
+                return@withContext Result.success(Unit)
+            }
+
+            val existingDelete = pendingOpDao.findActiveDeleteByCipher(vaultId, cipherId)
+            if (existingDelete != null) {
+                pendingOpDao.cancelActiveDeleteByCipher(vaultId, cipherId)
+                return@withContext Result.success(Unit)
+            }
+
+            entryId?.let { id ->
+                pendingOpDao.deletePendingForEntryAndType(id, itemType)
+            }
+
+            pendingOpDao.insert(
+                BitwardenPendingOperation(
+                    vaultId = vault.id,
+                    entryId = entryId,
+                    bitwardenCipherId = cipherId,
+                    itemType = itemType,
+                    operationType = BitwardenPendingOperation.OP_RESTORE,
+                    targetType = BitwardenPendingOperation.TARGET_CIPHER,
+                    payloadJson = "{}",
+                    status = BitwardenPendingOperation.STATUS_PENDING
+                )
+            )
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "加入 Bitwarden 恢复队列失败", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun cancelPendingCipherDelete(vaultId: Long, cipherId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            pendingOpDao.cancelActiveDeleteByCipher(vaultId, cipherId)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "取消 Bitwarden 删除队列失败", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun deleteCipher(vaultId: Long, cipherId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val vault = vaultDao.getVaultById(vaultId)
@@ -811,6 +912,44 @@ class BitwardenRepository(private val context: Context) {
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "删除 Bitwarden Cipher 失败", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun permanentDeleteCipher(vaultId: Long, cipherId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+            if (!isVaultUnlocked(vaultId)) {
+                return@withContext Result.failure(IllegalStateException("Vault 未解锁"))
+            }
+
+            var accessToken = accessTokenCache[vaultId]
+                ?: return@withContext Result.failure(IllegalStateException("令牌不可用"))
+
+            val expiresAt = vault.accessTokenExpiresAt ?: 0
+            if (expiresAt <= System.currentTimeMillis() + 60000) {
+                val refreshed = refreshToken(vault)
+                if (refreshed != null) {
+                    accessToken = refreshed
+                    accessTokenCache[vaultId] = refreshed
+                } else {
+                    return@withContext Result.failure(IllegalStateException("Token 刷新失败，请重新登录"))
+                }
+            }
+
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.permanentDeleteCipher("Bearer $accessToken", cipherId)
+            if (!response.isSuccessful && response.code() != 404) {
+                return@withContext Result.failure(
+                    IllegalStateException("永久删除失败: ${response.code()} ${response.message()}")
+                )
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "永久删除 Bitwarden Cipher 失败", e)
             Result.failure(e)
         }
     }

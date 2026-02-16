@@ -39,6 +39,7 @@ class CipherSyncProcessor(
     private val passwordEntryDao = database.passwordEntryDao()
     private val secureItemDao = database.secureItemDao()
     private val passkeyDao = database.passkeyDao()
+    private val pendingOpDao = database.bitwardenPendingOperationDao()
     private val securityManager = SecurityManager(context)
     private val json = Json {
         ignoreUnknownKeys = true
@@ -103,6 +104,7 @@ class CipherSyncProcessor(
 
         // 先按 cipherId 收敛历史重复副本，避免“同一条目异常膨胀”。
         val existing = resolveCanonicalPasswordEntry(cipher.id)
+        val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
         
         // 解密字段
         val name = decryptString(cipher.name, symmetricKey) ?: "Untitled"
@@ -122,6 +124,9 @@ class CipherSyncProcessor(
         val encryptedPassword = securityManager.encryptData(password)
         
         if (existing == null) {
+            if (hasPendingDelete) {
+                return CipherSyncResult.Skipped("Pending local delete")
+            }
             // 创建新条目（不吞并本地同名条目，保持数据源独立）
             val newEntry = PasswordEntry(
                 title = name,
@@ -143,6 +148,9 @@ class CipherSyncProcessor(
             passwordEntryDao.insert(newEntry)
             return CipherSyncResult.Added
         } else {
+            if (existing.isDeleted || hasPendingDelete) {
+                return CipherSyncResult.Skipped("Local delete wins")
+            }
             // 更新现有条目
             if (existing.bitwardenLocalModified) {
                 if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
@@ -184,7 +192,7 @@ class CipherSyncProcessor(
         if (allEntries.isEmpty()) return null
 
         val canonical = allEntries.maxWithOrNull(
-            compareBy<PasswordEntry> { if (it.bitwardenLocalModified) 1 else 0 }
+            compareBy<PasswordEntry> { if (it.isDeleted) 2 else if (it.bitwardenLocalModified) 1 else 0 }
                 .thenBy { if (hasLikelyNonBlankPassword(it)) 1 else 0 }
                 .thenBy { it.updatedAt.time }
                 .thenBy { it.id }

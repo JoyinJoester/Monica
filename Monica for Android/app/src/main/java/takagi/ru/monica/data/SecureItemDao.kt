@@ -216,6 +216,38 @@ interface SecureItemDao {
      */
     @Query("SELECT COUNT(*) FROM secure_items WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
     suspend fun getBitwardenEntriesCount(vaultId: Long): Int
+
+    /**
+     * 删除指定 Vault 下所有已同步的 Bitwarden 安全项。
+     * 仅删除未进入回收站的条目，避免覆盖本地删除墓碑。
+     */
+    @Query("""
+        DELETE FROM secure_items
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id IS NOT NULL
+          AND isDeleted = 0
+    """)
+    suspend fun deleteAllSyncedBitwardenEntries(vaultId: Long)
+
+    /**
+     * 清理服务器不存在的 Bitwarden 安全项（delete-wins）。
+     */
+    @Query("""
+        DELETE FROM secure_items
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id IS NOT NULL
+          AND isDeleted = 0
+          AND bitwarden_cipher_id NOT IN (:keepIds)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM bitwarden_pending_operations op
+              WHERE op.vault_id = :vaultId
+                AND op.bitwarden_cipher_id = secure_items.bitwarden_cipher_id
+                AND op.operation_type = 'RESTORE'
+                AND op.status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+          )
+    """)
+    suspend fun deleteBitwardenEntriesNotIn(vaultId: Long, keepIds: List<String>)
     
     /**
      * 标记项目为已同步
