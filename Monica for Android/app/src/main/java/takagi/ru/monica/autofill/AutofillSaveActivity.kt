@@ -30,6 +30,7 @@ import takagi.ru.monica.autofill.ui.colorizePasswordString
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
 import java.util.Date
 
@@ -47,6 +48,7 @@ class AutofillSaveActivity : ComponentActivity() {
     }
     
     private lateinit var passwordRepository: PasswordRepository
+    private lateinit var securityManager: SecurityManager
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,6 +56,7 @@ class AutofillSaveActivity : ComponentActivity() {
         // 初始化 Repository
         val database = PasswordDatabase.getDatabase(applicationContext)
         passwordRepository = PasswordRepository(database.passwordEntryDao())
+        securityManager = SecurityManager(applicationContext)
         
         // 获取传递的数据
         val username = intent.getStringExtra(EXTRA_USERNAME) ?: ""
@@ -111,6 +114,7 @@ class AutofillSaveActivity : ComponentActivity() {
                 
                 // 检查是否已存在相同的密码
                 val existingPasswords = passwordRepository.getAllPasswordEntries().first()
+                val encryptedPassword = securityManager.encryptData(password)
                 val existing = existingPasswords.firstOrNull { entry ->
                     // 优先匹配包名
                     if (packageName.isNotBlank() && entry.appPackageName == packageName && 
@@ -127,7 +131,7 @@ class AutofillSaveActivity : ComponentActivity() {
                 if (existing != null) {
                     // 更新现有密码
                     val updated = existing.copy(
-                        password = password,
+                        password = encryptedPassword,
                         notes = notes,
                         appPackageName = packageName.ifBlank { existing.appPackageName },
                         appName = appName.ifBlank { existing.appName },
@@ -147,7 +151,7 @@ class AutofillSaveActivity : ComponentActivity() {
                     val newEntry = PasswordEntry(
                         title = title.ifBlank { appName.ifBlank { website } },
                         username = username,
-                        password = password,
+                        password = encryptedPassword,
                         website = website,
                         notes = notes,
                         appPackageName = packageName,
@@ -272,7 +276,7 @@ fun SavePasswordDialog(
                         IconButton(onClick = { 
                             // TODO: 调用密码生成器
                         }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "生成密码")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
                         }
                     }
                 },
@@ -471,14 +475,14 @@ private fun SavePasswordHeader(
         // 捕获的凭据信息预览
         if (username.isNotEmpty()) {
             SaveInfoRow(
-                title = "用户名",
+                title = stringResource(R.string.autofill_username),
                 value = username
             )
         }
         
         if (password.isNotEmpty()) {
             SaveInfoRow(
-                title = "密码",
+                title = stringResource(R.string.autofill_password),
                 value = takagi.ru.monica.autofill.ui.colorizePasswordString(password)
             )
         }
@@ -489,7 +493,7 @@ private fun SavePasswordHeader(
             
             if (packageName.isNotEmpty()) {
                 SaveInfoRow(
-                    title = "App",
+                    title = stringResource(R.string.associated_app),
                     value = packageName,
                     isSecondary = true
                 )
@@ -497,7 +501,7 @@ private fun SavePasswordHeader(
             
             if (website.isNotEmpty()) {
                 SaveInfoRow(
-                    title = "Website",
+                    title = stringResource(R.string.autofill_website_app),
                     value = website,
                     isSecondary = true
                 )

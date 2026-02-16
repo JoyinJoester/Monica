@@ -272,13 +272,29 @@ fun MonicaApp(
         )
     }
     val totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel = viewModel {
-        takagi.ru.monica.viewmodel.TotpViewModel(secureItemRepository, repository)
+        takagi.ru.monica.viewmodel.TotpViewModel(
+            secureItemRepository,
+            repository,
+            navController.context,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
     }
     val bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel = viewModel {
-        takagi.ru.monica.viewmodel.BankCardViewModel(secureItemRepository)
+        takagi.ru.monica.viewmodel.BankCardViewModel(
+            secureItemRepository,
+            navController.context,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
     }
     val documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel = viewModel {
-        takagi.ru.monica.viewmodel.DocumentViewModel(secureItemRepository)
+        takagi.ru.monica.viewmodel.DocumentViewModel(
+            secureItemRepository,
+            navController.context,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
     }
     val dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel = viewModel {
         takagi.ru.monica.viewmodel.DataExportImportViewModel(secureItemRepository, repository, navController.context)
@@ -292,7 +308,12 @@ fun MonicaApp(
         GeneratorViewModel()
     }
     val noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel = viewModel {
-        takagi.ru.monica.viewmodel.NoteViewModel(secureItemRepository)
+        takagi.ru.monica.viewmodel.NoteViewModel(
+            secureItemRepository,
+            navController.context,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
     }
     
     // Passkey 通行密钥
@@ -679,10 +700,13 @@ fun MonicaContent(
 
         composable(Screen.AddEditTotp.route) { backStackEntry ->
             val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: -1L
+            val currentTotpFilter by totpViewModel.categoryFilter.collectAsState()
 
             var initialData by remember { mutableStateOf<takagi.ru.monica.data.model.TotpData?>(null) }
             var initialTitle by remember { mutableStateOf("") }
             var initialNotes by remember { mutableStateOf("") }
+            var initialBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
+            var initialBitwardenFolderId by remember { mutableStateOf<String?>(null) }
             var isLoading by remember { mutableStateOf(true) }
 
             // 从QR扫描获取的数据
@@ -713,6 +737,8 @@ fun MonicaContent(
                     if (item != null) {
                         initialTitle = item.title
                         initialNotes = item.notes
+                        initialBitwardenVaultId = item.bitwardenVaultId
+                        initialBitwardenFolderId = item.bitwardenFolderId
                         initialData = try {
                             kotlinx.serialization.json.Json.decodeFromString(item.itemData)
                         } catch (e: Exception) {
@@ -725,24 +751,73 @@ fun MonicaContent(
 
             if (!isLoading) {
                 val totpCategories by totpViewModel.categories.collectAsState()
-                val initialCategoryId = initialData?.categoryId
+                data class TotpStorageDefaults(
+                    val categoryId: Long? = null,
+                    val keepassDatabaseId: Long? = null,
+                    val bitwardenVaultId: Long? = null,
+                    val bitwardenFolderId: String? = null
+                )
+                val filterDefaults = remember(currentTotpFilter) {
+                    when (val filter = currentTotpFilter) {
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom -> {
+                            TotpStorageDefaults(categoryId = filter.categoryId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabase -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseStarred -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseUncategorized -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> {
+                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> {
+                            TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultStarred -> {
+                            TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized -> {
+                            TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenFolderFilter -> {
+                            TotpStorageDefaults(
+                                bitwardenVaultId = filter.vaultId,
+                                bitwardenFolderId = filter.folderId
+                            )
+                        }
+                        else -> TotpStorageDefaults()
+                    }
+                }
+                val initialCategoryId = initialData?.categoryId ?: filterDefaults.categoryId
+                val initialKeePassDatabaseId = initialData?.keepassDatabaseId ?: filterDefaults.keepassDatabaseId
+                val initialVaultId = initialBitwardenVaultId ?: filterDefaults.bitwardenVaultId
+                val initialFolderId = initialBitwardenFolderId ?: filterDefaults.bitwardenFolderId
                 takagi.ru.monica.ui.screens.AddEditTotpScreen(
                     totpId = if (totpId > 0) totpId else null,
                     initialData = initialData,
                     initialTitle = initialTitle,
                     initialNotes = initialNotes,
                     initialCategoryId = initialCategoryId,
+                    initialKeePassDatabaseId = initialKeePassDatabaseId,
+                    initialBitwardenVaultId = initialVaultId,
+                    initialBitwardenFolderId = initialFolderId,
                     categories = totpCategories,
                     passwordViewModel = viewModel,
                     localKeePassViewModel = localKeePassViewModel,
-                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId ->
+                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                         totpViewModel.saveTotpItem(
                             id = if (totpId > 0) totpId else null,
                             title = title,
                             notes = notes,
                             totpData = totpData,
                             categoryId = categoryId,
-                            keepassDatabaseId = keepassDatabaseId
+                            keepassDatabaseId = keepassDatabaseId,
+                            bitwardenVaultId = bitwardenVaultId,
+                            bitwardenFolderId = bitwardenFolderId
                         )
                         navController.popBackStack()
                     },
@@ -838,6 +913,7 @@ fun MonicaContent(
                         passkeyViewModel = passkeyViewModel,
                         passwordId = passwordId,
                         disablePasswordVerification = settings.disablePasswordVerification,
+                        biometricEnabled = settings.biometricEnabled,
                         onNavigateBack = {
                             navController.popBackStack()
                         },
@@ -974,6 +1050,9 @@ fun MonicaContent(
                 onImportKeePassCsv = { uri ->
                     dataExportImportViewModel.importKeePassCsv(uri)
                 },
+                onImportBitwardenCsv = { uri ->
+                    dataExportImportViewModel.importBitwardenCsv(uri)
+                },
                 onImportAegis = { uri ->
                     dataExportImportViewModel.importAegisJson(uri)
                 },
@@ -985,6 +1064,9 @@ fun MonicaContent(
                 },
                 onImportZip = { uri, password ->
                     dataExportImportViewModel.importZipBackup(uri, password)
+                },
+                onImportStratum = { uri, password ->
+                    dataExportImportViewModel.importStratum(uri, password)
                 },
                 onImportKdbx = { uri, password ->
                     val ctx = navController.context
@@ -1269,14 +1351,6 @@ fun MonicaContent(
             )
         }
 
-        composable(Screen.KeePassWebDav.route) {
-            takagi.ru.monica.ui.screens.KeePassWebDavScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
         composable(
             route = Screen.AutofillSettings.route,
             enterTransition = { fadeIn() },
@@ -1391,6 +1465,14 @@ fun MonicaContent(
                 onIconCardsEnabledChange = { enabled ->
                     settingsViewModel.updateIconCardsEnabled(enabled)
                 },
+                smartDeduplicationEnabled = settings.smartDeduplicationEnabled,
+                onSmartDeduplicationEnabledChange = { enabled ->
+                    settingsViewModel.updateSmartDeduplicationEnabled(enabled)
+                },
+                separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
+                onSeparateUsernameAccountEnabledChange = { enabled ->
+                    settingsViewModel.updateSeparateUsernameAccountEnabled(enabled)
+                },
                 passwordCardDisplayMode = settings.passwordCardDisplayMode,
                 onPasswordCardDisplayModeChange = { mode ->
                     settingsViewModel.updatePasswordCardDisplayMode(mode)
@@ -1459,53 +1541,17 @@ fun MonicaContent(
                 onNavigateToWebDav = {
                     navController.navigate(Screen.WebDavBackup.route)
                 },
-                onNavigateToKeePass = {
-                    navController.navigate(Screen.KeePassWebDav.route)
-                },
                 onNavigateToLocalKeePass = {
                     navController.navigate(Screen.LocalKeePass.route)
                 },
                 onNavigateToBitwarden = {
                     navController.navigate(Screen.BitwardenSettings.route)
                 },
-                onNavigateToDatabaseFolderManagement = {
-                    navController.navigate(Screen.FolderManagement.route)  // 使用新版 M3E 文件夹管理页面
-                },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
             }
         }
 
-        // 旧版文件夹管理（保留兼容）
-        composable(
-            route = Screen.DatabaseFolderManagement.route,
-            enterTransition = { fadeIn() },
-            exitTransition = { fadeOut() },
-            popEnterTransition = { fadeIn() },
-            popExitTransition = { fadeOut() }
-        ) {
-            takagi.ru.monica.ui.screens.DatabaseFolderManagementScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
-        // 文件夹管理页面 - M3E 设计
-        composable(
-            route = Screen.FolderManagement.route,
-            enterTransition = { fadeIn() },
-            exitTransition = { fadeOut() },
-            popEnterTransition = { fadeIn() },
-            popExitTransition = { fadeOut() }
-        ) {
-            takagi.ru.monica.ui.screens.FolderManagementScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-        
         composable(Screen.LocalKeePass.route) {
             takagi.ru.monica.ui.screens.LocalKeePassScreen(
                 viewModel = localKeePassViewModel,

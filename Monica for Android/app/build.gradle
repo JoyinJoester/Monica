@@ -72,6 +72,7 @@ dependencies {
     implementation libs.androidx.ui.graphics
     implementation libs.androidx.ui.tooling.preview
     implementation libs.androidx.material3
+    implementation libs.androidx.material3.window.size
     implementation "androidx.compose.animation:animation"
     implementation "androidx.compose.animation:animation-graphics"
     
@@ -176,6 +177,8 @@ dependencies {
     
     // BouncyCastle for Argon2 (Bitwarden KDF support)
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+
+    // Brand icon loading now uses remote PNG assets from Stratum Auth app
     
     // Testing
     testImplementation libs.junit

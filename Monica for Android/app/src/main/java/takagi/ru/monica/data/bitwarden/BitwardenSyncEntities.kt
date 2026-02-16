@@ -196,6 +196,7 @@ data class BitwardenPendingOperation(
         const val OP_CREATE = "CREATE"
         const val OP_UPDATE = "UPDATE"
         const val OP_DELETE = "DELETE"
+        const val OP_RESTORE = "RESTORE"
         const val OP_MOVE_FOLDER = "MOVE_FOLDER"
         
         // 目标类型

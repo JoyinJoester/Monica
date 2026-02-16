@@ -1,6 +1,8 @@
 package takagi.ru.monica.bitwarden.viewmodel
 
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,6 +19,7 @@ import takagi.ru.monica.bitwarden.service.LoginResult
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenConflictBackup
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 
 /**
@@ -35,6 +38,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     
     companion object {
         private const val TAG = "BitwardenViewModel"
+        // Auto-sync is intentionally throttled to avoid UI jitter on frequent vault switching.
+        private const val AUTO_SYNC_MIN_INTERVAL_MS = 2 * 60 * 1000L
+        private const val AUTO_SYNC_DEDUP_WINDOW_MS = 15 * 1000L
     }
     
     // 仓库
@@ -73,6 +79,14 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // 文件夹列表
     private val _folders = MutableStateFlow<List<BitwardenFolder>>(emptyList())
     val folders: StateFlow<List<BitwardenFolder>> = _folders.asStateFlow()
+
+    // Send 列表
+    private val _sends = MutableStateFlow<List<BitwardenSend>>(emptyList())
+    val sends: StateFlow<List<BitwardenSend>> = _sends.asStateFlow()
+
+    // Send 页面状态
+    private val _sendState = MutableStateFlow<SendState>(SendState.Idle)
+    val sendState: StateFlow<SendState> = _sendState.asStateFlow()
     
     // 冲突列表
     private val _conflicts = MutableStateFlow<List<BitwardenConflictBackup>>(emptyList())
@@ -89,14 +103,27 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // 永不锁定设置状态
     private val _isNeverLockEnabled = MutableStateFlow(false)
     val isNeverLockEnabledFlow: StateFlow<Boolean> = _isNeverLockEnabled.asStateFlow()
+
+    // 同步设置状态（用于界面实时更新）
+    private val _isAutoSyncEnabled = MutableStateFlow(false)
+    val isAutoSyncEnabledFlow: StateFlow<Boolean> = _isAutoSyncEnabled.asStateFlow()
+
+    private val _isSyncOnWifiOnly = MutableStateFlow(false)
+    val isSyncOnWifiOnlyFlow: StateFlow<Boolean> = _isSyncOnWifiOnly.asStateFlow()
     
     // 一次性事件
     private val _events = MutableSharedFlow<BitwardenEvent>()
     val events = _events.asSharedFlow()
+
+    // Auto-sync runtime throttling state.
+    private val lastAutoSyncAttemptAtByVault = mutableMapOf<Long, Long>()
+    private val lastSuccessfulSyncAtByVault = mutableMapOf<Long, Long>()
     
     init {
         // 加载永不锁定设置
         _isNeverLockEnabled.value = repository.isNeverLockEnabled
+        _isAutoSyncEnabled.value = repository.isAutoSyncEnabled
+        _isSyncOnWifiOnly.value = repository.isSyncOnWifiOnly
         loadVaults()
     }
     
@@ -119,22 +146,33 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     // 检查是否已解锁
                     if (repository.isVaultUnlocked(active.id)) {
                         _unlockState.value = UnlockState.Unlocked
+                        _sendState.value = SendState.Idle
                         loadVaultData(active.id)
+                        maybeTriggerSilentAutoSync(active, trigger = "loadVaults:activeUnlocked")
                     } else if (_isNeverLockEnabled.value) {
                         // 永不锁定模式：尝试从存储恢复解锁状态
                         Log.d(TAG, "永不锁定模式：尝试恢复 Vault 解锁状态")
                         val restored = repository.tryRestoreUnlockState(active.id)
                         if (restored) {
                             _unlockState.value = UnlockState.Unlocked
+                            _sendState.value = SendState.Idle
                             loadVaultData(active.id)
+                            maybeTriggerSilentAutoSync(active, trigger = "loadVaults:restoredUnlock")
                             Log.d(TAG, "成功恢复 Vault 解锁状态")
                         } else {
                             _unlockState.value = UnlockState.Locked
+                            _sendState.value = SendState.Locked
+                            _sends.value = emptyList()
                             Log.w(TAG, "无法恢复 Vault 解锁状态，需要手动解锁")
                         }
                     } else {
                         _unlockState.value = UnlockState.Locked
+                        _sendState.value = SendState.Locked
+                        _sends.value = emptyList()
                     }
+                } else {
+                    _sendState.value = SendState.Idle
+                    _sends.value = emptyList()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "加载 Vault 失败", e)
@@ -260,12 +298,16 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             when (val result = repository.unlock(vault.id, masterPassword)) {
                 is BitwardenRepository.UnlockResult.Success -> {
                     _unlockState.value = UnlockState.Unlocked
+                    _sendState.value = SendState.Idle
                     loadVaultData(vault.id)
+                    maybeTriggerSilentAutoSync(vault, trigger = "unlock")
                     _events.emit(BitwardenEvent.ShowSuccess("Vault 已解锁"))
                 }
                 
                 is BitwardenRepository.UnlockResult.Error -> {
                     _unlockState.value = UnlockState.Locked
+                    _sendState.value = SendState.Locked
+                    _sends.value = emptyList()
                     _events.emit(BitwardenEvent.ShowError(result.message))
                 }
             }
@@ -283,6 +325,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             _unlockState.value = UnlockState.Locked
             _entries.value = emptyList()
             _folders.value = emptyList()
+            _sends.value = emptyList()
             _events.emit(BitwardenEvent.ShowSuccess("Vault 已锁定"))
         }
     }
@@ -296,6 +339,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             _unlockState.value = UnlockState.Locked
             _entries.value = emptyList()
             _folders.value = emptyList()
+            _sends.value = emptyList()
         }
     }
     
@@ -311,6 +355,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 loadVaults()
                 _entries.value = emptyList()
                 _folders.value = emptyList()
+                _sends.value = emptyList()
                 _unlockState.value = UnlockState.Locked
                 _loginState.value = LoginState.Idle
                 _events.emit(BitwardenEvent.ShowSuccess("已登出"))
@@ -332,11 +377,13 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             _unlockState.value = UnlockState.Unlocked
             viewModelScope.launch {
                 loadVaultData(vault.id)
+                maybeTriggerSilentAutoSync(vault, trigger = "setActiveVault")
             }
         } else {
             _unlockState.value = UnlockState.Locked
             _entries.value = emptyList()
             _folders.value = emptyList()
+            _sends.value = emptyList()
         }
     }
     
@@ -354,31 +401,133 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         }
         
         viewModelScope.launch {
-            _syncState.value = SyncState.Syncing
-            
-            when (val result = repository.sync(vault.id)) {
-                is BitwardenRepository.SyncResult.Success -> {
-                    _syncState.value = SyncState.Success(result.syncedCount, result.conflictCount)
-                    loadVaultData(vault.id)
-                    
-                    if (result.conflictCount > 0) {
-                        _events.emit(BitwardenEvent.ShowWarning("同步完成，但有 ${result.conflictCount} 个冲突需要处理"))
-                    } else {
-                        _events.emit(BitwardenEvent.ShowSuccess("同步完成，共 ${result.syncedCount} 条记录"))
+            runSync(vault = vault, silent = false)
+        }
+    }
+
+    /**
+     * 加载 Send 列表
+     */
+    fun loadSends(forceRemoteSync: Boolean = false) {
+        val vault = _activeVault.value
+        if (vault == null) {
+            _sends.value = emptyList()
+            _sendState.value = SendState.Error("请先连接 Bitwarden Vault")
+            return
+        }
+        if (!repository.isVaultUnlocked(vault.id)) {
+            _sendState.value = SendState.Locked
+            return
+        }
+
+        viewModelScope.launch {
+            if (!forceRemoteSync) {
+                _sendState.value = SendState.Loading
+                _sends.value = repository.getSends(vault.id)
+                _sendState.value = SendState.Idle
+                return@launch
+            }
+
+            _sendState.value = SendState.Syncing
+            when (val result = repository.refreshSends(vault.id)) {
+                is BitwardenRepository.SendSyncResult.Success -> {
+                    _sends.value = result.sends
+                    _sendState.value = SendState.Idle
+                }
+                is BitwardenRepository.SendSyncResult.Warning -> {
+                    _sends.value = result.sends
+                    _sendState.value = SendState.Warning(result.message)
+                }
+                is BitwardenRepository.SendSyncResult.Error -> {
+                    _sends.value = repository.getSends(vault.id)
+                    _sendState.value = SendState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    /**
+     * 创建文本 Send
+     */
+    fun createTextSend(
+        title: String,
+        text: String,
+        notes: String?,
+        password: String?,
+        maxAccessCount: Int?,
+        hideEmail: Boolean,
+        hiddenText: Boolean,
+        expireInDays: Int
+    ) {
+        val vault = _activeVault.value ?: return
+        if (!repository.isVaultUnlocked(vault.id)) {
+            _sendState.value = SendState.Locked
+            return
+        }
+
+        viewModelScope.launch {
+            _sendState.value = SendState.Creating
+            val now = System.currentTimeMillis()
+            val days = expireInDays.coerceIn(1, 30)
+            val expirationMillis = now + days * 24L * 60L * 60L * 1000L
+            val deletionMillis = now + (days + 1).coerceAtMost(31) * 24L * 60L * 60L * 1000L
+
+            when (
+                val result = repository.createTextSend(
+                    vaultId = vault.id,
+                    title = title.trim(),
+                    text = text.trim(),
+                    notes = notes?.trim(),
+                    password = password?.trim(),
+                    maxAccessCount = maxAccessCount,
+                    hideEmail = hideEmail,
+                    hiddenText = hiddenText,
+                    deletionMillis = deletionMillis,
+                    expirationMillis = expirationMillis
+                )
+            ) {
+                is BitwardenRepository.SendMutationResult.Success -> {
+                    _sends.value = listOf(result.send) + _sends.value.filterNot {
+                        it.bitwardenSendId == result.send.bitwardenSendId
                     }
+                    _sendState.value = SendState.Idle
+                    _events.emit(BitwardenEvent.ShowSuccess("Send 已创建"))
                 }
-                
-                is BitwardenRepository.SyncResult.Error -> {
-                    _syncState.value = SyncState.Error(result.message)
-                    _events.emit(BitwardenEvent.ShowError("同步失败: ${result.message}"))
+                is BitwardenRepository.SendMutationResult.Error -> {
+                    _sendState.value = SendState.Error(result.message)
+                    _events.emit(BitwardenEvent.ShowError(result.message))
                 }
-                
-                is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
-                    _syncState.value = SyncState.Error("空 Vault 保护已触发")
-                    _events.emit(BitwardenEvent.ShowWarning(
-                        "服务器返回空数据，本地有 ${result.localCount} 条记录。" +
-                        "请使用 V2 界面处理此情况。"
-                    ))
+                is BitwardenRepository.SendMutationResult.Deleted -> {
+                    _sendState.value = SendState.Idle
+                }
+            }
+        }
+    }
+
+    /**
+     * 删除 Send
+     */
+    fun deleteSend(sendId: String) {
+        val vault = _activeVault.value ?: return
+        if (!repository.isVaultUnlocked(vault.id)) {
+            _sendState.value = SendState.Locked
+            return
+        }
+
+        viewModelScope.launch {
+            _sendState.value = SendState.Deleting
+            when (val result = repository.deleteSend(vault.id, sendId)) {
+                is BitwardenRepository.SendMutationResult.Deleted -> {
+                    _sends.value = _sends.value.filterNot { it.bitwardenSendId == result.sendId }
+                    _sendState.value = SendState.Idle
+                    _events.emit(BitwardenEvent.ShowSuccess("Send 已删除"))
+                }
+                is BitwardenRepository.SendMutationResult.Error -> {
+                    _sendState.value = SendState.Error(result.message)
+                    _events.emit(BitwardenEvent.ShowError(result.message))
+                }
+                is BitwardenRepository.SendMutationResult.Success -> {
+                    _sendState.value = SendState.Idle
                 }
             }
         }
@@ -417,7 +566,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 val vault = _activeVault.value ?: return@launch
                 _entries.value = repository.getPasswordEntries(vault.id)
             } else {
-                _entries.value = repository.getPasswordEntriesByFolder(folder.bitwardenFolderId)
+                _entries.value = repository.getPasswordEntriesByFolder(folder.vaultId, folder.bitwardenFolderId)
             }
         }
     }
@@ -463,12 +612,22 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // ==================== 设置相关 ====================
     
     var isAutoSyncEnabled: Boolean
-        get() = repository.isAutoSyncEnabled
-        set(value) { repository.isAutoSyncEnabled = value }
+        get() = _isAutoSyncEnabled.value
+        set(value) {
+            repository.isAutoSyncEnabled = value
+            _isAutoSyncEnabled.value = value
+            if (!value) {
+                repository.isSyncOnWifiOnly = false
+                _isSyncOnWifiOnly.value = false
+            }
+        }
     
     var isSyncOnWifiOnly: Boolean
-        get() = repository.isSyncOnWifiOnly
-        set(value) { repository.isSyncOnWifiOnly = value }
+        get() = _isSyncOnWifiOnly.value
+        set(value) {
+            repository.isSyncOnWifiOnly = value
+            _isSyncOnWifiOnly.value = value
+        }
     
     /**
      * 是否永不锁定 Bitwarden
@@ -496,6 +655,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         try {
             _entries.value = repository.getPasswordEntries(vaultId)
             _folders.value = repository.getFolders(vaultId)
+            _sends.value = repository.getSends(vaultId)
             loadConflicts()
         } catch (e: Exception) {
             Log.e(TAG, "加载 Vault 数据失败", e)
@@ -506,6 +666,101 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun loadConflicts() {
         val vault = _activeVault.value ?: return
         _conflicts.value = repository.getConflictBackups(vault.id)
+    }
+
+    private fun maybeTriggerSilentAutoSync(vault: BitwardenVault, trigger: String) {
+        if (!shouldRunSilentAutoSync(vault)) return
+        viewModelScope.launch {
+            Log.d(TAG, "Trigger silent auto sync: vault=${vault.id}, reason=$trigger")
+            runSync(vault = vault, silent = true)
+        }
+    }
+
+    private fun shouldRunSilentAutoSync(vault: BitwardenVault): Boolean {
+        if (!_isAutoSyncEnabled.value) return false
+        if (_syncState.value is SyncState.Syncing) return false
+        if (!repository.isVaultUnlocked(vault.id)) return false
+        if (!canSyncOnCurrentNetwork()) return false
+
+        val now = System.currentTimeMillis()
+        val lastAttempt = lastAutoSyncAttemptAtByVault[vault.id] ?: 0L
+        if (now - lastAttempt < AUTO_SYNC_DEDUP_WINDOW_MS) return false
+
+        val lastSuccessful = lastSuccessfulSyncAtByVault[vault.id]
+            ?: vault.lastSyncAt
+            ?: 0L
+        if (lastSuccessful > 0L && now - lastSuccessful < AUTO_SYNC_MIN_INTERVAL_MS) return false
+
+        lastAutoSyncAttemptAtByVault[vault.id] = now
+        return true
+    }
+
+    private fun canSyncOnCurrentNetwork(): Boolean {
+        val connectivityManager = getApplication<Application>()
+            .getSystemService(ConnectivityManager::class.java) ?: return false
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false
+        if (_isSyncOnWifiOnly.value &&
+            !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        ) {
+            return false
+        }
+        return true
+    }
+
+    private suspend fun runSync(vault: BitwardenVault, silent: Boolean) {
+        if (!silent) {
+            _syncState.value = SyncState.Syncing
+        }
+
+        when (val result = repository.sync(vault.id)) {
+            is BitwardenRepository.SyncResult.Success -> {
+                if (!silent) {
+                    _syncState.value = SyncState.Success(result.syncedCount, result.conflictCount)
+                }
+                lastSuccessfulSyncAtByVault[vault.id] = System.currentTimeMillis()
+                if (!silent) {
+                    loadVaultData(vault.id)
+                }
+
+                if (!silent) {
+                    if (result.conflictCount > 0) {
+                        _events.emit(BitwardenEvent.ShowWarning("同步完成，但有 ${result.conflictCount} 个冲突需要处理"))
+                    } else {
+                        _events.emit(BitwardenEvent.ShowSuccess("同步完成，共 ${result.syncedCount} 条记录"))
+                    }
+                }
+            }
+
+            is BitwardenRepository.SyncResult.Error -> {
+                if (!silent) {
+                    _syncState.value = SyncState.Error(result.message)
+                }
+                if (!silent) {
+                    _events.emit(BitwardenEvent.ShowError("同步失败: ${result.message}"))
+                } else {
+                    Log.w(TAG, "Silent auto sync failed: ${result.message}")
+                }
+            }
+
+            is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                if (!silent) {
+                    _syncState.value = SyncState.Error("空 Vault 保护已触发")
+                }
+                if (!silent) {
+                    _events.emit(BitwardenEvent.ShowWarning(
+                        "服务器返回空数据，本地有 ${result.localCount} 条记录。" +
+                            "请使用 V2 界面处理此情况。"
+                    ))
+                } else {
+                    Log.w(
+                        TAG,
+                        "Silent auto sync blocked by empty-vault protection: local=${result.localCount}, server=${result.serverCount}"
+                    )
+                }
+            }
+        }
     }
     
     // ==================== 状态类型 ====================
@@ -529,6 +784,17 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         object Syncing : SyncState()
         data class Success(val syncedCount: Int, val conflictCount: Int) : SyncState()
         data class Error(val message: String) : SyncState()
+    }
+
+    sealed class SendState {
+        object Idle : SendState()
+        object Loading : SendState()
+        object Syncing : SendState()
+        object Creating : SendState()
+        object Deleting : SendState()
+        object Locked : SendState()
+        data class Warning(val message: String) : SendState()
+        data class Error(val message: String) : SendState()
     }
     
     // ==================== 事件类型 ====================

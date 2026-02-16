@@ -33,16 +33,22 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.utils.RememberedStorageTarget
+import takagi.ru.monica.utils.SettingsManager
 
 /**
  * 添加/编辑TOTP验证器页面 (Refactored to M3E)
@@ -55,10 +61,13 @@ fun AddEditTotpScreen(
     initialTitle: String,
     initialNotes: String,
     initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
+    initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null,
     categories: List<Category> = emptyList(),
     passwordViewModel: PasswordViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
-    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?) -> Unit,
+    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?, bitwardenVaultId: Long?, bitwardenFolderId: String?) -> Unit,
     onNavigateBack: () -> Unit,
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
@@ -81,11 +90,25 @@ fun AddEditTotpScreen(
     var boundPasswordId by remember { mutableStateOf(initialData?.boundPasswordId) }
     
     // KeePass Database Selection
-    var keepassDatabaseId by rememberSaveable { mutableStateOf(initialData?.keepassDatabaseId) }
+    var keepassDatabaseId by rememberSaveable {
+        mutableStateOf(initialData?.keepassDatabaseId ?: initialKeePassDatabaseId)
+    }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
-
     val context = LocalContext.current
-    
+    val coroutineScope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager(context) }
+    val rememberedStorageTarget by settingsManager
+        .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.TOTP)
+        .collectAsState(initial = null as RememberedStorageTarget?)
+    var bitwardenVaultId by rememberSaveable { mutableStateOf(initialBitwardenVaultId) }
+    var bitwardenFolderId by rememberSaveable { mutableStateOf(initialBitwardenFolderId) }
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
     // Resolve App Name if associatedApp is set but name is unknown
     LaunchedEffect(associatedApp) {
         if (associatedApp.isNotEmpty() && associatedAppName.isEmpty()) {
@@ -105,6 +128,7 @@ fun AddEditTotpScreen(
     var showAssociation by remember { mutableStateOf(false) }
     var expandedOtpType by remember { mutableStateOf(false) }
     var showPasswordSelectionDialog by remember { mutableStateOf(false) }
+    var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -120,7 +144,57 @@ fun AddEditTotpScreen(
     }
     
     val isEditing = totpId != null && totpId > 0
+    LaunchedEffect(
+        isEditing,
+        hasAppliedInitialStorage,
+        initialCategoryId,
+        initialKeePassDatabaseId,
+        initialBitwardenVaultId,
+        initialBitwardenFolderId,
+        rememberedStorageTarget
+    ) {
+        if (isEditing || hasAppliedInitialStorage) return@LaunchedEffect
+        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
+        selectedCategoryId = initialCategoryId ?: remembered.categoryId
+        keepassDatabaseId = initialKeePassDatabaseId ?: remembered.keepassDatabaseId
+        bitwardenVaultId = initialBitwardenVaultId ?: remembered.bitwardenVaultId
+        bitwardenFolderId = initialBitwardenFolderId ?: remembered.bitwardenFolderId
+        hasAppliedInitialStorage = true
+    }
+
     val canSave = title.isNotBlank() && secret.isNotBlank()
+    val save: () -> Unit = saveAction@{
+        if (!canSave || isSaving) return@saveAction
+        isSaving = true // 防止重复点击
+        val totpData = TotpData(
+            secret = secret.trim(),
+            issuer = issuer.trim(),
+            accountName = accountName.trim(),
+            period = period.toIntOrNull() ?: 30,
+            digits = digits.toIntOrNull() ?: 6,
+            algorithm = "SHA1",
+            otpType = selectedOtpType,
+            counter = counter.toLongOrNull() ?: 0L,
+            pin = pin.trim(),
+            link = link.trim(),
+            associatedApp = associatedApp.trim(),
+            boundPasswordId = boundPasswordId,
+            categoryId = selectedCategoryId,
+            keepassDatabaseId = keepassDatabaseId
+        )
+        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId)
+        coroutineScope.launch {
+            settingsManager.updateRememberedStorageTarget(
+                scope = SettingsManager.StorageTargetScope.TOTP,
+                target = RememberedStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        }
+    }
     
     Scaffold(
         topBar = {
@@ -131,36 +205,39 @@ fun AddEditTotpScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
-                actions = {
-                    TextButton(
-                        onClick = {
-                            if (canSave && !isSaving) {
-                                isSaving = true // 防止重复点击
-                                val totpData = TotpData(
-                                    secret = secret.trim(),
-                                    issuer = issuer.trim(),
-                                    accountName = accountName.trim(),
-                                    period = period.toIntOrNull() ?: 30,
-                                    digits = digits.toIntOrNull() ?: 6,
-                                    algorithm = "SHA1",
-                                    otpType = selectedOtpType,
-                                    counter = counter.toLongOrNull() ?: 0L,
-                                    pin = pin.trim(),
-                                    link = link.trim(),
-                                    associatedApp = associatedApp.trim(),
-                                    boundPasswordId = boundPasswordId,
-                                    categoryId = selectedCategoryId,
-                                    keepassDatabaseId = keepassDatabaseId
-                                )
-                                onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId)
-                            }
-                        },
-                        enabled = canSave && !isSaving
-                    ) {
-                        Text(stringResource(R.string.save), fontWeight = FontWeight.Bold)
-                    }
-                }
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = save,
+                containerColor = if (canSave && !isSaving) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave && !isSaving) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(R.string.save)
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         LazyColumn(
@@ -174,16 +251,36 @@ fun AddEditTotpScreen(
         ) {
             // Vault Selector
             item {
-                VaultSelector(
+                StorageTargetSelectorCard(
                     keepassDatabases = keepassDatabases,
-                    selectedDatabaseId = keepassDatabaseId,
-                    onDatabaseSelected = { keepassDatabaseId = it }
+                    selectedKeePassDatabaseId = keepassDatabaseId,
+                    onKeePassDatabaseSelected = {
+                        keepassDatabaseId = it
+                        if (it != null) {
+                            bitwardenVaultId = null
+                            bitwardenFolderId = null
+                        }
+                    },
+                    bitwardenVaults = bitwardenVaults,
+                    selectedBitwardenVaultId = bitwardenVaultId,
+                    onBitwardenVaultSelected = {
+                        bitwardenVaultId = it
+                        if (it != null) keepassDatabaseId = null
+                    },
+                    categories = categories,
+                    selectedCategoryId = selectedCategoryId,
+                    onCategorySelected = { selectedCategoryId = it },
+                    selectedBitwardenFolderId = bitwardenFolderId,
+                    onBitwardenFolderSelected = { folderId ->
+                        bitwardenFolderId = folderId
+                        if (bitwardenVaultId != null) keepassDatabaseId = null
+                    }
                 )
             }
 
             // Basic Info Card
             item {
-                InfoCard(title = "验证器信息") {
+                InfoCard(title = stringResource(R.string.section_authenticator_info)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Title
                         OutlinedTextField(
@@ -278,7 +375,7 @@ fun AddEditTotpScreen(
 
             // Notes Card
             item {
-                InfoCard(title = "备注") {
+                InfoCard(title = stringResource(R.string.section_notes)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Notes
                         OutlinedTextField(

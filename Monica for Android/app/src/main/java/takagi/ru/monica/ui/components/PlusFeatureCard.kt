@@ -26,6 +26,9 @@ fun PlusFeatureCard(
     isUnlocked: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val title = stringResource(feature.titleRes)
+    val description = stringResource(feature.descriptionRes)
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -48,7 +51,7 @@ fun PlusFeatureCard(
             // 功能图标
             Icon(
                 imageVector = feature.icon,
-                contentDescription = feature.title,
+                contentDescription = title,
                 modifier = Modifier.size(40.dp),
                 tint = if (isUnlocked) {
                     MaterialTheme.colorScheme.primary
@@ -64,7 +67,7 @@ fun PlusFeatureCard(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = feature.title,
+                    text = title,
                     style = MaterialTheme.typography.titleMedium,
                     color = if (isUnlocked) {
                         MaterialTheme.colorScheme.onPrimaryContainer
@@ -74,7 +77,7 @@ fun PlusFeatureCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = feature.description,
+                    text = description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (isUnlocked) {
                         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)

@@ -22,9 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordFieldVisibility
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.PresetFieldType
@@ -55,13 +57,16 @@ fun PasswordFieldCustomizationScreen(
             TopAppBar(
                 title = { 
                     Text(
-                        "添加密码页面字段定制",
+                        stringResource(R.string.password_field_customization_title),
                         style = MaterialTheme.typography.titleLarge
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(MonicaIcons.Navigation.back, contentDescription = "返回")
+                        Icon(
+                            MonicaIcons.Navigation.back,
+                            contentDescription = stringResource(R.string.back)
+                        )
                     }
                 }
             )
@@ -95,7 +100,7 @@ fun PasswordFieldCustomizationScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "关闭的字段将不会在添加/编辑密码页面显示。\n\n注意：如果某条密码已有该字段的数据，即使关闭了开关，编辑该条目时仍会显示对应卡片。",
+                            text = stringResource(R.string.password_field_customization_notice),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -106,7 +111,7 @@ fun PasswordFieldCustomizationScreen(
             // 系统字段开关列表
             item {
                 Text(
-                    text = "系统字段",
+                    text = stringResource(R.string.password_field_customization_system_fields),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 8.dp)
@@ -126,8 +131,8 @@ fun PasswordFieldCustomizationScreen(
                     ) {
                         FieldToggleItem(
                             icon = Icons.Default.VpnKey,
-                            title = "安全验证",
-                            subtitle = "TOTP验证码密钥",
+                            title = stringResource(R.string.password_field_customization_security_title),
+                            subtitle = stringResource(R.string.password_field_customization_security_subtitle),
                             checked = fieldVisibility.securityVerification,
                             onCheckedChange = { 
                                 viewModel.updatePasswordFieldVisibility("securityVerification", it) 
@@ -138,8 +143,8 @@ fun PasswordFieldCustomizationScreen(
                         
                         FieldToggleItem(
                             icon = Icons.Default.Category,
-                            title = "分类与备注",
-                            subtitle = "密码分类和备注信息",
+                            title = stringResource(R.string.password_field_customization_category_title),
+                            subtitle = stringResource(R.string.password_field_customization_category_subtitle),
                             checked = fieldVisibility.categoryAndNotes,
                             onCheckedChange = { 
                                 viewModel.updatePasswordFieldVisibility("categoryAndNotes", it) 
@@ -150,8 +155,8 @@ fun PasswordFieldCustomizationScreen(
                         
                         FieldToggleItem(
                             icon = Icons.Default.Apps,
-                            title = "应用关联",
-                            subtitle = "关联已安装的应用",
+                            title = stringResource(R.string.password_field_customization_app_binding_title),
+                            subtitle = stringResource(R.string.password_field_customization_app_binding_subtitle),
                             checked = fieldVisibility.appBinding,
                             onCheckedChange = { 
                                 viewModel.updatePasswordFieldVisibility("appBinding", it) 
@@ -162,8 +167,8 @@ fun PasswordFieldCustomizationScreen(
                         
                         FieldToggleItem(
                             icon = Icons.Default.Person,
-                            title = "个人信息",
-                            subtitle = "邮箱、电话等联系方式",
+                            title = stringResource(R.string.password_field_customization_personal_info_title),
+                            subtitle = stringResource(R.string.password_field_customization_personal_info_subtitle),
                             checked = fieldVisibility.personalInfo,
                             onCheckedChange = { 
                                 viewModel.updatePasswordFieldVisibility("personalInfo", it) 
@@ -174,8 +179,8 @@ fun PasswordFieldCustomizationScreen(
                         
                         FieldToggleItem(
                             icon = Icons.Default.LocationOn,
-                            title = "地址信息",
-                            subtitle = "街道、城市、国家等",
+                            title = stringResource(R.string.password_field_customization_address_info_title),
+                            subtitle = stringResource(R.string.password_field_customization_address_info_subtitle),
                             checked = fieldVisibility.addressInfo,
                             onCheckedChange = { 
                                 viewModel.updatePasswordFieldVisibility("addressInfo", it) 
@@ -186,8 +191,8 @@ fun PasswordFieldCustomizationScreen(
                         
                         FieldToggleItem(
                             icon = Icons.Default.CreditCard,
-                            title = "支付信息",
-                            subtitle = "信用卡/银行卡信息",
+                            title = stringResource(R.string.password_field_customization_payment_info_title),
+                            subtitle = stringResource(R.string.password_field_customization_payment_info_subtitle),
                             checked = fieldVisibility.paymentInfo,
                             onCheckedChange = { 
                                 viewModel.updatePasswordFieldVisibility("paymentInfo", it) 
@@ -208,12 +213,12 @@ fun PasswordFieldCustomizationScreen(
                 ) {
                     Column {
                         Text(
-                            text = "预设自定义字段",
+                            text = stringResource(R.string.password_field_customization_preset_section_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "添加密码时自动包含，不可删除",
+                            text = stringResource(R.string.password_field_customization_preset_section_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -228,7 +233,7 @@ fun PasswordFieldCustomizationScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("添加")
+                        Text(stringResource(R.string.add))
                     }
                 }
             }
@@ -254,7 +259,7 @@ fun PasswordFieldCustomizationScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "预设的自定义字段会在每次添加密码时自动出现，并且带有锁定标记不能被删除，确保重要字段不会被意外移除。",
+                            text = stringResource(R.string.password_field_customization_preset_notice),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -288,12 +293,12 @@ fun PasswordFieldCustomizationScreen(
                                 modifier = Modifier.size(48.dp)
                             )
                             Text(
-                                text = "暂无预设字段",
+                                text = stringResource(R.string.password_field_customization_no_preset_fields),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "点击上方「添加」按钮创建常用字段模板",
+                                text = stringResource(R.string.password_field_customization_no_preset_fields_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -332,7 +337,7 @@ fun PasswordFieldCustomizationScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("重置系统字段为默认")
+                    Text(stringResource(R.string.password_field_customization_reset_system_fields))
                 }
             }
             
@@ -353,7 +358,7 @@ fun PasswordFieldCustomizationScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("清空所有预设字段")
+                        Text(stringResource(R.string.password_field_customization_clear_preset_fields))
                     }
                 }
             }
@@ -500,7 +505,7 @@ private fun PresetFieldCard(
                         // 锁定标记
                         Icon(
                             imageVector = Icons.Default.Lock,
-                            contentDescription = "锁定",
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
@@ -511,7 +516,7 @@ private fun PresetFieldCard(
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
-                                    text = "必填",
+                                    text = stringResource(R.string.custom_field_required),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -525,7 +530,7 @@ private fun PresetFieldCard(
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
-                                    text = "敏感",
+                                    text = stringResource(R.string.custom_field_sensitive),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -534,8 +539,17 @@ private fun PresetFieldCard(
                         }
                     }
                     Text(
-                        text = "类型: ${field.fieldType.displayName}" + 
-                               if (field.defaultValue.isNotBlank()) " · 默认: ${field.defaultValue}" else "",
+                        text = stringResource(
+                            R.string.password_field_customization_type_label,
+                            presetFieldTypeLabel(field.fieldType)
+                        ) + if (field.defaultValue.isNotBlank()) {
+                            stringResource(
+                                R.string.password_field_customization_default_value_suffix,
+                                field.defaultValue
+                            )
+                        } else {
+                            ""
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -550,7 +564,7 @@ private fun PresetFieldCard(
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "删除",
+                    contentDescription = stringResource(R.string.delete),
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -568,8 +582,15 @@ private fun PresetFieldCard(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("删除预设字段") },
-            text = { Text("确定要删除预设字段「${field.fieldName}」吗？\n\n已添加的密码中该字段的数据不会被删除。") },
+            title = { Text(stringResource(R.string.password_field_customization_delete_preset_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.password_field_customization_delete_preset_message,
+                        field.fieldName
+                    )
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -580,12 +601,12 @@ private fun PresetFieldCard(
                         contentColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -617,7 +638,13 @@ private fun PresetFieldDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { 
-            Text(if (isEditing) "编辑预设字段" else "添加预设字段") 
+            Text(
+                if (isEditing) {
+                    stringResource(R.string.password_field_customization_edit_preset_title)
+                } else {
+                    stringResource(R.string.password_field_customization_add_preset_title)
+                }
+            )
         },
         text = {
             Column(
@@ -630,13 +657,13 @@ private fun PresetFieldDialog(
                         fieldName = it
                         fieldNameError = false
                     },
-                    label = { Text("字段名称 *") },
-                    placeholder = { Text("如：恢复密钥、客服电话") },
+                    label = { Text(stringResource(R.string.password_field_customization_field_name_required)) },
+                    placeholder = { Text(stringResource(R.string.password_field_customization_field_name_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     isError = fieldNameError,
                     supportingText = if (fieldNameError) {
-                        { Text("请输入字段名称") }
+                        { Text(stringResource(R.string.password_field_customization_field_name_error)) }
                     } else null,
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -647,10 +674,10 @@ private fun PresetFieldDialog(
                     onExpandedChange = { showTypeDropdown = it }
                 ) {
                     OutlinedTextField(
-                        value = fieldType.displayName,
+                        value = presetFieldTypeLabel(fieldType),
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("字段类型") },
+                        label = { Text(stringResource(R.string.password_field_customization_field_type)) },
                         trailingIcon = {
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = showTypeDropdown)
                         },
@@ -676,7 +703,7 @@ private fun PresetFieldDialog(
                                             contentDescription = null,
                                             modifier = Modifier.size(20.dp)
                                         )
-                                        Text(type.displayName)
+                                        Text(presetFieldTypeLabel(type))
                                     }
                                 },
                                 onClick = {
@@ -701,11 +728,11 @@ private fun PresetFieldDialog(
                     ) {
                         Column {
                             Text(
-                                text = "敏感数据",
+                                text = stringResource(R.string.custom_field_sensitive),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                text = "默认隐藏显示，复制时标记为敏感",
+                                text = stringResource(R.string.password_field_customization_sensitive_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -723,11 +750,11 @@ private fun PresetFieldDialog(
                     ) {
                         Column {
                             Text(
-                                text = "必填字段",
+                                text = stringResource(R.string.password_field_customization_required_field),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                text = "添加密码时必须填写",
+                                text = stringResource(R.string.password_field_customization_required_field_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -743,8 +770,8 @@ private fun PresetFieldDialog(
                 OutlinedTextField(
                     value = defaultValue,
                     onValueChange = { defaultValue = it },
-                    label = { Text("默认值（可选）") },
-                    placeholder = { Text("新建时的初始值") },
+                    label = { Text(stringResource(R.string.password_field_customization_default_value_optional)) },
+                    placeholder = { Text(stringResource(R.string.password_field_customization_default_value_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
@@ -754,8 +781,8 @@ private fun PresetFieldDialog(
                 OutlinedTextField(
                     value = placeholder,
                     onValueChange = { placeholder = it },
-                    label = { Text("占位提示（可选）") },
-                    placeholder = { Text("输入框为空时显示的提示") },
+                    label = { Text(stringResource(R.string.password_field_customization_placeholder_optional)) },
+                    placeholder = { Text(stringResource(R.string.password_field_customization_placeholder_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
@@ -783,15 +810,28 @@ private fun PresetFieldDialog(
                 },
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text(if (isEditing) "保存" else "添加")
+                Text(if (isEditing) stringResource(R.string.save) else stringResource(R.string.add))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
+}
+
+@Composable
+private fun presetFieldTypeLabel(type: PresetFieldType): String {
+    return when (type) {
+        PresetFieldType.TEXT -> stringResource(R.string.password_field_customization_type_text)
+        PresetFieldType.PASSWORD -> stringResource(R.string.password_field_customization_type_password)
+        PresetFieldType.NUMBER -> stringResource(R.string.password_field_customization_type_number)
+        PresetFieldType.DATE -> stringResource(R.string.password_field_customization_type_date)
+        PresetFieldType.URL -> stringResource(R.string.password_field_customization_type_url)
+        PresetFieldType.EMAIL -> stringResource(R.string.password_field_customization_type_email)
+        PresetFieldType.PHONE -> stringResource(R.string.password_field_customization_type_phone)
+    }
 }
 
 /**

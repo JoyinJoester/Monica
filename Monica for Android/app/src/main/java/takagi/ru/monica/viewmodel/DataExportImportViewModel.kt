@@ -63,7 +63,12 @@ class DataExportImportViewModel(
                     isFavorite = entry.isFavorite,
                     imagePaths = "", // PasswordEntry没有iconPath字段
                     createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt
+                    updatedAt = entry.updatedAt,
+                    categoryId = entry.categoryId,
+                    keepassDatabaseId = entry.keepassDatabaseId,
+                    keepassGroupPath = entry.keepassGroupPath,
+                    bitwardenVaultId = entry.bitwardenVaultId,
+                    bitwardenFolderId = entry.bitwardenFolderId
                 )
             }
             
@@ -125,9 +130,14 @@ class DataExportImportViewModel(
                                     notes = exportItem.notes,
                                     email = passwordData["email"] ?: "",
                                     phone = passwordData["phone"] ?: "",
+                                    categoryId = exportItem.categoryId,
                                     isFavorite = exportItem.isFavorite,
                                     createdAt = Date(exportItem.createdAt),
-                                    updatedAt = Date(exportItem.updatedAt)
+                                    updatedAt = Date(exportItem.updatedAt),
+                                    keepassDatabaseId = exportItem.keepassDatabaseId,
+                                    keepassGroupPath = exportItem.keepassGroupPath,
+                                    bitwardenVaultId = exportItem.bitwardenVaultId,
+                                    bitwardenFolderId = exportItem.bitwardenFolderId
                                 )
                                 val newId = passwordRepository.insertPasswordEntry(passwordEntry)
                                 if (originalId > 0 && newId > 0) {
@@ -195,7 +205,12 @@ class DataExportImportViewModel(
                                     isFavorite = exportItem.isFavorite,
                                     imagePaths = exportItem.imagePaths,
                                     createdAt = Date(exportItem.createdAt),
-                                    updatedAt = Date(exportItem.updatedAt)
+                                    updatedAt = Date(exportItem.updatedAt),
+                                    categoryId = exportItem.categoryId,
+                                    keepassDatabaseId = exportItem.keepassDatabaseId,
+                                    keepassGroupPath = exportItem.keepassGroupPath,
+                                    bitwardenVaultId = exportItem.bitwardenVaultId,
+                                    bitwardenFolderId = exportItem.bitwardenFolderId
                                 )
                                 secureItemRepository.insertItem(secureItem)
                                 android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
@@ -229,6 +244,13 @@ class DataExportImportViewModel(
      */
     suspend fun importKeePassCsv(inputUri: Uri): Result<Int> {
         return importData(inputUri, DataExportImportManager.CsvFormat.KEEPASS_PASSWORD)
+    }
+
+    /**
+     * 导入Bitwarden CSV文件
+     */
+    suspend fun importBitwardenCsv(inputUri: Uri): Result<Int> {
+        return importData(inputUri, DataExportImportManager.CsvFormat.BITWARDEN_PASSWORD)
     }
     
     /**
@@ -850,7 +872,12 @@ class DataExportImportViewModel(
                                         isFavorite = item.isFavorite,
                                         imagePaths = item.imagePaths,
                                         createdAt = Date(item.createdAt),
-                                        updatedAt = Date(item.updatedAt)
+                                        updatedAt = Date(item.updatedAt),
+                                        categoryId = item.categoryId,
+                                        keepassDatabaseId = item.keepassDatabaseId,
+                                        keepassGroupPath = item.keepassGroupPath,
+                                        bitwardenVaultId = item.bitwardenVaultId,
+                                        bitwardenFolderId = item.bitwardenFolderId
                                     )
                                     secureItemRepository.insertItem(secureItem)
                                     count++
@@ -881,5 +908,66 @@ class DataExportImportViewModel(
             android.util.Log.e("DataImport", "导入ZIP失败: ${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    // ==================== Stratum Auth Import ====================
+    
+    suspend fun isStratumFileEncrypted(inputUri: Uri): Boolean {
+        return exportManager.isStratumFileEncrypted(inputUri).getOrDefault(false)
+    }
+    
+    suspend fun importStratum(inputUri: Uri, password: String? = null): Result<Int> {
+        return try {
+            val fileType = exportManager.detectStratumFileType(inputUri).getOrNull()
+                ?: return Result.failure(Exception("Cannot detect file type"))
+            val entriesResult = when (fileType) {
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.MODERN_ENCRYPTED,
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.LEGACY_ENCRYPTED -> {
+                    if (password.isNullOrEmpty()) return Result.failure(Exception("Password required"))
+                    exportManager.importEncryptedStratum(inputUri, password)
+                }
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.UNENCRYPTED -> exportManager.importStratumJson(inputUri)
+                takagi.ru.monica.util.StratumDecryptor.StratumFileType.NOT_STRATUM -> {
+                    val txtResult = exportManager.importStratumTxt(inputUri)
+                    if (txtResult.isSuccess) {
+                        txtResult
+                    } else {
+                        exportManager.importStratumHtml(inputUri)
+                    }
+                }
+            }
+            entriesResult.fold(
+                onSuccess = { list -> insertTotpEntries(list) },
+                onFailure = { Result.failure(it) }
+            )
+        } catch (e: Exception) { Result.failure(e) }
+    }
+    
+    suspend fun importStratumTxt(inputUri: Uri): Result<Int> {
+        return try {
+            exportManager.importStratumTxt(inputUri).fold(onSuccess = { insertTotpEntries(it) }, onFailure = { Result.failure(it) })
+        } catch (e: Exception) { Result.failure(e) }
+    }
+    
+    suspend fun importStratumHtml(inputUri: Uri): Result<Int> {
+        return try {
+            exportManager.importStratumHtml(inputUri).fold(onSuccess = { insertTotpEntries(it) }, onFailure = { Result.failure(it) })
+        } catch (e: Exception) { Result.failure(e) }
+    }
+    
+    private suspend fun insertTotpEntries(entries: List<DataExportImportManager.AegisEntry>): Result<Int> {
+        var count = 0
+        val existingItems = secureItemRepository.getAllItems().first().filter { it.itemType == ItemType.TOTP }
+        val existingSecrets = existingItems.mapNotNull { try { Json.decodeFromString<TotpData>(it.itemData).secret } catch (e: Exception) { null } }.toSet()
+        for (entry in entries) {
+            try {
+                if (entry.secret in existingSecrets) continue
+                val totpData = TotpData(secret = entry.secret, issuer = entry.issuer, accountName = entry.name, digits = entry.digits, period = entry.period, algorithm = entry.algorithm)
+                val item = SecureItem(id = 0, itemType = ItemType.TOTP, title = entry.issuer.ifBlank { entry.name }, itemData = Json.encodeToString(totpData), notes = entry.note, isFavorite = false, imagePaths = "", createdAt = Date(), updatedAt = Date(), categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+                secureItemRepository.insertItem(item)
+                count++
+            } catch (e: Exception) { }
+        }
+        return Result.success(count)
     }
 }

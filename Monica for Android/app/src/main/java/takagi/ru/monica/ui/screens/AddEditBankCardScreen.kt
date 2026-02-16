@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -20,13 +21,20 @@ import androidx.compose.ui.unit.dp
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.ui.components.DualPhotoPicker
+import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.utils.RememberedStorageTarget
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +46,8 @@ fun AddEditBankCardScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager(context) }
     
     var title by rememberSaveable { mutableStateOf("") }
     var cardNumber by rememberSaveable { mutableStateOf("") }
@@ -62,6 +72,33 @@ fun AddEditBankCardScreen(
     // 图片路径管理
     var frontImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var backImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val rememberedStorageTarget by settingsManager
+        .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.BANK_CARD)
+        .collectAsState(initial = null as RememberedStorageTarget?)
+
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
+    LaunchedEffect(cardId, hasAppliedInitialStorage, rememberedStorageTarget) {
+        if (cardId != null || hasAppliedInitialStorage) return@LaunchedEffect
+        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
+        selectedCategoryId = remembered.categoryId
+        keepassDatabaseId = remembered.keepassDatabaseId
+        bitwardenVaultId = remembered.bitwardenVaultId
+        bitwardenFolderId = remembered.bitwardenFolderId
+        hasAppliedInitialStorage = true
+    }
     
     // 如果是编辑模式，加载现有数据
     LaunchedEffect(cardId) {
@@ -70,6 +107,10 @@ fun AddEditBankCardScreen(
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
+                selectedCategoryId = item.categoryId
+                keepassDatabaseId = item.keepassDatabaseId
+                bitwardenVaultId = item.bitwardenVaultId
+                bitwardenFolderId = item.bitwardenFolderId
                 
                 // 解析图片路径
                 try {
@@ -110,6 +151,73 @@ fun AddEditBankCardScreen(
         }
     }
     
+    val canSave = cardNumber.isNotBlank() && !isSaving
+    val save: () -> Unit = saveAction@{
+        if (isSaving || cardNumber.isBlank()) return@saveAction
+        isSaving = true // 防止重复点击
+
+        val billingAddressJson = if (hasBillingAddress && !billingAddress.isEmpty()) {
+            Json.encodeToString(billingAddress)
+        } else {
+            ""
+        }
+        val cardData = BankCardData(
+            cardNumber = cardNumber,
+            cardholderName = cardholderName,
+            expiryMonth = expiryMonth,
+            expiryYear = expiryYear,
+            cvv = cvv,
+            bankName = bankName,
+            cardType = cardType,
+            billingAddress = billingAddressJson
+        )
+
+        val imagePathsList = listOf(
+            frontImageFileName ?: "",
+            backImageFileName ?: ""
+        )
+        val imagePathsJson = Json.encodeToString(imagePathsList)
+
+        if (cardId == null) {
+            viewModel.addCard(
+                title = title.ifBlank { context.getString(R.string.bank_card_default_title) },
+                cardData = cardData,
+                notes = notes,
+                isFavorite = isFavorite,
+                imagePaths = imagePathsJson,
+                categoryId = selectedCategoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
+            )
+        } else {
+            viewModel.updateCard(
+                id = cardId,
+                title = title.ifBlank { context.getString(R.string.bank_card_default_title) },
+                cardData = cardData,
+                notes = notes,
+                isFavorite = isFavorite,
+                imagePaths = imagePathsJson,
+                categoryId = selectedCategoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
+            )
+        }
+        coroutineScope.launch {
+            settingsManager.updateRememberedStorageTarget(
+                scope = SettingsManager.StorageTargetScope.BANK_CARD,
+                target = RememberedStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        }
+        onNavigateBack()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -120,7 +228,6 @@ fun AddEditBankCardScreen(
                     }
                 },
                 actions = {
-                    // 收藏按钮
                     IconButton(onClick = { isFavorite = !isFavorite }) {
                         Icon(
                             if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -128,61 +235,37 @@ fun AddEditBankCardScreen(
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
                         )
                     }
-                    
-                    // 保存按钮
-                    IconButton(
-                        onClick = {
-                            if (isSaving) return@IconButton
-                            isSaving = true // 防止重复点击
-                            
-                            val billingAddressJson = if (hasBillingAddress && !billingAddress.isEmpty()) {
-                                Json.encodeToString(billingAddress)
-                            } else {
-                                ""
-                            }
-                            val cardData = BankCardData(
-                                cardNumber = cardNumber,
-                                cardholderName = cardholderName,
-                                expiryMonth = expiryMonth,
-                                expiryYear = expiryYear,
-                                cvv = cvv,
-                                bankName = bankName,
-                                cardType = cardType,
-                                billingAddress = billingAddressJson
-                            )
-                            
-                            val imagePathsList = listOf(
-                                frontImageFileName ?: "",
-                                backImageFileName ?: ""
-                            )
-                            val imagePathsJson = Json.encodeToString(imagePathsList)
-                            
-                            if (cardId == null) {
-                                viewModel.addCard(
-                                    title = title.ifBlank { "银行卡" },
-                                    cardData = cardData,
-                                    notes = notes,
-                                    isFavorite = isFavorite,
-                                    imagePaths = imagePathsJson
-                                )
-                            } else {
-                                viewModel.updateCard(
-                                    id = cardId,
-                                    title = title.ifBlank { "银行卡" },
-                                    cardData = cardData,
-                                    notes = notes,
-                                    isFavorite = isFavorite,
-                                    imagePaths = imagePathsJson
-                                )
-                            }
-                            onNavigateBack()
-                        },
-                        enabled = cardNumber.isNotBlank() && !isSaving
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = "保存")
-                    }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = save,
+                containerColor = if (canSave) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
+                }
+            }
         }
     ) { paddingValues ->
         Column(
@@ -194,8 +277,34 @@ fun AddEditBankCardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            StorageTargetSelectorCard(
+                keepassDatabases = keepassDatabases,
+                selectedKeePassDatabaseId = keepassDatabaseId,
+                onKeePassDatabaseSelected = {
+                    keepassDatabaseId = it
+                    if (it != null) {
+                        bitwardenVaultId = null
+                        bitwardenFolderId = null
+                    }
+                },
+                bitwardenVaults = bitwardenVaults,
+                selectedBitwardenVaultId = bitwardenVaultId,
+                onBitwardenVaultSelected = {
+                    bitwardenVaultId = it
+                    if (it != null) keepassDatabaseId = null
+                },
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = { selectedCategoryId = it },
+                selectedBitwardenFolderId = bitwardenFolderId,
+                onBitwardenFolderSelected = { folderId ->
+                    bitwardenFolderId = folderId
+                    if (bitwardenVaultId != null) keepassDatabaseId = null
+                }
+            )
+
             // Basic Information
-            InfoCard(title = "基本信息") {
+            InfoCard(title = stringResource(R.string.section_basic_info)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Card Name
                     OutlinedTextField(
@@ -451,7 +560,7 @@ fun AddEditBankCardScreen(
             }
             
             // Photos Card
-            InfoCard(title = "照片") {
+            InfoCard(title = stringResource(R.string.section_photos)) {
                 DualPhotoPicker(
                     frontImageFileName = frontImageFileName,
                     backImageFileName = backImageFileName,
@@ -459,14 +568,14 @@ fun AddEditBankCardScreen(
                     onFrontImageRemoved = { frontImageFileName = null },
                     onBackImageSelected = { fileName -> backImageFileName = fileName },
                     onBackImageRemoved = { backImageFileName = null },
-                    frontLabel = "银行卡照片（正面）",
-                    backLabel = "银行卡照片（背面）",
+                    frontLabel = stringResource(R.string.bank_card_photo_front_label),
+                    backLabel = stringResource(R.string.bank_card_photo_back_label),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
             // Notes Card
-            InfoCard(title = "备注") {
+            InfoCard(title = stringResource(R.string.section_notes)) {
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },

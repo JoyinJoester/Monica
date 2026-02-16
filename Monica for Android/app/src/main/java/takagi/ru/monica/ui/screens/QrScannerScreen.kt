@@ -108,7 +108,7 @@ private fun CameraPermissionRequest(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "需要相机权限",
+            text = stringResource(R.string.qr_camera_permission_title),
             style = MaterialTheme.typography.headlineSmall
         )
         
@@ -157,7 +157,7 @@ private fun QrCodeScanner(
                     hasScanned = true
                     onQrCodeScanned(result)
                 } else if (result == null) {
-                    Toast.makeText(context, "未发现二维码", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.qr_not_found), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -215,7 +215,7 @@ private fun QrCodeScanner(
                 )
             ) {
                 Text(
-                    text = "将二维码对准扫描框",
+                    text = stringResource(R.string.qr_align_hint),
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -233,7 +233,7 @@ private fun QrCodeScanner(
         ) {
             Icon(
                 Icons.Default.Image,
-                contentDescription = "从相册选择"
+                contentDescription = stringResource(R.string.qr_pick_from_gallery)
             )
         }
     }

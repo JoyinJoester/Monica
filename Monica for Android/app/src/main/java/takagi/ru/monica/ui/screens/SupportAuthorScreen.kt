@@ -344,7 +344,7 @@ fun SupportAuthorScreen(
 private fun saveImageToGallery(context: android.content.Context, bitmap: Bitmap) {
     try {
         val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "Monica_支持作者_${System.currentTimeMillis()}.jpg")
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "Monica_support_author_${System.currentTimeMillis()}.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Monica")

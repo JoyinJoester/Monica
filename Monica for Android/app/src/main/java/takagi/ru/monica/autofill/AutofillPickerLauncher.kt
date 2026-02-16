@@ -9,6 +9,7 @@ import android.service.autofill.Dataset
 import android.service.autofill.FillResponse
 import android.service.autofill.SaveInfo
 import android.view.autofill.AutofillId
+import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
 import kotlinx.coroutines.flow.first
 import takagi.ru.monica.R
@@ -33,9 +34,12 @@ object AutofillPickerLauncher {
         allPasswordIds: List<Long>,
         packageName: String?,
         domain: String?,
-        parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure
+        parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure,
+        lastFilledPassword: PasswordEntry? = null
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
+        val fillTargets = selectCredentialFillTargets(parsedStructure)
+        val authTargets = selectAuthenticationTargets(fillTargets)
         
         android.util.Log.d("AutofillPicker", "Creating single entry point response (Unlock/Search style)")
         
@@ -43,7 +47,8 @@ object AutofillPickerLauncher {
         val args = AutofillPickerActivityV2.Args(
             applicationId = packageName,
             webDomain = domain,
-            autofillIds = ArrayList(parsedStructure.items.map { it.id }),
+            autofillIds = ArrayList(fillTargets.map { it.id }),
+            autofillHints = ArrayList(fillTargets.map { it.hint.name }),
             suggestedPasswordIds = matchedPasswords.map { it.id }.toLongArray(),
             isSaveMode = false,
             // 如果只有用户名/密码字段，传过去以便预填
@@ -64,33 +69,31 @@ object AutofillPickerLauncher {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
         
-        val pendingIntent = PendingIntent.getActivity(context, 0, pickerIntent, flags)
+        val requestCode = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+        val pendingIntent = PendingIntent.getActivity(context, requestCode, pickerIntent, flags)
         
-        // 2. 创建单一入口的 Presentation
-        // 复用 autofill_manual_card 但修改文字以匹配"Unlock Keyguard"风格
-        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card).apply {
-            // 主标题
-            setTextViewText(R.id.text_title, "Unlock Monica") 
-            // 副标题显示域名或包名
-            setTextViewText(R.id.text_username, domain ?: packageName ?: "Tap to search passwords")
-            // 更换为锁图标
+        // 2. 如有上次填充记录，优先展示“上次填充”卡片（点击直接填充）
+        lastFilledPassword?.let { last ->
+            createLastFilledDataset(context, fillTargets, last)?.let { responseBuilder.addDataset(it) }
+        }
+
+        // 3. 创建手动触发入口 Presentation（始终保留）
+        // v2 手动入口：使用本地化文案，避免中文系统显示英文硬编码
+        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
+            setTextViewText(R.id.text_title, context.getString(R.string.tile_autofill_label))
+            setTextViewText(R.id.text_username, context.getString(R.string.autofill_open_picker))
             setImageViewResource(R.id.icon_app, R.drawable.ic_key) 
         }
         
-        // 3. 创建单一 Dataset
-        val datasetBuilder = Dataset.Builder(presentation)
-        
-        // 绑定所有探测到的字段 (设置为null触发Authentication)
-        parsedStructure.items.forEach { item ->
-             datasetBuilder.setValue(item.id, null, presentation)
+        // 4. keyguard 风格：按字段创建入口 Dataset，提升二次触发稳定性
+        authTargets.forEach { item ->
+            val datasetBuilder = Dataset.Builder(presentation)
+            datasetBuilder.setValue(item.id, null, presentation)
+            datasetBuilder.setAuthentication(pendingIntent.intentSender)
+            responseBuilder.addDataset(datasetBuilder.build())
         }
         
-        // 设置 Authentication 为 Picker Activity
-        datasetBuilder.setAuthentication(pendingIntent.intentSender)
-        
-        responseBuilder.addDataset(datasetBuilder.build())
-        
-        // 4. 添加最小化 SaveInfo
+        // 5. 添加最小化 SaveInfo
         addMinimalSaveInfo(responseBuilder, parsedStructure)
         
         return responseBuilder.build()
@@ -428,6 +431,8 @@ object AutofillPickerLauncher {
         parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
+        val fillTargets = selectCredentialFillTargets(parsedStructure)
+        val authTargets = selectAuthenticationTargets(fillTargets)
         
         // 创建启动AutofillPickerActivity的Intent
         val pickerIntent = Intent(context, AutofillPickerActivity::class.java).apply {
@@ -440,8 +445,12 @@ object AutofillPickerLauncher {
             putExtra(AutofillPickerActivity.EXTRA_DOMAIN, domain)
             
             // 传递字段ID列表,用于构建FillResponse
-            val autofillIds = ArrayList(parsedStructure.items.map { it.id })
+            val autofillIds = ArrayList(fillTargets.map { it.id })
             putParcelableArrayListExtra("autofill_ids", autofillIds)
+            putStringArrayListExtra(
+                AutofillPickerActivity.EXTRA_AUTOFILL_HINTS,
+                ArrayList(fillTargets.map { it.hint.name })
+            )
             
             // 根据字段类型判断
             val fieldType = if (isPaymentForm(parsedStructure)) {
@@ -461,7 +470,7 @@ object AutofillPickerLauncher {
         
         val pendingIntent = PendingIntent.getActivity(
             context,
-            0,
+            System.currentTimeMillis().toInt() and 0x7FFFFFFF,
             pickerIntent,
             flags
         )
@@ -473,18 +482,13 @@ object AutofillPickerLauncher {
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
         
-        // 必须为至少一个字段设置值,否则Dataset不会显示
-        val datasetBuilder = Dataset.Builder(presentation)
-        
-        // 为所有字段设置Authentication
-        parsedStructure.items.forEach { item ->
+        // keyguard 风格：按字段创建认证入口
+        authTargets.forEach { item ->
+            val datasetBuilder = Dataset.Builder(presentation)
             datasetBuilder.setValue(item.id, null, presentation)
+            datasetBuilder.setAuthentication(pendingIntent.intentSender)
+            responseBuilder.addDataset(datasetBuilder.build())
         }
-        
-        // 设置Authentication - 点击后启动Activity
-        datasetBuilder.setAuthentication(pendingIntent.intentSender)
-        
-        responseBuilder.addDataset(datasetBuilder.build())
         
         // 添加 SaveInfo
         addSaveInfo(responseBuilder, parsedStructure, context)
@@ -504,6 +508,80 @@ object AutofillPickerLauncher {
             )
         }
     }
+
+    private fun selectCredentialFillTargets(
+        parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure
+    ): List<EnhancedAutofillStructureParserV2.ParsedItem> {
+        val credentialTargets = parsedStructure.items.filter { item ->
+            item.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                item.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                item.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
+                item.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
+        }
+        return if (credentialTargets.isNotEmpty()) credentialTargets else parsedStructure.items
+    }
+
+    private fun selectAuthenticationTargets(
+        fillTargets: List<EnhancedAutofillStructureParserV2.ParsedItem>
+    ): List<EnhancedAutofillStructureParserV2.ParsedItem> {
+        if (fillTargets.isEmpty()) return emptyList()
+        val username = fillTargets.firstOrNull {
+            it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS
+        }
+        val password = fillTargets.firstOrNull {
+            it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
+        }
+
+        val pair = listOfNotNull(username, password).distinctBy { it.id }
+        if (pair.isNotEmpty()) return pair
+
+        val focused = fillTargets.firstOrNull { it.isFocused }
+        return listOf(focused ?: fillTargets.first())
+    }
+
+    private fun createLastFilledDataset(
+        context: Context,
+        fillTargets: List<EnhancedAutofillStructureParserV2.ParsedItem>,
+        password: PasswordEntry
+    ): Dataset? {
+        if (fillTargets.isEmpty()) return null
+
+        val securityManager = takagi.ru.monica.security.SecurityManager(context)
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(context)
+        val decryptedPassword = try {
+            securityManager.decryptData(password.password)
+        } catch (_: Exception) {
+            password.password
+        }
+
+        val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
+            setTextViewText(R.id.text_title, password.title.ifBlank { accountValue })
+            setTextViewText(R.id.text_username, accountValue)
+            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
+        }
+
+        val datasetBuilder = Dataset.Builder(presentation)
+        var hasValue = false
+        fillTargets.forEach { item ->
+            val value = when (item.hint) {
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME -> accountValue
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ->
+                    if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
+                EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+                EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> decryptedPassword
+                else -> null
+            }
+            if (value != null) {
+                datasetBuilder.setValue(item.id, AutofillValue.forText(value), presentation)
+                hasValue = true
+            }
+        }
+
+        return if (hasValue) datasetBuilder.build() else null
+    }
     
     /**
      * 创建简化的FillResponse(用于快速填充)
@@ -519,10 +597,12 @@ object AutofillPickerLauncher {
         
         // 初始化 SecurityManager 用于解密密码
         val securityManager = takagi.ru.monica.security.SecurityManager(context)
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(context)
         
         // 创建RemoteViews
         val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
-            setTextViewText(R.id.text_title, password.title.ifEmpty { password.username })
+            setTextViewText(R.id.text_title, password.title.ifEmpty { accountValue })
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
         
@@ -532,18 +612,19 @@ object AutofillPickerLauncher {
         // 填充字段
         parsedStructure.items.forEach { item ->
             when (item.hint) {
-                EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
-                    // 用户名可能也需要解密
-                    val decryptedUsername = if (password.username.contains("==") && password.username.length > 20) {
-                        securityManager.decryptData(password.username)
-                    } else {
-                        password.username
-                    }
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME -> {
                     datasetBuilder.setValue(
                         item.id,
-                        android.view.autofill.AutofillValue.forText(decryptedUsername)
+                        android.view.autofill.AutofillValue.forText(accountValue)
                     )
+                }
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                    if (fillEmailWithAccount || accountValue.contains("@")) {
+                        datasetBuilder.setValue(
+                            item.id,
+                            android.view.autofill.AutofillValue.forText(accountValue)
+                        )
+                    }
                 }
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
                 EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {

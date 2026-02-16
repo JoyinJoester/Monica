@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -57,6 +58,14 @@ class AutofillPreferences(private val context: Context) {
         private val KEY_BLACKLIST_PACKAGES = stringSetPreferencesKey("blacklist_packages")
         // 填充组件外观: 是否使用横幅（方案2）
         private val KEY_FILL_COMPONENT_USE_BANNER = booleanPreferencesKey("fill_component_use_banner")
+
+        // 最近一次自动填充记录（用于显示“上次填充”卡片）
+        private val KEY_LAST_FILLED_IDENTIFIER = stringPreferencesKey("last_filled_identifier")
+        private val KEY_LAST_FILLED_PASSWORD_ID = longPreferencesKey("last_filled_password_id")
+        private val KEY_LAST_FILLED_AT = longPreferencesKey("last_filled_at")
+        private val KEY_INTERACTION_IDENTIFIER = stringPreferencesKey("autofill_interaction_identifier")
+        private val KEY_INTERACTION_STARTED_AT = longPreferencesKey("autofill_interaction_started_at")
+        private val KEY_INTERACTION_COMPLETED = booleanPreferencesKey("autofill_interaction_completed")
         
         // 默认黑名单应用
         val DEFAULT_BLACKLIST_PACKAGES = setOf(
@@ -363,5 +372,100 @@ class AutofillPreferences(private val context: Context) {
         
         val packages = blacklistPackages.first()
         return packages.contains(packageName)
+    }
+
+    data class LastFilledCredential(
+        val identifier: String,
+        val passwordId: Long,
+        val timestamp: Long
+    )
+
+    data class AutofillInteractionState(
+        val identifier: String,
+        val startedAt: Long,
+        val completed: Boolean,
+        val lastFilledPasswordId: Long?,
+        val lastFilledAt: Long
+    )
+
+    private fun normalizeIdentifier(identifier: String): String {
+        return identifier.trim().lowercase()
+    }
+
+    suspend fun beginAutofillInteraction(identifier: String) {
+        val normalized = normalizeIdentifier(identifier)
+        if (normalized.isBlank()) return
+        val now = System.currentTimeMillis()
+        context.dataStore.edit { preferences ->
+            preferences[KEY_INTERACTION_IDENTIFIER] = normalized
+            preferences[KEY_INTERACTION_STARTED_AT] = now
+            preferences[KEY_INTERACTION_COMPLETED] = false
+            preferences[KEY_LAST_FILLED_IDENTIFIER] = normalized
+            preferences.remove(KEY_LAST_FILLED_PASSWORD_ID)
+            preferences[KEY_LAST_FILLED_AT] = 0L
+        }
+    }
+
+    suspend fun completeAutofillInteraction(identifier: String, passwordId: Long) {
+        val normalized = normalizeIdentifier(identifier)
+        if (normalized.isBlank()) return
+        val now = System.currentTimeMillis()
+        context.dataStore.edit { preferences ->
+            val existingIdentifier = preferences[KEY_INTERACTION_IDENTIFIER]
+            val existingStartedAt = preferences[KEY_INTERACTION_STARTED_AT]
+            preferences[KEY_INTERACTION_IDENTIFIER] = normalized
+            preferences[KEY_INTERACTION_STARTED_AT] = if (existingIdentifier == normalized) {
+                existingStartedAt ?: now
+            } else {
+                now
+            }
+            preferences[KEY_INTERACTION_COMPLETED] = true
+            preferences[KEY_LAST_FILLED_IDENTIFIER] = normalized
+            preferences[KEY_LAST_FILLED_PASSWORD_ID] = passwordId
+            preferences[KEY_LAST_FILLED_AT] = now
+        }
+    }
+
+    suspend fun getAutofillInteractionState(identifier: String): AutofillInteractionState? {
+        val normalized = normalizeIdentifier(identifier)
+        if (normalized.isBlank()) return null
+        val preferences = context.dataStore.data.first()
+        val interactionIdentifier = preferences[KEY_INTERACTION_IDENTIFIER] ?: return null
+        if (interactionIdentifier != normalized) return null
+        val startedAt = preferences[KEY_INTERACTION_STARTED_AT] ?: return null
+        val completed = preferences[KEY_INTERACTION_COMPLETED] ?: false
+        val lastIdentifier = preferences[KEY_LAST_FILLED_IDENTIFIER]
+        val lastFilledPasswordId = if (lastIdentifier == normalized) {
+            preferences[KEY_LAST_FILLED_PASSWORD_ID]
+        } else {
+            null
+        }
+        val lastFilledAt = if (lastIdentifier == normalized) {
+            preferences[KEY_LAST_FILLED_AT] ?: 0L
+        } else {
+            0L
+        }
+        return AutofillInteractionState(
+            identifier = normalized,
+            startedAt = startedAt,
+            completed = completed,
+            lastFilledPasswordId = lastFilledPasswordId,
+            lastFilledAt = lastFilledAt
+        )
+    }
+
+    suspend fun setLastFilledCredential(identifier: String, passwordId: Long) {
+        completeAutofillInteraction(identifier, passwordId)
+    }
+
+    suspend fun getLastFilledCredential(identifier: String): LastFilledCredential? {
+        val normalized = normalizeIdentifier(identifier)
+        if (normalized.isBlank()) return null
+        val preferences = context.dataStore.data.first()
+        val storedIdentifier = preferences[KEY_LAST_FILLED_IDENTIFIER] ?: return null
+        if (storedIdentifier != normalized) return null
+        val passwordId = preferences[KEY_LAST_FILLED_PASSWORD_ID] ?: return null
+        val timestamp = preferences[KEY_LAST_FILLED_AT] ?: 0L
+        return LastFilledCredential(storedIdentifier, passwordId, timestamp)
     }
 }

@@ -104,6 +104,14 @@ data class PasskeyEntry(
     // 绑定的密码条目（可为空，支持后期绑定）
     @ColumnInfo(name = "bound_password_id", defaultValue = "NULL")
     val boundPasswordId: Long? = null,
+
+    // 统一文件夹归属（复用本地分类体系）
+    @ColumnInfo(name = "category_id", defaultValue = "NULL")
+    val categoryId: Long? = null,
+
+    // 归属的 KeePass 数据库（用于统一目标存储选择）
+    @ColumnInfo(name = "keepass_database_id", defaultValue = "NULL")
+    val keepassDatabaseId: Long? = null,
     
     // Bitwarden 同步字段（仅同步元数据，私钥无法导出）
     @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")

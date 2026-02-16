@@ -40,6 +40,7 @@ import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.ui.components.TrashSettingsSheet
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
@@ -78,6 +79,18 @@ fun SettingsScreen(
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
     val context = LocalContext.current
+    val openExternalLink: (String) -> Unit = { url ->
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.cannot_open_browser),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
     
     // 直接使用 LocalContext.current as? ComponentActivity 获取 Activity
     val activity = context as? FragmentActivity
@@ -93,9 +106,11 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showAutoLockDialog by remember { mutableStateOf(false) }
+    var showVersionInfoDialog by remember { mutableStateOf(false) }
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
     var previewFeaturesExpanded by remember { mutableStateOf(false) }
     var developerPasswordInput by remember { mutableStateOf("") }
+    var developerPasswordError by remember { mutableStateOf(false) }
     var showWeakBiometricWarning by remember { mutableStateOf(false) }
     
     // 生物识别帮助类
@@ -137,7 +152,7 @@ fun SettingsScreen(
             biometricHelper.authenticate(
                 activity = activity,
                 title = context.getString(R.string.biometric_login_title),
-                subtitle = "验证指纹以启用指纹解锁",
+                subtitle = context.getString(R.string.biometric_subtitle),
                 description = context.getString(R.string.biometric_login_description),
                 negativeButtonText = context.getString(R.string.cancel),
                 onSuccess = {
@@ -146,7 +161,7 @@ fun SettingsScreen(
                     viewModel.updateBiometricEnabled(true)
                     Toast.makeText(
                         context,
-                        "指纹解锁已启用",
+                        context.getString(R.string.biometric_unlock_enabled),
                         Toast.LENGTH_SHORT
                     ).show()
                 },
@@ -155,7 +170,7 @@ fun SettingsScreen(
                     biometricSwitchState = false
                     Toast.makeText(
                         context,
-                        "指纹验证失败: $errorMsg",
+                        context.getString(R.string.biometric_auth_error, errorMsg),
                         Toast.LENGTH_SHORT
                     ).show()
                 },
@@ -164,7 +179,7 @@ fun SettingsScreen(
                     biometricSwitchState = false
                     Toast.makeText(
                         context,
-                        "已取消",
+                        context.getString(R.string.cancel),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -285,19 +300,6 @@ fun SettingsScreen(
                 }
             }
             
-            // Display & Grouping
-            SettingsSection(
-                title = context.getString(R.string.display_options_menu_title)
-            ) {
-                 SettingsItemWithSwitch(
-                    icon = Icons.Default.CallMerge,
-                    title = context.getString(R.string.smart_deduplication),
-                    subtitle = context.getString(R.string.smart_deduplication_desc),
-                    checked = settings.smartDeduplicationEnabled,
-                    onCheckedChange = { viewModel.updateSmartDeduplicationEnabled(it) }
-                )
-            }
-
             // Security Settings
             SettingsSection(
                 title = context.getString(R.string.security)
@@ -461,16 +463,14 @@ fun SettingsScreen(
                     onClick = { showLanguageDialog = true }
                 )
                 
-                // 2. 底部导航栏设置（仅V1模式可用）
-                if (settings.navBarVersion == takagi.ru.monica.data.NavBarVersion.V1) {
-                    SettingsItem(
-                        icon = Icons.Default.ViewWeek,
-                        title = context.getString(R.string.bottom_nav_settings),
-                        subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
-                        onClick = onNavigateToBottomNavSettings,
-                        modifier = getSharedModifier("bottom_nav_settings_card")
-                    )
-                }
+                // 2. 底部导航栏设置
+                SettingsItem(
+                    icon = Icons.Default.ViewWeek,
+                    title = context.getString(R.string.bottom_nav_settings),
+                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
+                    onClick = onNavigateToBottomNavSettings,
+                    modifier = getSharedModifier("bottom_nav_settings_card")
+                )
                 
                 // 3. 功能扩展入口
                 SettingsItem(
@@ -504,19 +504,7 @@ fun SettingsScreen(
                     icon = Icons.Default.Info,
                     title = context.getString(R.string.version),
                     subtitle = context.getString(R.string.settings_version_number),
-                    onClick = {
-                        // 打开 GitHub 仓库链接
-                        try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/JoyinJoester/Monica"))
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.cannot_open_browser),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
+                    onClick = { showVersionInfoDialog = true }
                 )
             }
             
@@ -548,6 +536,7 @@ fun SettingsScreen(
                         )
 
                         developerPasswordInput = ""
+                        developerPasswordError = false
                         showDeveloperVerifyDialog = false
 
                         when {
@@ -580,6 +569,7 @@ fun SettingsScreen(
                                         )
                                         showDeveloperVerifyDialog = false
                                         developerPasswordInput = ""
+                                        developerPasswordError = false
                                         onNavigateToDeveloperSettings()
                                     },
                                     onError = { errorCode, errorMessage ->
@@ -680,71 +670,78 @@ fun SettingsScreen(
     
     // Developer Settings Verification Dialog
     if (showDeveloperVerifyDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showDeveloperVerifyDialog = false
-                developerPasswordInput = ""
-            },
-            icon = {
-                Icon(
-                    Icons.Default.Code,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            title = {
-                Text(stringResource(R.string.biometric_title))
-            },
-            text = {
-                Column {
-                    Text(
-                        stringResource(R.string.enter_master_password_confirm),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = developerPasswordInput,
-                        onValueChange = { developerPasswordInput = it },
-                        label = { Text(stringResource(R.string.master_password)) },
-                        singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            val securityManager = takagi.ru.monica.security.SecurityManager(context)
-                            if (securityManager.verifyMasterPassword(developerPasswordInput)) {
-                                showDeveloperVerifyDialog = false
-                                developerPasswordInput = ""
-                                onNavigateToDeveloperSettings()
-                            } else {
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "密码错误",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
-                                developerPasswordInput = ""
-                            }
-                        }
-                    },
-                    enabled = developerPasswordInput.isNotEmpty()
-                ) {
-                    Text("确认")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
+        val canUseBiometricInDialog = activity != null &&
+            settings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        val retryBiometricAction = if (canUseBiometricInDialog) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity!!,
+                    title = context.getString(R.string.biometric_login_title),
+                    subtitle = context.getString(R.string.biometric_login_subtitle),
+                    description = context.getString(R.string.biometric_login_description),
+                    negativeButtonText = context.getString(R.string.use_master_password),
+                    onSuccess = {
                         showDeveloperVerifyDialog = false
                         developerPasswordInput = ""
+                        developerPasswordError = false
+                        onNavigateToDeveloperSettings()
+                    },
+                    onError = { _, errorMessage ->
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.biometric_auth_error, errorMessage),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onCancel = {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.use_master_password),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
-                ) {
-                    Text("取消")
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.enter_master_password_confirm),
+            passwordValue = developerPasswordInput,
+            onPasswordChange = {
+                developerPasswordInput = it
+                developerPasswordError = false
+            },
+            onDismiss = {
+                showDeveloperVerifyDialog = false
+                developerPasswordInput = ""
+                developerPasswordError = false
+            },
+            onConfirm = {
+                coroutineScope.launch {
+                    val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                    if (securityManager.verifyMasterPassword(developerPasswordInput)) {
+                        showDeveloperVerifyDialog = false
+                        developerPasswordInput = ""
+                        developerPasswordError = false
+                        onNavigateToDeveloperSettings()
+                    } else {
+                        developerPasswordError = true
+                    }
                 }
+            },
+            confirmText = stringResource(R.string.confirm),
+            destructiveConfirm = false,
+            icon = Icons.Default.Code,
+            isPasswordError = developerPasswordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = retryBiometricAction,
+            biometricHintText = if (retryBiometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
             }
         )
     }
@@ -776,6 +773,87 @@ fun SettingsScreen(
                     onClick = { showWeakBiometricWarning = false }
                 ) {
                     Text(stringResource(R.string.biometric_weak_warning_cancel))
+                }
+            }
+        )
+    }
+
+    if (showVersionInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionInfoDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text(stringResource(R.string.version_info_dialog_title)) },
+            text = {
+                Column {
+                    val githubUrl = "https://github.com/JoyinJoester/Monica"
+                    val websiteUrl = "https://joyinjoester.github.io/Monica/"
+                    val iconSourceUrl = "https://github.com/stratumauth/app/tree/v1.4.0/icons"
+                    val iconReleaseUrl = "https://github.com/stratumauth/app/releases/tag/v1.4.0"
+
+                    Text(
+                        text = stringResource(R.string.version_info_github_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = githubUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(githubUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_website_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = websiteUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(websiteUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_icon_source_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = iconSourceUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(iconSourceUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_icon_release_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = iconReleaseUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openExternalLink(iconReleaseUrl) }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.version_info_simple_icons_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionInfoDialog = false }) {
+                    Text(stringResource(R.string.close))
                 }
             }
         )
@@ -1589,7 +1667,6 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
-    // BottomNavContentTab.VAULT -> Icons.Default.Dataset
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
 }
 
@@ -1601,7 +1678,6 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.TIMELINE -> R.string.nav_timeline
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
-    // BottomNavContentTab.VAULT -> R.string.nav_v2_vault
     BottomNavContentTab.SEND -> R.string.nav_v2_send
 }
 
@@ -2104,12 +2180,12 @@ private fun SettingsItemWithTrashConfig(
     
     val subtitleText = if (trashEnabled) {
         if (trashAutoDeleteDays > 0) {
-            "已启用 · ${trashAutoDeleteDays}天后自动清空"
+            stringResource(R.string.trash_status_enabled_auto_clear, trashAutoDeleteDays)
         } else {
-            "已启用 · 不自动清空"
+            stringResource(R.string.trash_status_enabled_no_auto_clear)
         }
     } else {
-        "已禁用 · 删除将永久删除"
+        stringResource(R.string.trash_status_disabled_permanent_delete)
     }
 
     SettingsItem(

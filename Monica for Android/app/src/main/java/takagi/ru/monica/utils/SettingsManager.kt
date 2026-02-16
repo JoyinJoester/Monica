@@ -13,11 +13,23 @@ import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
-import takagi.ru.monica.data.VaultViewMode
 import takagi.ru.monica.data.AutofillSource
-import takagi.ru.monica.data.NavBarVersion
 
 private val Context.dataStore by preferencesDataStore("settings")
+
+data class RememberedStorageTarget(
+    val categoryId: Long? = null,
+    val keepassDatabaseId: Long? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null
+)
+
+data class SavedCategoryFilterState(
+    val type: String = "all",
+    val primaryId: Long? = null,
+    val secondaryId: Long? = null,
+    val text: String? = null
+)
 
 /**
  * Settings manager using DataStore
@@ -36,14 +48,13 @@ class SettingsManager(private val context: Context) {
         private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
-        // private val SHOW_VAULT_TAB_KEY = booleanPreferencesKey("show_vault_tab")  // V2 库 - Removed
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
         private val SHOW_AUTHENTICATOR_TAB_KEY = booleanPreferencesKey("show_authenticator_tab")
         private val SHOW_CARD_WALLET_TAB_KEY = booleanPreferencesKey("show_card_wallet_tab")
         private val SHOW_NOTES_TAB_KEY = booleanPreferencesKey("show_notes_tab")
         private val SHOW_LEDGER_TAB_KEY = booleanPreferencesKey("show_ledger_tab")
         private val SHOW_GENERATOR_TAB_KEY = booleanPreferencesKey("show_generator_tab")  // 添加生成器标签键
-        private val SHOW_SEND_TAB_KEY = booleanPreferencesKey("show_send_tab")  // V2 发送
+        private val SHOW_SEND_TAB_KEY = booleanPreferencesKey("show_send_tab")
         private val SHOW_TIMELINE_TAB_KEY = booleanPreferencesKey("show_timeline_tab")  // 添加时间线标签键
         private val SHOW_PASSKEY_TAB_KEY = booleanPreferencesKey("show_passkey_tab")  // 添加 Passkey 标签键
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
@@ -86,21 +97,42 @@ class SettingsManager(private val context: Context) {
 
         // 智能去重
         private val SMART_DEDUPLICATION_ENABLED_KEY = booleanPreferencesKey("smart_deduplication_enabled")
+        private val SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY = booleanPreferencesKey("separate_username_account_enabled")
+        private val LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY = stringPreferencesKey("last_password_category_filter_type")
+        private val LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY = longPreferencesKey("last_password_category_filter_primary_id")
+        private val LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY = longPreferencesKey("last_password_category_filter_secondary_id")
+        private val LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY = stringPreferencesKey("last_password_category_filter_text")
 
         // Bitwarden 同步范围
         private val BITWARDEN_UPLOAD_ALL_KEY = booleanPreferencesKey("bitwarden_upload_all")
         
-        // V2 多源密码库设置
-        private val DEFAULT_VAULT_VIEW_KEY = stringPreferencesKey("default_vault_view")
         private val AUTOFILL_SOURCES_KEY = stringPreferencesKey("autofill_sources")
         private val AUTOFILL_PRIORITY_KEY = stringPreferencesKey("autofill_priority")
-        
-        // 导航栏版本设置
-        private val NAV_BAR_VERSION_KEY = stringPreferencesKey("nav_bar_version")
-        
-        // V2导航栏上次打开的子页面（默认密码）
-        private val V2_LAST_SUB_PAGE_KEY = stringPreferencesKey("v2_last_sub_page")
+
     }
+
+    object StorageTargetScope {
+        const val NOTE = "note"
+        const val TOTP = "totp"
+        const val BANK_CARD = "bank_card"
+        const val PASSKEY = "passkey"
+    }
+
+    object CategoryFilterScope {
+        const val NOTE = "note"
+        const val TOTP = "totp"
+        const val PASSKEY = "passkey"
+    }
+
+    private fun storageCategoryKey(scope: String) = longPreferencesKey("last_storage_${scope}_category_id")
+    private fun storageKeePassKey(scope: String) = longPreferencesKey("last_storage_${scope}_keepass_database_id")
+    private fun storageBitwardenVaultKey(scope: String) = longPreferencesKey("last_storage_${scope}_bitwarden_vault_id")
+    private fun storageBitwardenFolderKey(scope: String) = stringPreferencesKey("last_storage_${scope}_bitwarden_folder_id")
+
+    private fun categoryFilterTypeKey(scope: String) = stringPreferencesKey("last_category_filter_${scope}_type")
+    private fun categoryFilterPrimaryKey(scope: String) = longPreferencesKey("last_category_filter_${scope}_primary_id")
+    private fun categoryFilterSecondaryKey(scope: String) = longPreferencesKey("last_category_filter_${scope}_secondary_id")
+    private fun categoryFilterTextKey(scope: String) = stringPreferencesKey("last_category_filter_${scope}_text")
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
         val storedOrder = preferences[BOTTOM_NAV_ORDER_KEY]
@@ -186,12 +218,13 @@ class SettingsManager(private val context: Context) {
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
             smartDeduplicationEnabled = preferences[SMART_DEDUPLICATION_ENABLED_KEY] ?: true,
+            separateUsernameAccountEnabled = preferences[SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY] ?: false,
+            lastPasswordCategoryFilterType = preferences[LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY] ?: "all",
+            lastPasswordCategoryFilterPrimaryId = preferences[LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY],
+            lastPasswordCategoryFilterSecondaryId = preferences[LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY],
+            lastPasswordCategoryFilterText = preferences[LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY],
             bitwardenUploadAll = preferences[BITWARDEN_UPLOAD_ALL_KEY] ?: false,
             
-            // V2 多源密码库设置
-            defaultVaultView = runCatching {
-                VaultViewMode.valueOf(preferences[DEFAULT_VAULT_VIEW_KEY] ?: VaultViewMode.V1.name)
-            }.getOrDefault(VaultViewMode.V1),
             autofillSources = runCatching {
                 val sourcesStr = preferences[AUTOFILL_SOURCES_KEY] ?: AutofillSource.V1_LOCAL.name
                 sourcesStr.split(",").mapNotNull { 
@@ -203,12 +236,7 @@ class SettingsManager(private val context: Context) {
                 priorityStr.split(",").mapNotNull { 
                     runCatching { AutofillSource.valueOf(it.trim()) }.getOrNull() 
                 }
-            }.getOrDefault(listOf(AutofillSource.V1_LOCAL)),
-            
-            // 导航栏版本
-            navBarVersion = runCatching {
-                NavBarVersion.valueOf(preferences[NAV_BAR_VERSION_KEY] ?: NavBarVersion.V1.name)
-            }.getOrDefault(NavBarVersion.V1)
+            }.getOrDefault(listOf(AutofillSource.V1_LOCAL))
         )
     }
     
@@ -526,15 +554,82 @@ class SettingsManager(private val context: Context) {
             preferences[SMART_DEDUPLICATION_ENABLED_KEY] = enabled
         }
     }
-    
-    // ==================== V2 多源密码库设置 ====================
-    
-    /**
-     * 更新默认密码库视图（V1 经典 / V2 多源）
-     */
-    suspend fun updateDefaultVaultView(view: VaultViewMode) {
+
+    suspend fun updateSeparateUsernameAccountEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
-            preferences[DEFAULT_VAULT_VIEW_KEY] = view.name
+            preferences[SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateLastPasswordCategoryFilter(
+        type: String,
+        primaryId: Long? = null,
+        secondaryId: Long? = null,
+        text: String? = null
+    ) {
+        dataStore.edit { preferences ->
+            preferences[LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY] = type
+            if (primaryId != null) {
+                preferences[LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY] = primaryId
+            } else {
+                preferences.remove(LAST_PASSWORD_CATEGORY_FILTER_PRIMARY_ID_KEY)
+            }
+            if (secondaryId != null) {
+                preferences[LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY] = secondaryId
+            } else {
+                preferences.remove(LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY)
+            }
+            if (text.isNullOrBlank()) {
+                preferences.remove(LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY)
+            } else {
+                preferences[LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY] = text
+            }
+        }
+    }
+
+    fun rememberedStorageTargetFlow(scope: String): Flow<RememberedStorageTarget> = dataStore.data.map { preferences ->
+        RememberedStorageTarget(
+            categoryId = preferences[storageCategoryKey(scope)],
+            keepassDatabaseId = preferences[storageKeePassKey(scope)],
+            bitwardenVaultId = preferences[storageBitwardenVaultKey(scope)],
+            bitwardenFolderId = preferences[storageBitwardenFolderKey(scope)]
+        )
+    }
+
+    suspend fun updateRememberedStorageTarget(scope: String, target: RememberedStorageTarget) {
+        dataStore.edit { preferences ->
+            val categoryKey = storageCategoryKey(scope)
+            val keepassKey = storageKeePassKey(scope)
+            val bitwardenVaultKey = storageBitwardenVaultKey(scope)
+            val bitwardenFolderKey = storageBitwardenFolderKey(scope)
+
+            if (target.categoryId != null) preferences[categoryKey] = target.categoryId else preferences.remove(categoryKey)
+            if (target.keepassDatabaseId != null) preferences[keepassKey] = target.keepassDatabaseId else preferences.remove(keepassKey)
+            if (target.bitwardenVaultId != null) preferences[bitwardenVaultKey] = target.bitwardenVaultId else preferences.remove(bitwardenVaultKey)
+            if (target.bitwardenFolderId.isNullOrBlank()) preferences.remove(bitwardenFolderKey) else preferences[bitwardenFolderKey] = target.bitwardenFolderId
+        }
+    }
+
+    fun categoryFilterStateFlow(scope: String): Flow<SavedCategoryFilterState> = dataStore.data.map { preferences ->
+        SavedCategoryFilterState(
+            type = preferences[categoryFilterTypeKey(scope)] ?: "all",
+            primaryId = preferences[categoryFilterPrimaryKey(scope)],
+            secondaryId = preferences[categoryFilterSecondaryKey(scope)],
+            text = preferences[categoryFilterTextKey(scope)]
+        )
+    }
+
+    suspend fun updateCategoryFilterState(scope: String, state: SavedCategoryFilterState) {
+        dataStore.edit { preferences ->
+            val typeKey = categoryFilterTypeKey(scope)
+            val primaryKey = categoryFilterPrimaryKey(scope)
+            val secondaryKey = categoryFilterSecondaryKey(scope)
+            val textKey = categoryFilterTextKey(scope)
+
+            preferences[typeKey] = state.type
+            if (state.primaryId != null) preferences[primaryKey] = state.primaryId else preferences.remove(primaryKey)
+            if (state.secondaryId != null) preferences[secondaryKey] = state.secondaryId else preferences.remove(secondaryKey)
+            if (state.text.isNullOrBlank()) preferences.remove(textKey) else preferences[textKey] = state.text
         }
     }
     
@@ -556,28 +651,4 @@ class SettingsManager(private val context: Context) {
         }
     }
     
-    /**
-     * 更新导航栏版本
-     */
-    suspend fun updateNavBarVersion(version: NavBarVersion) {
-        dataStore.edit { preferences ->
-            preferences[NAV_BAR_VERSION_KEY] = version.name
-        }
-    }
-    
-    /**
-     * 获取V2导航栏上次打开的子页面
-     */
-    val v2LastSubPageFlow: Flow<String> = dataStore.data.map { preferences ->
-        preferences[V2_LAST_SUB_PAGE_KEY] ?: "PASSWORDS"
-    }
-    
-    /**
-     * 更新V2导航栏上次打开的子页面
-     */
-    suspend fun updateV2LastSubPage(subPageKey: String) {
-        dataStore.edit { preferences ->
-            preferences[V2_LAST_SUB_PAGE_KEY] = subPageKey
-        }
-    }
 }

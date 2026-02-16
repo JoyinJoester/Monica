@@ -13,12 +13,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.utils.PasswordGenerator
@@ -40,7 +42,7 @@ internal fun VaultSelectorCard(
     selectedDatabase: LocalKeePassDatabase? = null,
     onClick: () -> Unit
 ) {
-    val displayName = selectedDatabase?.name ?: "仅 Monica 本地存储"
+    val displayName = selectedDatabase?.name ?: stringResource(R.string.vault_monica_only)
     val isKeePass = selectedDatabase != null
     
     Surface(
@@ -95,9 +97,9 @@ internal fun VaultSelectorCard(
                 )
                 Text(
                     text = if (isKeePass) 
-                        "将同步保存到 KeePass 数据库"
+                        stringResource(R.string.vault_sync_to_keepass)
                     else 
-                        "安全存储在 Monica 中",
+                        stringResource(R.string.vault_monica_only_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isKeePass)
                         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
@@ -149,7 +151,7 @@ internal fun CredentialsCard(
         ) {
             // 卡片标题
             Text(
-                text = "凭据",
+                text = stringResource(R.string.autofill_credentials),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -159,7 +161,7 @@ internal fun CredentialsCard(
             OutlinedTextField(
                 value = title,
                 onValueChange = onTitleChange,
-                label = { Text("标题 *") },
+                label = { Text(stringResource(R.string.title_required)) },
                 leadingIcon = { 
                     Icon(
                         Icons.Default.Label, 
@@ -177,7 +179,7 @@ internal fun CredentialsCard(
             OutlinedTextField(
                 value = username,
                 onValueChange = onUsernameChange,
-                label = { Text("用户名/邮箱") },
+                label = { Text(stringResource(R.string.username_email)) },
                 leadingIcon = { 
                     Icon(
                         Icons.Default.Person, 
@@ -199,7 +201,7 @@ internal fun CredentialsCard(
             OutlinedTextField(
                 value = password,
                 onValueChange = onPasswordChange,
-                label = { Text("密码 *") },
+                label = { Text(stringResource(R.string.password_required)) },
                 leadingIcon = { 
                     Icon(
                         Icons.Default.Lock, 
@@ -213,7 +215,7 @@ internal fun CredentialsCard(
                         IconButton(onClick = onGeneratePassword) {
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "生成密码",
+                                contentDescription = stringResource(R.string.generate_password),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -221,7 +223,11 @@ internal fun CredentialsCard(
                         IconButton(onClick = { onPasswordVisibilityChange(!passwordVisible) }) {
                             Icon(
                                 imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
+                                contentDescription = if (passwordVisible) {
+                                    stringResource(R.string.hide_password)
+                                } else {
+                                    stringResource(R.string.show_password)
+                                },
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -361,7 +367,7 @@ internal fun PasswordGeneratorDialog(
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                "密码生成器",
+                stringResource(R.string.password_generator_title),
                 fontWeight = FontWeight.Bold
             ) 
         },
@@ -380,7 +386,7 @@ internal fun PasswordGeneratorDialog(
                         IconButton(onClick = { generate() }) {
                             Icon(
                                 Icons.Default.Refresh, 
-                                contentDescription = "重新生成",
+                                contentDescription = stringResource(R.string.regenerate),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -395,7 +401,7 @@ internal fun PasswordGeneratorDialog(
                 // 长度滑块
                 Column {
                     Text(
-                        text = "长度: $length",
+                        text = stringResource(R.string.length_value, length),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Slider(
@@ -409,27 +415,27 @@ internal fun PasswordGeneratorDialog(
                 // 选项
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     PasswordOptionRow(
-                        label = "大写字母 (A-Z)",
+                        label = stringResource(R.string.uppercase_az),
                         checked = includeUppercase,
                         onCheckedChange = { includeUppercase = it; generate() }
                     )
                     PasswordOptionRow(
-                        label = "小写字母 (a-z)",
+                        label = stringResource(R.string.lowercase_az),
                         checked = includeLowercase,
                         onCheckedChange = { includeLowercase = it; generate() }
                     )
                     PasswordOptionRow(
-                        label = "数字 (0-9)",
+                        label = stringResource(R.string.numbers_09),
                         checked = includeNumbers,
                         onCheckedChange = { includeNumbers = it; generate() }
                     )
                     PasswordOptionRow(
-                        label = "特殊字符 (!@#\$%)",
+                        label = stringResource(R.string.symbols),
                         checked = includeSymbols,
                         onCheckedChange = { includeSymbols = it; generate() }
                     )
                     PasswordOptionRow(
-                        label = "排除相似字符 (0O1lI)",
+                        label = stringResource(R.string.exclude_similar),
                         checked = excludeSimilar,
                         onCheckedChange = { excludeSimilar = it; generate() }
                     )
@@ -438,12 +444,12 @@ internal fun PasswordGeneratorDialog(
         },
         confirmButton = {
             Button(onClick = { onPasswordGenerated(generatedPassword) }) {
-                Text("使用此密码")
+                Text(stringResource(R.string.use_password))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -510,7 +516,7 @@ internal fun VaultSelector(
             ) {
                 // 标题
                 Text(
-                    text = "选择存储位置",
+                    text = stringResource(R.string.vault_select_storage),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -518,8 +524,8 @@ internal fun VaultSelector(
                 
                 // Monica 本地存储选项
                 VaultOptionItem(
-                    title = "仅 Monica 本地存储",
-                    subtitle = "安全存储在设备上",
+                    title = stringResource(R.string.vault_monica_only),
+                    subtitle = stringResource(R.string.vault_monica_only_desc),
                     icon = Icons.Default.Shield,
                     isSelected = selectedDatabaseId == null,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -535,13 +541,17 @@ internal fun VaultSelector(
                 keepassDatabases.forEach { database ->
                     val isSelected = selectedDatabaseId == database.id
                     val storageText = if (database.storageLocation == KeePassStorageLocation.EXTERNAL)
-                        "外部存储"
+                        stringResource(R.string.external_storage)
                     else
-                        "内部存储"
+                        stringResource(R.string.internal_storage)
                     
                     VaultOptionItem(
                         title = database.name,
-                        subtitle = "$storageText · 将同步保存到 KeePass 数据库",
+                        subtitle = stringResource(
+                            R.string.autofill_storage_sync_summary,
+                            storageText,
+                            stringResource(R.string.vault_sync_to_keepass)
+                        ),
                         icon = Icons.Default.Key,
                         isSelected = isSelected,
                         containerColor = MaterialTheme.colorScheme.primaryContainer,

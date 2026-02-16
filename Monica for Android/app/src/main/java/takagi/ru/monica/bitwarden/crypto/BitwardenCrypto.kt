@@ -46,6 +46,7 @@ object BitwardenCrypto {
     private const val AES_KEY_SIZE = 32   // 256 bits
     private const val MAC_KEY_SIZE = 32   // 256 bits
     private const val IV_SIZE = 16        // 128 bits
+    private const val SEND_KEY_MATERIAL_SIZE = 16
     
     /**
      * 对称加密密钥 - 包含加密密钥和 MAC 密钥
@@ -269,6 +270,47 @@ object BitwardenCrypto {
         
         return SymmetricCryptoKey(encKey, macKey)
     }
+
+    /**
+     * 生成 Bitwarden Send 的原始密钥材料（16字节）
+     */
+    fun generateSendKeyMaterial(): ByteArray {
+        val bytes = ByteArray(SEND_KEY_MATERIAL_SIZE)
+        SecureRandom().nextBytes(bytes)
+        return bytes
+    }
+
+    /**
+     * 根据 Send 密钥材料派生 Send 对称密钥（enc+mac）
+     */
+    fun deriveSendKey(keyMaterial: ByteArray): SymmetricCryptoKey {
+        require(keyMaterial.size == SEND_KEY_MATERIAL_SIZE) {
+            "Send key material must be 16 bytes"
+        }
+
+        val fullKey = hkdf(
+            seed = keyMaterial,
+            salt = "bitwarden-send".toByteArray(StandardCharsets.UTF_8),
+            info = "send".toByteArray(StandardCharsets.UTF_8),
+            length = 64
+        )
+        val encKey = fullKey.copyOfRange(0, 32)
+        val macKey = fullKey.copyOfRange(32, 64)
+        return SymmetricCryptoKey(encKey, macKey)
+    }
+
+    /**
+     * Send 访问密码哈希（PBKDF2-SHA256, 100000 iterations）
+     */
+    fun hashSendPassword(password: String, keyMaterial: ByteArray): String {
+        val hash = pbkdf2Sha256(
+            seed = password.toByteArray(StandardCharsets.UTF_8),
+            salt = keyMaterial,
+            iterations = 100_000,
+            length = 32
+        )
+        return Base64.encodeToString(hash, Base64.NO_WRAP)
+    }
     
     /**
      * HKDF-Expand (SHA-256)
@@ -297,6 +339,13 @@ object BitwardenCrypto {
         }
         
         return output
+    }
+
+    private fun hkdf(seed: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(salt, "HmacSHA256"))
+        val prk = mac.doFinal(seed)
+        return hkdfExpand(prk = prk, info = info, length = length)
     }
     
     // ========== CipherString 解析 ==========

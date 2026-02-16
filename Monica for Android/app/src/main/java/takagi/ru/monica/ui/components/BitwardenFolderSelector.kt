@@ -17,9 +17,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import takagi.ru.monica.R
 
 /**
  * Bitwarden 文件夹项目数据
@@ -83,7 +85,11 @@ fun BitwardenLinkCard(
                 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isLinked) "已关联 Bitwarden" else "未关联 Bitwarden",
+                        text = if (isLinked) {
+                            stringResource(R.string.bitwarden_linked_status)
+                        } else {
+                            stringResource(R.string.bitwarden_not_linked_status)
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -132,7 +138,7 @@ fun BitwardenLinkCard(
                     }
                 } else {
                     Text(
-                        text = "同步所有类型",
+                        text = stringResource(R.string.bitwarden_sync_all_types),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -147,7 +153,7 @@ fun BitwardenLinkCard(
                         onClick = onConfigureSyncTypesClick,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("配置同步")
+                        Text(stringResource(R.string.bitwarden_configure_sync))
                     }
                     
                     TextButton(
@@ -162,7 +168,7 @@ fun BitwardenLinkCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("解除关联")
+                        Text(stringResource(R.string.folder_unlink))
                     }
                 }
             } else {
@@ -177,7 +183,7 @@ fun BitwardenLinkCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("关联到 Bitwarden 文件夹")
+                    Text(stringResource(R.string.folder_link_to_bitwarden))
                 }
             }
         }
@@ -216,19 +222,19 @@ fun BitwardenFolderSelectorDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "选择 Bitwarden 文件夹",
+                        text = stringResource(R.string.bitwarden_select_folder_title),
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close))
                     }
                 }
                 
                 // 保险库选择
                 if (vaults.size > 1) {
                     Text(
-                        text = "选择保险库",
+                        text = stringResource(R.string.folder_select_vault),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -261,7 +267,7 @@ fun BitwardenFolderSelectorDialog(
                     }
                 } else {
                     Text(
-                        text = "选择文件夹",
+                        text = stringResource(R.string.folder_select_folder),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -275,7 +281,7 @@ fun BitwardenFolderSelectorDialog(
                         // 创建新文件夹选项
                         item {
                             ListItem(
-                                headlineContent = { Text("创建新文件夹") },
+                                headlineContent = { Text(stringResource(R.string.folder_create_new)) },
                                 leadingContent = {
                                     Icon(
                                         Icons.Default.Add,
@@ -290,7 +296,7 @@ fun BitwardenFolderSelectorDialog(
                         // 不关联文件夹选项（放入根目录）
                         item {
                             ListItem(
-                                headlineContent = { Text("不关联文件夹（根目录）") },
+                                headlineContent = { Text(stringResource(R.string.folder_no_folder_root)) },
                                 leadingContent = {
                                     Icon(
                                         Icons.Default.FolderOff,
@@ -301,7 +307,7 @@ fun BitwardenFolderSelectorDialog(
                                     if (selectedFolderId == null && selectedVaultId != null) {
                                         Icon(
                                             Icons.Default.Check,
-                                            contentDescription = "已选中",
+                                            contentDescription = stringResource(R.string.bitwarden_selected),
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -324,13 +330,13 @@ fun BitwardenFolderSelectorDialog(
                                     )
                                 },
                                 supportingContent = if (folder.isLinked) {
-                                    { Text("已被其他分类关联") }
+                                    { Text(stringResource(R.string.bitwarden_folder_linked_by_other)) }
                                 } else null,
                                 trailingContent = {
                                     if (folder.id == selectedFolderId) {
                                         Icon(
                                             Icons.Default.Check,
-                                            contentDescription = "已选中",
+                                            contentDescription = stringResource(R.string.bitwarden_selected),
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -349,14 +355,14 @@ fun BitwardenFolderSelectorDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("取消")
+                        Text(stringResource(R.string.cancel))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = onConfirm,
                         enabled = selectedVaultId != null
                     ) {
-                        Text("确认")
+                        Text(stringResource(R.string.confirm))
                     }
                 }
             }
@@ -375,23 +381,23 @@ fun SyncTypeConfigDialog(
     onDismiss: () -> Unit
 ) {
     val allTypes = listOf(
-        "PASSWORD" to "密码",
-        "TOTP" to "验证器",
-        "CARD" to "银行卡",
-        "NOTE" to "安全笔记",
-        "IDENTITY" to "身份证件",
-        "PASSKEY" to "通行密钥"
+        "PASSWORD" to R.string.item_type_password,
+        "TOTP" to R.string.item_type_authenticator,
+        "CARD" to R.string.item_type_bank_card,
+        "NOTE" to R.string.sync_type_note,
+        "IDENTITY" to R.string.sync_type_identity,
+        "PASSKEY" to R.string.passkey
     )
     
     var currentSelection by remember { mutableStateOf(selectedTypes.toSet()) }
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("配置同步类型") },
+        title = { Text(stringResource(R.string.bitwarden_configure_sync_types_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "选择要同步到此文件夹的数据类型",
+                    text = stringResource(R.string.bitwarden_sync_types_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -420,7 +426,7 @@ fun SyncTypeConfigDialog(
                         }
                     )
                     Text(
-                        text = "全部类型",
+                        text = stringResource(R.string.bitwarden_all_types),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -449,7 +455,7 @@ fun SyncTypeConfigDialog(
                             }
                         )
                         Text(
-                            text = name,
+                            text = stringResource(name),
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -463,28 +469,31 @@ fun SyncTypeConfigDialog(
                     onConfirm()
                 }
             ) {
-                Text("确认")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
 }
 
-/**
- * 获取同步类型的显示名称
- */
+@Composable
 private fun getSyncTypeDisplayName(type: String): String {
+    val resId = getSyncTypeDisplayNameRes(type)
+    return if (resId != null) stringResource(resId) else type
+}
+
+private fun getSyncTypeDisplayNameRes(type: String): Int? {
     return when (type.uppercase()) {
-        "PASSWORD" -> "密码"
-        "TOTP" -> "验证器"
-        "CARD" -> "银行卡"
-        "NOTE" -> "笔记"
-        "IDENTITY" -> "证件"
-        "PASSKEY" -> "通行密钥"
-        else -> type
+        "PASSWORD" -> R.string.item_type_password
+        "TOTP" -> R.string.item_type_authenticator
+        "CARD" -> R.string.item_type_bank_card
+        "NOTE" -> R.string.sync_type_note
+        "IDENTITY" -> R.string.sync_type_identity
+        "PASSKEY" -> R.string.passkey
+        else -> null
     }
 }

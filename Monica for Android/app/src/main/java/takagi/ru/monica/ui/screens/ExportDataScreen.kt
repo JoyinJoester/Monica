@@ -62,7 +62,7 @@ fun ExportDataScreen(
     onExportBankCardsAndDocs: suspend (Uri) -> Result<String>,
     onExportNotes: suspend (Uri) -> Result<String>,
     onExportZip: suspend (Uri, BackupPreferences) -> Result<String>,
-    onExportKdbx: suspend (Uri, String) -> Result<String> = { _, _ -> Result.failure(Exception("未实现")) }
+    onExportKdbx: suspend (Uri, String) -> Result<String> = { _, _ -> Result.failure(Exception("Not implemented")) }
 ) {
     val context = LocalContext.current
     val activity = context as? Activity

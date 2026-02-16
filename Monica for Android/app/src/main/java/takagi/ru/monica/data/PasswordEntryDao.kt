@@ -21,6 +21,9 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesByKeePassDatabase(databaseId: Long): Flow<List<PasswordEntry>>
 
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId AND keepassGroupPath = :groupPath ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    fun getPasswordEntriesByKeePassGroup(databaseId: Long, groupPath: String): Flow<List<PasswordEntry>>
+
     @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesWithoutKeePassDatabase(): Flow<List<PasswordEntry>>
 
@@ -62,6 +65,9 @@ interface PasswordEntryDao {
     
     @Query("UPDATE password_entries SET isFavorite = :isFavorite WHERE id = :id")
     suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean)
+
+    @Query("UPDATE password_entries SET updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateUpdatedAt(id: Long, updatedAt: java.util.Date)
     
     @Query("UPDATE password_entries SET isGroupCover = :isGroupCover WHERE id = :id")
     suspend fun updateGroupCoverStatus(id: Long, isGroupCover: Boolean)
@@ -71,9 +77,74 @@ interface PasswordEntryDao {
     
     @Query("UPDATE password_entries SET categoryId = :categoryId WHERE id IN (:ids)")
     suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?)
+
+    /**
+     * 将指定条目绑定到 Bitwarden 文件夹
+     * 仅作用于非 KeePass 条目，避免跨数据源污染。
+     */
+    @Query("""
+        UPDATE password_entries
+        SET bitwarden_vault_id = :vaultId,
+            bitwarden_folder_id = :folderId,
+            bitwarden_local_modified = CASE
+                WHEN bitwarden_cipher_id IS NOT NULL AND COALESCE(bitwarden_folder_id, '') != :folderId THEN 1
+                ELSE bitwarden_local_modified
+            END
+        WHERE id IN (:ids)
+          AND keepassDatabaseId IS NULL
+          AND isDeleted = 0
+    """)
+    suspend fun bindPasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String)
+
+    /**
+     * 清理未上传条目的 Bitwarden 绑定
+     * 仅清理还没有 cipherId 的本地待上传条目，避免破坏已同步映射。
+     */
+    @Query("""
+        UPDATE password_entries
+        SET bitwarden_vault_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_local_modified = 0
+        WHERE id IN (:ids)
+          AND bitwarden_cipher_id IS NULL
+          AND isDeleted = 0
+    """)
+    suspend fun clearPendingBitwardenBinding(ids: List<Long>)
+
+    /**
+     * 按分类批量绑定到 Bitwarden（用于“立即应用”）
+     */
+    @Query("""
+        UPDATE password_entries
+        SET bitwarden_vault_id = :vaultId,
+            bitwarden_folder_id = :folderId,
+            bitwarden_local_modified = CASE
+                WHEN bitwarden_cipher_id IS NOT NULL AND COALESCE(bitwarden_folder_id, '') != :folderId THEN 1
+                ELSE bitwarden_local_modified
+            END
+        WHERE categoryId = :categoryId
+          AND keepassDatabaseId IS NULL
+          AND isDeleted = 0
+    """)
+    suspend fun bindCategoryToBitwarden(categoryId: Long, vaultId: Long, folderId: String)
     
-    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId WHERE id IN (:ids)")
+    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = NULL WHERE id IN (:ids)")
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?)
+
+    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = :groupPath WHERE id IN (:ids)")
+    suspend fun updateKeePassGroupForPasswords(ids: List<Long>, databaseId: Long, groupPath: String)
+
+    @Query(
+        """
+        UPDATE password_entries
+        SET bitwarden_vault_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_local_modified = 0
+        WHERE id IN (:ids)
+          AND isDeleted = 0
+        """
+    )
+    suspend fun clearBitwardenBindingForPasswords(ids: List<Long>)
 
     @Transaction
     suspend fun setGroupCover(id: Long, website: String) {
@@ -124,8 +195,35 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE title = :title AND username = :username AND website = :website LIMIT 1")
     suspend fun findDuplicateEntry(title: String, username: String, website: String): PasswordEntry?
 
-    @Query("SELECT * FROM password_entries WHERE keepassDatabaseId = :databaseId AND title = :title AND username = :username AND website = :website LIMIT 1")
-    suspend fun findDuplicateEntryInKeePass(databaseId: Long, title: String, username: String, website: String): PasswordEntry?
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE keepassDatabaseId = :databaseId
+          AND title = :title
+          AND username = :username
+          AND website = :website
+          AND (
+            (keepassGroupPath IS NULL AND :groupPath IS NULL)
+            OR keepassGroupPath = :groupPath
+          )
+        LIMIT 1
+        """
+    )
+    suspend fun findDuplicateEntryInKeePass(
+        databaseId: Long,
+        title: String,
+        username: String,
+        website: String,
+        groupPath: String?
+    ): PasswordEntry?
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId
+        """
+    )
+    suspend fun getPasswordEntriesByKeePassDatabaseSync(databaseId: Long): List<PasswordEntry>
     
     /**
      * 按包名和用户名查询密码
@@ -245,6 +343,44 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): PasswordEntry?
 
+    /**
+     * 根据 Bitwarden Cipher ID 获取所有条目（用于清理历史重复数据）
+     */
+    @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId")
+    suspend fun getAllByBitwardenCipherId(cipherId: String): List<PasswordEntry>
+
+    /**
+     * 删除指定 Vault 下所有已同步的 Bitwarden 密码条目。
+     * 仅删除未进入回收站的条目，避免覆盖本地删除墓碑。
+     */
+    @Query("""
+        DELETE FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id IS NOT NULL
+          AND isDeleted = 0
+    """)
+    suspend fun deleteAllSyncedBitwardenEntries(vaultId: Long)
+
+    /**
+     * 清理服务器不存在的 Bitwarden 密码条目（delete-wins）。
+     */
+    @Query("""
+        DELETE FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id IS NOT NULL
+          AND isDeleted = 0
+          AND bitwarden_cipher_id NOT IN (:keepIds)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM bitwarden_pending_operations op
+              WHERE op.vault_id = :vaultId
+                AND op.bitwarden_cipher_id = password_entries.bitwarden_cipher_id
+                AND op.operation_type = 'RESTORE'
+                AND op.status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+          )
+    """)
+    suspend fun deleteBitwardenEntriesNotIn(vaultId: Long, keepIds: List<String>)
+
         /**
          * 查找本地重复条目（仅本地库）
          * 用于 Bitwarden 同步时合并本地条目，避免重复
@@ -265,14 +401,28 @@ interface PasswordEntryDao {
      * 根据 Bitwarden Vault ID 获取所有条目
      * 用于获取某个 Vault 的所有密码
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY title ASC")
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE isDeleted = 0
+          AND bitwarden_vault_id = :vaultId
+        ORDER BY title ASC
+        """
+    )
     suspend fun getByBitwardenVaultId(vaultId: Long): List<PasswordEntry>
     
     /**
      * 根据 Bitwarden Vault ID 获取所有条目 (Flow 版本)
      * 用于实时观察 Vault 的密码列表变化
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY title ASC")
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE isDeleted = 0
+          AND bitwarden_vault_id = :vaultId
+        ORDER BY title ASC
+        """
+    )
     fun getByBitwardenVaultIdFlow(vaultId: Long): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
     
     /**
@@ -308,16 +458,38 @@ interface PasswordEntryDao {
             bitwarden_local_modified = 0 
         WHERE id = :entryId
     """)
-    suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: Long)
+    suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: String?)
     
     @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
     fun getByBitwardenFolderIdFlow(folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_folder_id = :folderId
+          AND isDeleted = 0
+        ORDER BY title ASC
+        """
+    )
+    fun getByBitwardenFolderIdFlow(vaultId: Long, folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
 
     /**
      * 根据 Bitwarden Folder ID 获取条目
      */
     @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
     suspend fun getByBitwardenFolderId(folderId: String): List<PasswordEntry>
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_folder_id = :folderId
+          AND isDeleted = 0
+        ORDER BY title ASC
+        """
+    )
+    suspend fun getByBitwardenFolderId(vaultId: Long, folderId: String): List<PasswordEntry>
     
     /**
      * 获取 Bitwarden 条目按类型分组
@@ -355,7 +527,7 @@ interface PasswordEntryDao {
      * 获取指定 Vault 的最后修改时间
      */
     @Query("SELECT MAX(bitwarden_revision_date) FROM password_entries WHERE bitwarden_vault_id = :vaultId")
-    suspend fun getLastBitwardenRevisionDate(vaultId: Long): Long?
+    suspend fun getLastBitwardenRevisionDate(vaultId: Long): String?
     
     // ==================== V2 多源密码库相关方法 ====================
     

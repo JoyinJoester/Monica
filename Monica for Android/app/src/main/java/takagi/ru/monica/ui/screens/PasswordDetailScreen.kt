@@ -43,7 +43,7 @@ import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.data.PasswordEntry
-import takagi.ru.monica.ui.components.MasterPasswordDialog
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
@@ -53,6 +53,7 @@ import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CancellationException
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
@@ -61,6 +62,7 @@ import takagi.ru.monica.ui.components.CustomFieldDetailCard
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
+import java.util.Locale
 
 /**
  * 密码详情页 (Password Detail Screen)
@@ -88,6 +90,7 @@ fun PasswordDetailScreen(
     passkeyViewModel: PasskeyViewModel? = null,
     passwordId: Long,
     disablePasswordVerification: Boolean,
+    biometricEnabled: Boolean,
     onNavigateBack: () -> Unit,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
@@ -106,6 +109,7 @@ fun PasswordDetailScreen(
     
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
+    var masterPasswordInput by remember { mutableStateOf("") }
     var passwordVerificationError by remember { mutableStateOf(false) }
     
     // 自定义字段状态
@@ -152,7 +156,7 @@ fun PasswordDetailScreen(
             executeDeletion()
             return
         }
-        if (biometricHelper.isBiometricAvailable()) {
+        if (biometricEnabled && biometricHelper.isBiometricAvailable()) {
             (context as? FragmentActivity)?.let { activity ->
                 biometricHelper.authenticate(
                     activity = activity,
@@ -160,17 +164,25 @@ fun PasswordDetailScreen(
                     onSuccess = { executeDeletion() },
                     onError = {
                         // If error is not user cancellation, show password dialog
+                        masterPasswordInput = ""
+                        passwordVerificationError = false
                          showMasterPasswordDialog = true
                     },
                     onFailed = {
                         // Authentication failed (e.g. wrong finger), show password dialog
+                        masterPasswordInput = ""
+                        passwordVerificationError = false
                         showMasterPasswordDialog = true
                     }
                 )
             } ?: run {
+                masterPasswordInput = ""
+                passwordVerificationError = false
                 showMasterPasswordDialog = true
             }
         } else {
+            masterPasswordInput = ""
+            passwordVerificationError = false
             showMasterPasswordDialog = true
         }
     }
@@ -217,15 +229,17 @@ fun PasswordDetailScreen(
                 passwordEntry = entry
                 
                 // Find siblings
-                val key = "${entry.title}|${entry.website}|${entry.username}|${entry.notes}|${entry.appPackageName}|${entry.appName}"
+                val key = buildPasswordSiblingGroupKey(entry)
                 groupPasswords = allPasswords.filter { 
-                    val itKey = "${it.title}|${it.website}|${it.username}|${it.notes}|${it.appPackageName}|${it.appName}"
+                    val itKey = buildPasswordSiblingGroupKey(it)
                     itKey == key
-                }
+                }.sortedBy { it.id }
                 
                 // 加载自定义字段 (添加错误处理)
                 try {
                     customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
+                } catch (_: CancellationException) {
+                    // Ignore cancellation when leaving composition.
                 } catch (e: Exception) {
                     android.util.Log.e("PasswordDetailScreen", "Error loading custom fields", e)
                     customFields = emptyList()
@@ -529,7 +543,11 @@ fun PasswordDetailScreen(
                             }
                             
                             clipboard.setPrimaryClip(clip)
-                            val message = if (isProtected) "已复制敏感字段: $fieldName" else "已复制: $fieldName"
+                            val message = if (isProtected) {
+                                context.getString(R.string.copied_sensitive_field, fieldName)
+                            } else {
+                                context.getString(R.string.copied_field_name, fieldName)
+                            }
                             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
                     )
@@ -599,20 +617,65 @@ fun PasswordDetailScreen(
     }
 
     if (showMasterPasswordDialog) {
-        MasterPasswordDialog(
-            onDismiss = { 
-                showMasterPasswordDialog = false 
+        val activity = context as? FragmentActivity
+        val retryBiometricAction = if (
+            activity != null &&
+            biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity_to_delete),
+                    onSuccess = {
+                        showMasterPasswordDialog = false
+                        passwordVerificationError = false
+                        executeDeletion()
+                    },
+                    onError = {
+                        // keep dialog open and let user choose password retry
+                    },
+                    onFailed = {
+                        // keep dialog open
+                    }
+                )
+            }
+        } else {
+            null
+        }
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.verify_identity_to_delete),
+            passwordValue = masterPasswordInput,
+            onPasswordChange = {
+                masterPasswordInput = it
                 passwordVerificationError = false
             },
-            onConfirm = { password ->
-                if (viewModel.verifyMasterPassword(password)) {
+            onDismiss = {
+                showMasterPasswordDialog = false 
+                masterPasswordInput = ""
+                passwordVerificationError = false
+            },
+            onConfirm = {
+                if (viewModel.verifyMasterPassword(masterPasswordInput)) {
                     showMasterPasswordDialog = false
+                    masterPasswordInput = ""
+                    passwordVerificationError = false
                     executeDeletion()
                 } else {
                     passwordVerificationError = true
                 }
             },
-            isError = passwordVerificationError
+            confirmText = stringResource(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = passwordVerificationError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = retryBiometricAction,
+            biometricHintText = if (retryBiometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
+            }
         )
     }
 }
@@ -885,7 +948,7 @@ private fun TotpCard(
                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    text = if (totpData != null) "动态验证码" else stringResource(R.string.linked_app),
+                    text = if (totpData != null) stringResource(R.string.dynamic_verification_code) else stringResource(R.string.linked_app),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -914,7 +977,7 @@ private fun TotpCard(
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val clip = ClipData.newPlainText("2FA Code", code)
                             clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, context.getString(R.string.copied, "验证码"), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.copied, context.getString(R.string.verification_code)), Toast.LENGTH_SHORT).show()
                         }
                     ) {
                         Icon(
@@ -1325,6 +1388,35 @@ private fun CollapsibleSection(
 // ============================================
 // 🔧 辅助函数
 // ============================================
+
+private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
+    val sourceKey = when {
+        !entry.bitwardenCipherId.isNullOrBlank() ->
+            "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId}"
+        entry.bitwardenVaultId != null ->
+            "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
+        entry.keepassDatabaseId != null ->
+            "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
+        else -> "local"
+    }
+
+    val title = entry.title.trim().lowercase(Locale.ROOT)
+    val username = entry.username.trim().lowercase(Locale.ROOT)
+    val website = normalizeWebsiteForSiblingGroupKey(entry.website)
+
+    return "$sourceKey|$title|$website|$username"
+}
+
+private fun normalizeWebsiteForSiblingGroupKey(value: String): String {
+    val raw = value.trim()
+    if (raw.isEmpty()) return ""
+    return raw
+        .lowercase(Locale.ROOT)
+        .removePrefix("http://")
+        .removePrefix("https://")
+        .removePrefix("www.")
+        .trimEnd('/')
+}
 
 /**
  * 检查是否有个人信息

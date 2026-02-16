@@ -1,15 +1,12 @@
 package takagi.ru.monica.autofill
 
 import android.app.Activity
-import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.service.autofill.FillResponse
 import android.view.WindowManager
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
-import android.widget.RemoteViews
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -57,6 +54,9 @@ class AutofillPickerActivity : ComponentActivity() {
         
         /** Intent Extra: 网站域名 */
         const val EXTRA_DOMAIN = "extra_domain"
+
+        /** Intent Extra: 字段hint列表（与autofill_ids一一对应） */
+        const val EXTRA_AUTOFILL_HINTS = "extra_autofill_hints"
         
         /** Result Extra: 选中的密码ID */
         const val RESULT_PASSWORD_ID = "result_password_id"
@@ -162,6 +162,7 @@ class AutofillPickerActivity : ComponentActivity() {
                 // Dataset 会立即填充，不会显示选择界面
                 val dataset = createDatasetForPassword(item.entry)
                 resultIntent.putExtra(android.view.autofill.AutofillManager.EXTRA_AUTHENTICATION_RESULT, dataset)
+                rememberLastFilledCredential(item.entry.id)
             }
             is AutofillItem.Payment -> {
                 android.util.Log.d("AutofillPicker", "Selected payment ID: ${item.info.id}")
@@ -176,87 +177,61 @@ class AutofillPickerActivity : ComponentActivity() {
     /**
      * 为选中的密码创建 Dataset（立即填充）
      */
-    private fun createDatasetForPassword(password: PasswordEntry): FillResponse {
+    private fun createDatasetForPassword(password: PasswordEntry): android.service.autofill.Dataset {
         val autofillIds = intent.getParcelableArrayListExtra<AutofillId>("autofill_ids")
-        val packageName = intent.getStringExtra(AutofillPickerActivity.EXTRA_PACKAGE_NAME)
-        val domain = intent.getStringExtra(AutofillPickerActivity.EXTRA_DOMAIN)
-        val allPasswordIds = intent.getLongArrayExtra(AutofillPickerActivity.EXTRA_PASSWORD_IDS) ?: longArrayOf()
-        
-        android.util.Log.d("AutofillPicker", "Creating FillResponse with selected password + manual selector")
+        android.util.Log.d("AutofillPicker", "Creating dataset for selected password")
         android.util.Log.d("AutofillPicker", "Autofill IDs count: ${autofillIds?.size}")
-        android.util.Log.d("AutofillPicker", "All password IDs count: ${allPasswordIds.size}")
         
         val securityManager = takagi.ru.monica.security.SecurityManager(applicationContext)
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(applicationContext)
         
-        // 解密
-        val decryptedUsername = if (password.username.contains("==") && password.username.length > 20) {
-            securityManager.decryptData(password.username)
-        } else {
-            password.username
+        val decryptedPassword = try {
+            securityManager.decryptData(password.password)
+        } catch (e: Exception) {
+            password.password
         }
-        val decryptedPassword = securityManager.decryptData(password.password)
         
         android.util.Log.d("AutofillPicker", "Creating Dataset for selected: ${password.title}")
         
-        // 创建 FillResponse.Builder
-        val responseBuilder = FillResponse.Builder()
-        
-        // 1. 添加选中密码的 Dataset
-        val selectedPresentation = RemoteViews(this.packageName, R.layout.autofill_dataset_card).apply {
-            setTextViewText(R.id.text_title, password.title.ifEmpty { decryptedUsername })
-            setTextViewText(R.id.text_username, decryptedUsername)
-            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
-        }
-        
-        val selectedDatasetBuilder = android.service.autofill.Dataset.Builder(selectedPresentation)
+        val selectedDatasetBuilder = android.service.autofill.Dataset.Builder()
         
         // 填充字段
+        val autofillHints = intent.getStringArrayListExtra(EXTRA_AUTOFILL_HINTS)
+        var filledCount = 0
         if (!autofillIds.isNullOrEmpty()) {
             autofillIds.forEachIndexed { index, autofillId ->
-                val value = if (index % 2 == 0) decryptedUsername else decryptedPassword
-                selectedDatasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                val hint = autofillHints?.getOrNull(index)
+                val value = when (hint) {
+                    EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
+                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
+                        if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
+                    EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
+                    EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name -> decryptedPassword
+                    else -> {
+                        if (autofillHints.isNullOrEmpty()) {
+                            if (index % 2 == 0) accountValue else decryptedPassword
+                        } else {
+                            null
+                        }
+                    }
+                }
+                if (value != null) {
+                    selectedDatasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                    filledCount++
+                }
+            }
+
+            if (filledCount == 0) {
+                autofillIds.forEachIndexed { index, autofillId ->
+                    val fallbackValue = if (index % 2 == 0) accountValue else decryptedPassword
+                    selectedDatasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
+                }
             }
         }
-        
-        responseBuilder.addDataset(selectedDatasetBuilder.build())
-        
-        // 2. 重新添加"手动选择" Dataset，这样它不会消失！
-        val pickerIntent = Intent(applicationContext, AutofillPickerActivity::class.java).apply {
-            // 传递所有密码ID（从原始Intent获取）
-            putExtra(AutofillPickerActivity.EXTRA_PASSWORD_IDS, allPasswordIds)
-            putExtra(AutofillPickerActivity.EXTRA_PACKAGE_NAME, packageName)
-            putExtra(AutofillPickerActivity.EXTRA_DOMAIN, domain)
-            putParcelableArrayListExtra("autofill_ids", autofillIds)
-            putExtra(AutofillPickerActivity.EXTRA_FIELD_TYPE, "password")
-        }
-        
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        
-        val pendingIntent = PendingIntent.getActivity(
-            applicationContext,
-            System.currentTimeMillis().toInt(),
-            pickerIntent,
-            flags
-        )
-        
-        // 创建"手动选择" Dataset
-        val manualPresentation = RemoteViews(this.packageName, R.layout.autofill_manual_card)
-        val manualDatasetBuilder = android.service.autofill.Dataset.Builder(manualPresentation)
-        
-        autofillIds?.forEach { autofillId ->
-            manualDatasetBuilder.setValue(autofillId, null, manualPresentation)
-        }
-        manualDatasetBuilder.setAuthentication(pendingIntent.intentSender)
-        
-        responseBuilder.addDataset(manualDatasetBuilder.build())
-        
-        android.util.Log.d("AutofillPicker", "✅ FillResponse created with 2 datasets (selected + manual)")
-        
-        return responseBuilder.build()
+
+        android.util.Log.d("AutofillPicker", "✅ Dataset created for immediate fill")
+        return selectedDatasetBuilder.build()
     }    
     /**
      * 处理取消/关闭
@@ -264,5 +239,23 @@ class AutofillPickerActivity : ComponentActivity() {
     private fun handleDismiss() {
         setResult(Activity.RESULT_CANCELED)
         finish()
+    }
+
+    private fun rememberLastFilledCredential(passwordId: Long) {
+        val domain = intent.getStringExtra(EXTRA_DOMAIN)?.trim()?.lowercase()
+        val app = intent.getStringExtra(EXTRA_PACKAGE_NAME)?.trim()?.lowercase()
+        val identifier = when {
+            !domain.isNullOrBlank() -> domain
+            !app.isNullOrBlank() -> app
+            else -> return
+        }
+
+        try {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                AutofillPreferences(applicationContext).setLastFilledCredential(identifier, passwordId)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AutofillPicker", "Failed to persist last filled credential", e)
+        }
     }
 }

@@ -586,7 +586,11 @@ fun StatusBanner(isEnabled: Boolean) {
                 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isEnabled) "自动填充已启用" else "自动填充未启用",
+                        text = if (isEnabled) {
+                            stringResource(R.string.autofill_status_enabled)
+                        } else {
+                            stringResource(R.string.autofill_status_disabled)
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (isEnabled)
@@ -597,9 +601,9 @@ fun StatusBanner(isEnabled: Boolean) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = if (isEnabled) 
-                            "Monica已设置为默认自动填充服务" 
+                            stringResource(R.string.autofill_status_enabled_desc)
                         else 
-                            "请在系统设置中启用Monica",
+                            stringResource(R.string.autofill_status_disabled_desc),
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (isEnabled)
                             MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)

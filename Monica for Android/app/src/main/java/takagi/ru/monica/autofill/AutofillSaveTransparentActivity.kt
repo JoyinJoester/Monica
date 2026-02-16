@@ -20,14 +20,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import takagi.ru.monica.R
 import takagi.ru.monica.autofill.ui.AutofillScaffold
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
@@ -144,7 +147,16 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
                     keepassDatabaseId = keepassDatabaseId
                 )
                 
-                when (val duplicateCheck = PasswordSaveHelper.checkDuplicate(saveData, existingPasswords)) {
+                when (
+                    val duplicateCheck = PasswordSaveHelper.checkDuplicate(
+                        saveData = saveData,
+                        existingPasswords = existingPasswords,
+                        resolvePassword = { entry ->
+                            runCatching { securityManager.decryptData(entry.password) }
+                                .getOrElse { entry.password }
+                        }
+                    )
+                ) {
                     is PasswordSaveHelper.DuplicateCheckResult.SameUsernameDifferentPassword -> {
                         // 更新现有密码
                         val updated = PasswordSaveHelper.updatePasswordEntry(
@@ -165,7 +177,7 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
                             username = username,
                             password = encryptedPassword,
                             website = website,
-                            notes = "通过 Monica 自动填充保存",
+                            notes = getString(R.string.autofill_saved_via),
                             appPackageName = packageName,
                             appName = appName,
                             keepassDatabaseId = keepassDatabaseId,
@@ -250,7 +262,7 @@ private fun KeyguardStyleSaveContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "保存密码",
+                    text = stringResource(R.string.autofill_save_password),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -259,7 +271,7 @@ private fun KeyguardStyleSaveContent(
                 IconButton(onClick = onCancel) {
                     Icon(
                         imageVector = Icons.Outlined.Close,
-                        contentDescription = "关闭",
+                        contentDescription = stringResource(R.string.close),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -328,7 +340,11 @@ private fun KeyguardStyleSaveContent(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 ) {
-                    Text("取消")
+                    Text(
+                        text = stringResource(R.string.autofill_cancel),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 
                 // 保存按钮
@@ -349,7 +365,11 @@ private fun KeyguardStyleSaveContent(
                     } else {
                         Icon(Icons.Outlined.Save, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("保存")
+                        Text(
+                            text = stringResource(R.string.save),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -368,7 +388,11 @@ private fun KeyguardStyleSaveContent(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("从不为此网站保存")
+                Text(
+                    text = stringResource(R.string.autofill_never_for_site),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             
             Spacer(modifier = Modifier.height(8.dp))

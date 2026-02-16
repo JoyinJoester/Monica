@@ -38,7 +38,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="查看所有密码"
+            android:text="@string/autofill_view_all_passwords"
             android:textSize="16sp"
             android:textColor="@color/autofill_text_primary"
             android:textStyle="bold"
@@ -49,10 +49,10 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="点击打开完整列表"
+            android:text="@string/autofill_open_full_list"
             android:textSize="13sp"
             android:textColor="@color/autofill_text_secondary"
-            android:maxLines="1"
+            android:maxLines="2"
             android:ellipsize="end"
             android:layout_marginTop="2dp"
             android:fontFamily="sans-serif" />

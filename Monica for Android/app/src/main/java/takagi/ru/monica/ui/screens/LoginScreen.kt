@@ -22,7 +22,7 @@ fun LoginScreen(
     // 获取设置
     val settings = settingsViewModel?.settings?.collectAsState()?.value
     val disablePasswordVerification = settings?.disablePasswordVerification ?: false
-    val biometricEnabled = settings?.biometricEnabled ?: true
+    val biometricEnabled = settings?.biometricEnabled ?: false
     
     PasswordVerificationContent(
         isFirstTime = isFirstTime,

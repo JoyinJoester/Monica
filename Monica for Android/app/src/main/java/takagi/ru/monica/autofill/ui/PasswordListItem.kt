@@ -20,9 +20,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 
 /**
@@ -152,7 +154,7 @@ fun PasswordListItem(
                 ) {
                     // 自动填充
                     DropdownMenuItem(
-                        text = { Text("自动填充") },
+                        text = { Text(stringResource(R.string.autofill)) },
                         leadingIcon = {
                             Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
                         },
@@ -164,7 +166,7 @@ fun PasswordListItem(
                     
                     // 自动填充并保存URI
                     DropdownMenuItem(
-                        text = { Text("自动填充并保存URI") },
+                        text = { Text(stringResource(R.string.autofill_and_save_uri)) },
                         leadingIcon = {
                             Icon(Icons.Outlined.Save, contentDescription = null)
                         },
@@ -180,7 +182,7 @@ fun PasswordListItem(
                     DropdownMenuItem(
                         text = { 
                             Column {
-                                Text("复制用户名")
+                                Text(stringResource(R.string.copy_username))
                                 Text(
                                     text = password.username,
                                     style = MaterialTheme.typography.bodySmall,
@@ -197,7 +199,7 @@ fun PasswordListItem(
                     
                     // 复制密码
                     DropdownMenuItem(
-                        text = { Text("复制密码") },
+                        text = { Text(stringResource(R.string.copy_password)) },
                         leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
                         onClick = {
                             expanded = false
@@ -210,7 +212,7 @@ fun PasswordListItem(
                     // 复制账号 (稍后复制密码) - 仅在有通知权限时显示
                     if (showSmartCopyOptions) {
                         DropdownMenuItem(
-                            text = { Text("复制账号 (稍后复制密码)") },
+                            text = { Text(stringResource(R.string.smart_copy_username_first)) },
                             leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
                             onClick = {
                                 expanded = false
@@ -220,7 +222,7 @@ fun PasswordListItem(
                         
                         // 复制密码 (稍后复制账号)
                         DropdownMenuItem(
-                            text = { Text("复制密码 (稍后复制账号)") },
+                            text = { Text(stringResource(R.string.smart_copy_password_first)) },
                             leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
                             onClick = {
                                 expanded = false
@@ -233,7 +235,7 @@ fun PasswordListItem(
                     
                     // 查看详情
                     DropdownMenuItem(
-                        text = { Text("查看详情") },
+                        text = { Text(stringResource(R.string.details)) },
                         leadingIcon = {
                             Icon(Icons.Outlined.Info, contentDescription = null)
                         },
@@ -478,7 +480,7 @@ fun SuggestedPasswordListItem(
             ) {
                 // 自动填充
                 DropdownMenuItem(
-                    text = { Text("自动填充") },
+                    text = { Text(stringResource(R.string.autofill)) },
                     leadingIcon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = null) },
                     onClick = {
                         expanded = false
@@ -488,7 +490,7 @@ fun SuggestedPasswordListItem(
                 
                 // 自动填充并保存应用或网站信息
                 DropdownMenuItem(
-                    text = { Text("自动填充并保存应用或网站信息") },
+                    text = { Text(stringResource(R.string.autofill_and_save_uri)) },
                     leadingIcon = { Icon(Icons.Outlined.Save, contentDescription = null) },
                     onClick = {
                         expanded = false
@@ -502,7 +504,7 @@ fun SuggestedPasswordListItem(
                 DropdownMenuItem(
                     text = { 
                         Column {
-                            Text("复制用户名")
+                            Text(stringResource(R.string.copy_username))
                             Text(
                                 text = password.username,
                                 style = MaterialTheme.typography.bodySmall,
@@ -519,7 +521,7 @@ fun SuggestedPasswordListItem(
                 
                 // 复制密码
                 DropdownMenuItem(
-                    text = { Text("复制密码") },
+                    text = { Text(stringResource(R.string.copy_password)) },
                     leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
                     onClick = {
                         expanded = false
@@ -532,7 +534,7 @@ fun SuggestedPasswordListItem(
                 // 复制账号 (稍后复制密码) - 仅在有通知权限时显示
                 if (showSmartCopyOptions) {
                     DropdownMenuItem(
-                        text = { Text("复制账号 (稍后复制密码)") },
+                        text = { Text(stringResource(R.string.smart_copy_username_first)) },
                         leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
                         onClick = {
                             expanded = false
@@ -542,7 +544,7 @@ fun SuggestedPasswordListItem(
                     
                     // 复制密码 (稍后复制账号)
                     DropdownMenuItem(
-                        text = { Text("复制密码 (稍后复制账号)") },
+                        text = { Text(stringResource(R.string.smart_copy_password_first)) },
                         leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
                         onClick = {
                             expanded = false
@@ -555,7 +557,7 @@ fun SuggestedPasswordListItem(
                 
                 // 查看详情
                 DropdownMenuItem(
-                    text = { Text("查看详情") },
+                    text = { Text(stringResource(R.string.details)) },
                     leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
                     trailingIcon = { 
                         Icon(

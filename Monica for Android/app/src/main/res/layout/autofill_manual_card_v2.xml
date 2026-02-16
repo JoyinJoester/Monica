@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手动选择卡片 - 蓝色高亮样式 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/autofill_manual_card_compact_background"
+    android:padding="0dp">
+    
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:gravity="center_vertical"
+        android:minHeight="52dp">
+        
+        <ImageView
+            android:id="@+id/icon_app"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_list"
+            android:scaleType="centerInside"
+            android:tint="@color/autofill_manual_icon_tint"
+            android:contentDescription="@null" />
+        
+        <!-- 文本内容 -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:orientation="vertical">
+            
+            <TextView
+                android:id="@+id/text_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/tile_autofill_label"
+                android:textSize="14sp"
+                android:textColor="@color/autofill_text_primary"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:maxWidth="148dp"
+                android:fontFamily="sans-serif-medium" />
+            
+            <TextView
+                android:id="@+id/text_username"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/autofill_open_picker"
+                android:textSize="11sp"
+                android:textColor="@color/autofill_text_secondary"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:maxWidth="148dp"
+                android:layout_marginTop="1dp"
+                android:fontFamily="sans-serif" />
+        </LinearLayout>
+        
+        <!-- 右侧图标 -->
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:src="@drawable/ic_arrow_forward"
+            android:tint="@color/autofill_manual_icon_tint"
+            android:contentDescription="@null" />
+    </LinearLayout>
+</FrameLayout>

@@ -3,6 +3,7 @@ package takagi.ru.monica.bitwarden.api
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNames
 import retrofit2.Response
 import retrofit2.http.*
@@ -222,6 +223,45 @@ interface BitwardenVaultApi {
         @Header("Authorization") authorization: String,
         @Path("id") folderId: String
     ): Response<Unit>
+
+    // ========== Send 操作 ==========
+
+    /**
+     * 创建 Send（目前主要用于文本 Send）
+     */
+    @POST("sends")
+    suspend fun createSend(
+        @Header("Authorization") authorization: String,
+        @Body send: SendCreateRequest
+    ): Response<SendApiResponse>
+
+    /**
+     * 获取单个 Send
+     */
+    @GET("sends/{id}")
+    suspend fun getSend(
+        @Header("Authorization") authorization: String,
+        @Path("id") sendId: String
+    ): Response<SendApiResponse>
+
+    /**
+     * 更新 Send
+     */
+    @PUT("sends/{id}")
+    suspend fun updateSend(
+        @Header("Authorization") authorization: String,
+        @Path("id") sendId: String,
+        @Body send: SendCreateRequest
+    ): Response<SendApiResponse>
+
+    /**
+     * 删除 Send
+     */
+    @DELETE("sends/{id}")
+    suspend fun deleteSend(
+        @Header("Authorization") authorization: String,
+        @Path("id") sendId: String
+    ): Response<Unit>
 }
 
 // ========== 请求/响应数据模型 ==========
@@ -302,7 +342,7 @@ data class TokenResponse(
     val twoFactorProviders: List<Int>? = null,
     @JsonNames("twoFactorProviders2")
     @SerialName("TwoFactorProviders2")
-    val twoFactorProviders2: Map<String, Map<String, String>>? = null,
+    val twoFactorProviders2: Map<String, JsonElement>? = null,
     @JsonNames("resetMasterPassword")
     @SerialName("ResetMasterPassword")
     val resetMasterPassword: Boolean? = null,
@@ -333,7 +373,10 @@ data class SyncResponse(
     val collections: List<CollectionResponse>? = null,
     @JsonNames("policies")
     @SerialName("Policies")
-    val policies: List<PolicyResponse>? = null
+    val policies: List<PolicyResponse>? = null,
+    @JsonNames("sends")
+    @SerialName("Sends")
+    val sends: List<SendApiResponse>? = null
 )
 
 @Serializable
@@ -585,6 +628,87 @@ data class PolicyResponse(
     val enabled: Boolean = false
 )
 
+@Serializable
+data class SendApiResponse(
+    @JsonNames("id")
+    @SerialName("Id")
+    val id: String = "",
+    @JsonNames("accessId")
+    @SerialName("AccessId")
+    val accessId: String = "",
+    @JsonNames("key")
+    @SerialName("Key")
+    val key: String = "",
+    @JsonNames("type")
+    @SerialName("Type")
+    val type: Int = 0, // 0=Text, 1=File
+    @JsonNames("name")
+    @SerialName("Name")
+    val name: String? = null,
+    @JsonNames("notes")
+    @SerialName("Notes")
+    val notes: String? = null,
+    @JsonNames("file")
+    @SerialName("File")
+    val file: SendFileApiData? = null,
+    @JsonNames("text")
+    @SerialName("Text")
+    val text: SendTextApiData? = null,
+    @JsonNames("accessCount")
+    @SerialName("AccessCount")
+    val accessCount: Int = 0,
+    @JsonNames("maxAccessCount")
+    @SerialName("MaxAccessCount")
+    val maxAccessCount: Int? = null,
+    @JsonNames("revisionDate")
+    @SerialName("RevisionDate")
+    val revisionDate: String = "",
+    @JsonNames("expirationDate")
+    @SerialName("ExpirationDate")
+    val expirationDate: String? = null,
+    @JsonNames("deletionDate")
+    @SerialName("DeletionDate")
+    val deletionDate: String? = null,
+    @JsonNames("password")
+    @SerialName("Password")
+    val password: String? = null,
+    @JsonNames("disabled")
+    @SerialName("Disabled")
+    val disabled: Boolean = false,
+    @JsonNames("hideEmail")
+    @SerialName("HideEmail")
+    val hideEmail: Boolean? = null
+)
+
+@Serializable
+data class SendTextApiData(
+    @JsonNames("text")
+    @SerialName("Text")
+    val text: String? = null,
+    @JsonNames("hidden")
+    @SerialName("Hidden")
+    val hidden: Boolean? = null
+)
+
+@Serializable
+data class SendFileApiData(
+    @JsonNames("id")
+    @SerialName("Id")
+    val id: String? = null,
+    @JsonNames("fileName")
+    @SerialName("FileName")
+    val fileName: String? = null,
+    @JsonNames("size")
+    @SerialName("Size")
+    val size: String? = null,
+    @JsonNames("sizeName")
+    @SerialName("SizeName")
+    val sizeName: String? = null,
+    @JsonNames("key")
+    @SerialName("Key")
+    val key: String? = null
+)
+
 // ========== 创建/更新请求 ==========
 
 @Serializable
@@ -649,4 +773,46 @@ data class FolderCreateRequest(
 data class FolderUpdateRequest(
     @SerialName("Name")
     val name: String  // 加密
+)
+
+@Serializable
+data class SendCreateRequest(
+    @SerialName("key")
+    val key: String,
+    @SerialName("type")
+    val type: Int, // 0=Text, 1=File
+    @SerialName("name")
+    val name: String,
+    @SerialName("notes")
+    val notes: String? = null,
+    @SerialName("password")
+    val password: String? = null,
+    @SerialName("disabled")
+    val disabled: Boolean = false,
+    @SerialName("hideEmail")
+    val hideEmail: Boolean = false,
+    @SerialName("deletionDate")
+    val deletionDate: String,
+    @SerialName("expirationDate")
+    val expirationDate: String? = null,
+    @SerialName("maxAccessCount")
+    val maxAccessCount: Int? = null,
+    @SerialName("text")
+    val text: SendTextCreateRequest? = null,
+    @SerialName("file")
+    val file: SendFileCreateRequest? = null
+)
+
+@Serializable
+data class SendTextCreateRequest(
+    @SerialName("text")
+    val text: String,
+    @SerialName("hidden")
+    val hidden: Boolean = false
+)
+
+@Serializable
+data class SendFileCreateRequest(
+    @SerialName("fileName")
+    val fileName: String? = null
 )

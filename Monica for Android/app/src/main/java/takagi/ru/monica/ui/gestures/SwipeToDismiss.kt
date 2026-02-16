@@ -48,7 +48,7 @@ fun SwipeToDismiss(
     backgroundColor: Color = MaterialTheme.colorScheme.errorContainer,
     contentColor: Color = MaterialTheme.colorScheme.onErrorContainer,
     icon: ImageVector = Icons.Default.Delete,
-    iconDescription: String = "删除",
+    iconDescription: String = "Delete",
     enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {

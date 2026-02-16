@@ -11,6 +11,10 @@ import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import takagi.ru.monica.autofill.di.autofillModule
 import takagi.ru.monica.autofill.di.autofillSessionModule
+import takagi.ru.monica.bitwarden.sync.NetworkMonitor
+import takagi.ru.monica.bitwarden.sync.SyncQueueManager
+import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.passkey.MonicaCredentialProviderService
 
 /**
@@ -33,6 +37,7 @@ class MonicaApplication : Application() {
         super.onCreate()
         
         initKoin()
+        initBitwardenSyncInfrastructure()
         maybeRefreshCredentialProviderService()
     }
     
@@ -56,6 +61,24 @@ class MonicaApplication : Application() {
                 autofillModule,
                 autofillSessionModule
             )
+        }
+    }
+
+    /**
+     * Initialize lightweight Bitwarden sync infrastructure so WorkManager
+     * can resolve a queue manager instance instead of retry looping.
+     */
+    private fun initBitwardenSyncInfrastructure() {
+        runCatching {
+            val database = PasswordDatabase.getDatabase(this)
+            val queueManager = SyncQueueManager(
+                context = this,
+                pendingOperationDao = database.bitwardenPendingOperationDao(),
+                networkMonitor = NetworkMonitor(this)
+            )
+            SyncQueueManagerHolder.instance = queueManager
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to init Bitwarden sync infrastructure", error)
         }
     }
     

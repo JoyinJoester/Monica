@@ -1,23 +1,39 @@
 package takagi.ru.monica.viewmodel
 
+import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
 
 class DocumentViewModel(
-    private val repository: SecureItemRepository
+    private val repository: SecureItemRepository,
+    context: Context? = null,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
+    securityManager: SecurityManager? = null
 ) : ViewModel() {
+
+    private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    } else {
+        null
+    }
     
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -36,6 +52,58 @@ class DocumentViewModel(
     suspend fun getDocumentById(id: Long): SecureItem? {
         return repository.getItemById(id)
     }
+
+    fun syncAllKeePassDocuments() {
+        viewModelScope.launch {
+            val dao = localKeePassDatabaseDao ?: return@launch
+            val dbs = withContext(Dispatchers.IO) { dao.getAllDatabasesSync() }
+            dbs.forEach { syncKeePassDocuments(it.id) }
+        }
+    }
+
+    fun syncKeePassDocuments(databaseId: Long) {
+        viewModelScope.launch {
+            val snapshots = keepassService
+                ?.readSecureItems(databaseId, setOf(ItemType.DOCUMENT))
+                ?.getOrNull()
+                ?: return@launch
+
+            val existingDocs = repository.getItemsByType(ItemType.DOCUMENT).first()
+            snapshots.forEach { snapshot ->
+                val incoming = snapshot.item
+                val existingBySource = snapshot.sourceMonicaId
+                    ?.takeIf { it > 0 }
+                    ?.let { sourceId -> repository.getItemById(sourceId) }
+                    ?.takeIf { it.itemType == ItemType.DOCUMENT }
+
+                val existing = existingBySource ?: existingDocs.firstOrNull {
+                    it.itemType == ItemType.DOCUMENT &&
+                        it.keepassDatabaseId == databaseId &&
+                        it.keepassGroupPath == incoming.keepassGroupPath &&
+                        it.title == incoming.title
+                }
+
+                if (existing == null) {
+                    repository.insertItem(incoming)
+                } else {
+                    repository.updateItem(
+                        existing.copy(
+                            title = incoming.title,
+                            notes = incoming.notes,
+                            itemData = incoming.itemData,
+                            isFavorite = incoming.isFavorite,
+                            imagePaths = incoming.imagePaths,
+                            keepassDatabaseId = incoming.keepassDatabaseId,
+                            keepassGroupPath = incoming.keepassGroupPath,
+                            isDeleted = false,
+                            deletedAt = null,
+                            updatedAt = Date()
+                        )
+                    )
+                }
+            }
+        }
+    }
     
     // 添加证件
     fun addDocument(
@@ -43,7 +111,8 @@ class DocumentViewModel(
         documentData: DocumentData,
         notes: String = "",
         isFavorite: Boolean = false,
-        imagePaths: String = ""
+        imagePaths: String = "",
+        keepassDatabaseId: Long? = null
     ) {
         viewModelScope.launch {
             val item = SecureItem(
@@ -53,11 +122,18 @@ class DocumentViewModel(
                 itemData = Json.encodeToString(documentData),
                 notes = notes,
                 isFavorite = isFavorite,
+                keepassDatabaseId = keepassDatabaseId,
                 createdAt = Date(),
                 updatedAt = Date(),
                 imagePaths = imagePaths
             )
             val newId = repository.insertItem(item)
+            if (keepassDatabaseId != null) {
+                val syncResult = keepassService?.updateSecureItem(keepassDatabaseId, item.copy(id = newId))
+                if (syncResult?.isFailure == true) {
+                    Log.e("DocumentViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
+                }
+            }
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -75,7 +151,8 @@ class DocumentViewModel(
         documentData: DocumentData,
         notes: String = "",
         isFavorite: Boolean = false,
-        imagePaths: String = ""
+        imagePaths: String = "",
+        keepassDatabaseId: Long? = null
     ) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { existingItem ->
@@ -104,10 +181,25 @@ class DocumentViewModel(
                     itemData = Json.encodeToString(documentData),
                     notes = notes,
                     isFavorite = isFavorite,
+                    keepassDatabaseId = keepassDatabaseId,
                     updatedAt = Date(),
                     imagePaths = imagePaths
                 )
                 repository.updateItem(updatedItem)
+                val oldKeepassId = existingItem.keepassDatabaseId
+                val newKeepassId = updatedItem.keepassDatabaseId
+                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(existingItem))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("DocumentViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
+                if (newKeepassId != null) {
+                    val updateResult = keepassService?.updateSecureItem(newKeepassId, updatedItem)
+                    if (updateResult?.isFailure == true) {
+                        Log.e("DocumentViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                    }
+                }
                 
                 // 记录更新操作 - 始终记录，即使没有检测到字段变更
                 OperationLogger.logUpdate(
@@ -125,6 +217,12 @@ class DocumentViewModel(
     fun deleteDocument(id: Long, softDelete: Boolean = true) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { item ->
+                if (item.keepassDatabaseId != null) {
+                    val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("DocumentViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
                 if (softDelete) {
                     // 软删除：移动到回收站
                     repository.softDeleteItem(item)

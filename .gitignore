@@ -37,6 +37,8 @@ Monica for Android/build_log.txt
 # Exclude attached folders
 KeePassDX-master/
 keyguard-app-master/
+_tmp_keyguard/
+stratumauthapp/
 # Documentation and Analysis
 修复文档/
 # Ignore plan documents

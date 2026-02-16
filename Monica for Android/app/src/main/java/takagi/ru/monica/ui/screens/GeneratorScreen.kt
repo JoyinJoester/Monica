@@ -87,6 +87,9 @@ fun colorizePassword(password: String): AnnotatedString {
 fun GeneratorScreen(
     onNavigateBack: () -> Unit,
     passwordViewModel: PasswordViewModel,
+    externalRefreshRequestKey: Int = 0,
+    onRefreshRequestConsumed: () -> Unit = {},
+    useExternalRefreshFab: Boolean = false,
     viewModel: GeneratorViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -168,6 +171,106 @@ fun GeneratorScreen(
     
     val pinLength by viewModel.pinLength.collectAsState()
     val pinResult by viewModel.pinResult.collectAsState()
+
+    val regenerateNow: () -> Unit = {
+        when (selectedGenerator) {
+            GeneratorType.SYMBOL -> {
+                val result = if (analyzeCommonPasswords && passwordEntries.isNotEmpty()) {
+                    PasswordGenerator.generateSimilarPassword(
+                        passwords = passwordEntries,
+                        targetLength = symbolLength,
+                        includeUppercase = includeUppercase,
+                        includeLowercase = includeLowercase,
+                        includeNumbers = includeNumbers,
+                        includeSymbols = includeSymbols,
+                        excludeSimilar = excludeSimilar,
+                        excludeAmbiguous = excludeAmbiguous,
+                        weightPercent = analyzeWeight
+                    )
+                } else {
+                    PasswordGenerator.generatePassword(
+                        length = symbolLength,
+                        includeUppercase = includeUppercase,
+                        includeLowercase = includeLowercase,
+                        includeNumbers = includeNumbers,
+                        includeSymbols = includeSymbols,
+                        excludeSimilar = excludeSimilar,
+                        excludeAmbiguous = excludeAmbiguous,
+                        uppercaseMin = uppercaseMin,
+                        lowercaseMin = lowercaseMin,
+                        numbersMin = numbersMin,
+                        symbolsMin = symbolsMin
+                    )
+                }
+                viewModel.updateSymbolResult(result)
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = context.getString(R.string.random_symbol_generator),
+                        type = "SYMBOL"
+                    )
+                }
+            }
+            GeneratorType.PASSWORD -> {
+                val result = generatePassword(
+                    length = passwordLength,
+                    firstLetterUppercase = firstLetterUppercase,
+                    includeNumbers = includeNumbersInPassword,
+                    separator = customSeparator,
+                    separatorCountsTowardsLength = separatorCountsTowardsLength,
+                    segmentLength = segmentLength
+                )
+                viewModel.updatePasswordResult(result)
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = context.getString(R.string.password_generator),
+                        type = "PASSWORD"
+                    )
+                }
+            }
+            GeneratorType.PASSPHRASE -> {
+                val result = PasswordGenerator.generatePassphrase(
+                    context = context,
+                    wordCount = passphraseWordCount,
+                    delimiter = passphraseDelimiter,
+                    capitalize = passphraseCapitalize,
+                    includeNumber = passphraseIncludeNumber,
+                    customWord = passphraseCustomWord.takeIf { it.isNotEmpty() }
+                )
+                viewModel.updatePassphraseResult(result)
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = context.getString(R.string.passphrase_generator),
+                        type = "PASSPHRASE"
+                    )
+                }
+            }
+            GeneratorType.PIN -> {
+                val result = PasswordGenerator.generatePinCode(pinLength)
+                viewModel.updatePinResult(result)
+                scope.launch {
+                    historyManager.addHistory(
+                        password = result,
+                        packageName = "generator",
+                        domain = context.getString(R.string.pin_generator),
+                        type = "PIN"
+                    )
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(externalRefreshRequestKey) {
+        if (externalRefreshRequestKey != 0) {
+            regenerateNow()
+            onRefreshRequestConsumed()
+        }
+    }
     
     // ✨ 自动生成：监听参数变化并实时生成
     LaunchedEffect(
@@ -356,42 +459,24 @@ fun GeneratorScreen(
                 }
             }
             
-            // 结果显示卡片区域 - 始终显示，带动画过渡
-            AnimatedContent(
-                targetState = when (selectedGenerator) {
-                    GeneratorType.SYMBOL -> symbolResult
-                    GeneratorType.PASSWORD -> passwordResult
-                    GeneratorType.PASSPHRASE -> passphraseResult
-                    GeneratorType.PIN -> pinResult
-                },
-                transitionSpec = {
-                    // 淡入淡出 + 轻微缩放动画
-                    fadeIn(
-                        animationSpec = tween(300, easing = FastOutSlowInEasing)
-                    ) + scaleIn(
-                        initialScale = 0.92f,
-                        animationSpec = tween(300, easing = FastOutSlowInEasing)
-                    ) togetherWith fadeOut(
-                        animationSpec = tween(200, easing = FastOutLinearInEasing)
-                    ) + scaleOut(
-                        targetScale = 0.92f,
-                        animationSpec = tween(200, easing = FastOutLinearInEasing)
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 20.dp),
-                label = "result_animation"
-            ) { currentResult ->
-                if (currentResult.isNotEmpty()) {
-                    ResultCard(
-                        result = currentResult,
-                        onCopy = { text ->
-                            copyToClipboard(context, text)
-                            Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                }
+            // 结果显示卡片区域：按上一次尺寸到新尺寸平滑过渡，不再做缩放进出
+            val currentResult = when (selectedGenerator) {
+                GeneratorType.SYMBOL -> symbolResult
+                GeneratorType.PASSWORD -> passwordResult
+                GeneratorType.PASSPHRASE -> passphraseResult
+                GeneratorType.PIN -> pinResult
+            }
+            if (currentResult.isNotEmpty()) {
+                ResultCard(
+                    result = currentResult,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp),
+                    onCopy = { text ->
+                        copyToClipboard(context, text)
+                        Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
+                    }
+                )
             }
             
             // 根据选择的生成器类型显示相应的配置选项
@@ -744,132 +829,40 @@ fun GeneratorScreen(
             Spacer(modifier = Modifier.height(80.dp))
         }
         
-        // 右下角重新生成按钮 - FAB 设计
-        var isRegenerating by remember { mutableStateOf(false) }
-        
-        FloatingActionButton(
-            onClick = {
-                isRegenerating = true
-                // 触发重新生成
-                when (selectedGenerator) {
-                    GeneratorType.SYMBOL -> {
-                        val result = if (analyzeCommonPasswords && passwordEntries.isNotEmpty()) {
-                            PasswordGenerator.generateSimilarPassword(
-                                passwords = passwordEntries,
-                                targetLength = symbolLength,
-                                includeUppercase = includeUppercase,
-                                includeLowercase = includeLowercase,
-                                includeNumbers = includeNumbers,
-                                includeSymbols = includeSymbols,
-                                excludeSimilar = excludeSimilar,
-                                excludeAmbiguous = excludeAmbiguous,
-                                weightPercent = analyzeWeight
-                            )
-                        } else {
-                            PasswordGenerator.generatePassword(
-                                length = symbolLength,
-                                includeUppercase = includeUppercase,
-                                includeLowercase = includeLowercase,
-                                includeNumbers = includeNumbers,
-                                includeSymbols = includeSymbols,
-                                excludeSimilar = excludeSimilar,
-                                excludeAmbiguous = excludeAmbiguous,
-                                uppercaseMin = uppercaseMin,
-                                lowercaseMin = lowercaseMin,
-                                numbersMin = numbersMin,
-                                symbolsMin = symbolsMin
-                            )
-                        }
-                        viewModel.updateSymbolResult(result)
-                        // 保存到历史记录
-                        scope.launch {
-                            historyManager.addHistory(
-                                password = result,
-                                packageName = "generator",
-                                domain = context.getString(R.string.random_symbol_generator),
-                                type = "SYMBOL"
-                            )
-                        }
-                    }
-                    GeneratorType.PASSWORD -> {
-                        val result = generatePassword(
-                            length = passwordLength,
-                            firstLetterUppercase = firstLetterUppercase,
-                            includeNumbers = includeNumbersInPassword,
-                            separator = customSeparator,
-                            separatorCountsTowardsLength = separatorCountsTowardsLength,
-                            segmentLength = segmentLength
-                        )
-                        viewModel.updatePasswordResult(result)
-                        // 保存到历史记录
-                        scope.launch {
-                            historyManager.addHistory(
-                                password = result,
-                                packageName = "generator",
-                                domain = context.getString(R.string.password_generator),
-                                type = "PASSWORD"
-                            )
-                        }
-                    }
-                    GeneratorType.PASSPHRASE -> {
-                        val result = PasswordGenerator.generatePassphrase(
-                            context = context,
-                            wordCount = passphraseWordCount,
-                            delimiter = passphraseDelimiter,
-                            capitalize = passphraseCapitalize,
-                            includeNumber = passphraseIncludeNumber,
-                            customWord = passphraseCustomWord.takeIf { it.isNotEmpty() }
-                        )
-                        viewModel.updatePassphraseResult(result)
-                        // 保存到历史记录
-                        scope.launch {
-                            historyManager.addHistory(
-                                password = result,
-                                packageName = "generator",
-                                domain = context.getString(R.string.passphrase_generator),
-                                type = "PASSPHRASE"
-                            )
-                        }
-                    }
-                    GeneratorType.PIN -> {
-                        val result = PasswordGenerator.generatePinCode(pinLength)
-                        viewModel.updatePinResult(result)
-                        // 保存到历史记录
-                        scope.launch {
-                            historyManager.addHistory(
-                                password = result,
-                                packageName = "generator",
-                                domain = context.getString(R.string.pin_generator),
-                                type = "PIN"
-                            )
-                        }
-                    }
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        ) {
-            // 旋转动画
-            val rotation by animateFloatAsState(
-                targetValue = if (isRegenerating) 360f else 0f,
-                animationSpec = tween(
-                    durationMillis = 500,
-                    easing = FastOutSlowInEasing
-                ),
-                finishedListener = { isRegenerating = false },
-                label = "refresh_rotation"
-            )
-            
-            Icon(
-                imageVector = Icons.Default.Refresh,
-                contentDescription = stringResource(R.string.regenerate),
+        if (!useExternalRefreshFab) {
+            // 右下角重新生成按钮 - FAB 设计
+            var isRegenerating by remember { mutableStateOf(false) }
+
+            FloatingActionButton(
+                onClick = {
+                    isRegenerating = true
+                    regenerateNow()
+                },
                 modifier = Modifier
-                    .size(24.dp)
-                    .graphicsLayer { rotationZ = rotation }
-            )
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                // 旋转动画
+                val rotation by animateFloatAsState(
+                    targetValue = if (isRegenerating) 360f else 0f,
+                    animationSpec = tween(
+                        durationMillis = 500,
+                        easing = FastOutSlowInEasing
+                    ),
+                    finishedListener = { isRegenerating = false },
+                    label = "refresh_rotation"
+                )
+
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = stringResource(R.string.regenerate),
+                    modifier = Modifier
+                        .size(24.dp)
+                        .graphicsLayer { rotationZ = rotation }
+                )
+            }
         }
     }
     
@@ -1238,6 +1231,7 @@ private fun FilterChipTab(
 @Composable
 private fun ResultCard(
     result: String,
+    modifier: Modifier = Modifier,
     onCopy: (String) -> Unit
 ) {
     var showCopied by remember { mutableStateOf(false) }
@@ -1267,8 +1261,14 @@ private fun ResultCard(
     )
 
     ElevatedCard(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
             .graphicsLayer { alpha = cardAlpha },
         elevation = CardDefaults.elevatedCardElevation(
             defaultElevation = 4.dp

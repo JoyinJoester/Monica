@@ -7,6 +7,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
+import java.util.Locale
 
 /**
  * Repository for password entries
@@ -32,13 +33,17 @@ class PasswordRepository(
     fun getPasswordEntriesByKeePassDatabase(databaseId: Long): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getPasswordEntriesByKeePassDatabase(databaseId)
     }
+
+    fun getPasswordEntriesByKeePassGroup(databaseId: Long, groupPath: String): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getPasswordEntriesByKeePassGroup(databaseId, groupPath)
+    }
     
     fun getPasswordEntriesByBitwardenVault(vaultId: Long): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getByBitwardenVaultIdFlow(vaultId)
     }
 
-    fun getPasswordEntriesByBitwardenFolder(folderId: String): Flow<List<PasswordEntry>> {
-        return passwordEntryDao.getByBitwardenFolderIdFlow(folderId)
+    fun getPasswordEntriesByBitwardenFolder(vaultId: Long, folderId: String): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getByBitwardenFolderIdFlow(vaultId, folderId)
     }
     
     fun getBitwardenFoldersByVaultId(vaultId: Long): Flow<List<BitwardenFolder>> {
@@ -73,12 +78,36 @@ class PasswordRepository(
         categoryDao?.updateSortOrder(id, sortOrder)
     }
 
+    suspend fun getCategoryById(id: Long): Category? {
+        return categoryDao?.getCategoryById(id)
+    }
+
     suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?) {
         passwordEntryDao.updateCategoryForPasswords(ids, categoryId)
+    }
+
+    suspend fun bindPasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String) {
+        passwordEntryDao.bindPasswordsToBitwardenFolder(ids, vaultId, folderId)
+    }
+
+    suspend fun clearPendingBitwardenBinding(ids: List<Long>) {
+        passwordEntryDao.clearPendingBitwardenBinding(ids)
+    }
+
+    suspend fun bindCategoryToBitwarden(categoryId: Long, vaultId: Long, folderId: String) {
+        passwordEntryDao.bindCategoryToBitwarden(categoryId, vaultId, folderId)
     }
     
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?) {
         passwordEntryDao.updateKeePassDatabaseForPasswords(ids, databaseId)
+    }
+
+    suspend fun updateKeePassGroupForPasswords(ids: List<Long>, databaseId: Long, groupPath: String) {
+        passwordEntryDao.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
+    }
+
+    suspend fun clearBitwardenBindingForPasswords(ids: List<Long>) {
+        passwordEntryDao.clearBitwardenBindingForPasswords(ids)
     }
     
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>> {
@@ -99,6 +128,10 @@ class PasswordRepository(
     
     suspend fun updatePasswordEntry(entry: PasswordEntry) {
         passwordEntryDao.updatePasswordEntry(entry)
+    }
+
+    suspend fun updatePasswordUpdatedAt(id: Long, updatedAt: java.util.Date) {
+        passwordEntryDao.updateUpdatedAt(id, updatedAt)
     }
     
     suspend fun deletePasswordEntry(entry: PasswordEntry) {
@@ -147,8 +180,29 @@ class PasswordRepository(
         return passwordEntryDao.findDuplicateEntry(title, username, website)
     }
 
-    suspend fun getDuplicateEntryInKeePass(databaseId: Long, title: String, username: String, website: String): PasswordEntry? {
-        return passwordEntryDao.findDuplicateEntryInKeePass(databaseId, title, username, website)
+    /**
+     * 仅在 Monica 本地库范围内查重（排除 KeePass / Bitwarden）
+     */
+    suspend fun getLocalDuplicateEntry(title: String, username: String, website: String): PasswordEntry? {
+        return passwordEntryDao.findLocalDuplicateByKey(
+            title.lowercase(Locale.ROOT),
+            username.lowercase(Locale.ROOT),
+            website.lowercase(Locale.ROOT)
+        )
+    }
+
+    suspend fun getDuplicateEntryInKeePass(
+        databaseId: Long,
+        title: String,
+        username: String,
+        website: String,
+        groupPath: String?
+    ): PasswordEntry? {
+        return passwordEntryDao.findDuplicateEntryInKeePass(databaseId, title, username, website, groupPath)
+    }
+
+    suspend fun getPasswordEntriesByKeePassDatabaseSync(databaseId: Long): List<PasswordEntry> {
+        return passwordEntryDao.getPasswordEntriesByKeePassDatabaseSync(databaseId)
     }
     
     /**

@@ -225,6 +225,43 @@ interface BitwardenFolderDao {
 }
 
 /**
+ * Bitwarden Send DAO
+ */
+@Dao
+interface BitwardenSendDao {
+
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId ORDER BY updated_at DESC")
+    fun getSendsByVaultFlow(vaultId: Long): Flow<List<BitwardenSend>>
+
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId ORDER BY updated_at DESC")
+    suspend fun getSendsByVault(vaultId: Long): List<BitwardenSend>
+
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id = :sendId LIMIT 1")
+    suspend fun getBySendId(vaultId: Long, sendId: String): BitwardenSend?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(send: BitwardenSend): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(sends: List<BitwardenSend>)
+
+    @Update
+    suspend fun update(send: BitwardenSend)
+
+    @Delete
+    suspend fun delete(send: BitwardenSend)
+
+    @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId")
+    suspend fun deleteByVault(vaultId: Long)
+
+    @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id = :sendId")
+    suspend fun deleteBySendId(vaultId: Long, sendId: String)
+
+    @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id NOT IN (:keepIds)")
+    suspend fun deleteNotIn(vaultId: Long, keepIds: List<String>)
+}
+
+/**
  * Bitwarden 冲突备份 DAO
  */
 @Dao
@@ -284,6 +321,14 @@ interface BitwardenPendingOperationDao {
     
     @Query("SELECT * FROM bitwarden_pending_operations WHERE vault_id = :vaultId AND status = 'PENDING' ORDER BY created_at ASC")
     suspend fun getPendingOperationsByVault(vaultId: Long): List<BitwardenPendingOperation>
+
+    @Query("""
+        SELECT * FROM bitwarden_pending_operations
+        WHERE vault_id = :vaultId
+          AND status IN ('PENDING', 'FAILED')
+        ORDER BY created_at ASC
+    """)
+    suspend fun getRunnableOperationsByVault(vaultId: Long): List<BitwardenPendingOperation>
     
     @Query("SELECT COUNT(*) FROM bitwarden_pending_operations WHERE status = 'PENDING'")
     fun getPendingCountFlow(): Flow<Int>
@@ -305,6 +350,39 @@ interface BitwardenPendingOperationDao {
     
     @Query("SELECT * FROM bitwarden_pending_operations WHERE entry_id = :entryId AND item_type = :itemType AND status IN ('PENDING', 'IN_PROGRESS')")
     suspend fun findPendingByEntryAndType(entryId: Long, itemType: String): BitwardenPendingOperation?
+
+    @Query("""
+        SELECT * FROM bitwarden_pending_operations
+        WHERE vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+          AND operation_type = 'DELETE'
+          AND status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+        ORDER BY created_at DESC
+        LIMIT 1
+    """)
+    suspend fun findActiveDeleteByCipher(vaultId: Long, cipherId: String): BitwardenPendingOperation?
+
+    @Query("""
+        SELECT * FROM bitwarden_pending_operations
+        WHERE vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+          AND operation_type = 'RESTORE'
+          AND status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+        ORDER BY created_at DESC
+        LIMIT 1
+    """)
+    suspend fun findActiveRestoreByCipher(vaultId: Long, cipherId: String): BitwardenPendingOperation?
+
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM bitwarden_pending_operations
+            WHERE vault_id = :vaultId
+              AND bitwarden_cipher_id = :cipherId
+              AND operation_type = 'DELETE'
+              AND status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+        )
+    """)
+    suspend fun hasActiveDeleteByCipher(vaultId: Long, cipherId: String): Boolean
     
     @Insert
     suspend fun insert(operation: BitwardenPendingOperation): Long
@@ -356,6 +434,26 @@ interface BitwardenPendingOperationDao {
      */
     @Query("UPDATE bitwarden_pending_operations SET status = 'CANCELLED' WHERE id = :id")
     suspend fun cancel(id: Long)
+
+    @Query("""
+        UPDATE bitwarden_pending_operations
+        SET status = 'CANCELLED'
+        WHERE vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+          AND operation_type = 'DELETE'
+          AND status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+    """)
+    suspend fun cancelActiveDeleteByCipher(vaultId: Long, cipherId: String)
+
+    @Query("""
+        UPDATE bitwarden_pending_operations
+        SET status = 'CANCELLED'
+        WHERE vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+          AND operation_type = 'RESTORE'
+          AND status IN ('PENDING', 'IN_PROGRESS', 'FAILED')
+    """)
+    suspend fun cancelActiveRestoreByCipher(vaultId: Long, cipherId: String)
     
     /**
      * 重置失败操作为待处理状态（手动重试）

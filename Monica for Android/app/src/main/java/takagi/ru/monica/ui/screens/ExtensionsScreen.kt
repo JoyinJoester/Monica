@@ -43,6 +43,10 @@ fun ExtensionsScreen(
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
     iconCardsEnabled: Boolean = false,
     onIconCardsEnabledChange: (Boolean) -> Unit = {},
+    smartDeduplicationEnabled: Boolean = false,
+    onSmartDeduplicationEnabledChange: (Boolean) -> Unit = {},
+    separateUsernameAccountEnabled: Boolean = false,
+    onSeparateUsernameAccountEnabledChange: (Boolean) -> Unit = {},
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
     onPasswordCardDisplayModeChange: (takagi.ru.monica.data.PasswordCardDisplayMode) -> Unit = {},
     validatorUnifiedProgressBar: takagi.ru.monica.data.UnifiedProgressBarMode = takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED,
@@ -189,12 +193,22 @@ fun ExtensionsScreen(
                 CommonAccountCard()
                 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                ExtensionSwitchItem(
+                    icon = Icons.Default.AlternateEmail,
+                    title = stringResource(R.string.separate_username_account_title),
+                    description = stringResource(R.string.separate_username_account_desc),
+                    checked = separateUsernameAccountEnabled,
+                    onCheckedChange = onSeparateUsernameAccountEnabledChange
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 
                 // 添加密码页面字段定制入口
                 ExtensionClickableItem(
                     icon = Icons.Default.Tune,
-                    title = "添加密码页面字段定制",
-                    description = "自定义显示的字段卡片",
+                    title = stringResource(R.string.extensions_password_field_customization_title),
+                    description = stringResource(R.string.extensions_password_field_customization_desc),
                     onClick = onNavigateToFieldCustomization
                 )
                 
@@ -250,7 +264,18 @@ fun ExtensionsScreen(
                     )
                 }
             }
-            
+
+            Spacer(modifier = Modifier.height(8.dp))
+            ExtensionSection(title = stringResource(R.string.display_options_menu_title)) {
+                ExtensionSwitchItem(
+                    icon = Icons.Default.CallMerge,
+                    title = stringResource(R.string.smart_deduplication),
+                    description = stringResource(R.string.smart_deduplication_desc),
+                    checked = smartDeduplicationEnabled,
+                    onCheckedChange = onSmartDeduplicationEnabledChange
+                )
+            }
+             
             // 验证器设置（需要 Plus）
             if (isPlusActivated) {
                 Spacer(modifier = Modifier.height(8.dp))

@@ -12,7 +12,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,13 +29,10 @@ fun SyncBackupScreen(
     onNavigateToExportData: () -> Unit = {},
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
-    onNavigateToKeePass: () -> Unit = {},  // KeePass 兼容性配置入口
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
-    onNavigateToDatabaseFolderManagement: () -> Unit = {},  // 数据库文件夹管理入口
     isPlusActivated: Boolean = false
 ) {
-    val context = LocalContext.current
     val scrollState = rememberScrollState()
 
     // 准备共享元素 Modifier
@@ -112,32 +108,36 @@ fun SyncBackupScreen(
                 }
             }
             
-            // 本地备份区块
-            SyncBackupSection(title = stringResource(R.string.sync_backup_local)) {
+            // 常用同步区块（高频）
+            SyncBackupSection(title = stringResource(R.string.sync_backup_common_sync)) {
                 SyncBackupItem(
-                    icon = Icons.Default.Download,
-                    title = stringResource(R.string.export_data),
-                    description = stringResource(R.string.export_data_description),
-                    onClick = onNavigateToExportData
+                    icon = Icons.Default.Cloud,
+                    title = stringResource(R.string.webdav_backup),
+                    description = stringResource(R.string.webdav_backup_description),
+                    onClick = onNavigateToWebDav,
+                    enabled = true,
+                    badge = null
                 )
-                
+
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 72.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
-                
+
                 SyncBackupItem(
-                    icon = Icons.Default.Upload,
-                    title = stringResource(R.string.import_data),
-                    description = stringResource(R.string.import_data_description),
-                    onClick = onNavigateToImportData
+                    icon = Icons.Default.CloudSync,
+                    title = stringResource(R.string.sync_backup_bitwarden_sync_title),
+                    description = stringResource(R.string.sync_backup_bitwarden_sync_desc),
+                    onClick = onNavigateToBitwarden,
+                    enabled = isPlusActivated,
+                    badge = if (!isPlusActivated) "Plus" else null
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
-            // 本地 KeePass 数据库区块
-            SyncBackupSection(title = stringResource(R.string.local_keepass_section_title)) {
+
+            // KeePass 相关区块（中低频）
+            SyncBackupSection(title = stringResource(R.string.sync_backup_keepass_tools)) {
                 SyncBackupItem(
                     icon = Icons.Default.Key,
                     title = stringResource(R.string.local_keepass_database),
@@ -148,55 +148,25 @@ fun SyncBackupScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 数据库文件夹管理区块
-            SyncBackupSection(title = stringResource(R.string.folder_management_title)) {
+            // 导入导出区块（低频）
+            SyncBackupSection(title = stringResource(R.string.sync_backup_import_export_low_freq)) {
                 SyncBackupItem(
-                    icon = Icons.Default.Folder,
-                    title = stringResource(R.string.folder_management_title),
-                    description = stringResource(R.string.folder_management_description),
-                    onClick = onNavigateToDatabaseFolderManagement
+                    icon = Icons.Default.Download,
+                    title = stringResource(R.string.export_data),
+                    description = stringResource(R.string.export_data_description),
+                    onClick = onNavigateToExportData
                 )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 云同步区块
-            SyncBackupSection(title = stringResource(R.string.sync_backup_cloud)) {
-                SyncBackupItem(
-                    icon = Icons.Default.Cloud,
-                    title = stringResource(R.string.webdav_backup),
-                    description = stringResource(R.string.webdav_backup_description),
-                    onClick = onNavigateToWebDav,
-                    enabled = isPlusActivated,
-                    badge = if (!isPlusActivated) "Plus" else null
-                )
-                
+
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 72.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
-                
+
                 SyncBackupItem(
-                    icon = Icons.Default.Key,
-                    title = "KeePass WebDAV",
-                    description = "通过 WebDAV 与 KeePass (.kdbx) 同步数据",
-                    onClick = onNavigateToKeePass,
-                    enabled = isPlusActivated,
-                    badge = if (!isPlusActivated) "Plus" else null
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Bitwarden 集成区块
-            SyncBackupSection(title = "Bitwarden") {
-                SyncBackupItem(
-                    icon = Icons.Default.CloudSync,
-                    title = "Bitwarden 同步",
-                    description = "连接 Bitwarden 服务器，同步您的密码数据",
-                    onClick = onNavigateToBitwarden,
-                    enabled = isPlusActivated,
-                    badge = if (!isPlusActivated) "Plus" else null
+                    icon = Icons.Default.Upload,
+                    title = stringResource(R.string.import_data),
+                    description = stringResource(R.string.import_data_description),
+                    onClick = onNavigateToImportData
                 )
             }
             

@@ -1,7 +1,6 @@
 package takagi.ru.monica.autofill
 
 import android.app.Activity
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -11,7 +10,6 @@ import android.service.autofill.Dataset
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
-import android.widget.RemoteViews
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -94,6 +92,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val capturedUsername: String? = null,
         val capturedPassword: String? = null,
         val autofillIds: ArrayList<AutofillId>? = null,
+        val autofillHints: ArrayList<String>? = null,
         val suggestedPasswordIds: LongArray? = null,
         val isSaveMode: Boolean = false
     ) : Parcelable {
@@ -198,31 +197,22 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     private fun handleSmartCopy(password: PasswordEntry, usernameFirst: Boolean) {
         val securityManager = SecurityManager(applicationContext)
-        
-        val decryptedUsername = try {
-            if (password.username.contains("==") && password.username.length > 20) {
-                securityManager.decryptData(password.username)
-            } else {
-                password.username
-            }
-        } catch (e: Exception) {
-            password.username
-        }
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
         
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
         } catch (e: Exception) {
-            ""
+            password.password
         }
         
         if (usernameFirst) {
             // Copy username first, queue password for notification
             SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
-                firstValue = decryptedUsername,
-                firstLabel = "Username",
+                firstValue = accountValue,
+                firstLabel = getString(R.string.autofill_username),
                 secondValue = decryptedPassword,
-                secondLabel = "Password"
+                secondLabel = getString(R.string.autofill_password)
             )
             android.widget.Toast.makeText(this, R.string.username_copied, android.widget.Toast.LENGTH_SHORT).show()
         } else {
@@ -230,9 +220,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = decryptedPassword,
-                firstLabel = "Password",
-                secondValue = decryptedUsername,
-                secondLabel = "Username"
+                firstLabel = getString(R.string.autofill_password),
+                secondValue = accountValue,
+                secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -246,22 +236,13 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     private fun handleAutofill(password: PasswordEntry, forceAddUri: Boolean) {
         val securityManager = SecurityManager(applicationContext)
-        
-        // 解密
-        val decryptedUsername = try {
-            if (password.username.contains("==") && password.username.length > 20) {
-                securityManager.decryptData(password.username)
-            } else {
-                password.username
-            }
-        } catch (e: Exception) {
-            password.username
-        }
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(applicationContext)
         
         val decryptedPassword = try {
             securityManager.decryptData(password.password)
         } catch (e: Exception) {
-            ""
+            password.password
         }
         
         // 手动模式：复制密码到剪贴板
@@ -270,9 +251,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = decryptedPassword,
-                firstLabel = "Password",
-                secondValue = decryptedUsername,
-                secondLabel = "Username"
+                firstLabel = getString(R.string.autofill_password),
+                secondValue = accountValue,
+                secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
             finish()
@@ -287,17 +268,37 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
         
-        val presentation = RemoteViews(packageName, R.layout.autofill_dataset_card).apply {
-            setTextViewText(R.id.text_title, password.title.ifEmpty { decryptedUsername })
-            setTextViewText(R.id.text_username, decryptedUsername)
-            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
-        }
-        
-        val datasetBuilder = Dataset.Builder(presentation)
-        
+        val datasetBuilder = Dataset.Builder()
+
+        val hints = args.autofillHints
+        var filledCount = 0
         autofillIds.forEachIndexed { index, autofillId ->
-            val value = if (index % 2 == 0) decryptedUsername else decryptedPassword
-            datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+            val hint = hints?.getOrNull(index)
+            val value = when (hint) {
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
+                    if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
+                EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
+                EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name -> decryptedPassword
+                else -> {
+                    if (hints.isNullOrEmpty()) {
+                        if (index % 2 == 0) accountValue else decryptedPassword
+                    } else {
+                        null
+                    }
+                }
+            }
+            if (value != null) {
+                datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                filledCount++
+            }
+        }
+
+        if (filledCount == 0) {
+            autofillIds.forEachIndexed { index, autofillId ->
+                val fallbackValue = if (index % 2 == 0) accountValue else decryptedPassword
+                datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
+            }
         }
         
         val resultIntent = Intent().apply {
@@ -308,9 +309,27 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         if (forceAddUri) {
             saveUriBinding(password)
         }
+
+        rememberLastFilledCredential(password.id)
         
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
+    }
+
+    private fun rememberLastFilledCredential(passwordId: Long) {
+        val identifier = when {
+            !args.webDomain.isNullOrBlank() -> args.webDomain!!.trim().lowercase()
+            !args.applicationId.isNullOrBlank() -> args.applicationId!!.trim().lowercase()
+            else -> return
+        }
+
+        try {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                AutofillPreferences(applicationContext).setLastFilledCredential(identifier, passwordId)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)
+        }
     }
     
     private fun saveUriBinding(password: PasswordEntry) {
@@ -358,8 +377,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             }
             clipboard.setPrimaryClip(clip)
             
-            val message = if (label == "Password") "密码已复制" else "用户名已复制"
-            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+            val messageRes = if (isSensitive) R.string.password_copied else R.string.username_copied
+            android.widget.Toast.makeText(this, messageRes, android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Clipboard copy failed", e)
         }
@@ -402,6 +421,8 @@ private fun AutofillPickerContent(
     // 读取自动填充验证设置
     val appSettingsState = settingsManager.settingsFlow.collectAsState(initial = null)
     val appSettings = appSettingsState.value
+    val autofillUsernameLabel = stringResource(R.string.autofill_username)
+    val autofillPasswordLabel = stringResource(R.string.autofill_password)
     
     if (appSettings == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -503,9 +524,9 @@ private fun AutofillPickerContent(
         "list" -> {
             // 根据模式显示不同标题
             val title = when {
-                args.isSaveMode -> "Save form data"
-                isManualMode -> "Monica 快速复制"
-                else -> "Autofill with Monica"
+                args.isSaveMode -> stringResource(R.string.autofill_save_form_data)
+                isManualMode -> stringResource(R.string.autofill_manual_quick_copy)
+                else -> stringResource(R.string.autofill_with_monica)
             }
             
             AutofillScaffold(
@@ -517,7 +538,7 @@ private fun AutofillPickerContent(
                         applicationId = if (isManualMode) null else args.applicationId,
                         webDomain = if (isManualMode) null else args.webDomain,
                         appIcon = if (isManualMode) null else appIcon,
-                        appName = if (isManualMode) "选择密码后复制到剪贴板" else appName,
+                        appName = if (isManualMode) stringResource(R.string.autofill_select_password_and_copy) else appName,
                         onClose = onClose
                     )
                 }
@@ -551,7 +572,7 @@ private fun AutofillPickerContent(
                                 if (suggestedPasswords.isNotEmpty() && searchQuery.isBlank()) {
                                     item {
                                         Text(
-                                            text = "建议填充",
+                                            text = stringResource(R.string.autofill_suggested_fill),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -578,11 +599,11 @@ private fun AutofillPickerContent(
                                                         currentScreen = "detail"
                                                     }
                                                     is PasswordItemAction.CopyUsername -> {
-                                                        onCopy("Username", action.password.username, false)
+                                                        onCopy(autofillUsernameLabel, action.password.username, false)
                                                     }
                                                     is PasswordItemAction.CopyPassword -> {
                                                         val decryptedPassword = securityManager.decryptData(action.password.password)
-                                                        onCopy("Password", decryptedPassword, true)
+                                                        onCopy(autofillPasswordLabel, decryptedPassword, true)
                                                     }
                                                     is PasswordItemAction.SmartCopyUsernameFirst -> {
                                                         onSmartCopy(action.password, true)
@@ -614,7 +635,11 @@ private fun AutofillPickerContent(
                                 if (filteredPasswords.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = if (suggestedPasswords.isNotEmpty()) "其他条目" else "所有条目",
+                                            text = if (suggestedPasswords.isNotEmpty()) {
+                                                stringResource(R.string.autofill_other_entries)
+                                            } else {
+                                                stringResource(R.string.autofill_all_entries)
+                                            },
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -647,11 +672,11 @@ private fun AutofillPickerContent(
                                                     currentScreen = "detail"
                                                 }
                                                 is PasswordItemAction.CopyUsername -> {
-                                                    onCopy("Username", action.password.username, false)
+                                                    onCopy(autofillUsernameLabel, action.password.username, false)
                                                 }
                                                 is PasswordItemAction.CopyPassword -> {
                                                     val decryptedPassword = securityManager.decryptData(action.password.password)
-                                                    onCopy("Password", decryptedPassword, true)
+                                                    onCopy(autofillPasswordLabel, decryptedPassword, true)
                                                 }
                                                 is PasswordItemAction.SmartCopyUsernameFirst -> {
                                                     onSmartCopy(action.password, true)
@@ -678,7 +703,7 @@ private fun AutofillPickerContent(
                             .align(Alignment.BottomEnd)
                             .padding(16.dp),
                         icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                        text = { Text("新建") }
+                        text = { Text(stringResource(R.string.create_new)) }
                     )
                 }
             }
@@ -755,7 +780,7 @@ private fun NoSuggestionsHint() {
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = "在此上下文中没有建议的项目",
+            text = stringResource(R.string.autofill_no_suggestions_in_context),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

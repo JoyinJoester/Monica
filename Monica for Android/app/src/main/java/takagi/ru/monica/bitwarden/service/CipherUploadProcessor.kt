@@ -1,6 +1,7 @@
 package takagi.ru.monica.bitwarden.service
 
 import android.content.Context
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
@@ -9,6 +10,11 @@ import takagi.ru.monica.bitwarden.mapper.*
 import takagi.ru.monica.bitwarden.sync.SyncItemType
 import takagi.ru.monica.data.*
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.data.model.TotpData
 import java.util.Date
 
 /**
@@ -82,6 +88,52 @@ class CipherUploadProcessor(
             UploadItemResult.Error(e.message ?: "Unknown error")
         }
     }
+
+    /**
+     * 更新单个 SecureItem 到 Bitwarden
+     */
+    suspend fun updateSecureItem(
+        vault: BitwardenVault,
+        item: SecureItem,
+        cipherId: String,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): UploadItemResult {
+        return try {
+            val request = when (item.itemType) {
+                ItemType.TOTP -> createTotpCipherRequest(item, symmetricKey)
+                ItemType.BANK_CARD -> createCardCipherRequest(item, symmetricKey)
+                ItemType.NOTE -> createSecureNoteCipherRequest(item, symmetricKey)
+                ItemType.DOCUMENT -> createIdentityCipherRequest(item, symmetricKey)
+                else -> return UploadItemResult.Error("Unsupported item type: ${item.itemType}")
+            }
+
+            val updateRequest = request.toUpdateRequest()
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.updateCipher(
+                authorization = "Bearer $accessToken",
+                cipherId = cipherId,
+                cipher = updateRequest
+            )
+
+            if (!response.isSuccessful) {
+                return UploadItemResult.Error("Update cipher failed: ${response.code()}")
+            }
+
+            val updatedCipher = response.body() ?: return UploadItemResult.Error("Empty response")
+            val updatedItem = item.copy(
+                bitwardenRevisionDate = updatedCipher.revisionDate,
+                bitwardenLocalModified = false,
+                syncStatus = "SYNCED",
+                updatedAt = Date()
+            )
+            secureItemDao.update(updatedItem)
+            UploadItemResult.Success(updatedCipher.id)
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Update SecureItem failed: ${e.message}", e)
+            UploadItemResult.Error(e.message ?: "Unknown error")
+        }
+    }
     
     /**
      * 上传 Passkey 元数据到 Bitwarden
@@ -149,6 +201,40 @@ class CipherUploadProcessor(
         
         return BatchUploadResult(uploaded = uploaded, failed = failed, total = pending.size)
     }
+
+    /**
+     * 批量上传已修改的 SecureItems（已有 cipherId）
+     */
+    suspend fun uploadModifiedSecureItems(
+        vault: BitwardenVault,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): BatchUploadResult {
+        val modifiedItems = secureItemDao.getLocalModifiedEntries(vault.id)
+            .filter { !it.bitwardenCipherId.isNullOrBlank() }
+
+        if (modifiedItems.isEmpty()) {
+            return BatchUploadResult(uploaded = 0, failed = 0, total = 0)
+        }
+
+        var uploaded = 0
+        var failed = 0
+
+        for (item in modifiedItems) {
+            val cipherId = item.bitwardenCipherId
+            if (cipherId.isNullOrBlank()) {
+                failed++
+                continue
+            }
+            val result = updateSecureItem(vault, item, cipherId, accessToken, symmetricKey)
+            when (result) {
+                is UploadItemResult.Success -> uploaded++
+                is UploadItemResult.Error -> failed++
+            }
+        }
+
+        return BatchUploadResult(uploaded = uploaded, failed = failed, total = modifiedItems.size)
+    }
     
     /**
      * 批量上传待同步的 Passkeys
@@ -184,11 +270,7 @@ class CipherUploadProcessor(
         item: SecureItem,
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
-        val totpData = try {
-            json.decodeFromString(TotpItemData.serializer(), item.itemData)
-        } catch (e: Exception) {
-            TotpItemData()
-        }
+        val totpData = parseTotpData(item)
         
         val crypto = BitwardenCrypto
         
@@ -216,11 +298,7 @@ class CipherUploadProcessor(
         item: SecureItem,
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
-        val cardData = try {
-            json.decodeFromString(CardItemData.serializer(), item.itemData)
-        } catch (e: Exception) {
-            CardItemData()
-        }
+        val cardData = parseBankCardData(item)
         
         val crypto = BitwardenCrypto
         
@@ -248,7 +326,7 @@ class CipherUploadProcessor(
                 code = cardData.cvv.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                brand = cardData.brand.takeIf { it.isNotBlank() }?.let {
+                brand = cardData.bankName.ifBlank { cardData.brand }.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 }
             )
@@ -259,11 +337,7 @@ class CipherUploadProcessor(
         item: SecureItem,
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
-        val noteData = try {
-            json.decodeFromString(NoteItemData.serializer(), item.itemData)
-        } catch (e: Exception) {
-            NoteItemData(content = item.notes)
-        }
+        val noteData = parseNoteData(item)
         
         val crypto = BitwardenCrypto
         
@@ -281,11 +355,7 @@ class CipherUploadProcessor(
         item: SecureItem,
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
-        val docData = try {
-            json.decodeFromString(DocumentItemData.serializer(), item.itemData)
-        } catch (e: Exception) {
-            DocumentItemData()
-        }
+        val docData = parseDocumentData(item)
         
         val crypto = BitwardenCrypto
         
@@ -305,12 +375,12 @@ class CipherUploadProcessor(
                     crypto.encryptString(it, symmetricKey)
                 },
                 licenseNumber = docData.documentNumber.takeIf { 
-                    it.isNotBlank() && docData.documentType == "DRIVER_LICENSE" 
+                    it.isNotBlank() && docData.documentType == DocumentType.DRIVER_LICENSE.name
                 }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
                 passportNumber = docData.documentNumber.takeIf { 
-                    it.isNotBlank() && docData.documentType == "PASSPORT" 
+                    it.isNotBlank() && docData.documentType == DocumentType.PASSPORT.name
                 }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
@@ -318,6 +388,110 @@ class CipherUploadProcessor(
                     crypto.encryptString(it, symmetricKey)
                 }
             )
+        )
+    }
+
+    private fun parseTotpData(item: SecureItem): TotpItemData {
+        return try {
+            val appData = json.decodeFromString<TotpData>(item.itemData)
+            TotpItemData(
+                secret = appData.secret,
+                issuer = appData.issuer,
+                account = appData.accountName,
+                algorithm = appData.algorithm,
+                digits = appData.digits,
+                period = appData.period
+            )
+        } catch (_: Exception) {
+            try {
+                json.decodeFromString(TotpItemData.serializer(), item.itemData)
+            } catch (_: Exception) {
+                TotpItemData()
+            }
+        }
+    }
+
+    private fun parseBankCardData(item: SecureItem): CardItemData {
+        return try {
+            val appData = json.decodeFromString<BankCardData>(item.itemData)
+            CardItemData(
+                cardholderName = appData.cardholderName,
+                number = appData.cardNumber,
+                expMonth = appData.expiryMonth,
+                expYear = appData.expiryYear,
+                cvv = appData.cvv,
+                bankName = appData.bankName,
+                billingAddress = appData.billingAddress
+            )
+        } catch (_: Exception) {
+            try {
+                json.decodeFromString(CardItemData.serializer(), item.itemData)
+            } catch (_: Exception) {
+                CardItemData()
+            }
+        }
+    }
+
+    private fun parseNoteData(item: SecureItem): NoteItemData {
+        return try {
+            val appData = json.decodeFromString<NoteData>(item.itemData)
+            NoteItemData(
+                content = appData.content,
+                isMarkdown = appData.isMarkdown,
+                tags = appData.tags
+            )
+        } catch (_: Exception) {
+            try {
+                json.decodeFromString(NoteItemData.serializer(), item.itemData)
+            } catch (_: Exception) {
+                NoteItemData(content = item.notes)
+            }
+        }
+    }
+
+    private fun parseDocumentData(item: SecureItem): DocumentItemData {
+        return try {
+            val appData = json.decodeFromString<DocumentData>(item.itemData)
+            val names = splitName(appData.fullName)
+            DocumentItemData(
+                documentType = appData.documentType.name,
+                documentNumber = appData.documentNumber,
+                issueDate = appData.issuedDate,
+                expiryDate = appData.expiryDate,
+                issuingAuthority = appData.issuedBy,
+                firstName = names.first,
+                lastName = names.second
+            )
+        } catch (_: Exception) {
+            try {
+                json.decodeFromString(DocumentItemData.serializer(), item.itemData)
+            } catch (_: Exception) {
+                DocumentItemData()
+            }
+        }
+    }
+
+    private fun splitName(fullName: String): Pair<String, String> {
+        val normalized = fullName.trim()
+        if (normalized.isBlank()) return "" to ""
+        val parts = normalized.split(Regex("\\s+"))
+        if (parts.size == 1) return parts[0] to ""
+        return parts.dropLast(1).joinToString(" ") to parts.last()
+    }
+
+    private fun CipherCreateRequest.toUpdateRequest(): CipherUpdateRequest {
+        return CipherUpdateRequest(
+            type = type,
+            folderId = folderId,
+            name = name,
+            notes = notes,
+            login = login,
+            card = card,
+            identity = identity,
+            secureNote = secureNote,
+            fields = fields,
+            favorite = favorite,
+            reprompt = reprompt
         )
     }
     

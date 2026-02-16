@@ -55,6 +55,7 @@ fun LocalKeePassScreen(
     val internalDatabases by viewModel.internalDatabases.collectAsState()
     val externalDatabases by viewModel.externalDatabases.collectAsState()
     val operationState by viewModel.operationState.collectAsState()
+    val verificationStates by viewModel.verificationStates.collectAsState()
     
     // 对话框状态
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -100,6 +101,10 @@ fun LocalKeePassScreen(
             }
             else -> {}
         }
+    }
+
+    LaunchedEffect(allDatabases.map { it.id }) {
+        viewModel.ensureVerificationForDatabases(allDatabases.map { it.id })
     }
     
     Scaffold(
@@ -176,6 +181,7 @@ fun LocalKeePassScreen(
                         ) { database ->
                             KeePassDatabaseCard(
                                 database = database,
+                                verificationState = verificationStates[database.id] ?: LocalKeePassViewModel.VerificationState.Unknown,
                                 onClick = {
                                     selectedDatabase = database
                                     showDatabaseDetailSheet = true
@@ -204,6 +210,7 @@ fun LocalKeePassScreen(
                         ) { database ->
                             KeePassDatabaseCard(
                                 database = database,
+                                verificationState = verificationStates[database.id] ?: LocalKeePassViewModel.VerificationState.Unknown,
                                 onClick = {
                                     selectedDatabase = database
                                     showDatabaseDetailSheet = true
@@ -266,6 +273,7 @@ fun LocalKeePassScreen(
     if (showDatabaseDetailSheet && selectedDatabase != null) {
         DatabaseDetailBottomSheet(
             database = selectedDatabase!!,
+            verificationState = verificationStates[selectedDatabase!!.id] ?: LocalKeePassViewModel.VerificationState.Unknown,
             onDismiss = { 
                 showDatabaseDetailSheet = false
                 selectedDatabase = null
@@ -279,6 +287,9 @@ fun LocalKeePassScreen(
                 showDatabaseDetailSheet = false
                 selectedDatabase = null
                 transferToExternalLauncher.launch("${db.name}.kdbx")
+            },
+            onVerifyPassword = { db, password, keyFileUri ->
+                viewModel.reverifyDatabasePassword(db.id, password, keyFileUri)
             },
             onExport = { /* 需要文件选择器 */ }
         )
@@ -428,6 +439,7 @@ private fun SectionHeader(
 @Composable
 private fun KeePassDatabaseCard(
     database: LocalKeePassDatabase,
+    verificationState: LocalKeePassViewModel.VerificationState,
     onClick: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
@@ -523,6 +535,24 @@ private fun KeePassDatabaseCard(
                     stringResource(R.string.last_updated_format, dateFormat.format(Date(database.lastAccessedAt))),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+
+                val statusText = when (verificationState) {
+                    is LocalKeePassViewModel.VerificationState.Verified -> stringResource(R.string.local_keepass_status_verified)
+                    is LocalKeePassViewModel.VerificationState.Verifying -> stringResource(R.string.local_keepass_status_verifying)
+                    is LocalKeePassViewModel.VerificationState.Failed -> stringResource(R.string.local_keepass_status_unverified)
+                    else -> stringResource(R.string.local_keepass_status_unknown)
+                }
+                val statusColor = when (verificationState) {
+                    is LocalKeePassViewModel.VerificationState.Verified -> MaterialTheme.colorScheme.primary
+                    is LocalKeePassViewModel.VerificationState.Verifying -> MaterialTheme.colorScheme.secondary
+                    is LocalKeePassViewModel.VerificationState.Failed -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Text(
+                    text = stringResource(R.string.local_keepass_verify_status_format, statusText),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = statusColor
                 )
             }
             
@@ -799,7 +829,7 @@ private fun CreateKeePassDatabaseBottomSheet(
             // 安全设置区
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "安全选项",
+                    stringResource(R.string.local_keepass_security_options),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary
@@ -825,12 +855,12 @@ private fun CreateKeePassDatabaseBottomSheet(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "使用密钥文件",
+                                stringResource(R.string.local_keepass_use_key_file),
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "增加额外的安全层",
+                                stringResource(R.string.local_keepass_use_key_file_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -851,17 +881,23 @@ private fun CreateKeePassDatabaseBottomSheet(
                             value = keyFileName,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("密钥文件") },
-                            placeholder = { Text("点击选择或生成") },
+                            label = { Text(stringResource(R.string.local_keepass_key_file)) },
+                            placeholder = { Text(stringResource(R.string.local_keepass_key_file_pick_or_generate)) },
                             shape = RoundedCornerShape(12.dp),
                             leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) },
                             trailingIcon = {
                                 Row {
                                     IconButton(onClick = { createKeyFileLauncher.launch("monica.key") }) {
-                                        Icon(Icons.Default.Add, contentDescription = "生成新密钥文件")
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = stringResource(R.string.local_keepass_generate_new_key_file)
+                                        )
                                     }
                                     IconButton(onClick = { keyFilePickerLauncher.launch(arrayOf("*/*")) }) {
-                                        Icon(Icons.Default.FolderOpen, contentDescription = "选择现有密钥文件")
+                                        Icon(
+                                            Icons.Default.FolderOpen,
+                                            contentDescription = stringResource(R.string.local_keepass_select_existing_key_file)
+                                        )
                                     }
                                 }
                             },
@@ -1144,11 +1180,14 @@ private fun ImportExternalDatabaseDialog(
                     value = keyFileName,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("密钥文件（可选）") },
-                    placeholder = { Text("点击选择密钥文件") },
+                    label = { Text(stringResource(R.string.local_keepass_key_file_optional)) },
+                    placeholder = { Text(stringResource(R.string.local_keepass_key_file_tap_to_select)) },
                     trailingIcon = {
                         IconButton(onClick = { keyFilePickerLauncher.launch(arrayOf("*/*")) }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "选择密钥文件")
+                            Icon(
+                                Icons.Default.FolderOpen,
+                                contentDescription = stringResource(R.string.local_keepass_select_key_file)
+                            )
                         }
                     },
                     modifier = Modifier
@@ -1157,7 +1196,11 @@ private fun ImportExternalDatabaseDialog(
                 )
                 
                 Text(
-                    if (keyFileUri == null) "未选择密钥文件" else "已选择密钥文件",
+                    if (keyFileUri == null) {
+                        stringResource(R.string.local_keepass_no_key_file_selected)
+                    } else {
+                        stringResource(R.string.local_keepass_key_file_selected)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp)
@@ -1252,15 +1295,30 @@ private fun StorageLocationOption(
 @Composable
 private fun DatabaseDetailBottomSheet(
     database: LocalKeePassDatabase,
+    verificationState: LocalKeePassViewModel.VerificationState,
     onDismiss: () -> Unit,
     onSetDefault: (LocalKeePassDatabase) -> Unit,
     onDelete: (LocalKeePassDatabase) -> Unit,
     onTransferToInternal: (LocalKeePassDatabase) -> Unit,
     onTransferToExternal: (LocalKeePassDatabase) -> Unit,
+    onVerifyPassword: (LocalKeePassDatabase, String, Uri?) -> Unit,
     onExport: (LocalKeePassDatabase) -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showVerifyDialog by remember { mutableStateOf(false) }
+    var verifyPassword by remember { mutableStateOf("") }
+    var showVerifyPassword by remember { mutableStateOf(false) }
+    var verifyKeyFileUri by remember { mutableStateOf<Uri?>(null) }
+    var verifyKeyFileName by remember { mutableStateOf("") }
+    val verifyKeyFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { selectedUri: Uri? ->
+        selectedUri?.let {
+            verifyKeyFileUri = it
+            verifyKeyFileName = it.lastPathSegment?.substringAfterLast("/") ?: "keyfile"
+        }
+    }
     
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1366,6 +1424,31 @@ private fun DatabaseDetailBottomSheet(
                         label = stringResource(R.string.last_accessed),
                         value = dateFormat.format(Date(database.lastAccessedAt))
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    val verifyStatus = when (verificationState) {
+                        is LocalKeePassViewModel.VerificationState.Verified -> stringResource(R.string.local_keepass_status_verified)
+                        is LocalKeePassViewModel.VerificationState.Verifying -> stringResource(R.string.local_keepass_status_verifying)
+                        is LocalKeePassViewModel.VerificationState.Failed -> stringResource(R.string.local_keepass_status_unverified)
+                        else -> stringResource(R.string.local_keepass_status_unknown)
+                    }
+                    InfoRow(
+                        label = stringResource(R.string.local_keepass_verify_status),
+                        value = verifyStatus
+                    )
+
+                    if (verificationState is LocalKeePassViewModel.VerificationState.Failed) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = verificationState.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     
                     if (database.description != null) {
                         HorizontalDivider(
@@ -1445,6 +1528,13 @@ private fun DatabaseDetailBottomSheet(
                 color = MaterialTheme.colorScheme.error,
                 onClick = { showDeleteConfirm = true }
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            ActionButton(
+                icon = Icons.Default.VerifiedUser,
+                text = stringResource(R.string.local_keepass_reverify_password),
+                onClick = { showVerifyDialog = true }
+            )
         }
     }
     
@@ -1478,6 +1568,86 @@ private fun DatabaseDetailBottomSheet(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showVerifyDialog) {
+        AlertDialog(
+            onDismissRequest = { showVerifyDialog = false },
+            title = { Text(stringResource(R.string.local_keepass_reverify_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.local_keepass_reverify_dialog_desc))
+                    OutlinedTextField(
+                        value = verifyPassword,
+                        onValueChange = { verifyPassword = it },
+                        label = { Text(stringResource(R.string.database_password)) },
+                        singleLine = true,
+                        visualTransformation = if (showVerifyPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            IconButton(onClick = { showVerifyPassword = !showVerifyPassword }) {
+                                Icon(
+                                    if (showVerifyPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = verifyKeyFileName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.local_keepass_key_file_optional)) },
+                        placeholder = { Text(stringResource(R.string.local_keepass_key_file_tap_to_select)) },
+                        trailingIcon = {
+                            IconButton(onClick = { verifyKeyFilePickerLauncher.launch(arrayOf("*/*")) }) {
+                                Icon(
+                                    Icons.Default.FolderOpen,
+                                    contentDescription = stringResource(R.string.local_keepass_select_key_file)
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { verifyKeyFilePickerLauncher.launch(arrayOf("*/*")) }
+                    )
+                    Text(
+                        if (verifyKeyFileUri == null) {
+                            stringResource(R.string.local_keepass_no_key_file_selected)
+                        } else {
+                            stringResource(R.string.local_keepass_key_file_selected)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onVerifyPassword(database, verifyPassword, verifyKeyFileUri)
+                        showVerifyDialog = false
+                        verifyPassword = ""
+                        verifyKeyFileUri = null
+                        verifyKeyFileName = ""
+                    },
+                    enabled = verifyPassword.isNotBlank() || verifyKeyFileUri != null
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showVerifyDialog = false
+                    verifyPassword = ""
+                    verifyKeyFileUri = null
+                    verifyKeyFileName = ""
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             }

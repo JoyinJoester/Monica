@@ -1,10 +1,13 @@
 package takagi.ru.monica.ui.screens
 
 import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -33,18 +36,36 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
+import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.gestures.SwipeActions
+import takagi.ru.monica.ui.haptic.rememberHapticFeedback
+import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.SavedCategoryFilterState
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import kotlinx.coroutines.flow.flowOf
@@ -71,15 +92,48 @@ fun PasskeyListScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val database = remember(context) { PasswordDatabase.getDatabase(context) }
     
     // 收集状态
     val passkeys by viewModel.filteredPasskeys.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val groupedPasskeys by viewModel.groupedPasskeys.collectAsState()
 
     val passwords by (passwordViewModel?.allPasswords ?: flowOf(emptyList())).collectAsState(initial = emptyList())
     val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
+    val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
+    val keePassService = remember {
+        KeePassKdbxService(
+            context,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
+    val keepassGroupFlows = remember {
+        mutableMapOf<Long, kotlinx.coroutines.flow.MutableStateFlow<List<takagi.ru.monica.utils.KeePassGroupInfo>>>()
+    }
+    val getKeePassGroups: (Long) -> kotlinx.coroutines.flow.Flow<List<takagi.ru.monica.utils.KeePassGroupInfo>> = remember {
+        { databaseId ->
+            val flow = keepassGroupFlows.getOrPut(databaseId) {
+                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            }
+            if (flow.value.isEmpty()) {
+                scope.launch {
+                    flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                }
+            }
+            flow
+        }
+    }
+    val categoryMap = remember(categories) { categories.associateBy { it.id } }
+
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
 
     val bindingPasskeys = remember(passwords, searchQuery) {
         val rawList = passwords.flatMap { password ->
@@ -107,6 +161,7 @@ fun PasskeyListScreen(
                     isBackedUp = true,
                     notes = "",
                     boundPasswordId = password.id,
+                    categoryId = password.categoryId,
                     bitwardenVaultId = null,
                     bitwardenCipherId = null,
                     syncStatus = "REFERENCE"
@@ -131,7 +186,6 @@ fun PasskeyListScreen(
         val existingIds = passkeys.map { it.credentialId }.toSet()
         passkeys + bindingPasskeys.filterNot { it.credentialId in existingIds }
     }
-    
     // 是否完全支持 Passkey
     val isFullySupported = viewModel.isPasskeyFullySupported
     
@@ -142,6 +196,104 @@ fun PasskeyListScreen(
     var isSearchExpanded by remember { mutableStateOf(false) }
 
     var passkeyToBind by remember { mutableStateOf<PasskeyEntry?>(null) }
+    var passkeyToMoveCategory by remember { mutableStateOf<PasskeyEntry?>(null) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedPasskeys by remember { mutableStateOf(setOf<String>()) }
+    var pendingDeletePasskey by remember { mutableStateOf<PasskeyEntry?>(null) }
+    var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
+    var showCategoryFilterDialog by remember { mutableStateOf(false) }
+    var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var deletePasswordInput by remember { mutableStateOf("") }
+    var deletePasswordError by remember { mutableStateOf(false) }
+    val haptic = rememberHapticFeedback()
+    val settingsManager = remember { SettingsManager(context) }
+    val savedCategoryFilterState by settingsManager
+        .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.PASSKEY)
+        .collectAsState(initial = SavedCategoryFilterState())
+    var hasRestoredCategoryFilter by remember { mutableStateOf(false) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(
+        initial = AppSettings(biometricEnabled = false)
+    )
+    val biometricHelper = remember { BiometricHelper(context) }
+    val canUseBiometric = remember(appSettings.biometricEnabled) {
+        appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
+    }
+    val activity = context as? FragmentActivity
+    val boundPasswordForPasskey: (PasskeyEntry) -> PasswordEntry? = remember(passwordMap) {
+        { passkey -> passkey.boundPasswordId?.let { passwordId -> passwordMap[passwordId] } }
+    }
+    val effectiveCategoryId: (PasskeyEntry) -> Long? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.categoryId ?: passkey.categoryId }
+    }
+    val effectiveBitwardenVaultId: (PasskeyEntry) -> Long? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.bitwardenVaultId ?: passkey.bitwardenVaultId }
+    }
+    val effectiveBitwardenFolderId: (PasskeyEntry) -> String? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.bitwardenFolderId }
+    }
+    val effectiveKeePassDatabaseId: (PasskeyEntry) -> Long? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.keepassDatabaseId ?: passkey.keepassDatabaseId }
+    }
+    val effectiveKeePassGroupPath: (PasskeyEntry) -> String? = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.keepassGroupPath }
+    }
+    val effectiveIsFavorite: (PasskeyEntry) -> Boolean = remember(passwordMap) {
+        { passkey -> boundPasswordForPasskey(passkey)?.isFavorite == true }
+    }
+    val categoryFilteredPasskeys = remember(combinedPasskeys, selectedCategoryFilter, passwordMap) {
+        combinedPasskeys.filter { passkey ->
+            val effectiveVaultId = effectiveBitwardenVaultId(passkey)
+            val effectiveFolderId = effectiveBitwardenFolderId(passkey)
+            val effectiveKeePassId = effectiveKeePassDatabaseId(passkey)
+            val effectiveGroupPath = effectiveKeePassGroupPath(passkey)
+            val isLocal = effectiveVaultId == null && effectiveKeePassId == null
+            when (val filter = selectedCategoryFilter) {
+                UnifiedCategoryFilterSelection.All -> true
+                UnifiedCategoryFilterSelection.Local -> isLocal
+                UnifiedCategoryFilterSelection.Uncategorized -> effectiveCategoryId(passkey) == null
+                UnifiedCategoryFilterSelection.LocalStarred -> isLocal && effectiveIsFavorite(passkey)
+                UnifiedCategoryFilterSelection.LocalUncategorized -> isLocal && effectiveCategoryId(passkey) == null
+                is UnifiedCategoryFilterSelection.Custom -> effectiveCategoryId(passkey) == filter.categoryId
+                UnifiedCategoryFilterSelection.Starred -> effectiveIsFavorite(passkey)
+                is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> effectiveVaultId == filter.vaultId
+                is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
+                    effectiveVaultId == filter.vaultId && effectiveFolderId == filter.folderId
+                is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
+                    effectiveVaultId == filter.vaultId && effectiveIsFavorite(passkey)
+                is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
+                    effectiveVaultId == filter.vaultId && effectiveFolderId == null
+                is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> effectiveKeePassId == filter.databaseId
+                is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
+                    effectiveKeePassId == filter.databaseId && effectiveGroupPath == filter.groupPath
+                is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
+                    effectiveKeePassId == filter.databaseId && effectiveIsFavorite(passkey)
+                is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
+                    effectiveKeePassId == filter.databaseId && effectiveGroupPath.isNullOrBlank()
+            }
+        }
+    }
+    LaunchedEffect(savedCategoryFilterState, hasRestoredCategoryFilter) {
+        if (hasRestoredCategoryFilter) return@LaunchedEffect
+        selectedCategoryFilter = decodePasskeyCategoryFilter(savedCategoryFilterState)
+        hasRestoredCategoryFilter = true
+    }
+    LaunchedEffect(selectedCategoryFilter, hasRestoredCategoryFilter) {
+        if (!hasRestoredCategoryFilter) return@LaunchedEffect
+        settingsManager.updateCategoryFilterState(
+            scope = SettingsManager.CategoryFilterScope.PASSKEY,
+            state = encodePasskeyCategoryFilter(selectedCategoryFilter)
+        )
+    }
+    val visiblePasskeys = remember(categoryFilteredPasskeys, pendingDeletePasskey) {
+        val deletingId = pendingDeletePasskey?.credentialId
+        if (deletingId == null) {
+            categoryFilteredPasskeys
+        } else {
+            categoryFilteredPasskeys.filterNot { it.credentialId == deletingId }
+        }
+    }
     
     // 下拉搜索相关
     var currentOffset by remember { mutableFloatStateOf(0f) }
@@ -218,22 +370,94 @@ fun PasskeyListScreen(
             isSearchExpanded = true
         }
     }
+
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        viewModel.updateSearchQuery("")
+    }
+
+    BackHandler(enabled = selectionMode) {
+        selectionMode = false
+        selectedPasskeys = emptySet()
+    }
     
     // 显示版本警告
     var showVersionWarning by remember { mutableStateOf(!isFullySupported) }
+
+    val deletePasskeyWithBinding: (PasskeyEntry) -> Unit = { passkey ->
+        val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
+        if (boundPassword != null && passwordViewModel != null) {
+            val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
+            passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
+        }
+        val isReferenceOnly =
+            passkey.syncStatus == "REFERENCE" &&
+                passkey.privateKeyAlias.isBlank() &&
+                passkey.publicKey.isBlank()
+        if (!isReferenceOnly) {
+            viewModel.deletePasskey(passkey)
+        }
+    }
+
+    val performDeleteTargets: (List<PasskeyEntry>) -> Unit = { targets ->
+        if (targets.isNotEmpty()) {
+            targets.forEach(deletePasskeyWithBinding)
+            if (selectionMode) {
+                selectionMode = false
+                selectedPasskeys = emptySet()
+            }
+            pendingDeletePasskey = null
+            showDeleteConfirmDialog = false
+            deletePasswordInput = ""
+            deletePasswordError = false
+            Toast.makeText(
+                context,
+                context.getString(R.string.deleted_items, targets.size),
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            showDeleteConfirmDialog = false
+            pendingDeletePasskey = null
+        }
+    }
+
+    val topBarTitle = when (val filter = selectedCategoryFilter) {
+        UnifiedCategoryFilterSelection.All -> stringResource(R.string.passkey_title)
+        UnifiedCategoryFilterSelection.Local -> stringResource(R.string.passkey_title)
+        UnifiedCategoryFilterSelection.Uncategorized -> stringResource(R.string.category_none)
+        UnifiedCategoryFilterSelection.LocalStarred -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_starred)}"
+        UnifiedCategoryFilterSelection.LocalUncategorized -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_uncategorized)}"
+        is UnifiedCategoryFilterSelection.Custom -> categoryMap[filter.categoryId]?.name ?: stringResource(R.string.passkey_title)
+        UnifiedCategoryFilterSelection.Starred -> stringResource(R.string.filter_starred)
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> stringResource(R.string.filter_bitwarden)
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> stringResource(R.string.filter_bitwarden)
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
+        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> stringResource(R.string.filter_keepass)
+        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> stringResource(R.string.filter_keepass)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> "${stringResource(R.string.filter_keepass)} · ${stringResource(R.string.filter_starred)}"
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> "${stringResource(R.string.filter_keepass)} · ${stringResource(R.string.filter_uncategorized)}"
+    }
     
     Column(modifier = modifier.fillMaxSize()) {
         // ExpressiveTopBar（与密码列表完全一致）
         if (!hideTopBar) {
             ExpressiveTopBar(
-                title = stringResource(R.string.passkey_title),
+                title = topBarTitle,
                 searchQuery = searchQuery,
                 onSearchQueryChange = viewModel::updateSearchQuery,
                 isSearchExpanded = isSearchExpanded,
                 onSearchExpandedChange = { isSearchExpanded = it },
                 searchHint = stringResource(R.string.passkey_search_placeholder),
+                onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
-                    // 搜索按钮
+                    IconButton(onClick = { showCategoryFilterDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = stringResource(R.string.category),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     IconButton(onClick = { isSearchExpanded = true }) {
                         Icon(
                             imageVector = Icons.Default.Search,
@@ -257,152 +481,335 @@ fun PasskeyListScreen(
             )
         }
         
-        // 主内容
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else if (combinedPasskeys.isEmpty()) {
-            // 空状态（与密码列表一致）
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(isSearchExpanded) {
-                        detectVerticalDragGestures(
-                            onVerticalDrag = { _, dragAmount ->
-                                if (!isSearchExpanded && dragAmount > 0f) {
-                                    val newOffset = currentOffset + dragAmount * 0.5f
-                                    val oldOffset = currentOffset
-                                    currentOffset = newOffset
-                                    
-                                    if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                                        hasVibrated = true
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                            vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
-                                        } else {
-                                            @Suppress("DEPRECATION")
-                                            vibrator?.vibrate(20)
+        // 主内容 + 左下角胶囊多选栏
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (visiblePasskeys.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(isSearchExpanded) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    if (!isSearchExpanded && dragAmount > 0f) {
+                                        val newOffset = currentOffset + dragAmount * 0.5f
+                                        val oldOffset = currentOffset
+                                        currentOffset = newOffset
+
+                                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+                                            hasVibrated = true
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                                            } else {
+                                                @Suppress("DEPRECATION")
+                                                vibrator?.vibrate(20)
+                                            }
+                                        } else if (newOffset < triggerDistance) {
+                                            hasVibrated = false
                                         }
-                                    } else if (newOffset < triggerDistance) {
+                                    }
+                                },
+                                onDragEnd = {
+                                    if (currentOffset >= triggerDistance) {
+                                        isSearchExpanded = true
                                         hasVibrated = false
                                     }
-                                }
-                            },
-                            onDragEnd = {
-                                if (currentOffset >= triggerDistance) {
-                                    isSearchExpanded = true
-                                    hasVibrated = false
-                                }
-                                scope.launch {
-                                    androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
-                                        currentOffset = value
+                                    scope.launch {
+                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
+                                            currentOffset = value
+                                        }
+                                    }
+                                },
+                                onDragCancel = {
+                                    scope.launch {
+                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
+                                            currentOffset = value
+                                        }
                                     }
                                 }
-                            },
-                            onDragCancel = {
-                                scope.launch {
-                                    androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
-                                        currentOffset = value
-                                    }
-                                }
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.offset { IntOffset(0, currentOffset.toInt()) }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Key,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = if (searchQuery.isEmpty())
-                            stringResource(R.string.passkey_empty_title)
-                        else
-                            stringResource(R.string.passkey_no_search_results),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
-                    if (searchQuery.isEmpty() && isFullySupported) {
-                        Text(
-                            text = stringResource(R.string.passkey_empty_message),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.offset { IntOffset(0, currentOffset.toInt()) }
+                    ) {
+                        Icon(
+                            Icons.Default.Key,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Text(
+                            text = if (searchQuery.isEmpty())
+                                stringResource(R.string.passkey_empty_title)
+                            else
+                                stringResource(R.string.passkey_no_search_results),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                        if (searchQuery.isEmpty() && isFullySupported) {
+                            Text(
+                                text = stringResource(R.string.passkey_empty_message),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, currentOffset.toInt()) }
+                        .nestedScroll(nestedScrollConnection)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                                canTriggerPullToSearch = isAtTop
+                            }
+                        },
+                    state = listState,
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 8.dp,
+                        bottom = if (selectionMode) 140.dp else 100.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(
+                        items = visiblePasskeys,
+                        key = { it.credentialId }
+                    ) { passkey ->
+                        val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
+                        val currentCategoryId = effectiveCategoryId(passkey)
+                        val categoryName = currentCategoryId
+                            ?.let { categoryMap[it]?.name }
+                            ?: context.getString(R.string.category_none)
+                        val isSelected = selectedPasskeys.contains(passkey.credentialId)
+                        val isPendingDelete = pendingDeletePasskey?.credentialId == passkey.credentialId
+
+                        key(passkey.credentialId, isSelected, isPendingDelete, selectionMode) {
+                            SwipeActions(
+                                onSwipeLeft = {
+                                    haptic.performWarning()
+                                    pendingDeletePasskey = passkey
+                                    showDeleteConfirmDialog = true
+                                },
+                                onSwipeRight = {
+                                    haptic.performSuccess()
+                                    val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
+                                        selectedPasskeys - passkey.credentialId
+                                    } else {
+                                        selectedPasskeys + passkey.credentialId
+                                    }
+                                    selectedPasskeys = updatedSelection
+                                    selectionMode = updatedSelection.isNotEmpty()
+                                },
+                                isSwiped = isPendingDelete,
+                                enabled = true,
+                                modifier = Modifier
+                            ) {
+                                PasskeyListItem(
+                                    passkey = passkey,
+                                    boundPassword = boundPassword,
+                                    currentCategoryName = categoryName,
+                                    isCategoryLocked = boundPassword != null || passkey.syncStatus == "REFERENCE",
+                                    isSelected = isSelected,
+                                    selectionMode = selectionMode,
+                                    onClick = { onPasskeyClick(passkey) },
+                                    onToggleSelect = {
+                                        val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
+                                            selectedPasskeys - passkey.credentialId
+                                        } else {
+                                            selectedPasskeys + passkey.credentialId
+                                        }
+                                        selectedPasskeys = updatedSelection
+                                        selectionMode = updatedSelection.isNotEmpty()
+                                    },
+                                    onLongPress = {
+                                        haptic.performLongPress()
+                                        if (!selectionMode) {
+                                            selectionMode = true
+                                            selectedPasskeys = setOf(passkey.credentialId)
+                                        }
+                                    },
+                                    onDeleteRequest = {
+                                        pendingDeletePasskey = passkey
+                                        showDeleteConfirmDialog = true
+                                    },
+                                    onBindPassword = { passkeyToBind = passkey },
+                                    onUnbindPassword = {
+                                        if (boundPassword != null && passwordViewModel != null) {
+                                            val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
+                                            passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
+                                        }
+                                        if (passkey.syncStatus != "REFERENCE") {
+                                            viewModel.updateBoundPassword(passkey.credentialId, null)
+                                        }
+                                    },
+                                    onOpenBoundPassword = { passwordId -> onNavigateToPasswordDetail(passwordId) },
+                                    onChangeCategory = if (boundPassword != null || passkey.syncStatus == "REFERENCE") {
+                                        null
+                                    } else {
+                                        { passkeyToMoveCategory = passkey }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
-        } else {
-            // Passkey 列表（与密码列表一致的交互）
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, currentOffset.toInt()) }
-                    .nestedScroll(nestedScrollConnection)
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-                            canTriggerPullToSearch = isAtTop
-                        }
-                    },
-                state = listState,
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 8.dp,
-                    bottom = 100.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 直接显示所有 Passkey，无分组标题
-                items(
-                    items = combinedPasskeys,
-                    key = { it.credentialId }
-                ) { passkey ->
-                    val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
-                    PasskeyListItem(
-                        passkey = passkey,
-                        boundPassword = boundPassword,
-                        onClick = { onPasskeyClick(passkey) },
-                        onDelete = {
-                            if (boundPassword != null && passwordViewModel != null) {
-                                val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
-                                passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
-                            }
 
-                            val isReferenceOnly = passkey.syncStatus == "REFERENCE" && passkey.privateKeyAlias.isBlank() && passkey.publicKey.isBlank()
-                            if (!isReferenceOnly) {
-                                viewModel.deletePasskey(passkey)
-                            }
-                        },
-                        onBindPassword = { passkeyToBind = passkey },
-                        onUnbindPassword = {
-                            if (boundPassword != null && passwordViewModel != null) {
-                                val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
-                                passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
-                            }
-                            if (passkey.syncStatus != "REFERENCE") {
-                                viewModel.updateBoundPassword(passkey.credentialId, null)
-                            }
-                        },
-                        onOpenBoundPassword = { passwordId -> onNavigateToPasswordDetail(passwordId) },
-                        modifier = Modifier.animateItemPlacement()
-                    )
-                }
+            if (selectionMode) {
+                PasskeySelectionActionBar(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 20.dp),
+                    selectedCount = selectedPasskeys.size,
+                    onExit = {
+                        selectionMode = false
+                        selectedPasskeys = emptySet()
+                    },
+                    onSelectAll = {
+                        val allKeys = categoryFilteredPasskeys.map { it.credentialId }.toSet()
+                        val updatedSelection = if (selectedPasskeys.size == allKeys.size) {
+                            emptySet()
+                        } else {
+                            allKeys
+                        }
+                        selectedPasskeys = updatedSelection
+                        selectionMode = updatedSelection.isNotEmpty()
+                    },
+                    onMoveToCategory = {
+                        showBatchMoveCategoryDialog = true
+                    },
+                    onDelete = {
+                        pendingDeletePasskey = null
+                        showDeleteConfirmDialog = true
+                    }
+                )
             }
         }
+    }
+
+    UnifiedCategoryFilterBottomSheet(
+        visible = showCategoryFilterDialog,
+        onDismiss = { showCategoryFilterDialog = false },
+        selected = selectedCategoryFilter,
+        onSelect = { selection ->
+            selectedCategoryFilter = selection
+        },
+        launchAnchorBounds = categoryPillBoundsInWindow,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        onCreateCategoryWithName = { name ->
+            scope.launch {
+                val finalName = name.trim()
+                if (finalName.isNotEmpty()) {
+                    database.categoryDao().insert(Category(name = finalName))
+                }
+            }
+        },
+        onRenameCategory = { category ->
+            scope.launch {
+                database.categoryDao().update(category)
+            }
+        },
+        onDeleteCategory = { category ->
+            scope.launch {
+                database.categoryDao().delete(category)
+            }
+        }
+    )
+
+    if (showDeleteConfirmDialog) {
+        val deleteTargets = if (pendingDeletePasskey != null) {
+            listOf(pendingDeletePasskey!!)
+        } else {
+            combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
+        }
+
+        val biometricAction = if (activity != null && canUseBiometric) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.verify_to_delete),
+                    onSuccess = { performDeleteTargets(deleteTargets) },
+                    onError = { error ->
+                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                    },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        }
+
+        M3IdentityVerifyDialog(
+            title = if (pendingDeletePasskey != null) {
+                stringResource(R.string.passkey_delete_title)
+            } else {
+                stringResource(R.string.delete_item_title, stringResource(R.string.passkey_title))
+            },
+            message = if (pendingDeletePasskey != null) {
+                val passkey = pendingDeletePasskey!!
+                stringResource(
+                    R.string.passkey_delete_message,
+                    passkey.rpName.ifBlank { passkey.rpId },
+                    passkey.userDisplayName.ifBlank { passkey.userName }
+                )
+            } else {
+                stringResource(
+                    R.string.delete_item_message,
+                    stringResource(R.string.passkey_title),
+                    stringResource(R.string.selected_items, deleteTargets.size)
+                )
+            },
+            passwordValue = deletePasswordInput,
+            onPasswordChange = {
+                deletePasswordInput = it
+                deletePasswordError = false
+            },
+            onDismiss = {
+                showDeleteConfirmDialog = false
+                pendingDeletePasskey = null
+                deletePasswordInput = ""
+                deletePasswordError = false
+            },
+            onConfirm = {
+                if (takagi.ru.monica.security.SecurityManager(context).verifyMasterPassword(deletePasswordInput)) {
+                    performDeleteTargets(deleteTargets)
+                } else {
+                    deletePasswordError = true
+                }
+            },
+            confirmText = stringResource(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = deletePasswordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = biometricAction,
+            biometricHintText = if (biometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
+            }
+        )
     }
 
     if (passkeyToBind != null) {
@@ -438,11 +845,179 @@ fun PasskeyListScreen(
                 }
 
                 if (passkey.syncStatus != "REFERENCE") {
-                    viewModel.updateBoundPassword(passkey.credentialId, password.id)
+                    viewModel.updatePasskey(
+                        passkey.copy(
+                            boundPasswordId = password.id,
+                            categoryId = password.categoryId
+                        )
+                    )
                 }
                 passkeyToBind = null
             }
         )
+    }
+
+    UnifiedMoveToCategoryBottomSheet(
+        visible = passkeyToMoveCategory != null,
+        onDismiss = { passkeyToMoveCategory = null },
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = getKeePassGroups,
+        onTargetSelected = { target ->
+            val passkey = passkeyToMoveCategory ?: return@UnifiedMoveToCategoryBottomSheet
+            val updated = when (target) {
+                UnifiedMoveCategoryTarget.Uncategorized -> passkey.copy(
+                    categoryId = null,
+                    keepassDatabaseId = null,
+                    bitwardenVaultId = null
+                )
+                is UnifiedMoveCategoryTarget.MonicaCategory -> passkey.copy(
+                    categoryId = target.categoryId,
+                    keepassDatabaseId = null,
+                    bitwardenVaultId = null
+                )
+                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> passkey.copy(
+                    bitwardenVaultId = target.vaultId,
+                    keepassDatabaseId = null
+                )
+                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> passkey.copy(
+                    bitwardenVaultId = target.vaultId,
+                    keepassDatabaseId = null
+                )
+                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
+                    keepassDatabaseId = target.databaseId,
+                    bitwardenVaultId = null
+                )
+                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
+                    keepassDatabaseId = target.databaseId,
+                    bitwardenVaultId = null
+                )
+            }
+            viewModel.updatePasskey(updated)
+            val targetLabel = when (target) {
+                UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
+                is UnifiedMoveCategoryTarget.MonicaCategory -> categoryMap[target.categoryId]?.name ?: context.getString(R.string.category_none)
+                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> context.getString(R.string.filter_bitwarden)
+                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> context.getString(R.string.filter_bitwarden)
+                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> keepassDatabases.find { it.id == target.databaseId }?.name ?: context.getString(R.string.filter_keepass)
+                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath.substringAfterLast('/')
+            }
+            Toast.makeText(context, context.getString(R.string.passkey_category_updated, targetLabel), Toast.LENGTH_SHORT).show()
+            passkeyToMoveCategory = null
+        }
+    )
+
+    UnifiedMoveToCategoryBottomSheet(
+        visible = showBatchMoveCategoryDialog,
+        onDismiss = { showBatchMoveCategoryDialog = false },
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = getKeePassGroups,
+        onTargetSelected = { target ->
+            val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
+            val movable = selectedItems.filter { it.boundPasswordId == null && it.syncStatus != "REFERENCE" }
+            val lockedCount = selectedItems.size - movable.size
+
+            movable.forEach { passkey ->
+                val updated = when (target) {
+                    UnifiedMoveCategoryTarget.Uncategorized -> passkey.copy(
+                        categoryId = null,
+                        keepassDatabaseId = null,
+                        bitwardenVaultId = null
+                    )
+                    is UnifiedMoveCategoryTarget.MonicaCategory -> passkey.copy(
+                        categoryId = target.categoryId,
+                        keepassDatabaseId = null,
+                        bitwardenVaultId = null
+                    )
+                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> passkey.copy(
+                        bitwardenVaultId = target.vaultId,
+                        keepassDatabaseId = null
+                    )
+                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> passkey.copy(
+                        bitwardenVaultId = target.vaultId,
+                        keepassDatabaseId = null
+                    )
+                    is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
+                        keepassDatabaseId = target.databaseId,
+                        bitwardenVaultId = null
+                    )
+                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
+                        keepassDatabaseId = target.databaseId,
+                        bitwardenVaultId = null
+                    )
+                }
+                viewModel.updatePasskey(updated)
+            }
+
+            val movedCount = movable.size
+            val baseMessage = context.getString(R.string.selected_items, movedCount)
+            val toastMessage = if (lockedCount > 0) "$baseMessage，跳过$lockedCount" else baseMessage
+            Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+
+            showBatchMoveCategoryDialog = false
+            selectionMode = false
+            selectedPasskeys = emptySet()
+        }
+    )
+}
+
+private fun encodePasskeyCategoryFilter(filter: UnifiedCategoryFilterSelection): SavedCategoryFilterState = when (filter) {
+    UnifiedCategoryFilterSelection.All -> SavedCategoryFilterState(type = "all")
+    UnifiedCategoryFilterSelection.Local -> SavedCategoryFilterState(type = "local")
+    UnifiedCategoryFilterSelection.Starred -> SavedCategoryFilterState(type = "starred")
+    UnifiedCategoryFilterSelection.Uncategorized -> SavedCategoryFilterState(type = "uncategorized")
+    UnifiedCategoryFilterSelection.LocalStarred -> SavedCategoryFilterState(type = "local_starred")
+    UnifiedCategoryFilterSelection.LocalUncategorized -> SavedCategoryFilterState(type = "local_uncategorized")
+    is UnifiedCategoryFilterSelection.Custom -> SavedCategoryFilterState(type = "custom", primaryId = filter.categoryId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> SavedCategoryFilterState(type = "bitwarden_vault", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> SavedCategoryFilterState(type = "bitwarden_folder", primaryId = filter.vaultId, text = filter.folderId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> SavedCategoryFilterState(type = "bitwarden_vault_starred", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> SavedCategoryFilterState(type = "bitwarden_vault_uncategorized", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> SavedCategoryFilterState(type = "keepass_database", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+}
+
+private fun decodePasskeyCategoryFilter(state: SavedCategoryFilterState): UnifiedCategoryFilterSelection {
+    return when (state.type) {
+        "all" -> UnifiedCategoryFilterSelection.All
+        "local" -> UnifiedCategoryFilterSelection.Local
+        "starred" -> UnifiedCategoryFilterSelection.Starred
+        "uncategorized" -> UnifiedCategoryFilterSelection.Uncategorized
+        "local_starred" -> UnifiedCategoryFilterSelection.LocalStarred
+        "local_uncategorized" -> UnifiedCategoryFilterSelection.LocalUncategorized
+        "custom" -> state.primaryId?.let { UnifiedCategoryFilterSelection.Custom(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_vault" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_folder" -> {
+            val vaultId = state.primaryId
+            val folderId = state.text
+            if (vaultId != null && !folderId.isNullOrBlank()) {
+                UnifiedCategoryFilterSelection.BitwardenFolderFilter(vaultId, folderId)
+            } else {
+                UnifiedCategoryFilterSelection.All
+            }
+        }
+        "bitwarden_vault_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_vault_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_database" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_group" -> {
+            val databaseId = state.primaryId
+            val groupPath = state.text
+            if (databaseId != null && !groupPath.isNullOrBlank()) {
+                UnifiedCategoryFilterSelection.KeePassGroupFilter(databaseId, groupPath)
+            } else {
+                UnifiedCategoryFilterSelection.All
+            }
+        }
+        "keepass_database_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_database_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        else -> UnifiedCategoryFilterSelection.All
     }
 }
 
@@ -553,6 +1128,7 @@ private fun PasswordPickerDialog(
         }
     }
 }
+
 /**
  * 版本警告横幅
  */
@@ -680,69 +1256,40 @@ private fun PasskeyGroupHeader(
 /**
  * Passkey 列表项（与密码列表风格完全一致 - M3 Expressive 设计）
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun PasskeyListItem(
     passkey: PasskeyEntry,
     boundPassword: PasswordEntry?,
+    currentCategoryName: String,
+    isCategoryLocked: Boolean = false,
+    isSelected: Boolean = false,
+    selectionMode: Boolean = false,
     onClick: () -> Unit,
-    onDelete: () -> Unit = {},
+    onToggleSelect: () -> Unit = {},
+    onLongPress: () -> Unit = {},
+    onDeleteRequest: () -> Unit = {},
     onBindPassword: () -> Unit = {},
     onUnbindPassword: () -> Unit = {},
     onOpenBoundPassword: (Long) -> Unit = {},
+    onChangeCategory: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    
-    // 删除确认对话框
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { 
-                Text(
-                    stringResource(R.string.passkey_delete_title),
-                    fontWeight = FontWeight.Bold
-                ) 
-            },
-            text = { 
-                Text(
-                    stringResource(R.string.passkey_delete_message, passkey.rpName, passkey.userDisplayName.ifBlank { passkey.userName })
-                ) 
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDelete()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showDeleteDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
+    LaunchedEffect(selectionMode) {
+        if (selectionMode && expanded) {
+            expanded = false
+        }
     }
-    
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
+        color = if (selectionMode && isSelected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        }
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -750,10 +1297,23 @@ private fun PasskeyListItem(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(
+                    .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { expanded = !expanded },
+                        indication = null,
+                        onClick = {
+                            if (selectionMode) {
+                                onToggleSelect()
+                            } else {
+                                expanded = !expanded
+                                onClick()
+                            }
+                        },
+                        onLongClick = {
+                            if (!selectionMode) {
+                                onLongPress()
+                            }
+                        }
+                    ),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -795,11 +1355,21 @@ private fun PasskeyListItem(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    
-                    // 展开/收起图标
+                }
+
+                if (selectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onToggleSelect() }
+                    )
+                } else {
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) "收起" else "展开",
+                        contentDescription = if (expanded) {
+                            stringResource(R.string.collapse)
+                        } else {
+                            stringResource(R.string.expand)
+                        },
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -868,6 +1438,33 @@ private fun PasskeyListItem(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    DetailRow(
+                        label = stringResource(R.string.category),
+                        value = currentCategoryName,
+                        icon = Icons.Default.Folder
+                    )
+
+                    if (isCategoryLocked) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.passkey_category_follow_binding),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (onChangeCategory != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onChangeCategory,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.move_to_category))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     // 绑定密码
                     if (boundPassword != null) {
                         DetailRow(
@@ -919,7 +1516,7 @@ private fun PasskeyListItem(
                     
                     // 删除按钮
                     OutlinedButton(
-                        onClick = { showDeleteDialog = true },
+                        onClick = onDeleteRequest,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
@@ -940,6 +1537,88 @@ private fun PasskeyListItem(
                 }
             }
         }
+    }
+}
+
+/**
+ * Passkey 多选胶囊操作栏（左下角）
+ */
+@Composable
+private fun PasskeySelectionActionBar(
+    modifier: Modifier = Modifier,
+    selectedCount: Int,
+    onExit: () -> Unit,
+    onSelectAll: () -> Unit,
+    onMoveToCategory: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Text(
+                    text = selectedCount.toString(),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            PasskeyActionIcon(
+                icon = Icons.Default.CheckCircle,
+                contentDescription = stringResource(id = R.string.select_all),
+                onClick = onSelectAll
+            )
+
+            PasskeyActionIcon(
+                icon = Icons.Default.Folder,
+                contentDescription = stringResource(id = R.string.move_to_category),
+                onClick = onMoveToCategory
+            )
+
+            PasskeyActionIcon(
+                icon = Icons.Default.Delete,
+                contentDescription = stringResource(id = R.string.delete),
+                onClick = onDelete
+            )
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            PasskeyActionIcon(
+                icon = Icons.Default.Close,
+                contentDescription = stringResource(id = R.string.close),
+                onClick = onExit
+            )
+        }
+    }
+}
+
+@Composable
+private fun PasskeyActionIcon(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(40.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

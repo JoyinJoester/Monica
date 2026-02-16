@@ -23,10 +23,11 @@ import takagi.ru.monica.data.bitwarden.*
         // Bitwarden 集成表
         BitwardenVault::class,
         BitwardenFolder::class,
+        BitwardenSend::class,
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 34,
+    version = 39,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -44,6 +45,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     // Bitwarden DAOs
     abstract fun bitwardenVaultDao(): BitwardenVaultDao
     abstract fun bitwardenFolderDao(): BitwardenFolderDao
+    abstract fun bitwardenSendDao(): BitwardenSendDao
     abstract fun bitwardenConflictBackupDao(): BitwardenConflictBackupDao
     abstract fun bitwardenPendingOperationDao(): BitwardenPendingOperationDao
     
@@ -870,6 +872,140 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 34 -> 35: 添加 Bitwarden Send 本地缓存表
+         */
+        private val MIGRATION_34_35 = object : androidx.room.migration.Migration(34, 35) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 34→35: bitwarden sends cache")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS bitwarden_sends (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            vault_id INTEGER NOT NULL,
+                            bitwarden_send_id TEXT NOT NULL,
+                            access_id TEXT NOT NULL,
+                            key_base64 TEXT,
+                            type INTEGER NOT NULL DEFAULT 0,
+                            name TEXT NOT NULL,
+                            notes TEXT NOT NULL DEFAULT '',
+                            text_content TEXT,
+                            is_text_hidden INTEGER NOT NULL DEFAULT 0,
+                            file_name TEXT,
+                            file_size TEXT,
+                            access_count INTEGER NOT NULL DEFAULT 0,
+                            max_access_count INTEGER,
+                            has_password INTEGER NOT NULL DEFAULT 0,
+                            disabled INTEGER NOT NULL DEFAULT 0,
+                            hide_email INTEGER NOT NULL DEFAULT 0,
+                            revision_date TEXT NOT NULL DEFAULT '',
+                            expiration_date TEXT,
+                            deletion_date TEXT,
+                            share_url TEXT NOT NULL DEFAULT '',
+                            last_synced_at INTEGER NOT NULL,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY(vault_id) REFERENCES bitwarden_vaults(id) ON DELETE NO ACTION ON UPDATE NO ACTION
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_sends_vault_id ON bitwarden_sends(vault_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_sends_bitwarden_send_id ON bitwarden_sends(bitwarden_send_id)")
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_bitwarden_sends_vault_id_bitwarden_send_id ON bitwarden_sends(vault_id, bitwarden_send_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_bitwarden_sends_updated_at ON bitwarden_sends(updated_at)")
+                    android.util.Log.i("PasswordDatabase", "Migration 34→35 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 34→35 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 35 -> 36: 为 passkeys 添加 category_id 字段，接入统一文件夹体系
+         */
+        private val MIGRATION_35_36 = object : androidx.room.migration.Migration(35, 36) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 35→36: passkeys category_id")
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN category_id INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 35→36 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 35→36 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 36 -> 37:
+         * 1. 为 secure_items 添加 keepass_database_id（统一目标存储）
+         * 2. 为 passkeys 添加 keepass_database_id（通行密钥目标存储）
+         */
+        private val MIGRATION_36_37 = object : androidx.room.migration.Migration(36, 37) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 36→37: keepass_database_id for secure_items/passkeys")
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN keepass_database_id INTEGER DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN keepass_database_id INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 36→37 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 36→37 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 37 -> 38:
+         * 1. 为 password_entries 添加 keepassGroupPath（支持 KeePass 分组精确过滤）
+         * 2. 为 secure_items 添加 keepass_group_path（支持笔记/验证器分组精确过滤）
+         */
+        private val MIGRATION_37_38 = object : androidx.room.migration.Migration(37, 38) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 37→38: keepass group path")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN keepassGroupPath TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN keepass_group_path TEXT DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 37→38 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 37→38 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 38 -> 39:
+         * 为 password_entries 添加自定义图标字段
+         */
+        private val MIGRATION_38_39 = object : androidx.room.migration.Migration(38, 39) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 38→39: custom password icons")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN customIconType TEXT NOT NULL DEFAULT 'NONE'"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN customIconValue TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN customIconUpdatedAt INTEGER NOT NULL DEFAULT 0"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 38→39 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 38→39 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -910,7 +1046,12 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_30_31,  // Bitwarden 多类型同步支持
                         MIGRATION_31_32,  // Passkey 绑定密码
                         MIGRATION_32_33,  // Password 绑定通行密钥元数据
-                        MIGRATION_33_34   // KeePass 组同步配置
+                        MIGRATION_33_34,  // KeePass 组同步配置
+                        MIGRATION_34_35,  // Bitwarden Send 本地缓存
+                        MIGRATION_35_36,  // Passkey 分类字段（统一文件夹）
+                        MIGRATION_36_37,  // secure_items/passkeys KeePass 归属字段
+                        MIGRATION_37_38,  // keepass 分组路径字段
+                        MIGRATION_38_39   // 自定义密码图标字段
                     )
                     .build()
                 INSTANCE = instance

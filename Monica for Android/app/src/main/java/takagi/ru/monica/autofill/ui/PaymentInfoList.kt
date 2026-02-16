@@ -19,8 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.autofill.data.AutofillItem
 import takagi.ru.monica.autofill.data.PaymentInfo
 
@@ -95,14 +97,14 @@ fun EmptyPaymentInfoState(modifier: Modifier = Modifier) {
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "未找到账单信息",
+                text = stringResource(R.string.autofill_no_payment_info),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "尝试调整搜索条件或添加新的支付信息",
+                text = stringResource(R.string.autofill_adjust_search_or_add_payment),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center

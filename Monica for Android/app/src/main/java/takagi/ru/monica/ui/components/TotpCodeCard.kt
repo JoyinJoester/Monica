@@ -30,12 +30,15 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
@@ -72,11 +75,13 @@ fun TotpCodeCard(
     onLongClick: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
+    allowVibration: Boolean = false,
     boundPasswordSummary: String? = null,
     sharedTickSeconds: Long? = null,
     appSettings: AppSettings? = null
 ) {
     val context = LocalContext.current
+    val screenLifecycleOwner = LocalLifecycleOwner.current
     
     // 使用传入的设置或默认值，避免创建多个 SettingsManager 实例
     val settings = appSettings ?: AppSettings()
@@ -100,6 +105,23 @@ fun TotpCodeCard(
         }
     }
     val currentSeconds = sharedTickSeconds ?: internalTickSeconds
+
+    var isScreenStarted by remember {
+        mutableStateOf(screenLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    var isScreenResumed by remember {
+        mutableStateOf(screenLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+
+    DisposableEffect(screenLifecycleOwner) {
+        val lifecycle = screenLifecycleOwner.lifecycle
+        val observer = LifecycleEventObserver { _, _ ->
+            isScreenStarted = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            isScreenResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     
     // 震动服务
     val vibrator = remember {
@@ -161,8 +183,11 @@ fun TotpCodeCard(
     }
 
     // 倒计时<=5秒时每秒触发震动（使用改进的双击模式）
-    LaunchedEffect(remainingSeconds, totpData.otpType, settings.validatorVibrationEnabled) {
-        if (settings.validatorVibrationEnabled && 
+    LaunchedEffect(remainingSeconds, totpData.otpType, settings.validatorVibrationEnabled, allowVibration, isScreenStarted, isScreenResumed) {
+        if (allowVibration &&
+            isScreenStarted &&
+            isScreenResumed &&
+            settings.validatorVibrationEnabled && 
             totpData.otpType != OtpType.HOTP && 
             remainingSeconds in 1..5) {
             
@@ -233,15 +258,6 @@ fun TotpCodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 添加复选框（选择模式）
-                if (isSelectionMode) {
-                    Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,
@@ -282,25 +298,30 @@ fun TotpCodeCard(
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     
-                    if (item.isFavorite) {
+                    if (!isSelectionMode && item.isFavorite) {
                         Icon(
                             Icons.Default.Favorite,
-                            contentDescription = "收藏",
+                            contentDescription = stringResource(R.string.favorite),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    
-                    // 菜单按钮
-                    if (onDelete != null) {
+
+                    if (isSelectionMode) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onToggleSelect?.invoke() }
+                        )
+                    } else if (onDelete != null) {
+                        // 菜单按钮
                         var expanded by remember { mutableStateOf(false) }
                         
                         Box {
                             IconButton(onClick = { expanded = true }) {
                                 Icon(
                                     Icons.Default.MoreVert,
-                                    contentDescription = "更多"
+                                    contentDescription = stringResource(R.string.more_options)
                                 )
                             }
                             
@@ -329,7 +350,7 @@ fun TotpCodeCard(
                                 // 上移选项
                                 if (onMoveUp != null) {
                                     DropdownMenuItem(
-                                        text = { Text("上移") },
+                                        text = { Text(stringResource(R.string.move_up)) },
                                         onClick = {
                                             expanded = false
                                             onMoveUp()
@@ -346,7 +367,7 @@ fun TotpCodeCard(
                                 // 下移选项
                                 if (onMoveDown != null) {
                                     DropdownMenuItem(
-                                        text = { Text("下移") },
+                                        text = { Text(stringResource(R.string.move_down)) },
                                         onClick = {
                                             expanded = false
                                             onMoveDown()
@@ -380,7 +401,7 @@ fun TotpCodeCard(
                                 // 显示二维码选项
                                 if (onShowQrCode != null) {
                                     DropdownMenuItem(
-                                        text = { Text("显示二维码") },
+                                        text = { Text(stringResource(R.string.show_qr_code)) },
                                         onClick = {
                                             expanded = false
                                             onShowQrCode(item)
@@ -395,7 +416,7 @@ fun TotpCodeCard(
                                 }
                                 
                                 DropdownMenuItem(
-                                    text = { Text("删除") },
+                                    text = { Text(stringResource(R.string.delete)) },
                                     onClick = {
                                         expanded = false
                                         onDelete()
@@ -492,7 +513,7 @@ fun TotpCodeCard(
                     ) {
                         Icon(
                             Icons.Default.ContentCopy,
-                            contentDescription = "复制验证码"
+                            contentDescription = stringResource(R.string.copy_verification_code)
                         )
                     }
                 }
