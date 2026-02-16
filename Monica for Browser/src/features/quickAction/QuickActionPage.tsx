@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { Key, ArrowRight, User, Globe } from 'lucide-react';
@@ -183,6 +183,12 @@ export function QuickActionPage({ currentUrl, onClose }: QuickActionPageProps) {
     const [hostname, setHostname] = useState('');
     const isZh = navigator.language.startsWith('zh');
 
+    const loadPasswords = useCallback(async () => {
+        const items = await getAllItems();
+        const pwItems = items.filter(item => item.itemType === ItemType.Password);
+        setPasswords(pwItems);
+    }, []);
+
     useEffect(() => {
         loadPasswords();
         if (currentUrl) {
@@ -193,7 +199,7 @@ export function QuickActionPage({ currentUrl, onClose }: QuickActionPageProps) {
                 setHostname(currentUrl);
             }
         }
-    }, [currentUrl]);
+    }, [currentUrl, loadPasswords]);
 
     useEffect(() => {
         if (hostname && passwords.length > 0) {
@@ -210,12 +216,6 @@ export function QuickActionPage({ currentUrl, onClose }: QuickActionPageProps) {
             setMatchedPasswords(matched);
         }
     }, [hostname, passwords]);
-
-    const loadPasswords = async () => {
-        const items = await getAllItems();
-        const pwItems = items.filter(item => item.itemType === ItemType.Password);
-        setPasswords(pwItems);
-    };
 
     const handleFillCredentials = async (item: SecureItem) => {
         try {

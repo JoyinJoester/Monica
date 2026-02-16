@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useTranslation } from 'react-i18next';
 import { Card, CardTitle } from '../../components/common/Card';
@@ -95,12 +95,12 @@ export const NoteList = () => {
         setEditingId(null);
     };
 
-    const loadNotes = async () => {
+    const loadNotes = useCallback(async () => {
         const data = await getNotes();
         setNotes(data);
-    };
+    }, []);
 
-    useEffect(() => { loadNotes(); }, []);
+    useEffect(() => { loadNotes(); }, [loadNotes]);
 
     const handleSave = async () => {
         if (!form.title) return;

@@ -569,9 +569,9 @@ chrome.runtime.onInstalled.addListener(async () => {
                     target: { tabId: tab.id },
                     files: ['content.js']
                 });
-            } catch (err: any) {
+            } catch (err) {
                 // Ignore "Cannot access contents of the page" error which is expected for some pages
-                if (!err?.message?.includes('Cannot access contents of the page')) {
+                if (err instanceof Error && !err.message.includes('Cannot access contents of the page')) {
                     console.log('[Monica] Failed to inject into existing tab:', tab.url, err);
                 }
             }

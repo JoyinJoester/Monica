@@ -4,10 +4,10 @@
  */
 
 // Prevent duplicate injection - if already loaded, do nothing
-if ((window as any).__monica_content_loaded__) {
+if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
   console.log('[Monica] Content script already loaded, skipping');
 } else {
-  (window as any).__monica_content_loaded__ = true;
+  (window as unknown as Record<string, unknown>).__monica_content_loaded__ = true;
 
   // Types
   interface PasswordItem {
@@ -16,7 +16,7 @@ if ((window as any).__monica_content_loaded__) {
     username: string;
     password: string;
     website: string;
-    itemData?: any;
+    itemData?: Record<string, unknown>;
   }
 
   interface AutofillMessage {
@@ -51,14 +51,14 @@ if ((window as any).__monica_content_loaded__) {
   let isPopupVisible = false;
   let matchedPasswords: PasswordItem[] = [];
   let activeInput: HTMLInputElement | null = null; // The input that triggered the popup
-  let trackedInputs: Map<HTMLInputElement, HTMLElement> = new Map(); // Input -> Icon Element
+  const trackedInputs: Map<HTMLInputElement, HTMLElement> = new Map(); // Input -> Icon Element
 
   // 2FA State
   let totpPopupContainer: HTMLElement | null = null;
   let isTotpPopupVisible = false;
   let matchedTotps: TotpItem[] = [];
   let activeTotpInput: HTMLInputElement | null = null;
-  let trackedTotpInputs: Map<HTMLInputElement, HTMLElement> = new Map();
+  const trackedTotpInputs: Map<HTMLInputElement, HTMLElement> = new Map();
 
   // Helper: Check if element is visible
   function isVisible(elem: HTMLElement) {
@@ -410,7 +410,7 @@ if ((window as any).__monica_content_loaded__) {
       return;
     }
 
-    let html = passwords.map(p => {
+    const html = passwords.map(p => {
       const initial = (p.title || p.username || 'U')[0].toUpperCase();
       return `
       <div class="monica-password-item" data-id="${p.id}">
@@ -465,7 +465,7 @@ if ((window as any).__monica_content_loaded__) {
     const popupWidth = 300;
 
     // Default: show below icon, right aligned
-    let top = rect.bottom + window.scrollY + 8;
+    const top = rect.bottom + window.scrollY + 8;
     let left = rect.right + window.scrollX - popupWidth;
 
     // Adjust if off screen
@@ -687,7 +687,7 @@ if ((window as any).__monica_content_loaded__) {
     // Position
     const rect = anchor.getBoundingClientRect();
     const popupWidth = 280;
-    let top = rect.bottom + window.scrollY + 8;
+    const top = rect.bottom + window.scrollY + 8;
     let left = rect.right + window.scrollX - popupWidth;
     if (left < 10) left = 10;
 
@@ -996,7 +996,7 @@ if ((window as any).__monica_content_loaded__) {
       return;
     }
 
-    let html = totps.map(t => {
+    const html = totps.map(t => {
       const initial = (t.issuer || t.title || 'T')[0].toUpperCase();
       return `
       <div class="monica-2fa-item" data-id="${t.id}" data-secret="${t.secret}" data-period="${t.period || 30}" data-digits="${t.digits || 6}" data-algorithm="${t.algorithm || 'SHA1'}">
@@ -1020,10 +1020,9 @@ if ((window as any).__monica_content_loaded__) {
       const secret = item.getAttribute('data-secret') || '';
       const period = parseInt(item.getAttribute('data-period') || '30');
       const digits = parseInt(item.getAttribute('data-digits') || '6');
-      const algorithm = item.getAttribute('data-algorithm') || 'SHA1';
 
       // Start generating TOTP code
-      generate2FACode(item as HTMLElement, secret, period, digits, algorithm);
+      generate2FACode(item as HTMLElement, secret, period, digits);
 
       // Click to fill
       item.addEventListener('click', () => {
@@ -1036,7 +1035,7 @@ if ((window as any).__monica_content_loaded__) {
     });
   }
 
-  function generate2FACode(item: HTMLElement, secret: string, period: number, digits: number, _algorithm: string) {
+  function generate2FACode(item: HTMLElement, secret: string, period: number, digits: number) {
     const codeEl = item.querySelector('.monica-2fa-code');
     const timerEl = item.querySelector('.monica-2fa-timer');
     if (!codeEl) return;

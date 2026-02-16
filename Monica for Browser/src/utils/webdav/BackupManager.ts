@@ -257,7 +257,7 @@ class BackupManagerService {
                             },
                         });
                         passwordsRestored++;
-                    } catch (e) {
+                    } catch {
                         errors.push(`密码恢复失败: ${file.name}`);
                     }
                 }

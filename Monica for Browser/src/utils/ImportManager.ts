@@ -8,7 +8,7 @@
  * - Aegis JSON (TOTP authenticators)
  */
 
-import type { SecureItem, PasswordEntry, TotpData } from '../types/models';
+import type { SecureItem, PasswordEntry, TotpData, NoteData, DocumentData, BankCardData } from '../types/models';
 import { ItemType } from '../types/models';
 import { saveItem } from './storage';
 
@@ -61,6 +61,20 @@ interface AegisEntry {
     algorithm: string;
     digits: number;
     period: number;
+}
+
+interface AegisJsonEntry {
+    uuid?: string;
+    name?: string;
+    issuer?: string;
+    note?: string;
+    type?: string;
+    info: {
+        secret: string;
+        algo?: string;
+        digits?: string;
+        period?: string;
+    };
 }
 
 // ========== CSV Parsing ==========
@@ -271,7 +285,7 @@ function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'cr
     }
 
     // Parse itemData based on type
-    let itemData: any;
+    let itemData: PasswordEntry | TotpData | NoteData | DocumentData | BankCardData;
     const parsedData = parseItemDataString(parsed.itemData);
 
     switch (itemType) {
@@ -292,9 +306,34 @@ function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'cr
                 algorithm: parsedData.algorithm || 'SHA1'
             } as TotpData;
             break;
+        case ItemType.Note:
+            itemData = {
+                content: parsedData.content || ''
+            } as NoteData;
+            break;
+        case ItemType.Document:
+            itemData = {
+                documentType: parsedData.documentType || 'OTHER',
+                documentNumber: parsedData.documentNumber || '',
+                fullName: parsedData.fullName || '',
+                issuedDate: parsedData.issuedDate,
+                expiryDate: parsedData.expiryDate,
+                issuedBy: parsedData.issuedBy,
+                additionalInfo: parsedData.additionalInfo
+            } as DocumentData;
+            break;
+        case ItemType.BankCard:
+            itemData = {
+                cardNumber: parsedData.cardNumber || '',
+                cardholderName: parsedData.cardholderName || '',
+                expiryMonth: parsedData.expiryMonth || '',
+                expiryYear: parsedData.expiryYear || '',
+                cvv: parsedData.cvv,
+                bankName: parsedData.bankName
+            } as BankCardData;
+            break;
         default:
-            // For other types, use parsed data as-is
-            itemData = parsedData;
+            itemData = {} as PasswordEntry;
     }
 
     return {
@@ -481,7 +520,7 @@ async function importAegisJson(content: string): Promise<ImportResult> {
         }
 
         // Get entries array
-        let entries: any[] = [];
+        let entries: AegisJsonEntry[] = [];
         if (json.db?.entries) {
             entries = json.db.entries;
         } else if (json.entries) {
@@ -519,8 +558,8 @@ async function importAegisJson(content: string): Promise<ImportResult> {
                     note: entry.note || '',
                     secret: info.secret,
                     algorithm: info.algo || 'SHA1',
-                    digits: parseInt(info.digits) || 6,
-                    period: parseInt(info.period) || 30
+                    digits: parseInt(info.digits || '6') || 6,
+                    period: parseInt(info.period || '30') || 30
                 };
 
                 const item = convertAegisEntry(aegisEntry);
