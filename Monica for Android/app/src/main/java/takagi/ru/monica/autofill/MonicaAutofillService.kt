@@ -425,8 +425,13 @@ class MonicaAutofillService : AutofillService() {
             android.util.Log.d("MonicaAutofill", "No credential fields found in enhanced parser")
             // 后备检查
             if (!fieldCollection.hasCredentialFields() && !enhancedCollection.hasCredentialFields()) {
-                android.util.Log.d("MonicaAutofill", "No credential fields found in any parser")
-                return null
+                val hasFallbackTargets = parsedStructure.items.isNotEmpty()
+                if (!hasFallbackTargets) {
+                    android.util.Log.d("MonicaAutofill", "No credential fields found in any parser")
+                    return null
+                }
+                AutofillLogger.w("PARSING", "No credential hints, fallback to generic autofill targets")
+                android.util.Log.d("MonicaAutofill", "No credential hints, using generic targets fallback")
             }
         }
         

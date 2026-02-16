@@ -457,7 +457,8 @@ private fun getTwoFactorMethodName(method: Int): String {
         3 -> "YubiKey"
         4 -> "U2F 安全密钥"
         5 -> "记住设备"
-        6 -> "WebAuthn"
+        6 -> "组织 Duo"
+        7 -> "WebAuthn"
         BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE -> "新设备邮箱验证"
         else -> "未知方式"
     }

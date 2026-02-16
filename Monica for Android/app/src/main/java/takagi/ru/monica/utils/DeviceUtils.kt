@@ -256,7 +256,7 @@ object DeviceUtils {
             
             ROMType.COLOR_OS,
             ROMType.OXYGEN_OS,
-            ROMType.REALME_UI -> 3000L     // ColorOS 系列设置3秒
+            ROMType.REALME_UI -> 4500L     // ColorOS/Realme 机型适当放宽超时
             
             ROMType.ORIGIN_OS,
             ROMType.FUNTOUCH_OS -> 2500L   // vivo 系统响应更快，2.5秒

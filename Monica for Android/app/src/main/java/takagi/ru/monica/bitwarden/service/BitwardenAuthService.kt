@@ -8,6 +8,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
@@ -43,6 +44,7 @@ class BitwardenAuthService(
         const val TWO_FACTOR_YUBIKEY = 3
         const val TWO_FACTOR_U2F = 4
         const val TWO_FACTOR_REMEMBER = 5
+        const val TWO_FACTOR_ORGANIZATION_DUO = 6
         const val TWO_FACTOR_WEBAUTHN = 7
         const val TWO_FACTOR_EMAIL_NEW_DEVICE = -100
     }
@@ -553,7 +555,7 @@ sealed class LoginResult {
     
     data class TwoFactorRequired(
         val providers: List<Int>,
-        val providersData: Map<String, Map<String, String>>?,
+        val providersData: Map<String, JsonElement>?,
         val tempMasterKey: ByteArray,
         val tempStretchedKey: SymmetricCryptoKey,
         val email: String,
@@ -574,6 +576,7 @@ sealed class LoginResult {
                     BitwardenAuthService.TWO_FACTOR_EMAIL -> "Email"
                     BitwardenAuthService.TWO_FACTOR_DUO -> "Duo"
                     BitwardenAuthService.TWO_FACTOR_YUBIKEY -> "YubiKey"
+                    BitwardenAuthService.TWO_FACTOR_ORGANIZATION_DUO -> "Organization Duo"
                     BitwardenAuthService.TWO_FACTOR_WEBAUTHN -> "WebAuthn"
                     else -> "Unknown"
                 }

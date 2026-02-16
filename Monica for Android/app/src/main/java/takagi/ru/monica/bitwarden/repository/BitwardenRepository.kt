@@ -103,7 +103,7 @@ class BitwardenRepository(private val context: Context) {
                 
                 // 其他 400 错误
                 rawError.contains("400") && rawError.contains("invalid_grant") ->
-                    "认证失败，请检查邮箱和密码是否正确"
+                    "认证失败，可能是两步验证未完成或验证码无效，请重试"
                 
                 // 默认返回原始错误（截断过长内容）
                 else -> {

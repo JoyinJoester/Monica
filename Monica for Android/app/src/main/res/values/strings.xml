@@ -2458,4 +2458,5 @@
     <string name="plus_feature_bitwarden_sync_desc">Connect Bitwarden to sync passwords, cards, and other data across devices.</string>
     <string name="plus_feature_keepass_webdav_title">KeePass WebDAV</string>
     <string name="plus_feature_keepass_webdav_desc">Sync KeePass (.kdbx) data through WebDAV.</string>
+    <string name="version_code_max" translatable="false">9223372036854775807</string>
 </resources>

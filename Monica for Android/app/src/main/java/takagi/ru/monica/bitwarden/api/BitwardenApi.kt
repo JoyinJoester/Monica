@@ -3,6 +3,7 @@ package takagi.ru.monica.bitwarden.api
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNames
 import retrofit2.Response
 import retrofit2.http.*
@@ -341,7 +342,7 @@ data class TokenResponse(
     val twoFactorProviders: List<Int>? = null,
     @JsonNames("twoFactorProviders2")
     @SerialName("TwoFactorProviders2")
-    val twoFactorProviders2: Map<String, Map<String, String>>? = null,
+    val twoFactorProviders2: Map<String, JsonElement>? = null,
     @JsonNames("resetMasterPassword")
     @SerialName("ResetMasterPassword")
     val resetMasterPassword: Boolean? = null,
