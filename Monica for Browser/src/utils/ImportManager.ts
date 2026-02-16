@@ -271,7 +271,7 @@ function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'cr
     }
 
     // Parse itemData based on type
-    let itemData: any;
+    let itemData: PasswordEntry | TotpData | Record<string, unknown>;
     const parsedData = parseItemDataString(parsed.itemData);
 
     switch (itemType) {
@@ -481,7 +481,7 @@ async function importAegisJson(content: string): Promise<ImportResult> {
         }
 
         // Get entries array
-        let entries: any[] = [];
+        let entries: Record<string, unknown>[] = [];
         if (json.db?.entries) {
             entries = json.db.entries;
         } else if (json.entries) {

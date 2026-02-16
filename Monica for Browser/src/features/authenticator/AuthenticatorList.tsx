@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import { useTranslation } from 'react-i18next';
 import { Card, CardTitle, CardSubtitle } from '../../components/common/Card';
@@ -120,7 +120,6 @@ const TotpItem = ({ item, onEdit, onDelete }: TotpItemProps) => {
     const totpRef = useRef<OTPAuth.TOTP | null>(null);
 
     useEffect(() => {
-        setHasError(false);
 
         // Validate first
         if (!data.secret || !isValidBase32(data.secret)) {
@@ -228,12 +227,12 @@ export const AuthenticatorList = () => {
         setShowAdvanced(false);
     };
 
-    const loadTotps = async () => {
+    const loadTotps = useCallback(async () => {
         const data = await getTotps();
         setTotps(data);
-    };
+    }, []);
 
-    useEffect(() => { loadTotps(); }, []);
+    useEffect(() => { loadTotps(); }, [loadTotps]);
 
     const handleSave = async () => {
         if (!form.title || !form.secret) return;

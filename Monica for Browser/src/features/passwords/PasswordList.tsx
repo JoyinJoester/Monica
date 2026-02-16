@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useTranslation } from 'react-i18next';
 import { Card, CardTitle, CardSubtitle } from '../../components/common/Card';
@@ -268,13 +268,13 @@ export const PasswordList = () => {
     setShowPersonalInfo(false);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const [pwds, cats] = await Promise.all([getPasswords(), getCategories()]);
     setPasswords(pwds);
     setCategories(cats);
-  };
+  }, []);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   // Listen for storage changes to auto-refresh
   useEffect(() => {
@@ -287,7 +287,7 @@ export const PasswordList = () => {
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChange);
     };
-  }, []);
+  }, [loadData]);
 
   // Apply both search and category filter
   const filteredPasswords = passwords.filter(p => {

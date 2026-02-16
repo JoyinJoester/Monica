@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useTranslation } from 'react-i18next';
 import { Card, CardTitle, CardSubtitle } from '../../components/common/Card';
@@ -112,12 +112,12 @@ export const DocumentList = () => {
         setEditingId(null);
     };
 
-    const loadDocuments = async () => {
+    const loadDocuments = useCallback(async () => {
         const data = await getDocuments();
         setDocuments(data);
-    };
+    }, []);
 
-    useEffect(() => { loadDocuments(); }, []);
+    useEffect(() => { loadDocuments(); }, [loadDocuments]);
 
     const handleSave = async () => {
         if (!form.title || !form.documentNumber) return;
