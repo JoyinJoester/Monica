@@ -31,6 +31,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -1373,27 +1374,27 @@ private fun PasskeyListItem(
                             Image(
                                 bitmap = autoMatchedSimpleIcon.bitmap,
                                 contentDescription = null,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
                             )
                         }
                         iconCardsEnabled && favicon != null -> {
                             Image(
                                 bitmap = favicon,
                                 contentDescription = null,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
                             )
                         }
                         iconCardsEnabled && appIcon != null -> {
                             Image(
                                 bitmap = appIcon,
                                 contentDescription = null,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
                             )
                         }
                         else -> {

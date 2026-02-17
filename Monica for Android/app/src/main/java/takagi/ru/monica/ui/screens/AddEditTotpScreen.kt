@@ -1,10 +1,14 @@
 package takagi.ru.monica.ui.screens
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,6 +40,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill.ui.rememberAppIcon
+import takagi.ru.monica.autofill.ui.rememberFavicon
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
@@ -43,12 +50,25 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.CustomIconActionDialog
+import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
+import takagi.ru.monica.ui.icons.PasswordCustomIconStore
+import takagi.ru.monica.ui.icons.SimpleIconCatalog
+import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
+import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
+import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
+import java.io.File
+
+private const val ICON_PICKER_PAGE_SIZE = 120
 
 /**
  * 添加/编辑TOTP验证器页面 (Refactored to M3E)
@@ -88,6 +108,19 @@ fun AddEditTotpScreen(
     var associatedApp by rememberSaveable { mutableStateOf(initialData?.associatedApp ?: "") }
     var associatedAppName by rememberSaveable { mutableStateOf("") }
     var boundPasswordId by remember { mutableStateOf(initialData?.boundPasswordId) }
+    var customIconType by rememberSaveable { mutableStateOf(initialData?.customIconType ?: PASSWORD_ICON_TYPE_NONE) }
+    var customIconValue by rememberSaveable {
+        mutableStateOf(initialData?.customIconValue?.takeIf { it.isNotBlank() }?.let { File(it).name })
+    }
+    var customIconUpdatedAt by rememberSaveable { mutableStateOf(initialData?.customIconUpdatedAt ?: 0L) }
+    var originalCustomIconType by remember { mutableStateOf(initialData?.customIconType ?: PASSWORD_ICON_TYPE_NONE) }
+    var originalCustomIconValue by remember {
+        mutableStateOf(initialData?.customIconValue?.takeIf { it.isNotBlank() }?.let { File(it).name })
+    }
+    var hasSavedSuccessfully by remember { mutableStateOf(false) }
+    var showCustomIconDialog by remember { mutableStateOf(false) }
+    var showSimpleIconPicker by remember { mutableStateOf(false) }
+    var customIconSearchQuery by rememberSaveable { mutableStateOf("") }
     
     // KeePass Database Selection
     var keepassDatabaseId by rememberSaveable {
@@ -97,6 +130,7 @@ fun AddEditTotpScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val settingsManager = remember { SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.TOTP)
         .collectAsState(initial = null as RememberedStorageTarget?)
@@ -107,6 +141,81 @@ fun AddEditTotpScreen(
 
     LaunchedEffect(Unit) {
         bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
+    fun normalizedIconFileName(value: String?): String? = value?.takeIf { it.isNotBlank() }?.let { File(it).name }
+    fun isOriginalUploadedIconFile(value: String?): Boolean {
+        val current = normalizedIconFileName(value)
+        val original = normalizedIconFileName(originalCustomIconValue)
+        return originalCustomIconType == PASSWORD_ICON_TYPE_UPLOADED &&
+            !original.isNullOrBlank() &&
+            current == original
+    }
+
+    val selectedSimpleIconBitmap = rememberSimpleIconBitmap(
+        slug = if (customIconType == PASSWORD_ICON_TYPE_SIMPLE) customIconValue else null,
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = settings.iconCardsEnabled
+    )
+    val selectedUploadedIconBitmap = rememberUploadedPasswordIcon(
+        value = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) customIconValue else null
+    )
+    val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
+        website = link,
+        title = issuer.ifBlank { title },
+        appPackageName = associatedApp.ifBlank { null },
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = settings.iconCardsEnabled && customIconType == PASSWORD_ICON_TYPE_NONE
+    )
+    val fallbackWebsiteFavicon = rememberFavicon(
+        url = link,
+        enabled = settings.iconCardsEnabled &&
+            customIconType == PASSWORD_ICON_TYPE_NONE &&
+            autoMatchedSimpleIcon.resolved &&
+            autoMatchedSimpleIcon.slug == null
+    )
+    val associatedAppIcon = if (associatedApp.isNotBlank()) rememberAppIcon(associatedApp) else null
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val imported = PasswordCustomIconStore.importAndCompress(context, uri)
+            imported.onSuccess { fileName ->
+                if (customIconType == PASSWORD_ICON_TYPE_UPLOADED && customIconValue != fileName) {
+                    val previous = normalizedIconFileName(customIconValue)
+                    if (!previous.isNullOrBlank() && !isOriginalUploadedIconFile(previous)) {
+                        PasswordCustomIconStore.deleteIconFile(context, previous)
+                    }
+                }
+                customIconType = PASSWORD_ICON_TYPE_UPLOADED
+                customIconValue = fileName
+                customIconUpdatedAt = System.currentTimeMillis()
+                Toast.makeText(context, context.getString(R.string.custom_icon_upload_success), Toast.LENGTH_SHORT).show()
+            }.onFailure { error ->
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.custom_icon_upload_failed, error.message ?: ""),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!hasSavedSuccessfully) {
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
+                }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+            }
+        }
     }
 
     // Resolve App Name if associatedApp is set but name is unknown
@@ -178,10 +287,27 @@ fun AddEditTotpScreen(
             pin = pin.trim(),
             link = link.trim(),
             associatedApp = associatedApp.trim(),
+            customIconType = customIconType,
+            customIconValue = normalizedIconFileName(customIconValue),
+            customIconUpdatedAt = customIconUpdatedAt,
             boundPasswordId = boundPasswordId,
             categoryId = selectedCategoryId,
             keepassDatabaseId = keepassDatabaseId
         )
+        val originalUploaded = if (originalCustomIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+            normalizedIconFileName(originalCustomIconValue)
+        } else {
+            null
+        }
+        val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+            normalizedIconFileName(customIconValue)
+        } else {
+            null
+        }
+        if (!originalUploaded.isNullOrBlank() && originalUploaded != currentUploaded) {
+            PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
+        }
+        hasSavedSuccessfully = true
         onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId)
         coroutineScope.launch {
             settingsManager.updateRememberedStorageTarget(
@@ -283,17 +409,93 @@ fun AddEditTotpScreen(
                 InfoCard(title = stringResource(R.string.section_authenticator_info)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Title
-                        OutlinedTextField(
-                            value = title,
-                            onValueChange = { title = it },
-                            label = { Text(stringResource(R.string.totp_name_required)) },
-                            placeholder = { Text(stringResource(R.string.totp_name_example)) },
-                            leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            isError = title.isBlank(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                        if (settings.iconCardsEnabled) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                FilledTonalIconButton(
+                                    onClick = { showCustomIconDialog = true },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    when {
+                                        selectedSimpleIconBitmap != null -> {
+                                            Image(
+                                                bitmap = selectedSimpleIconBitmap,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        selectedUploadedIconBitmap != null -> {
+                                            Image(
+                                                bitmap = selectedUploadedIconBitmap,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+                                        autoMatchedSimpleIcon.bitmap != null -> {
+                                            Image(
+                                                bitmap = autoMatchedSimpleIcon.bitmap,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+                                        fallbackWebsiteFavicon != null -> {
+                                            Image(
+                                                bitmap = fallbackWebsiteFavicon,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+                                        associatedAppIcon != null -> {
+                                            Image(
+                                                bitmap = associatedAppIcon,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+                                        else -> {
+                                            Icon(
+                                                imageVector = Icons.Default.Image,
+                                                contentDescription = stringResource(R.string.custom_icon_button)
+                                            )
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = title,
+                                    onValueChange = { title = it },
+                                    label = { Text(stringResource(R.string.totp_name_required)) },
+                                    placeholder = { Text(stringResource(R.string.totp_name_example)) },
+                                    leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    isError = title.isBlank(),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = title,
+                                onValueChange = { title = it },
+                                label = { Text(stringResource(R.string.totp_name_required)) },
+                                placeholder = { Text(stringResource(R.string.totp_name_example)) },
+                                leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                isError = title.isBlank(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
                         
                         if (title.isBlank()) {
                             Text(
@@ -590,6 +792,83 @@ fun AddEditTotpScreen(
                 }
             }
         }
+    }
+
+    if (showCustomIconDialog) {
+        CustomIconActionDialog(
+            showClearAction = customIconType != PASSWORD_ICON_TYPE_NONE,
+            onPickFromLibrary = {
+                customIconSearchQuery = ""
+                showCustomIconDialog = false
+                showSimpleIconPicker = true
+            },
+            onUploadImage = {
+                showCustomIconDialog = false
+                imagePickerLauncher.launch("image/*")
+            },
+            onClearIcon = {
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
+                }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+                customIconType = PASSWORD_ICON_TYPE_NONE
+                customIconValue = null
+                customIconUpdatedAt = System.currentTimeMillis()
+                showCustomIconDialog = false
+            },
+            onDismissRequest = { showCustomIconDialog = false }
+        )
+    }
+
+    if (showSimpleIconPicker) {
+        var iconVisibleCount by rememberSaveable { mutableStateOf(ICON_PICKER_PAGE_SIZE) }
+        val iconOptions = remember(context, customIconSearchQuery) {
+            SimpleIconCatalog.search(context, customIconSearchQuery)
+        }
+        LaunchedEffect(customIconSearchQuery, showSimpleIconPicker) {
+            if (showSimpleIconPicker) {
+                iconVisibleCount = ICON_PICKER_PAGE_SIZE
+            }
+        }
+        val visibleOptions = remember(iconOptions, iconVisibleCount) {
+            iconOptions.take(iconVisibleCount.coerceAtMost(iconOptions.size))
+        }
+        SimpleIconPickerBottomSheet(
+            searchQuery = customIconSearchQuery,
+            onSearchQueryChange = {
+                customIconSearchQuery = it
+                iconVisibleCount = ICON_PICKER_PAGE_SIZE
+            },
+            iconOptions = iconOptions,
+            visibleOptions = visibleOptions,
+            hasMore = visibleOptions.size < iconOptions.size,
+            remainingCount = iconOptions.size - visibleOptions.size,
+            iconCardsEnabled = settings.iconCardsEnabled,
+            selectedSlug = if (customIconType == PASSWORD_ICON_TYPE_SIMPLE) customIconValue else null,
+            onSelectOption = { option ->
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
+                }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+                customIconType = PASSWORD_ICON_TYPE_SIMPLE
+                customIconValue = option.slug
+                customIconUpdatedAt = System.currentTimeMillis()
+                showSimpleIconPicker = false
+            },
+            onLoadMore = {
+                iconVisibleCount = (iconVisibleCount + ICON_PICKER_PAGE_SIZE)
+                    .coerceAtMost(iconOptions.size)
+            },
+            onDismissRequest = { showSimpleIconPicker = false }
+        )
     }
 
     if (showPasswordSelectionDialog && passwordViewModel != null) {
