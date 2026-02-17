@@ -162,7 +162,6 @@ class AutofillPickerActivity : ComponentActivity() {
                 // Dataset 会立即填充，不会显示选择界面
                 val dataset = createDatasetForPassword(item.entry)
                 resultIntent.putExtra(android.view.autofill.AutofillManager.EXTRA_AUTHENTICATION_RESULT, dataset)
-                rememberLastFilledCredential(item.entry.id)
             }
             is AutofillItem.Payment -> {
                 android.util.Log.d("AutofillPicker", "Selected payment ID: ${item.info.id}")
@@ -241,21 +240,4 @@ class AutofillPickerActivity : ComponentActivity() {
         finish()
     }
 
-    private fun rememberLastFilledCredential(passwordId: Long) {
-        val domain = intent.getStringExtra(EXTRA_DOMAIN)?.trim()?.lowercase()
-        val app = intent.getStringExtra(EXTRA_PACKAGE_NAME)?.trim()?.lowercase()
-        val identifier = when {
-            !domain.isNullOrBlank() -> domain
-            !app.isNullOrBlank() -> app
-            else -> return
-        }
-
-        try {
-            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                AutofillPreferences(applicationContext).setLastFilledCredential(identifier, passwordId)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("AutofillPicker", "Failed to persist last filled credential", e)
-        }
-    }
 }

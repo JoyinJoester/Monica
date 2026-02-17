@@ -330,27 +330,10 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             saveUriBinding(password)
         }
 
-        rememberLastFilledCredential(password.id)
         rememberLearnedFieldSignature()
         
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
-    }
-
-    private fun rememberLastFilledCredential(passwordId: Long) {
-        val identifier = when {
-            !args.webDomain.isNullOrBlank() -> args.webDomain!!.trim().lowercase()
-            !args.applicationId.isNullOrBlank() -> args.applicationId!!.trim().lowercase()
-            else -> return
-        }
-
-        try {
-            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                AutofillPreferences(applicationContext).setLastFilledCredential(identifier, passwordId)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)
-        }
     }
 
     private fun rememberLearnedFieldSignature() {
