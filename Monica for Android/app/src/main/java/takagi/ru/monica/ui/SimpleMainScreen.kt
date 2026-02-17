@@ -23,8 +23,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -2770,6 +2772,8 @@ private fun PasswordListContent(
     
     // 堆叠展开状态 - 记录哪些分组已展开
     var expandedGroups by remember { mutableStateOf(setOf<String>()) }
+    val outsideTapInteractionSource = remember { MutableInteractionSource() }
+    val canCollapseExpandedGroups = effectiveStackCardMode == StackCardMode.AUTO && expandedGroups.isNotEmpty()
     
     // 当分组模式改变时,重置展开状态
     LaunchedEffect(effectiveGroupMode, effectiveStackCardMode) {
@@ -3421,7 +3425,17 @@ private fun PasswordListContent(
     }
 
         // 密码列表 - 使用堆叠分组视图
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    enabled = canCollapseExpandedGroups,
+                    interactionSource = outsideTapInteractionSource,
+                    indication = null
+                ) {
+                    expandedGroups = emptySet()
+                }
+        ) {
             if (passwordEntries.isEmpty() && searchQuery.isEmpty()) {
                 // Empty state with pull-to-search
                 Box(
@@ -5876,6 +5890,16 @@ private fun StackedPasswordGroup(
                             }
                         } else {
                             // --- 展开状态的内容 ---
+                            val edgeInteractionSource = remember { MutableInteractionSource() }
+                            val edgeContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
+                            val edgeBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                            val edgeHitWidth = 14.dp
+                            val edgeHitHeight = 12.dp
+                            val edgeTapModifier = Modifier.clickable(
+                                interactionSource = edgeInteractionSource,
+                                indication = null,
+                                onClick = onToggleExpand
+                            )
                             Column(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -5926,89 +5950,134 @@ private fun StackedPasswordGroup(
                                 )
                                 
                                 // 📦 2. 密码列表内容
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(edgeContainerColor)
+                                        .border(
+                                            width = 1.dp,
+                                            color = edgeBorderColor,
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
                                 ) {
-                                    val groupedByInfo = passwords.groupBy { getPasswordInfoKey(it) }
-                                    
-                                    groupedByInfo.values.forEachIndexed { groupIndex, passwordGroup ->
-                                        // 列表项动画
-                                        val itemEnterDelay = groupIndex * 30
-                                        var isVisible by remember { mutableStateOf(false) }
-                                        LaunchedEffect(Unit) {
-                                            isVisible = true
-                                        }
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = edgeHitWidth, vertical = edgeHitHeight),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        val groupedByInfo = passwords.groupBy { getPasswordInfoKey(it) }
                                         
-                                        AnimatedVisibility(
-                                            visible = isVisible,
-                                            enter = fadeIn(tween(300, delayMillis = itemEnterDelay)) + 
-                                                    androidx.compose.animation.slideInVertically(
-                                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                                                        initialOffsetY = { 50 } 
-                                                    ),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                             takagi.ru.monica.ui.gestures.SwipeActions(
-                                                onSwipeLeft = { onSwipeLeft(passwordGroup.first()) },
-                                                onSwipeRight = { onSwipeRight(passwordGroup.first()) },
-                                                enabled = true
+                                        groupedByInfo.values.forEachIndexed { groupIndex, passwordGroup ->
+                                            // 列表项动画
+                                            val itemEnterDelay = groupIndex * 30
+                                            var isVisible by remember { mutableStateOf(false) }
+                                            LaunchedEffect(Unit) {
+                                                isVisible = true
+                                            }
+                                            
+                                            AnimatedVisibility(
+                                                visible = isVisible,
+                                                enter = fadeIn(tween(300, delayMillis = itemEnterDelay)) + 
+                                                        androidx.compose.animation.slideInVertically(
+                                                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                                            initialOffsetY = { 50 } 
+                                                        ),
+                                                modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                if (passwordGroup.size == 1) {
-                                                    val password = passwordGroup.first()
-                                                    PasswordEntryCard(
-                                                        entry = password,
-                                                        onClick = {
-                                                            if (isSelectionMode) {
-                                                                onToggleSelection(password.id)
-                                                            } else {
-                                                                onPasswordClick(password)
-                                                            }
-                                                        },
-                                                        onLongClick = { onLongClick(password) },
-                                                        onToggleFavorite = { onToggleFavorite(password) },
-                                                        onToggleGroupCover = if (passwords.size > 1) {
-                                                            { onToggleGroupCover(password) }
-                                                        } else null,
-                                                        isSelectionMode = isSelectionMode,
-                                                        isSelected = selectedPasswords.contains(password.id),
-                                                        canSetGroupCover = passwords.size > 1,
-                                                        isInExpandedGroup = true, // We are inside the expanded container
-                                                        isSingleCard = false,
-                                                        iconCardsEnabled = iconCardsEnabled,
-                                                        passwordCardDisplayMode = passwordCardDisplayMode,
-                                                        enableSharedBounds = enableSharedBounds
-                                                    )
-                                                } else {
-                                                    MultiPasswordEntryCard(
-                                                        passwords = passwordGroup,
-                                                        onClick = { password ->
-                                                            if (isSelectionMode) {
-                                                                onToggleSelection(password.id)
-                                                            } else {
-                                                                onPasswordClick(password)
-                                                            }
-                                                        },
-                                                        onCardClick = if (!isSelectionMode) {
-                                                            { onOpenMultiPasswordDialog(passwordGroup) }
-                                                        } else null,
-                                                        onLongClick = { onLongClick(passwordGroup.first()) },
-                                                        onToggleFavorite = { password -> onToggleFavorite(password) },
-                                                        onToggleGroupCover = if (passwords.size > 1) {
-                                                            { password -> onToggleGroupCover(password) }
-                                                        } else null,
-                                                        isSelectionMode = isSelectionMode,
-                                                        selectedPasswords = selectedPasswords,
-                                                        canSetGroupCover = passwords.size > 1,
-                                                        hasGroupCover = hasGroupCover,
-                                                        isInExpandedGroup = true, // We are inside the expanded container
-                                                        iconCardsEnabled = iconCardsEnabled,
-                                                        passwordCardDisplayMode = passwordCardDisplayMode
-                                                    )
+                                                 takagi.ru.monica.ui.gestures.SwipeActions(
+                                                    onSwipeLeft = { onSwipeLeft(passwordGroup.first()) },
+                                                    onSwipeRight = { onSwipeRight(passwordGroup.first()) },
+                                                    enabled = true
+                                                ) {
+                                                    if (passwordGroup.size == 1) {
+                                                        val password = passwordGroup.first()
+                                                        PasswordEntryCard(
+                                                            entry = password,
+                                                            onClick = {
+                                                                if (isSelectionMode) {
+                                                                    onToggleSelection(password.id)
+                                                                } else {
+                                                                    onPasswordClick(password)
+                                                                }
+                                                            },
+                                                            onLongClick = { onLongClick(password) },
+                                                            onToggleFavorite = { onToggleFavorite(password) },
+                                                            onToggleGroupCover = if (passwords.size > 1) {
+                                                                { onToggleGroupCover(password) }
+                                                            } else null,
+                                                            isSelectionMode = isSelectionMode,
+                                                            isSelected = selectedPasswords.contains(password.id),
+                                                            canSetGroupCover = passwords.size > 1,
+                                                            isInExpandedGroup = true, // We are inside the expanded container
+                                                            isSingleCard = false,
+                                                            iconCardsEnabled = iconCardsEnabled,
+                                                            passwordCardDisplayMode = passwordCardDisplayMode,
+                                                            enableSharedBounds = enableSharedBounds
+                                                        )
+                                                    } else {
+                                                        MultiPasswordEntryCard(
+                                                            passwords = passwordGroup,
+                                                            onClick = { password ->
+                                                                if (isSelectionMode) {
+                                                                    onToggleSelection(password.id)
+                                                                } else {
+                                                                    onPasswordClick(password)
+                                                                }
+                                                            },
+                                                            onCardClick = if (!isSelectionMode) {
+                                                                { onOpenMultiPasswordDialog(passwordGroup) }
+                                                            } else null,
+                                                            onLongClick = { onLongClick(passwordGroup.first()) },
+                                                            onToggleFavorite = { password -> onToggleFavorite(password) },
+                                                            onToggleGroupCover = if (passwords.size > 1) {
+                                                                { password -> onToggleGroupCover(password) }
+                                                            } else null,
+                                                            isSelectionMode = isSelectionMode,
+                                                            selectedPasswords = selectedPasswords,
+                                                            canSetGroupCover = passwords.size > 1,
+                                                            hasGroupCover = hasGroupCover,
+                                                            isInExpandedGroup = true, // We are inside the expanded container
+                                                            iconCardsEnabled = iconCardsEnabled,
+                                                            passwordCardDisplayMode = passwordCardDisplayMode
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                    
+                                    // Expanded state edge zones: only these non-card areas collapse the stack.
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopCenter)
+                                            .fillMaxWidth()
+                                            .height(edgeHitHeight)
+                                            .then(edgeTapModifier)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .fillMaxWidth()
+                                            .height(edgeHitHeight)
+                                            .then(edgeTapModifier)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.CenterStart)
+                                            .width(edgeHitWidth)
+                                            .fillMaxHeight()
+                                            .then(edgeTapModifier)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .width(edgeHitWidth)
+                                            .fillMaxHeight()
+                                            .then(edgeTapModifier)
+                                    )
                                 }
                             }
                         }
