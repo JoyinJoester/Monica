@@ -1,0 +1,104 @@
+name: Browser Extension Release
+
+on:
+  push:
+    tags:
+      - 'browser-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Browser"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'Monica for Browser/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Chrome/Edge Extension
+        run: npm run build
+
+      - name: Build Firefox Extension
+        run: npm run build:firefox
+
+      - name: Create Chrome/Edge ZIP
+        run: |
+          cd dist
+          zip -r ../monica-browser-chrome-${{ github.ref_name }}.zip .
+          cd ..
+
+      - name: Create Firefox ZIP
+        run: |
+          rm -rf dist
+          npm run build:firefox
+          cd dist
+          zip -r ../monica-browser-firefox-${{ github.ref_name }}.zip .
+          cd ..
+
+      - name: Get Version
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF_NAME#browser-v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Monica Browser Extension ${{ steps.get_version.outputs.version }}
+          body: |
+            ## Monica Browser Extension Release ${{ steps.get_version.outputs.version }}
+
+            ### Installation
+
+            #### Chrome/Edge
+            1. Download `monica-browser-chrome-${{ github.ref_name }}.zip`
+            2. Unzip the file
+            3. Open `chrome://extensions/` (Chrome) or `edge://extensions/` (Edge)
+            4. Enable "Developer mode"
+            5. Click "Load unpacked" and select the unzipped folder
+
+            #### Firefox
+            1. Download `monica-browser-firefox-${{ github.ref_name }}.zip`
+            2. Unzip the file
+            3. Open `about:debugging#/runtime/this-firefox`
+            4. Click "Load Temporary Add-on"
+            5. Select the `manifest.json` file in the unzipped folder
+
+            ### What's New
+            - Support for both Chrome/Edge and Firefox browsers
+            - Improved compatibility and performance
+            - Bug fixes and stability improvements
+
+            ### Features
+            - Password management with auto-fill
+            - 2FA/TOTP authenticator
+            - WebDAV backup support
+            - Encrypted notes
+            - Document management
+            - Multi-language support
+
+            ### Known Limitations
+            - Firefox does not support `chrome.action.openPopup()` API
+            - Some Manifest V3 features may not be fully supported in Firefox
+
+          files: |
+            Monica for Browser/monica-browser-chrome-${{ github.ref_name }}.zip
+            Monica for Browser/monica-browser-firefox-${{ github.ref_name }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

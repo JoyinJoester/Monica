@@ -16,8 +16,8 @@ permissions:
   actions: read
 
 jobs:
-  build-extension:
-    name: Build Browser Extension
+  build-chrome:
+    name: Build Chrome/Edge Extension
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,27 +40,96 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
-      - name: Build Extension
+      - name: Build Chrome/Edge Extension
         run: npm run build
 
-      - name: Create Extension ZIP
+      - name: Verify Manifest
+        run: |
+          echo "Checking Chrome/Edge manifest..."
+          if grep -q '"type": "module"' dist/manifest.json; then
+            echo "✓ Chrome/Edge manifest is correct (includes 'type': 'module')"
+          else
+            echo "✗ Chrome/Edge manifest is missing 'type': 'module'"
+            exit 1
+          fi
+
+      - name: Create Chrome/Edge Extension ZIP
         run: |
           cd dist
-          zip -r ../monica-browser-extension.zip .
+          zip -r ../monica-browser-extension-chrome.zip .
           cd ..
 
-      - name: Upload Extension Artifact
+      - name: Upload Chrome/Edge Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: monica-browser-extension
-          path: "Monica for Browser/monica-browser-extension.zip"
+          name: monica-browser-extension-chrome
+          path: "Monica for Browser/monica-browser-extension-chrome.zip"
           retention-days: 7
           if-no-files-found: error
 
-      - name: Upload Build Directory
+      - name: Upload Chrome/Edge Build Directory
         uses: actions/upload-artifact@v4
         with:
-          name: monica-browser-extension-dist
+          name: monica-browser-extension-chrome-dist
+          path: "Monica for Browser/dist/"
+          retention-days: 7
+          if-no-files-found: error
+
+  build-firefox:
+    name: Build Firefox Extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Browser"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'Monica for Browser/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build Firefox Extension
+        run: npm run build:firefox
+
+      - name: Verify Firefox Manifest
+        run: |
+          echo "Checking Firefox manifest..."
+          if ! grep -q '"type": "module"' dist/manifest.json; then
+            echo "✓ Firefox manifest is correct (no 'type': 'module')"
+          else
+            echo "✗ Firefox manifest incorrectly includes 'type': 'module'"
+            exit 1
+          fi
+
+      - name: Create Firefox Extension ZIP
+        run: |
+          cd dist
+          zip -r ../monica-browser-extension-firefox.zip .
+          cd ..
+
+      - name: Upload Firefox Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: monica-browser-extension-firefox
+          path: "Monica for Browser/monica-browser-extension-firefox.zip"
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload Firefox Build Directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: monica-browser-extension-firefox-dist
           path: "Monica for Browser/dist/"
           retention-days: 7
           if-no-files-found: error

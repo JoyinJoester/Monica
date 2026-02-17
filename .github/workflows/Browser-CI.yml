@@ -1,0 +1,192 @@
+name: Browser Extension CI
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'Monica for Browser/**'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  type-check:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Browser"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'Monica for Browser/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Type Check
+        run: npx tsc --noEmit
+
+  lint:
+    name: ESLint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Browser"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'Monica for Browser/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  build-chrome:
+    name: Build Chrome/Edge
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Browser"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'Monica for Browser/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Chrome/Edge Extension
+        run: npm run build
+
+      - name: Verify Chrome Manifest
+        run: |
+          echo "Verifying Chrome/Edge manifest..."
+          if ! grep -q '"manifest_version": 3' dist/manifest.json; then
+            echo "Error: Manifest version should be 3"
+            exit 1
+          fi
+          if ! grep -q '"type": "module"' dist/manifest.json; then
+            echo "Error: Chrome manifest should include 'type': 'module'"
+            exit 1
+          fi
+          if ! grep -q 'background.js' dist/manifest.json; then
+            echo "Error: Background script not found"
+            exit 1
+          fi
+          if ! grep -q 'content.js' dist/manifest.json; then
+            echo "Error: Content script not found"
+            exit 1
+          fi
+          echo "✓ Chrome/Edge manifest is valid"
+
+  build-firefox:
+    name: Build Firefox
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monica for Browser"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'Monica for Browser/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Firefox Extension
+        run: npm run build:firefox
+
+      - name: Verify Firefox Manifest
+        run: |
+          echo "Verifying Firefox manifest..."
+          if ! grep -q '"manifest_version": 3' dist/manifest.json; then
+            echo "Error: Manifest version should be 3"
+            exit 1
+          fi
+          if grep -q '"type": "module"' dist/manifest.json; then
+            echo "Error: Firefox manifest should NOT include 'type': 'module'"
+            exit 1
+          fi
+          if ! grep -q 'background.js' dist/manifest.json; then
+            echo "Error: Background script not found"
+            exit 1
+          fi
+          if ! grep -q 'content.js' dist/manifest.json; then
+            echo "Error: Content script not found"
+            exit 1
+          fi
+          echo "✓ Firefox manifest is valid"
+
+  validate-manifests:
+    name: Validate Manifest Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Chrome Manifest
+        run: |
+          echo "Checking public/manifest.json..."
+          if [ ! -f "Monica for Browser/public/manifest.json" ]; then
+            echo "Error: Chrome manifest not found"
+            exit 1
+          fi
+          echo "✓ Chrome manifest exists"
+
+      - name: Check Firefox Manifest
+        run: |
+          echo "Checking public/manifest.firefox.json..."
+          if [ ! -f "Monica for Browser/public/manifest.firefox.json" ]; then
+            echo "Error: Firefox manifest not found"
+            exit 1
+          fi
+          echo "✓ Firefox manifest exists"
+
+      - name: Compare Manifests
+        run: |
+          echo "Comparing manifest differences..."
+          CHROME_TYPE=$(grep -A 1 '"background"' "Monica for Browser/public/manifest.json" | grep '"type"' || echo "")
+          FIREFOX_TYPE=$(grep -A 1 '"background"' "Monica for Browser/public/manifest.firefox.json" | grep '"type"' || echo "")
+
+          echo "Chrome: $CHROME_TYPE"
+          echo "Firefox: $FIREFOX_TYPE"
+
+          if [ -z "$CHROME_TYPE" ]; then
+            echo "Error: Chrome manifest should include 'type': 'module'"
+            exit 1
+          fi
+
+          if [ -n "$FIREFOX_TYPE" ]; then
+            echo "Error: Firefox manifest should NOT include 'type'"
+            exit 1
+          fi
+
+          echo "✓ Manifests are correctly differentiated"

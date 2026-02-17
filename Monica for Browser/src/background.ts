@@ -3,6 +3,15 @@
  * Handles WebDAV requests to bypass CORS restrictions
  */
 
+// Browser compatibility layer
+const browserAPI = {
+  runtime: typeof chrome !== 'undefined' ? chrome.runtime : (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime),
+  storage: typeof chrome !== 'undefined' ? chrome.storage : (typeof browser !== 'undefined' ? browser.storage : chrome.storage),
+  scripting: typeof chrome !== 'undefined' ? chrome.scripting : (typeof browser !== 'undefined' ? browser.scripting : chrome.scripting),
+  tabs: typeof chrome !== 'undefined' ? chrome.tabs : (typeof browser !== 'undefined' ? browser.tabs : chrome.tabs),
+  action: typeof chrome !== 'undefined' ? chrome.action : (typeof browser !== 'undefined' ? browser.browserAction : chrome.action),
+}
+
 // Message types
 interface WebDavRequest {
     type: 'WEBDAV_REQUEST';
@@ -226,7 +235,7 @@ async function hashPassword(password: string, saltArray: number[]): Promise<stri
 // Verify master password
 async function verifyMasterPassword(password: string): Promise<boolean> {
     try {
-        const result = await chrome.storage.local.get([MASTER_PASSWORD_HASH_KEY, MASTER_PASSWORD_SALT_KEY]);
+        const result = await browserAPI.storage.local.get([MASTER_PASSWORD_HASH_KEY, MASTER_PASSWORD_SALT_KEY]);
         const storedHash = result[MASTER_PASSWORD_HASH_KEY] as string | undefined;
         const saltBase64 = result[MASTER_PASSWORD_SALT_KEY] as string | undefined;
 
@@ -250,8 +259,8 @@ async function verifyMasterPassword(password: string): Promise<boolean> {
 // Get passwords from storage
 async function getPasswordsFromStorage(): Promise<PasswordItem[]> {
     try {
-        // Try chrome.storage.local first
-        const result = await chrome.storage.local.get(STORAGE_KEY);
+        // Try browser storage first
+        const result = await browserAPI.storage.local.get(STORAGE_KEY);
         const rawItems = result[STORAGE_KEY];
 
         // Return empty if no items
@@ -305,7 +314,7 @@ async function getAllPasswords(): Promise<PasswordItem[]> {
 // Get TOTPs from storage
 async function getTotpsFromStorage(): Promise<TotpItem[]> {
     try {
-        const result = await chrome.storage.local.get(STORAGE_KEY);
+        const result = await browserAPI.storage.local.get(STORAGE_KEY);
         const rawItems = result[STORAGE_KEY];
 
         if (!rawItems || !Array.isArray(rawItems) || rawItems.length === 0) {
@@ -379,12 +388,12 @@ function generateTotpCode(totp: TotpItem): { code: string; timeRemaining: number
 
 
 // Handle autofill requests
-chrome.runtime.onMessage.addListener(
-    (request: AutofillRequest | WebDavRequest | SavePasswordRequest | GetAllPasswordsRequest | OpenPopupRequest, _sender, sendResponse: (response: AutofillResponse | WebDavResponse | SavePasswordResponse | GetAllPasswordsResponse | { success: boolean }) => void) => {
+(browserAPI.runtime.onMessage as typeof chrome.runtime.onMessage).addListener(
+    (request: AutofillRequest | WebDavRequest | SavePasswordRequest | GetAllPasswordsRequest | OpenPopupRequest, _sender: chrome.runtime.MessageSender, sendResponse: (response: AutofillResponse | WebDavResponse | SavePasswordResponse | GetAllPasswordsResponse | { success: boolean }) => void) => {
         if (request.type === 'GET_PASSWORDS_FOR_AUTOFILL') {
             Promise.all([
                 getPasswordsFromStorage(),
-                chrome.storage.local.get('i18nextLng')
+                browserAPI.storage.local.get('i18nextLng')
             ]).then(([passwords, langResult]) => {
                 const matched = matchPasswordsByUrl(passwords, request.url);
                 const lang = (langResult.i18nextLng as string) || 'en';
@@ -422,10 +431,16 @@ chrome.runtime.onMessage.addListener(
 
         if (request.type === 'OPEN_POPUP') {
             // Open extension popup by focusing/creating a new tab
-            chrome.action.openPopup().catch(() => {
-                // Fallback: create tab with extension page
-                chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
-            });
+            // Firefox doesn't support openPopup(), so we always use fallback
+            if (browserAPI.action && browserAPI.action.openPopup) {
+                browserAPI.action.openPopup().catch(() => {
+                    // Fallback: create tab with extension page
+                    browserAPI.tabs.create({ url: browserAPI.runtime.getURL('index.html') });
+                });
+            } else {
+                // Firefox fallback
+                browserAPI.tabs.create({ url: browserAPI.runtime.getURL('index.html') });
+            }
             sendResponse({ success: true });
             return true;
         }
@@ -514,13 +529,13 @@ chrome.runtime.onMessage.addListener(
 
 // Save new password to storage
 async function saveNewPassword(credentials: { website: string; title: string; username: string; password: string }) {
-    const result = await chrome.storage.local.get(STORAGE_KEY);
+    const result = await browserAPI.storage.local.get(STORAGE_KEY);
     const rawItems = result[STORAGE_KEY];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const items: any[] = Array.isArray(rawItems) ? rawItems : [];
+    const items: Record<string, unknown>[] = Array.isArray(rawItems) ? rawItems : [];
 
     // Generate new ID
-    const maxId = items.reduce((max, item) => Math.max(max, item.id || 0), 0);
+    const maxId = items.reduce((max, item) => Math.max(max, (item as Record<string, unknown>).id as number || 0), 0);
 
     // Create item matching SecureItem interface
     const newPassword = {
@@ -541,34 +556,37 @@ async function saveNewPassword(credentials: { website: string; title: string; us
     };
 
     items.push(newPassword);
-    await chrome.storage.local.set({ [STORAGE_KEY]: items });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: items });
     console.log('[Monica] Password saved:', newPassword.title);
 }
 
 // ========== Automatic Content Script Injection ==========
 // Content script is now injected via manifest.json
 // But we still try to inject into existing tabs upon installation to avoid reload
-chrome.runtime.onInstalled.addListener(async () => {
+browserAPI.runtime.onInstalled.addListener(async () => {
     console.log('[Monica] Extension installed');
 
     // Inject into all existing tabs
-    const tabs = await chrome.tabs.query({});
+    const tabs = await browserAPI.tabs.query({});
     for (const tab of tabs) {
         // Skip restricted URLs
         if (!tab.url || tab.url.startsWith('chrome://') ||
             tab.url.startsWith('chrome-extension://') ||
             tab.url.startsWith('about:') ||
             tab.url.startsWith('edge://') ||
-            tab.url.startsWith('file://')) { // Also skip file:// if not allowed
+            tab.url.startsWith('file://') ||
+            tab.url.startsWith('moz-extension://')) { // Also skip file:// if not allowed
             continue;
         }
 
         if (tab.id) {
             try {
-                await chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    files: ['content.js']
-                });
+                if (browserAPI.scripting && browserAPI.scripting.executeScript) {
+                    await browserAPI.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        files: ['content.js']
+                    });
+                }
             } catch (err) {
                 // Ignore "Cannot access contents of the page" error which is expected for some pages
                 if (err instanceof Error && !err.message.includes('Cannot access contents of the page')) {
