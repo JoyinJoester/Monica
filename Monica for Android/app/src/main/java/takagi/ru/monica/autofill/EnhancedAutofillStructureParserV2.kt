@@ -559,9 +559,16 @@ class EnhancedAutofillStructureParserV2 {
         }
         
         // 检查是否需要忽略（autofill=off）
-        if (respectAutofillOff && node.importantForAutofill == View.IMPORTANT_FOR_AUTOFILL_NO) {
-            android.util.Log.d("EnhancedParser", "Skipping node with autofill=off: ${node.idEntry}")
+        // IMPORTANT_FOR_AUTOFILL_NO 只跳过当前节点检测，不跳过子节点；
+        // IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS 才跳过整棵子树。
+        val importantForAutofill = node.importantForAutofill
+        if (respectAutofillOff && importantForAutofill == View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS) {
+            android.util.Log.d("EnhancedParser", "Skipping subtree with autofill=off_exclude_descendants: ${node.idEntry}")
             return currentIndex
+        }
+        val skipCurrentNodeDetection = respectAutofillOff && importantForAutofill == View.IMPORTANT_FOR_AUTOFILL_NO
+        if (skipCurrentNodeDetection) {
+            android.util.Log.d("EnhancedParser", "Skipping node with autofill=off: ${node.idEntry}")
         }
         
         // 增加遍历索引（仅对可见节点计数，或者对所有节点计数皆可，这里统计所有节点以保持相对顺序）
@@ -569,7 +576,7 @@ class EnhancedAutofillStructureParserV2 {
         
         // 尝试解析当前节点
         val autofillId = node.autofillId
-        if (autofillId != null && node.autofillType != View.AUTOFILL_TYPE_NONE) {
+        if (!skipCurrentNodeDetection && autofillId != null && isAutofillCandidateNode(node)) {
             detectFieldType(node, currentWebViewNodeId)?.let { parsedItem ->
                 // 过滤搜索字段，不将其添加到可填充字段列表中
                 if (parsedItem.hint == FieldHint.SEARCH_FIELD) {
@@ -593,6 +600,13 @@ class EnhancedAutofillStructureParserV2 {
         }
         
         return currentIndex
+    }
+
+    private fun isAutofillCandidateNode(node: AssistStructure.ViewNode): Boolean {
+        if (node.autofillType != View.AUTOFILL_TYPE_NONE) return true
+        if (!node.autofillHints.isNullOrEmpty()) return true
+        if (!node.idEntry.isNullOrBlank()) return true
+        return !node.hint.isNullOrBlank()
     }
     
     /**
@@ -816,9 +830,10 @@ class EnhancedAutofillStructureParserV2 {
             (inputType and InputType.TYPE_CLASS_PHONE) != 0 -> 
                 FieldHint.PHONE_NUMBER to Accuracy.HIGH
             
-            // 数字类型（可能是OTP）
-            (inputType and InputType.TYPE_CLASS_NUMBER) != 0 -> 
-                FieldHint.OTP_CODE to Accuracy.LOW
+            // 纯数字类型在登录场景常被账号框复用（如 QQ 号），
+            // 不应仅凭 inputType 判定为 OTP，交给关键词策略判断。
+            (inputType and InputType.TYPE_CLASS_NUMBER) != 0 ->
+                null
             
             // 人名类型
             (inputType and InputType.TYPE_TEXT_VARIATION_PERSON_NAME) != 0 -> 

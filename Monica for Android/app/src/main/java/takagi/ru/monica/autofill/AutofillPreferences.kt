@@ -66,6 +66,7 @@ class AutofillPreferences(private val context: Context) {
         private val KEY_INTERACTION_IDENTIFIER = stringPreferencesKey("autofill_interaction_identifier")
         private val KEY_INTERACTION_STARTED_AT = longPreferencesKey("autofill_interaction_started_at")
         private val KEY_INTERACTION_COMPLETED = booleanPreferencesKey("autofill_interaction_completed")
+        private val KEY_LEARNED_FIELD_SIGNATURES = stringSetPreferencesKey("learned_field_signatures")
         
         // 默认黑名单应用
         val DEFAULT_BLACKLIST_PACKAGES = setOf(
@@ -392,6 +393,10 @@ class AutofillPreferences(private val context: Context) {
         return identifier.trim().lowercase()
     }
 
+    private fun normalizeFieldSignatureKey(signatureKey: String): String {
+        return signatureKey.trim().lowercase()
+    }
+
     suspend fun beginAutofillInteraction(identifier: String) {
         val normalized = normalizeIdentifier(identifier)
         if (normalized.isBlank()) return
@@ -400,9 +405,22 @@ class AutofillPreferences(private val context: Context) {
             preferences[KEY_INTERACTION_IDENTIFIER] = normalized
             preferences[KEY_INTERACTION_STARTED_AT] = now
             preferences[KEY_INTERACTION_COMPLETED] = false
-            preferences[KEY_LAST_FILLED_IDENTIFIER] = normalized
-            preferences.remove(KEY_LAST_FILLED_PASSWORD_ID)
-            preferences[KEY_LAST_FILLED_AT] = 0L
+        }
+    }
+
+    suspend fun touchAutofillInteraction(identifier: String) {
+        val normalized = normalizeIdentifier(identifier)
+        if (normalized.isBlank()) return
+        val now = System.currentTimeMillis()
+        context.dataStore.edit { preferences ->
+            val existingIdentifier = preferences[KEY_INTERACTION_IDENTIFIER]
+            if (existingIdentifier == normalized) {
+                preferences[KEY_INTERACTION_STARTED_AT] = now
+            } else {
+                preferences[KEY_INTERACTION_IDENTIFIER] = normalized
+                preferences[KEY_INTERACTION_STARTED_AT] = now
+                preferences[KEY_INTERACTION_COMPLETED] = false
+            }
         }
     }
 
@@ -467,5 +485,27 @@ class AutofillPreferences(private val context: Context) {
         val passwordId = preferences[KEY_LAST_FILLED_PASSWORD_ID] ?: return null
         val timestamp = preferences[KEY_LAST_FILLED_AT] ?: 0L
         return LastFilledCredential(storedIdentifier, passwordId, timestamp)
+    }
+
+    suspend fun markFieldSignatureLearned(signatureKey: String) {
+        val normalized = normalizeFieldSignatureKey(signatureKey)
+        if (normalized.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val current = preferences[KEY_LEARNED_FIELD_SIGNATURES] ?: emptySet()
+            val updated = if (!current.contains(normalized) && current.size >= 256) {
+                (current - current.first()) + normalized
+            } else {
+                current + normalized
+            }
+            preferences[KEY_LEARNED_FIELD_SIGNATURES] = updated
+        }
+    }
+
+    suspend fun isFieldSignatureLearned(signatureKey: String): Boolean {
+        val normalized = normalizeFieldSignatureKey(signatureKey)
+        if (normalized.isBlank()) return false
+        val preferences = context.dataStore.data.first()
+        val signatures = preferences[KEY_LEARNED_FIELD_SIGNATURES] ?: emptySet()
+        return signatures.contains(normalized)
     }
 }

@@ -94,7 +94,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val autofillIds: ArrayList<AutofillId>? = null,
         val autofillHints: ArrayList<String>? = null,
         val suggestedPasswordIds: LongArray? = null,
-        val isSaveMode: Boolean = false
+        val isSaveMode: Boolean = false,
+        val fieldSignatureKey: String? = null
     ) : Parcelable {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -271,22 +272,19 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val datasetBuilder = Dataset.Builder()
 
         val hints = args.autofillHints
+        val hasUsernameHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name) == true
+        val hasEmailHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name) == true
+        val allowAccountInEmailField = fillEmailWithAccount || accountValue.contains("@") || (!hasUsernameHint && hasEmailHint)
         var filledCount = 0
         autofillIds.forEachIndexed { index, autofillId ->
             val hint = hints?.getOrNull(index)
             val value = when (hint) {
                 EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
                 EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
-                    if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
+                    if (allowAccountInEmailField) accountValue else null
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
                 EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name -> decryptedPassword
-                else -> {
-                    if (hints.isNullOrEmpty()) {
-                        if (index % 2 == 0) accountValue else decryptedPassword
-                    } else {
-                        null
-                    }
-                }
+                else -> null
             }
             if (value != null) {
                 datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
@@ -295,10 +293,32 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
 
         if (filledCount == 0) {
+            android.util.Log.w("AutofillPickerV2", "No strict hint matched, trying controlled fallback")
             autofillIds.forEachIndexed { index, autofillId ->
-                val fallbackValue = if (index % 2 == 0) accountValue else decryptedPassword
-                datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
+                val normalizedHint = hints?.getOrNull(index)?.lowercase().orEmpty()
+                val fallbackValue = when {
+                    normalizedHint.contains("pass") -> decryptedPassword
+                    normalizedHint.contains("user") ||
+                        normalizedHint.contains("email") ||
+                        normalizedHint.contains("account") ||
+                        normalizedHint.contains("login") -> accountValue
+                    autofillIds.size == 1 -> if (accountValue.isNotBlank()) accountValue else decryptedPassword
+                    index == 0 -> accountValue
+                    index == 1 -> decryptedPassword
+                    else -> null
+                }
+                if (!fallbackValue.isNullOrBlank()) {
+                    datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
+                    filledCount++
+                }
             }
+        }
+
+        if (filledCount == 0) {
+            android.util.Log.w("AutofillPickerV2", "No credential value resolved after controlled fallback")
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
         }
         
         val resultIntent = Intent().apply {
@@ -311,6 +331,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
 
         rememberLastFilledCredential(password.id)
+        rememberLearnedFieldSignature()
         
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
@@ -329,6 +350,18 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             }
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)
+        }
+    }
+
+    private fun rememberLearnedFieldSignature() {
+        val signatureKey = args.fieldSignatureKey?.trim()?.lowercase().orEmpty()
+        if (signatureKey.isBlank()) return
+        try {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                AutofillPreferences(applicationContext).markFieldSignatureLearned(signatureKey)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AutofillPickerV2", "Failed to persist learned field signature", e)
         }
     }
     

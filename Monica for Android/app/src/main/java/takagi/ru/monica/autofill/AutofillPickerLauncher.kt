@@ -35,12 +35,27 @@ object AutofillPickerLauncher {
         packageName: String?,
         domain: String?,
         parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure,
-        lastFilledPassword: PasswordEntry? = null
+        lastFilledPassword: PasswordEntry? = null,
+        credentialTargetsOverride: List<EnhancedAutofillStructureParserV2.ParsedItem>? = null,
+        fieldSignatureKey: String? = null
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
-        val fillTargets = selectCredentialFillTargets(parsedStructure)
+        val fillTargets = credentialTargetsOverride
+            ?.filter { item ->
+                item.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                    item.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                    item.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
+                    item.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
+            }
+            ?.ifEmpty { null }
+            ?: selectCredentialFillTargets(parsedStructure)
         val authTargets = selectAuthenticationTargets(fillTargets)
-        
+
+        if (fillTargets.isEmpty() || authTargets.isEmpty()) {
+            android.util.Log.w("AutofillPicker", "No credential targets available, skip building response")
+            return responseBuilder.build()
+        }
+
         android.util.Log.d("AutofillPicker", "Creating single entry point response (Unlock/Search style)")
         
         // 1. 构建跳转 Intent - 始终跳转到全屏选择器
@@ -58,7 +73,8 @@ object AutofillPickerLauncher {
             }?.value,
             capturedPassword = parsedStructure.items.find { 
                 it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD 
-            }?.value
+            }?.value,
+            fieldSignatureKey = fieldSignatureKey ?: buildFieldSignatureKey(packageName, domain, fillTargets)
         )
         
         val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
@@ -433,6 +449,11 @@ object AutofillPickerLauncher {
         val responseBuilder = FillResponse.Builder()
         val fillTargets = selectCredentialFillTargets(parsedStructure)
         val authTargets = selectAuthenticationTargets(fillTargets)
+
+        if (fillTargets.isEmpty() || authTargets.isEmpty()) {
+            android.util.Log.w("AutofillPicker", "No credential targets for picker response")
+            return responseBuilder.build()
+        }
         
         // 创建启动AutofillPickerActivity的Intent
         val pickerIntent = Intent(context, AutofillPickerActivity::class.java).apply {
@@ -512,13 +533,12 @@ object AutofillPickerLauncher {
     private fun selectCredentialFillTargets(
         parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure
     ): List<EnhancedAutofillStructureParserV2.ParsedItem> {
-        val credentialTargets = parsedStructure.items.filter { item ->
+        return parsedStructure.items.filter { item ->
             item.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
         }
-        return if (credentialTargets.isNotEmpty()) credentialTargets else parsedStructure.items
     }
 
     private fun selectAuthenticationTargets(
@@ -581,6 +601,26 @@ object AutofillPickerLauncher {
         }
 
         return if (hasValue) datasetBuilder.build() else null
+    }
+
+    private fun buildFieldSignatureKey(
+        packageName: String?,
+        domain: String?,
+        fillTargets: List<EnhancedAutofillStructureParserV2.ParsedItem>
+    ): String {
+        val normalizedPackage = packageName?.trim()?.lowercase().orEmpty()
+        val normalizedDomain = domain?.trim()?.lowercase().orEmpty()
+        val fingerprint = fillTargets
+            .sortedWith(
+                compareBy<EnhancedAutofillStructureParserV2.ParsedItem>(
+                    { it.traversalIndex },
+                    { it.hint.name }
+                )
+            )
+            .joinToString(separator = "|") { item ->
+                "${item.hint.name}:${item.traversalIndex}"
+            }
+        return "pkg=$normalizedPackage;dom=$normalizedDomain;sig=$fingerprint"
     }
     
     /**
