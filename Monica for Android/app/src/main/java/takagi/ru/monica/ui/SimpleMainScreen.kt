@@ -6193,9 +6193,19 @@ private fun MultiPasswordEntryCard(
                     val appIcon = if (!firstEntry.appPackageName.isNullOrBlank()) {
                          takagi.ru.monica.autofill.ui.rememberAppIcon(firstEntry.appPackageName)
                     } else null
+                    val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
+                        website = firstEntry.website,
+                        title = firstEntry.title,
+                        appPackageName = firstEntry.appPackageName,
+                        tintColor = MaterialTheme.colorScheme.primary,
+                        enabled = firstEntry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+                    )
                     
                     val favicon = if (firstEntry.website.isNotBlank()) {
-                        takagi.ru.monica.autofill.ui.rememberFavicon(url = firstEntry.website, enabled = true)
+                        takagi.ru.monica.autofill.ui.rememberFavicon(
+                            url = firstEntry.website,
+                            enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+                        )
                     } else null
                     
                     if (simpleIcon != null) {
@@ -6208,6 +6218,13 @@ private fun MultiPasswordEntryCard(
                     } else if (uploadedIcon != null) {
                          Image(
                             bitmap = uploadedIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                         )
+                         Spacer(modifier = Modifier.width(12.dp))
+                    } else if (autoMatchedSimpleIcon.bitmap != null) {
+                         Image(
+                            bitmap = autoMatchedSimpleIcon.bitmap,
                             contentDescription = null,
                             modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
                          )
@@ -6606,9 +6623,19 @@ private fun PasswordEntryCard(
                 val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
                      takagi.ru.monica.autofill.ui.rememberAppIcon(entry.appPackageName)
                 } else null
+                val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
+                    website = entry.website,
+                    title = entry.title,
+                    appPackageName = entry.appPackageName,
+                    tintColor = MaterialTheme.colorScheme.primary,
+                    enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+                )
                 
                 val favicon = if (entry.website.isNotBlank()) {
-                    takagi.ru.monica.autofill.ui.rememberFavicon(url = entry.website, enabled = true)
+                    takagi.ru.monica.autofill.ui.rememberFavicon(
+                        url = entry.website,
+                        enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+                    )
                 } else null
                 
                 if (simpleIcon != null) {
@@ -6621,6 +6648,13 @@ private fun PasswordEntryCard(
                 } else if (uploadedIcon != null) {
                      Image(
                         bitmap = uploadedIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                     )
+                     Spacer(modifier = Modifier.width(16.dp))
+                } else if (autoMatchedSimpleIcon.bitmap != null) {
+                     Image(
+                        bitmap = autoMatchedSimpleIcon.bitmap,
                         contentDescription = null,
                         modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
                      )

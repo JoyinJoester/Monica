@@ -10,9 +10,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -28,7 +30,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
@@ -48,7 +49,6 @@ import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.util.TotpGenerator
-import takagi.ru.monica.utils.SettingsManager
 import kotlin.math.PI
 import kotlin.math.sin
 import takagi.ru.monica.util.VibrationPatterns
@@ -221,6 +221,30 @@ fun TotpCodeCard(
             currentCode
         }
     }
+
+    val iconWebsite = remember(totpData.link) { totpData.link.trim() }
+    val iconTitle = remember(item.title, totpData.issuer) { totpData.issuer.ifBlank { item.title } }
+    val associatedAppPackage = remember(totpData.associatedApp) { totpData.associatedApp.trim() }
+    val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
+        website = iconWebsite,
+        title = iconTitle,
+        appPackageName = associatedAppPackage.ifBlank { null },
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = settings.iconCardsEnabled
+    )
+    val favicon = if (iconWebsite.isNotBlank()) {
+        takagi.ru.monica.autofill.ui.rememberFavicon(
+            url = iconWebsite,
+            enabled = settings.iconCardsEnabled && autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+        )
+    } else {
+        null
+    }
+    val appIcon = if (settings.iconCardsEnabled && associatedAppPackage.isNotBlank()) {
+        takagi.ru.monica.autofill.ui.rememberAppIcon(packageName = associatedAppPackage)
+    } else {
+        null
+    }
     
     Card(
         modifier = modifier
@@ -258,25 +282,71 @@ fun TotpCodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (totpData.issuer.isNotBlank()) {
-                        Text(
-                            text = totpData.issuer,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (settings.iconCardsEnabled) {
+                        when {
+                            autoMatchedSimpleIcon.bitmap != null -> {
+                                Image(
+                                    bitmap = autoMatchedSimpleIcon.bitmap,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                )
+                            }
+                            favicon != null -> {
+                                Image(
+                                    bitmap = favicon,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                )
+                            }
+                            appIcon != null -> {
+                                Image(
+                                    bitmap = appIcon,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                )
+                            }
+                            else -> {
+                                Icon(
+                                    imageVector = Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
                     }
-                    if (totpData.accountName.isNotBlank()) {
+
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = totpData.accountName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = item.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
+                        if (totpData.issuer.isNotBlank()) {
+                            Text(
+                                text = totpData.issuer,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (totpData.accountName.isNotBlank()) {
+                            Text(
+                                text = totpData.accountName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 
@@ -443,21 +513,20 @@ fun TotpCodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 闪烁动画（倒计时<=5秒时启用，参考Aegis实现）
-                val blinkAlpha by if (remainingSeconds <= 5 && totpData.otpType != OtpType.HOTP) {
-                    val blinkTransition = rememberInfiniteTransition(label = "blink")
-                    blinkTransition.animateFloat(
-                        initialValue = 1f,
-                        targetValue = 0.5f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(durationMillis = 500, easing = LinearEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "blink_alpha"
-                    )
-                } else {
-                    remember { mutableFloatStateOf(1f) }
-                }
+                // 闪烁动画（倒计时<=5秒时启用）
+                // 保持 transition 在组合树中稳定，避免条件创建动画对象导致布局异常。
+                val blinkTransition = rememberInfiniteTransition(label = "blink")
+                val animatedBlinkAlpha by blinkTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 0.5f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 500, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "blink_alpha"
+                )
+                val shouldBlink = remainingSeconds <= 5 && totpData.otpType != OtpType.HOTP
+                val blinkAlpha = if (shouldBlink) animatedBlinkAlpha else 1f
                 
                 // 验证码（等宽字体）
                 // 统一进度条模式下放大验证码
@@ -480,8 +549,7 @@ fun TotpCodeCard(
                         totpData.otpType == OtpType.STEAM -> Color(0xFF66BB6A)
                         remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.primary
-                    },
-                    modifier = Modifier.graphicsLayer { alpha = blinkAlpha }
+                    }.copy(alpha = blinkAlpha)
                 )
                 
                 // 下一次验证码预览

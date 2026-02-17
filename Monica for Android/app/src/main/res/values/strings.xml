@@ -945,7 +945,7 @@
 
     <!-- Icon Cards -->
     <string name="icon_cards_title">Icon Cards</string>
-    <string name="icon_cards_description">Display website icons for password cards</string>
+    <string name="icon_cards_description">Display website icons for password, authenticator, and passkey cards</string>
     
     <!-- Password Card Display Mode -->
     <string name="password_card_display_mode_title">Card Content Display</string>

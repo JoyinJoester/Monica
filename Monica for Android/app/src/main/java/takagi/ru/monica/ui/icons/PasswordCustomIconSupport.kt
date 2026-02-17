@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URI
 import java.util.LinkedHashSet
 import java.util.Locale
 import kotlin.random.Random
@@ -38,9 +39,17 @@ data class SimpleIconOption(
     val label: String
 )
 
+data class AutoMatchedSimpleIcon(
+    val slug: String?,
+    val bitmap: ImageBitmap?,
+    val resolved: Boolean
+)
+
 object SimpleIconCatalog {
     @Volatile
     private var cachedOptions: List<SimpleIconOption>? = null
+    @Volatile
+    private var cachedSlugs: Set<String>? = null
 
     fun search(context: Context, query: String): List<SimpleIconOption> {
         val q = query.trim().lowercase(Locale.ROOT)
@@ -64,6 +73,13 @@ object SimpleIconCatalog {
 
         cachedOptions = resolved
         return resolved
+    }
+
+    fun getSlugs(context: Context): Set<String> {
+        cachedSlugs?.let { return it }
+        val slugs = getOptions(context).mapTo(LinkedHashSet()) { it.slug }
+        cachedSlugs = slugs
+        return slugs
     }
 
     private fun collectSlugs(context: Context, assetDir: String, output: MutableSet<String>) {
@@ -92,6 +108,151 @@ object SimpleIconCatalog {
             }
         }.ifBlank { slug }
     }
+}
+
+private val DOMAIN_ALIAS_TO_ICON_SLUG = mapOf(
+    "steampowered" to "steam",
+    "steamcommunity" to "steam",
+    "office365" to "office",
+    "live" to "microsoft",
+    "x" to "twitter"
+)
+
+private val WEB_SCHEMES = setOf("http", "https")
+
+private val GENERIC_HOST_LABELS = setOf(
+    "www", "m", "mobile", "login", "auth", "account", "accounts", "secure", "id", "api", "app", "store",
+    "com", "net", "org", "io", "co", "dev", "android"
+)
+
+private val GENERIC_PACKAGE_PARTS = setOf(
+    "com", "net", "org", "io", "co", "dev", "app", "android"
+)
+
+private val MULTI_PART_PUBLIC_SUFFIX = setOf(
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.cn", "com.hk", "co.jp", "com.au", "com.br", "co.in"
+)
+
+private val NON_ALNUM_REGEX = Regex("[^a-z0-9]")
+private val NON_ALNUM_OR_SPACE_REGEX = Regex("[^a-z0-9 ]")
+
+private data class ParsedWebsite(
+    val scheme: String?,
+    val host: String
+)
+
+private fun normalizeAutoSlugToken(value: String): String {
+    return value.trim()
+        .lowercase(Locale.ROOT)
+        .replace(NON_ALNUM_REGEX, "")
+}
+
+private fun parseWebsite(rawWebsite: String): ParsedWebsite {
+    val raw = rawWebsite.trim()
+    if (raw.isBlank()) return ParsedWebsite(scheme = null, host = "")
+    val withScheme = if (raw.contains("://")) raw else "https://$raw"
+    val parsed = runCatching { URI(withScheme) }.getOrNull()
+    return ParsedWebsite(
+        scheme = parsed?.scheme?.trim()?.lowercase(Locale.ROOT),
+        host = parsed?.host.orEmpty().trim().lowercase(Locale.ROOT)
+    )
+}
+
+private fun extractRegistrableDomainLabel(host: String): String {
+    val labels = host.split('.').filter { it.isNotBlank() }
+    if (labels.isEmpty()) return ""
+    if (labels.size == 1) return labels.first()
+
+    val lastTwo = labels.takeLast(2).joinToString(".")
+    return if (lastTwo in MULTI_PART_PUBLIC_SUFFIX && labels.size >= 3) {
+        labels[labels.size - 3]
+    } else {
+        labels[labels.size - 2]
+    }
+}
+
+private fun buildAutoMatchCandidates(
+    website: String,
+    title: String?,
+    appPackageName: String?
+): List<String> {
+    val candidates = LinkedHashSet<String>()
+
+    fun addCandidate(raw: String?) {
+        if (raw.isNullOrBlank()) return
+        val normalized = normalizeAutoSlugToken(raw)
+        if (normalized.isBlank()) return
+        candidates.add(normalized)
+        DOMAIN_ALIAS_TO_ICON_SLUG[normalized]?.let { alias -> candidates.add(alias) }
+    }
+
+    val parsedWebsite = parseWebsite(website)
+    val host = parsedWebsite.host
+    val isWebScheme = parsedWebsite.scheme == null || parsedWebsite.scheme in WEB_SCHEMES
+    if (host.isNotBlank()) {
+        val cleanHost = host.removePrefix("www.")
+        val labels = cleanHost.split('.').filter { it.isNotBlank() }
+
+        if (isWebScheme) {
+            addCandidate(extractRegistrableDomainLabel(cleanHost))
+            addCandidate(labels.joinToString(""))
+            labels.forEachIndexed { index, label ->
+                if (index < labels.lastIndex && label !in GENERIC_HOST_LABELS) {
+                    addCandidate(label)
+                }
+            }
+        } else {
+            labels.forEach { label ->
+                if (label !in GENERIC_HOST_LABELS) {
+                    addCandidate(label)
+                }
+            }
+            // Non-web URI (e.g. android://com.example.app) should not prefer a fake "domain" segment.
+            if (labels.size >= 2) {
+                addCandidate(labels[labels.size - 2])
+            } else if (labels.size == 1) {
+                addCandidate(labels.first())
+            }
+        }
+    }
+
+    title?.takeIf { it.isNotBlank() }?.let { rawTitle ->
+        val compactTitle = rawTitle.lowercase(Locale.ROOT).replace(NON_ALNUM_OR_SPACE_REGEX, " ")
+        compactTitle.split(' ')
+            .asSequence()
+            .filter { it.isNotBlank() && it.length > 1 && it !in GENERIC_HOST_LABELS }
+            .forEach { token -> addCandidate(token) }
+        addCandidate(compactTitle.replace(" ", ""))
+    }
+
+    appPackageName?.takeIf { it.isNotBlank() }?.let { pkg ->
+        val parts = pkg.lowercase(Locale.ROOT).split('.')
+        parts.asReversed()
+            .asSequence()
+            .filter { it.isNotBlank() && it !in GENERIC_PACKAGE_PARTS }
+            .forEach { part -> addCandidate(part) }
+    }
+
+    return candidates.toList()
+}
+
+fun resolveAutoMatchedSimpleIconSlug(
+    context: Context,
+    website: String,
+    title: String? = null,
+    appPackageName: String? = null
+): String? {
+    if (website.isBlank()) return null
+    val availableSlugs = SimpleIconCatalog.getSlugs(context)
+    if (availableSlugs.isEmpty()) return null
+
+    val candidates = buildAutoMatchCandidates(
+        website = website,
+        title = title,
+        appPackageName = appPackageName
+    )
+
+    return candidates.firstOrNull { candidate -> candidate in availableSlugs }
 }
 
 object PasswordCustomIconStore {
@@ -299,4 +460,42 @@ fun rememberSimpleIconBitmap(slug: String?, tintColor: Color, enabled: Boolean =
         icon = SimpleIconCache.getIcon(context, slug, darkTheme)
     }
     return icon
+}
+
+@Composable
+fun rememberAutoMatchedSimpleIcon(
+    website: String,
+    title: String? = null,
+    appPackageName: String? = null,
+    tintColor: Color,
+    enabled: Boolean = true
+): AutoMatchedSimpleIcon {
+    val context = LocalContext.current
+    var matchedSlug by remember(website, title, appPackageName, enabled) { mutableStateOf<String?>(null) }
+    var resolved by remember(website, title, appPackageName, enabled) { mutableStateOf(!enabled) }
+
+    LaunchedEffect(website, title, appPackageName, enabled) {
+        if (!enabled || website.isBlank()) {
+            matchedSlug = null
+            resolved = true
+            return@LaunchedEffect
+        }
+        resolved = false
+        matchedSlug = withContext(Dispatchers.Default) {
+            resolveAutoMatchedSimpleIconSlug(
+                context = context,
+                website = website,
+                title = title,
+                appPackageName = appPackageName
+            )
+        }
+        resolved = true
+    }
+
+    val bitmap = rememberSimpleIconBitmap(
+        slug = matchedSlug,
+        tintColor = tintColor,
+        enabled = enabled && !matchedSlug.isNullOrBlank()
+    )
+    return AutoMatchedSimpleIcon(slug = matchedSlug, bitmap = bitmap, resolved = resolved)
 }

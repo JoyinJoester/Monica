@@ -37,6 +37,8 @@ import javax.crypto.spec.SecretKeySpec
 object BitwardenCrypto {
     
     private const val TAG = "BitwardenCrypto"
+    private const val MAX_CIPHER_STRING_LENGTH = 1024 * 1024
+    private const val MAX_BASE64_PART_LENGTH = 1024 * 1024
     
     // 加密类型常量
     const val CIPHER_TYPE_AES_CBC = 0
@@ -355,6 +357,10 @@ object BitwardenCrypto {
      * 格式: type.iv|data|mac 或 type.iv|data
      */
     fun parseCipherString(cipherString: String): ParsedCipherString {
+        require(cipherString.isNotBlank()) { "Cipher string is blank" }
+        require(cipherString.length <= MAX_CIPHER_STRING_LENGTH) {
+            "Cipher string too large: ${cipherString.length}"
+        }
         val dotIndex = cipherString.indexOf('.')
         if (dotIndex == -1) {
             // 假设类型 0
@@ -369,15 +375,15 @@ object BitwardenCrypto {
     }
     
     private fun parseCipherStringParts(type: Int, data: String): ParsedCipherString {
-        val parts = data.split("|")
+        val parts = data.split('|')
         
         return when (type) {
             CIPHER_TYPE_AES_CBC -> {
                 require(parts.size >= 2) { "AES-CBC requires at least iv|data" }
                 ParsedCipherString(
                     type = type,
-                    iv = Base64.decode(parts[0], Base64.DEFAULT),
-                    data = Base64.decode(parts[1], Base64.DEFAULT),
+                    iv = decodeBase64Part(parts[0], "iv", type),
+                    data = decodeBase64Part(parts[1], "data", type),
                     mac = null
                 )
             }
@@ -385,12 +391,35 @@ object BitwardenCrypto {
                 require(parts.size >= 3) { "AES-CBC-HMAC requires iv|data|mac" }
                 ParsedCipherString(
                     type = type,
-                    iv = Base64.decode(parts[0], Base64.DEFAULT),
-                    data = Base64.decode(parts[1], Base64.DEFAULT),
-                    mac = Base64.decode(parts[2], Base64.DEFAULT)
+                    iv = decodeBase64Part(parts[0], "iv", type),
+                    data = decodeBase64Part(parts[1], "data", type),
+                    mac = decodeBase64Part(parts[2], "mac", type)
                 )
             }
             else -> throw IllegalArgumentException("Unsupported cipher type: $type")
+        }
+    }
+
+    private fun decodeBase64Part(rawPart: String, partName: String, type: Int): ByteArray {
+        val part = rawPart.trim()
+        require(part.isNotEmpty()) { "Empty cipher part: $partName, type=$type" }
+        require(part.length <= MAX_BASE64_PART_LENGTH) {
+            "Cipher part too large: $partName, len=${part.length}, type=$type"
+        }
+
+        val normalized = part
+            .replace('-', '+')
+            .replace('_', '/')
+        val padding = (4 - normalized.length % 4) % 4
+        val padded = if (padding == 0) normalized else normalized + "=".repeat(padding)
+
+        return try {
+            org.bouncycastle.util.encoders.Base64.decode(padded)
+        } catch (e: Throwable) {
+            throw IllegalArgumentException(
+                "Invalid base64 part: $partName, len=${part.length}, type=$type",
+                e
+            )
         }
     }
     

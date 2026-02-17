@@ -72,6 +72,7 @@ import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
 import takagi.ru.monica.ui.icons.PasswordCustomIconStore
 import takagi.ru.monica.ui.icons.SimpleIconCatalog
+import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.utils.PasswordGenerator
@@ -226,9 +227,19 @@ fun AddEditPasswordScreen(
     val selectedUploadedIconBitmap = rememberUploadedPasswordIcon(
         value = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) customIconValue else null
     )
+    val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
+        website = website,
+        title = title,
+        appPackageName = appPackageName,
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = settings.iconCardsEnabled && customIconType == PASSWORD_ICON_TYPE_NONE
+    )
     val fallbackWebsiteFavicon = rememberFavicon(
         url = website,
-        enabled = settings.iconCardsEnabled && customIconType == PASSWORD_ICON_TYPE_NONE
+        enabled = settings.iconCardsEnabled &&
+            customIconType == PASSWORD_ICON_TYPE_NONE &&
+            autoMatchedSimpleIcon.resolved &&
+            autoMatchedSimpleIcon.slug == null
     )
     
     // 字段可见性设置
@@ -832,6 +843,15 @@ fun AddEditPasswordScreen(
                                         selectedUploadedIconBitmap != null -> {
                                             Image(
                                                 bitmap = selectedUploadedIconBitmap,
+                                                contentDescription = stringResource(R.string.custom_icon_button),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+                                        autoMatchedSimpleIcon.bitmap != null -> {
+                                            Image(
+                                                bitmap = autoMatchedSimpleIcon.bitmap,
                                                 contentDescription = stringResource(R.string.custom_icon_button),
                                                 modifier = Modifier
                                                     .size(24.dp)

@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -69,6 +70,9 @@ import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import kotlinx.coroutines.flow.flowOf
+import takagi.ru.monica.autofill.ui.rememberAppIcon
+import takagi.ru.monica.autofill.ui.rememberFavicon
+import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 
 /**
  * Passkey 列表屏幕
@@ -627,6 +631,7 @@ fun PasskeyListScreen(
                                     boundPassword = boundPassword,
                                     currentCategoryName = categoryName,
                                     isCategoryLocked = boundPassword != null || passkey.syncStatus == "REFERENCE",
+                                    iconCardsEnabled = appSettings.iconCardsEnabled,
                                     isSelected = isSelected,
                                     selectionMode = selectionMode,
                                     onClick = { onPasskeyClick(passkey) },
@@ -1263,6 +1268,7 @@ private fun PasskeyListItem(
     boundPassword: PasswordEntry?,
     currentCategoryName: String,
     isCategoryLocked: Boolean = false,
+    iconCardsEnabled: Boolean = false,
     isSelected: Boolean = false,
     selectionMode: Boolean = false,
     onClick: () -> Unit,
@@ -1280,6 +1286,45 @@ private fun PasskeyListItem(
         if (selectionMode && expanded) {
             expanded = false
         }
+    }
+    val rpWebsite = remember(passkey.rpId) {
+        val rpId = passkey.rpId.trim()
+        when {
+            rpId.isBlank() -> ""
+            "://" in rpId -> rpId
+            else -> "https://$rpId"
+        }
+    }
+    val iconWebsite = remember(passkey.iconUrl, rpWebsite, boundPassword?.website) {
+        when {
+            rpWebsite.isNotBlank() -> rpWebsite
+            !passkey.iconUrl.isNullOrBlank() -> passkey.iconUrl.trim()
+            !boundPassword?.website.isNullOrBlank() -> boundPassword?.website?.trim().orEmpty()
+            else -> ""
+        }
+    }
+    val iconTitle = remember(passkey.rpName, passkey.userDisplayName, passkey.userName) {
+        passkey.rpName.ifBlank { passkey.userDisplayName.ifBlank { passkey.userName } }
+    }
+    val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
+        website = iconWebsite,
+        title = iconTitle,
+        appPackageName = boundPassword?.appPackageName?.takeIf { it.isNotBlank() },
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = iconCardsEnabled
+    )
+    val favicon = if (iconWebsite.isNotBlank()) {
+        rememberFavicon(
+            url = iconWebsite,
+            enabled = iconCardsEnabled && autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+        )
+    } else {
+        null
+    }
+    val appIcon = if (iconCardsEnabled && !boundPassword?.appPackageName.isNullOrBlank()) {
+        rememberAppIcon(boundPassword?.appPackageName.orEmpty())
+    } else {
+        null
     }
 
     Surface(
@@ -1322,20 +1367,43 @@ private fun PasskeyListItem(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Passkey 图标
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Key,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(22.dp)
-                        )
+                    // Passkey 图标（无背景直出）
+                    when {
+                        iconCardsEnabled && autoMatchedSimpleIcon.bitmap != null -> {
+                            Image(
+                                bitmap = autoMatchedSimpleIcon.bitmap,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                            )
+                        }
+                        iconCardsEnabled && favicon != null -> {
+                            Image(
+                                bitmap = favicon,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                            )
+                        }
+                        iconCardsEnabled && appIcon != null -> {
+                            Image(
+                                bitmap = appIcon,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
                     }
                     
                     Spacer(modifier = Modifier.width(12.dp))

@@ -589,9 +589,19 @@ class CipherSyncProcessor(
         if (encrypted.isNullOrBlank()) return null
         return try {
             BitwardenCrypto.decryptToString(encrypted, key)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            android.util.Log.w(
+                TAG,
+                "decryptString failed: len=${encrypted.length}, typeHint=${extractCipherTypeHint(encrypted)}, error=${e.javaClass.simpleName}"
+            )
             null
         }
+    }
+
+    private fun extractCipherTypeHint(cipherString: String): String {
+        val dotIndex = cipherString.indexOf('.')
+        if (dotIndex <= 0) return "none"
+        return cipherString.substring(0, dotIndex).take(8)
     }
     
     private fun extractRpIdFromUri(uri: String): String {

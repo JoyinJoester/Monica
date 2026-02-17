@@ -991,8 +991,18 @@ fun PasswordEntryCard(
                             null
                         }
                         val appIcon = rememberAppIcon(context, entry.appPackageName)
+                        val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
+                            website = entry.website,
+                            title = entry.title,
+                            appPackageName = entry.appPackageName,
+                            tintColor = MaterialTheme.colorScheme.primary,
+                            enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+                        )
                         val favicon = if (entry.website.isNotBlank()) {
-                            takagi.ru.monica.autofill.ui.rememberFavicon(url = entry.website, enabled = true)
+                            takagi.ru.monica.autofill.ui.rememberFavicon(
+                                url = entry.website,
+                                enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+                            )
                         } else {
                             null
                         }
@@ -1009,6 +1019,15 @@ fun PasswordEntryCard(
                             Image(
                                 bitmap = uploadedIcon,
                                 contentDescription = "Uploaded Icon",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .padding(end = 12.dp)
+                            )
+                        } else if (autoMatchedSimpleIcon.bitmap != null) {
+                            Image(
+                                bitmap = autoMatchedSimpleIcon.bitmap,
+                                contentDescription = "Auto Matched Icon",
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(CircleShape)

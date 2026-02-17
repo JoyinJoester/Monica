@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 
 /**
  * 密码列表项操作类型
@@ -271,9 +272,20 @@ private fun AppIconOrFallback(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
+        val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
+            website = password.website,
+            title = password.title,
+            appPackageName = password.appPackageName,
+            tintColor = MaterialTheme.colorScheme.primary,
+            enabled = iconCardsEnabled
+        )
+
         // 尝试加载 Favicon (如果开启) - 放在这里是为了rememberFavicon
         val favicon = if (iconCardsEnabled && password.website.isNotBlank()) {
-            rememberFavicon(url = password.website, enabled = true)
+            rememberFavicon(
+                url = password.website,
+                enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+            )
         } else {
             null
         }
@@ -287,6 +299,14 @@ private fun AppIconOrFallback(
                 if (icon != null) {
                     Image(
                         bitmap = icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                } else if (autoMatchedSimpleIcon.bitmap != null) {
+                    Image(
+                        bitmap = autoMatchedSimpleIcon.bitmap,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxSize()
@@ -307,6 +327,16 @@ private fun AppIconOrFallback(
                 }
             }
             // 尝试加载网站图标
+            iconCardsEnabled && autoMatchedSimpleIcon.bitmap != null -> {
+                Image(
+                    bitmap = autoMatchedSimpleIcon.bitmap,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            }
+            // 尝试加载网站 favicon
             iconCardsEnabled && favicon != null -> {
                 Image(
                     bitmap = favicon,
