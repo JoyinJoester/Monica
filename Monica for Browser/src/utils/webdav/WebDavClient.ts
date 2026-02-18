@@ -397,7 +397,12 @@ class WebDavClientService {
             }
 
             const text = response.body;
-            console.log('[WebDav] PROPFIND response:', text.substring(0, 500));
+            if (!text || text.length === 0) {
+                console.warn('[WebDav] Empty response body');
+                return [];
+            }
+
+            console.log('[WebDav] PROPFIND response:', text.substring(0, Math.min(500, text.length)));
 
             // Parse XML response
             const parser = new DOMParser();
@@ -406,33 +411,46 @@ class WebDavClientService {
             const backups: BackupFile[] = [];
             const responses = doc.querySelectorAll('response, D\\:response');
 
-            responses.forEach((resp) => {
-                const href = resp.querySelector('href, D\\:href')?.textContent || '';
-                const displayName = resp.querySelector('displayname, D\\:displayname')?.textContent || '';
-                const contentLength = resp.querySelector('getcontentlength, D\\:getcontentlength')?.textContent || '0';
-                const lastModified = resp.querySelector('getlastmodified, D\\:getlastmodified')?.textContent || '';
-                const resourceType = resp.querySelector('resourcetype, D\\:resourcetype');
-                const isCollection = resourceType?.querySelector('collection, D\\:collection');
+            if (!responses || responses.length === 0) {
+                console.log('[WebDav] No backup files found');
+                return [];
+            }
 
-                if (isCollection) return;
+            for (let i = 0; i < responses.length; i++) {
+                try {
+                    const resp = responses[i];
+                    if (!resp) continue;
 
-                const filename = displayName || decodeURIComponent(href.split('/').pop() || '');
-                if (!filename.endsWith('.zip')) return;
+                    const href = resp.querySelector('href, D\\:href')?.textContent || '';
+                    const displayName = resp.querySelector('displayname, D\\:displayname')?.textContent || '';
+                    const contentLength = resp.querySelector('getcontentlength, D\\:getcontentlength')?.textContent || '0';
+                    const lastModified = resp.querySelector('getlastmodified, D\\:getlastmodified')?.textContent || '';
+                    const resourceType = resp.querySelector('resourcetype, D\\:resourcetype');
+                    const isCollection = resourceType?.querySelector('collection, D\\:collection');
 
-                backups.push({
-                    filename,
-                    path: href,
-                    size: parseInt(contentLength, 10) || 0,
-                    lastModified: lastModified ? new Date(lastModified) : new Date(),
-                    isEncrypted: filename.includes('.enc.'),
-                });
-            });
+                    if (isCollection) continue;
+
+                    const filename = displayName || decodeURIComponent(href.split('/').pop() || '');
+                    if (!filename.endsWith('.zip')) continue;
+
+                    backups.push({
+                        filename,
+                        path: href,
+                        size: parseInt(contentLength, 10) || 0,
+                        lastModified: lastModified ? new Date(lastModified) : new Date(),
+                        isEncrypted: filename.includes('.enc.'),
+                    });
+                } catch (itemError) {
+                    console.error('[WebDav] Error parsing backup item:', itemError);
+                    // Continue to next item
+                }
+            }
 
             backups.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
             console.log('[WebDav] Found', backups.length, 'backups');
             return backups;
         } catch (e) {
-            console.error('[WebDav] Error listing backups:', e);
+            console.error('[WebDav] Error listing backups:', e, (e as Error).stack);
             return [];
         }
     }
