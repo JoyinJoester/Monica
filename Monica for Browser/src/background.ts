@@ -27,7 +27,8 @@ interface WebDavResponse {
     statusText?: string;
     headers?: Record<string, string>;
     body?: string;
-    arrayBuffer?: number[];  // ArrayBuffer as number array for serialization
+    arrayBuffer?: number[];  // ArrayBuffer as number array for serialization (deprecated)
+    arrayBufferBase64?: string;  // ArrayBuffer as Base64 string (more efficient)
     error?: string;
 }
 
@@ -74,17 +75,23 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
             request.method === 'GET';
 
         let responseBody: string | undefined;
-        let arrayBuffer: number[] | undefined;
+        let arrayBufferBase64: string | undefined;
 
         if (isBinary && response.ok) {
-            // Return as array of numbers for serialization
+            // Return as Base64 string for more efficient serialization
             const buffer = await response.arrayBuffer();
-            // Limit file size to prevent memory overflow (max 50MB)
-            const maxSize = 50 * 1024 * 1024; // 50MB
+            // Limit file size to prevent memory overflow (max 100MB)
+            const maxSize = 100 * 1024 * 1024; // 100MB
             if (buffer.byteLength > maxSize) {
-                throw new Error(`文件过大 (${(buffer.byteLength / 1024 / 1024).toFixed(2)}MB)，超过 50MB 限制`);
+                throw new Error(`文件过大 (${(buffer.byteLength / 1024 / 1024).toFixed(2)}MB)，超过 100MB 限制`);
             }
-            arrayBuffer = Array.from(new Uint8Array(buffer));
+            // Convert ArrayBuffer to Base64 string
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            arrayBufferBase64 = btoa(binary);
         } else {
             responseBody = await response.text();
         }
@@ -95,7 +102,7 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
             statusText: response.statusText,
             headers: responseHeaders,
             body: responseBody,
-            arrayBuffer,
+            arrayBufferBase64,
         };
     } catch (error) {
         const err = error as Error;

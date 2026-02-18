@@ -25,7 +25,8 @@ interface BackgroundResponse {
     statusText?: string;
     headers?: Record<string, string>;
     body?: string;
-    arrayBuffer?: number[];
+    arrayBuffer?: number[];  // Deprecated
+    arrayBufferBase64?: string;  // More efficient Base64 encoding
     error?: string;
 }
 
@@ -340,14 +341,28 @@ class WebDavClientService {
         const path = `/Monica_Backups/${filename}`;
         const response = await this.request('GET', path);
 
-        if (!response.success || !response.arrayBuffer) {
+        // Try Base64 first (newer format), fallback to number array (old format)
+        if (!response.success) {
             throw new Error(`Download failed: ${response.error || `HTTP ${response.status}`}`);
         }
 
-        // Convert number array back to ArrayBuffer
-        const uint8Array = new Uint8Array(response.arrayBuffer);
-        console.log('[WebDav] Downloaded:', path);
-        return uint8Array.buffer as ArrayBuffer;
+        if (response.arrayBufferBase64) {
+            // Convert Base64 string back to ArrayBuffer
+            const binaryString = atob(response.arrayBufferBase64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            console.log('[WebDav] Downloaded (Base64):', path);
+            return bytes.buffer;
+        } else if (response.arrayBuffer) {
+            // Legacy format: convert number array back to ArrayBuffer
+            const uint8Array = new Uint8Array(response.arrayBuffer);
+            console.log('[WebDav] Downloaded (legacy):', path);
+            return uint8Array.buffer as ArrayBuffer;
+        } else {
+            throw new Error(`Download failed: No data received`);
+        }
     }
 
     /**
