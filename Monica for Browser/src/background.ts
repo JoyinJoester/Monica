@@ -94,10 +94,15 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
         };
     } catch (error) {
         const err = error as Error;
-        console.error('[Background] WebDAV request failed:', err);
+        console.error('[Background] WebDAV request failed:', {
+            method: request.method,
+            url: request.url,
+            error: err.message,
+            errorDetails: err.stack,
+        });
         return {
             success: false,
-            error: err.message || 'Network error',
+            error: `${err.message} (${request.method} ${request.url})`,
         };
     }
 }
