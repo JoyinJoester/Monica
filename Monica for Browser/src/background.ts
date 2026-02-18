@@ -79,6 +79,11 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
         if (isBinary && response.ok) {
             // Return as array of numbers for serialization
             const buffer = await response.arrayBuffer();
+            // Limit file size to prevent memory overflow (max 50MB)
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            if (buffer.byteLength > maxSize) {
+                throw new Error(`文件过大 (${(buffer.byteLength / 1024 / 1024).toFixed(2)}MB)，超过 50MB 限制`);
+            }
             arrayBuffer = Array.from(new Uint8Array(buffer));
         } else {
             responseBody = await response.text();
