@@ -62,14 +62,20 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
 
         const response = await fetch(request.url, fetchOptions);
 
-        // Get response headers
+        // Get response headers (safe check)
         const responseHeaders: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
-            responseHeaders[key] = value;
-        });
+        if (response && response.headers) {
+            try {
+                response.headers.forEach((value, key) => {
+                    responseHeaders[key] = value;
+                });
+            } catch (e) {
+                console.error('[Background] Failed to iterate headers:', e);
+            }
+        }
 
         // Check if response is binary (for downloads)
-        const contentType = response.headers.get('content-type') || '';
+        const contentType = response?.headers?.get('content-type') || '';
         const isBinary = contentType.includes('octet-stream') ||
             contentType.includes('zip') ||
             request.method === 'GET';
@@ -111,7 +117,18 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
             url: request.url,
             error: err.message,
             errorDetails: err.stack,
+            errorName: err.name,
+            cause: (err as any).cause,
         });
+
+        // Check for specific error types
+        if (err.message.includes('Failed to fetch')) {
+            return {
+                success: false,
+                error: `网络请求失败 (${request.method} ${request.url})。可能原因：CORS、HTTPS证书、或网络连接`,
+            };
+        }
+
         return {
             success: false,
             error: `${err.message} (${request.method} ${request.url})`,

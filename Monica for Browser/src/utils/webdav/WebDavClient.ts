@@ -66,7 +66,8 @@ class WebDavClientService {
         body?: string
     ): Promise<BackgroundResponse> {
         return new Promise((resolve) => {
-            chrome.runtime.sendMessage(
+            const api = typeof chrome !== 'undefined' ? chrome.runtime : (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime);
+            api.sendMessage(
                 {
                     type: 'WEBDAV_REQUEST',
                     method,
@@ -75,10 +76,10 @@ class WebDavClientService {
                     body,
                 },
                 (response: BackgroundResponse) => {
-                    if (chrome.runtime.lastError) {
+                    if (api.lastError) {
                         resolve({
                             success: false,
-                            error: chrome.runtime.lastError.message || 'Background script error',
+                            error: api.lastError.message || 'Background script error',
                         });
                     } else {
                         resolve(response || { success: false, error: 'No response from background' });
