@@ -314,21 +314,28 @@ class BackupManagerService {
             // 3b. Restore TOTPs from CSV (Browser/WebDAV format)
             // Browser CSV format: title,issuer,accountName,secret,period,digits,algorithm,otpType
             const totpCsvFiles = Object.keys(zip.files).filter(name => name.includes('_totp.csv'));
+            console.log('[BackupManager] TOTP CSV files found:', totpCsvFiles);
+
             for (const filename of totpCsvFiles) {
                 try {
                     const content = await zip.file(filename)?.async('text');
                     if (content) {
+                        console.log('[BackupManager] TOTP CSV content (first 500 chars):', content.substring(0, Math.min(500, content.length)));
+
                         const items = this.parseCSV(content);
+                        console.log('[BackupManager] Parsed', items.length, 'TOTP items from', filename);
+
                         for (const item of items) {
                             // Get title from column directly
                             const title = item.title || item.Title || 'Unnamed';
+                            console.log('[BackupManager] Processing TOTP:', title, 'Keys:', Object.keys(item));
 
                             // Get secret from column directly (browser format has direct columns)
                             const secret = item.secret || item.Secret || '';
 
                             // Skip if no secret
                             if (!secret) {
-                                console.warn('[BackupManager] TOTP CSV has no secret:', title);
+                                console.warn('[BackupManager] TOTP CSV has no secret:', title, 'All columns:', JSON.stringify(item));
                                 continue;
                             }
 
@@ -363,7 +370,7 @@ class BackupManagerService {
                         }
                     }
                 } catch (e) {
-                    console.error('[BackupManager] TOTP CSV restore error:', e);
+                    console.error('[BackupManager] TOTP CSV restore error:', e, (e as Error).stack);
                     errors.push(`TOTP 恢复失败: ${filename}`);
                 }
             }

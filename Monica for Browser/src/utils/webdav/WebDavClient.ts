@@ -67,6 +67,16 @@ class WebDavClientService {
     ): Promise<BackgroundResponse> {
         return new Promise((resolve) => {
             const api = typeof chrome !== 'undefined' ? chrome.runtime : (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime);
+
+            // Set timeout for message response (30 seconds)
+            const timeout = setTimeout(() => {
+                console.warn('[WebDav] Request timeout:', method, url);
+                resolve({
+                    success: false,
+                    error: `请求超时 (30秒) - ${method} ${url}`,
+                });
+            }, 30000);
+
             api.sendMessage(
                 {
                     type: 'WEBDAV_REQUEST',
@@ -76,11 +86,25 @@ class WebDavClientService {
                     body,
                 },
                 (response: BackgroundResponse) => {
+                    clearTimeout(timeout);
+
+                    // Check for runtime.lastError (important!)
                     if (api.lastError) {
-                        resolve({
-                            success: false,
-                            error: api.lastError.message || 'Background script error',
-                        });
+                        const errorMessage = api.lastError.message || 'Background script error';
+                        console.warn('[WebDav] Runtime lastError:', errorMessage);
+
+                        // Handle port closed error gracefully
+                        if (errorMessage.includes('message port closed') || errorMessage.includes('receiving end')) {
+                            resolve({
+                                success: false,
+                                error: `消息连接已关闭，可能是页面刷新或超时 - ${method} ${url}`,
+                            });
+                        } else {
+                            resolve({
+                                success: false,
+                                error: errorMessage,
+                            });
+                        }
                     } else {
                         resolve(response || { success: false, error: 'No response from background' });
                     }
