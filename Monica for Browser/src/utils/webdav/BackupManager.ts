@@ -326,7 +326,7 @@ class BackupManagerService {
                         console.log('[BackupManager] Parsed', items.length, 'TOTP items from', filename);
 
                         for (const item of items) {
-                            let title = item.title || item.Title || 'Unnamed';
+                            const title = item.title || item.Title || 'Unnamed';
                             let secret = item.secret || item.Secret || '';
                             let totpData: TotpData;
 
@@ -349,7 +349,7 @@ class BackupManagerService {
                                         algorithm: parsedData.algorithm || 'SHA1',
                                         otpType: OtpType.TOTP,
                                     };
-                                } catch (e) {
+                                } catch {
                                     console.warn('[BackupManager] Failed to parse Data JSON:', dataJson);
                                     continue;
                                 }

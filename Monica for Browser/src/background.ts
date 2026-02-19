@@ -111,14 +111,14 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
             arrayBufferBase64,
         };
     } catch (error) {
-        const err = error as Error;
+        const err = error as Error & { cause?: unknown };
         console.error('[Background] WebDAV request failed:', {
             method: request.method,
             url: request.url,
             error: err.message,
             errorDetails: err.stack,
             errorName: err.name,
-            cause: (err as any).cause,
+            cause: err.cause,
         });
 
         // Check for specific error types
@@ -565,7 +565,6 @@ function generateTotpCode(totp: TotpItem): { code: string; timeRemaining: number
 async function saveNewPassword(credentials: { website: string; title: string; username: string; password: string }) {
     const result = await browserAPI.storage.local.get(STORAGE_KEY);
     const rawItems = result[STORAGE_KEY];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items: Record<string, unknown>[] = Array.isArray(rawItems) ? rawItems : [];
 
     // Generate new ID
