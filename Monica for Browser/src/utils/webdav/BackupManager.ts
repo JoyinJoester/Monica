@@ -326,29 +326,52 @@ class BackupManagerService {
                         console.log('[BackupManager] Parsed', items.length, 'TOTP items from', filename);
 
                         for (const item of items) {
-                            // Get title from column directly
-                            const title = item.title || item.Title || 'Unnamed';
+                            let title = item.title || item.Title || 'Unnamed';
+                            let secret = item.secret || item.Secret || '';
+                            let totpData: TotpData;
+
                             console.log('[BackupManager] Processing TOTP:', title, 'Keys:', Object.keys(item));
 
-                            // Get secret from column directly (browser format has direct columns)
-                            const secret = item.secret || item.Secret || '';
+                            // Check if Data column exists (export format with JSON)
+                            const dataJson = item.Data || item.data;
 
-                            // Skip if no secret
-                            if (!secret) {
-                                console.warn('[BackupManager] TOTP CSV has no secret:', title, 'All columns:', JSON.stringify(item));
-                                continue;
+                            if (dataJson) {
+                                // Export format: parse JSON from Data column
+                                try {
+                                    const parsedData = JSON.parse(dataJson);
+                                    secret = parsedData.secret;
+                                    totpData = {
+                                        secret,
+                                        issuer: parsedData.issuer || '',
+                                        accountName: parsedData.accountName || '',
+                                        period: parsedData.period || 30,
+                                        digits: parsedData.digits || 6,
+                                        algorithm: parsedData.algorithm || 'SHA1',
+                                        otpType: OtpType.TOTP,
+                                    };
+                                } catch (e) {
+                                    console.warn('[BackupManager] Failed to parse Data JSON:', dataJson);
+                                    continue;
+                                }
+                            } else {
+                                // Browser format: direct columns
+                                if (!secret) {
+                                    console.warn('[BackupManager] TOTP CSV has no secret:', title, 'All columns:', JSON.stringify(item));
+                                    continue;
+                                }
+                                totpData = {
+                                    secret,
+                                    issuer: item.issuer || item.Issuer || '',
+                                    accountName: item.accountName || item.AccountName || '',
+                                    period: parseInt(item.period || item.Period || '30') || 30,
+                                    digits: parseInt(item.digits || item.Digits || '6') || 6,
+                                    algorithm: item.algorithm || item.Algorithm || 'SHA1',
+                                    otpType: OtpType.TOTP,
+                                };
                             }
 
-                            // Build TOTP data from direct columns
-                            const totpData: TotpData = {
-                                secret,
-                                issuer: item.issuer || item.Issuer || '',
-                                accountName: item.accountName || item.AccountName || '',
-                                period: parseInt(item.period || item.Period || '30') || 30,
-                                digits: parseInt(item.digits || item.Digits || '6') || 6,
-                                algorithm: item.algorithm || item.Algorithm || 'SHA1',
-                                otpType: OtpType.TOTP,
-                            };
+                            // Get notes from Notes column (if available)
+                            const notes = item.Notes || item.notes || '';
 
                             // Check duplicate with composite key
                             const totpKey = `${title}|${totpData.issuer || ''}|${totpData.accountName || ''}`.toLowerCase();
@@ -361,7 +384,7 @@ class BackupManagerService {
                             await saveItem({
                                 itemType: ItemType.Totp,
                                 title,
-                                notes: '',
+                                notes,
                                 isFavorite: false,
                                 sortOrder: 0,
                                 itemData: totpData,
