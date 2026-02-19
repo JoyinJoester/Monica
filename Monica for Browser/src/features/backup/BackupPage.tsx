@@ -294,9 +294,9 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings, 
             const report = await backupManager.restoreBackup(data, password);
             setRestoreReport(report);
 
-            // Reload the page to show new data
+            // Reload the page immediately after restore to show new data
             if (report.success) {
-                setTimeout(() => window.location.reload(), 2000);
+                window.location.reload();
             }
         } catch (e) {
             const err = e as Error;

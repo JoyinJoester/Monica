@@ -88,9 +88,11 @@ class WebDavClientService {
                 (response: BackgroundResponse) => {
                     clearTimeout(timeout);
 
-                    // Check for runtime.lastError (important!)
-                    if (api.lastError) {
-                        const errorMessage = api.lastError.message || 'Background script error';
+                    // Explicitly check and consume runtime.lastError to suppress Chrome warnings
+                    const lastError = api.lastError;
+
+                    if (lastError) {
+                        const errorMessage = lastError.message || 'Background script error';
                         console.warn('[WebDav] Runtime lastError:', errorMessage);
 
                         // Handle port closed error gracefully
