@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
 import android.service.autofill.Dataset
+import android.service.autofill.FillResponse
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
@@ -95,7 +96,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val autofillHints: ArrayList<String>? = null,
         val suggestedPasswordIds: LongArray? = null,
         val isSaveMode: Boolean = false,
-        val fieldSignatureKey: String? = null
+        val fieldSignatureKey: String? = null,
+        val responseAuthMode: Boolean = false
     ) : Parcelable {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -321,8 +323,14 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
         
+        val dataset = datasetBuilder.build()
+        val authResult: Parcelable = if (args.responseAuthMode) {
+            FillResponse.Builder().addDataset(dataset).build()
+        } else {
+            dataset
+        }
         val resultIntent = Intent().apply {
-            putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, datasetBuilder.build())
+            putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, authResult)
         }
         
         // 处理 URI 绑定
@@ -802,3 +810,4 @@ private fun NoSuggestionsHint() {
         )
     }
 }
+

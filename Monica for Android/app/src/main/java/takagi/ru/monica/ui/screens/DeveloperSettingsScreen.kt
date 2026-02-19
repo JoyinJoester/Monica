@@ -560,10 +560,21 @@ private object DeveloperLogDebugHelper {
     private const val LOG_LINE_LIMIT = 1200
     private const val SHARE_DIR = "temp_photos"
     private const val SHARE_PREFIX = "monica_logs_"
+    private val AUTOFILL_LOG_TAGS = arrayOf(
+        "MonicaAutofill:V",
+        "AutofillPicker:V",
+        "AutofillPickerV2:V",
+        "EnhancedParser:V",
+        "EnhancedFieldParser:V",
+        "SmartFieldDetector:V",
+        "*:S"
+    )
     private val timeFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     private val fileFormatter = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
 
     suspend fun collectLogs(context: Context): DeveloperLogSnapshot = withContext(Dispatchers.IO) {
+        runCatching { AutofillLogger.initialize(context.applicationContext) }
+        val autofillTagLogs = readAutofillTagLogs()
         val appProcessLogs = readLogcat(
             arrayOf(
                 "logcat",
@@ -573,7 +584,7 @@ private object DeveloperLogDebugHelper {
                 "--pid",
                 android.os.Process.myPid().toString(),
                 "-t",
-                LOG_LINE_LIMIT.toString(),
+                "400",
                 "*:V"
             )
         )
@@ -592,7 +603,12 @@ private object DeveloperLogDebugHelper {
             )
         )
         val selectedLogs = buildString {
+            if (autofillTagLogs.isNotBlank()) {
+                appendLine("---- autofill-tags ----")
+                appendLine(autofillTagLogs.trim())
+            }
             if (appProcessLogs.isNotBlank()) {
+                if (isNotBlank()) appendLine()
                 appendLine("---- app-process ----")
                 appendLine(appProcessLogs.trim())
             }
@@ -607,6 +623,11 @@ private object DeveloperLogDebugHelper {
             AutofillLogger.exportLogs(300)
         }.getOrElse {
             "AutofillLogger unavailable: ${it.message}"
+        }
+        val persistedAutofillLogs = runCatching {
+            AutofillLogger.exportPersistedLogs(1200)
+        }.getOrElse {
+            "Autofill persisted logs unavailable: ${it.message}"
         }
 
         val report = buildString {
@@ -624,10 +645,22 @@ private object DeveloperLogDebugHelper {
             appendLine()
             appendLine("=== Autofill Structured Logs ===")
             appendLine(autofillLogs.trim())
+            appendLine()
+            appendLine("=== Autofill Persisted Logs ===")
+            if (persistedAutofillLogs.isBlank()) {
+                appendLine(context.getString(R.string.developer_no_logs))
+            } else {
+                appendLine(persistedAutofillLogs.trim())
+            }
         }
 
         val parsedSystem = parseLines(selectedLogs)
-        val parsed = if (parsedSystem.isNotEmpty()) parsedSystem else parseLines(autofillLogs)
+        val parsedPersisted = parseLines(persistedAutofillLogs)
+        val parsed = when {
+            parsedSystem.isNotEmpty() -> parsedSystem
+            parsedPersisted.isNotEmpty() -> parsedPersisted
+            else -> parseLines(autofillLogs)
+        }
         DeveloperLogSnapshot(report = report, lines = parsed)
     }
 
@@ -713,6 +746,20 @@ private object DeveloperLogDebugHelper {
         return output.trim()
     }
 
+    private fun readAutofillTagLogs(): String {
+        val command = mutableListOf(
+            "logcat",
+            "-d",
+            "-v",
+            "threadtime",
+            "-t",
+            LOG_LINE_LIMIT.toString()
+        ).apply {
+            addAll(AUTOFILL_LOG_TAGS)
+        }.toTypedArray()
+        return readLogcat(command)
+    }
+
     private fun parseLines(raw: String): List<DeveloperLogLine> {
         if (raw.isBlank()) return emptyList()
         return raw
@@ -747,3 +794,4 @@ private object DeveloperLogDebugHelper {
         }
     }
 }
+

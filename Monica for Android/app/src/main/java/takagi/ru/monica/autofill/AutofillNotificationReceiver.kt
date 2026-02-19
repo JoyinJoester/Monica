@@ -44,3 +44,4 @@ class AutofillNotificationReceiver : BroadcastReceiver() {
         }
     }
 }
+

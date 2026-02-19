@@ -401,3 +401,4 @@ private fun AutofillValue?.safeTextOrNull(tag: String, fieldDescription: String)
         null
     }
 }
+

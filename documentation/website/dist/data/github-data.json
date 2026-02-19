@@ -1,0 +1,726 @@
+{
+  "generated_at": "2026-02-19T09:55:31.849Z",
+  "stats": {
+    "stars": 217,
+    "forks": 9,
+    "issues": 4
+  },
+  "commits": [
+    {
+      "sha": "d46cf27",
+      "message": "fix(android-autofill): stabilize second-pass trigger with session recovery and fallback target",
+      "date": "2026-02-19T09:51:20Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/d46cf27c051e7a61ad5335bc5004276316259abf"
+    },
+    {
+      "sha": "2e1f797",
+      "message": "Merge pull request #21 from aiguozhi123456/main\n\n添加Gecko内核支持，修复TOTP导入错误",
+      "date": "2026-02-19T04:49:10Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/2e1f797e05ecc410e1938a439f57fd6f2b91361c"
+    },
+    {
+      "sha": "4050c53",
+      "message": "删除 FIREFOX_QUICK_START.md",
+      "date": "2026-02-19T04:37:05Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4050c530e6bf71ef09bb9ac38631338e384b74ce"
+    },
+    {
+      "sha": "3861181",
+      "message": "删除 FIREFOX_COMPATIBILITY.md",
+      "date": "2026-02-19T04:36:41Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/386118150380d826935305cb0e48b3626d14a0e2"
+    },
+    {
+      "sha": "c3e5d3a",
+      "message": "Merge branch 'JoyinJoester:main' into main",
+      "date": "2026-02-19T04:32:32Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c3e5d3a6dc02c362a64f29690adaf3eb4a9cf315"
+    },
+    {
+      "sha": "1f106fd",
+      "message": "feat: 恢复成功后添加5秒倒计时提示\n\n- 恢复成功后显示动态倒计时（5秒）\n- 在统计信息下方显示自动刷新提示\n- 支持中英文倒计时提示",
+      "date": "2026-02-19T04:09:21Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/1f106fd3e3097b118d03d4faa84fa44a1f720148"
+    },
+    {
+      "sha": "e205880",
+      "message": "fix: 修复页面重新加载时的消息端口关闭错误\n\n- WebDavClient: 显式消费 runtime.lastError 以抑制 Chrome 警告\n- BackupPage: 移除 2秒延迟，改为立即重新加载以减少错误发生",
+      "date": "2026-02-19T04:04:41Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e2058809432c948933365bf88a5282faedea5fdc"
+    },
+    {
+      "sha": "0190d0e",
+      "message": "fix: 修复所有ESLint错误和警告\n\n- BackupManager.ts: let title → const title，移除未使用的 catch 变量\n- background.ts: 使用正确的 Error 类型，移除未使用的 eslint-disable\n- eslint.config.js: 禁用 react-refresh/only-export-components 规则",
+      "date": "2026-02-19T03:54:33Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0190d0ecf6f53d7572eab02ff219a141f43ea164"
+    },
+    {
+      "sha": "66f5554",
+      "message": "fix: 支持导出格式的 TOTP CSV 导入（Data列JSON）",
+      "date": "2026-02-19T03:42:25Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/66f5554551ee9b8a511a77cad8fd94b7f879b44e"
+    },
+    {
+      "sha": "46dd476",
+      "message": "fix: 增强 TOTP CSV 解析和消息错误处理\n\n问题1: TOTP CSV has no secret\n- 某些 TOTP 记录的 secret 字段为空\n- CSV 解析可能有问题，导致无法正确获取 secret\n- 缺少详细的调试信息\n\n问题2: Unchecked runtime.lastError: message port closed\n- 消息端口在响应接收前被关闭\n- 可能是页面刷新或请求超时\n- 需要更好的错误处理和超时机制\n\n修复1: BackupManager.ts (TOTP CSV 解析)\n- 添加详细的调试日志\n- 输出 CSV 内容预览（前500字符）\n- 输出每个 TOTP 项目的所有列\n- 记录没有 secret 的项目的完整信息\n- 帮助诊断 CSV 格式问题\n\n修复2: WebDavClient.ts (消息错误处理)\n- 添加 30 秒请求超时\n- 增强 runtime.lastError 检查\n- 特殊处理端口关闭错误（message port closed）\n- 提供更友好的中文错误提示\n- 防止超时导致 Promise 挂起\n\n好处：\n✅ 更好的 TOTP CSV 问题诊断\n✅ 防止消息挂起导致扩展不稳定\n✅ 明确的超时和错误提示\n✅ 防止 runtime.lastError 警告",
+      "date": "2026-02-19T02:05:54Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/46dd476e9f035a8aaee2d767c2a9b741c32e7fb4"
+    },
+    {
+      "sha": "4284d31",
+      "message": "fix: 增强 listBackups 的错误处理，防止崩溃\n\n问题：listBackups 函数可能因以下原因崩溃\n1. response.body 为空或 undefined\n2. responses.forEach 遍历时某个项目解析失败\n3. 没有单个项目的错误隔离\n\n修复：\n1. 添加 response.body 空值检查\n2. 添加 responses 空值检查\n3. 将 forEach 改为 for 循环，实现错误隔离\n4. 为单个项目解析添加 try-catch\n5. 增强错误日志，包含堆栈信息\n\n好处：\n✅ 防止单个备份文件解析失败影响其他文件\n✅ 更安全的空值处理\n✅ 更详细的错误诊断信息\n✅ 扩展不会因解析错误而崩溃",
+      "date": "2026-02-18T14:02:24Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4284d31456aee5e536a15a52fe3142b1d7f37864"
+    },
+    {
+      "sha": "eafaeb5",
+      "message": "fix: 修复 WebDavClient 和 Background 的崩溃问题\n\n问题：28KB 文件仍导致扩展崩溃重载\n\n根本原因：\n1. WebDavClient.ts 使用 chrome.runtime.sendMessage，没有浏览器兼容层\n2. background.ts 直接访问 response.headers 可能导致崩溃\n3. 错误信息不够详细，难以诊断问题\n\n修复：\n1. WebDavClient.ts:\n   - 添加浏览器兼容层，支持 chrome 和 browser API\n   - 使用 browserAPI 替代直接调用 chrome.runtime\n\n2. background.ts:\n   - 安全检查 response 和 response.headers\n   - 使用 try-catch 保护 headers.forEach\n   - 增强错误信息，包含错误类型和可能原因\n   - 特殊处理 'Failed to fetch' 错误\n\n好处：\n✅ 防止因 response 访问导致崩溃\n✅ 更好的错误诊断信息\n✅ 跨浏览器兼容性\n✅ 给出明确的错误提示和可能原因",
+      "date": "2026-02-18T13:54:39Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/eafaeb57dce97027dfad4342ae92c95773dc2f68"
+    },
+    {
+      "sha": "b731c3b",
+      "message": "fix: 使用 Base64 编码优化 WebDAV 二进制数据传输\n\n问题：ArrayBuffer 转 number[] 导致内存溢出\n- 10MB ZIP = 10,000,000 个数字 ~80MB 内存\n- 超过扩展内存限制导致崩溃和重载\n\n解决方案：使用 Base64 字符串编码\n- Base64 比数字数组更紧凑（4/3 倍原始大小）\n- 可以直接通过 message passing 传输\n- 提高文件大小限制到 100MB\n- 向后兼容旧格式（number[]）\n\n修改：\n- background.ts: 添加 arrayBufferBase64 字段，使用 Base64 编码\n- WebDavClient.ts: 优先使用 Base64 解码，回退到旧格式\n- 移除临时的 50MB 限制，改为 100MB\n\n好处：\n✅ 支持更大的备份文件\n✅ 更高效的数据传输\n✅ 减少内存使用\n✅ 防止扩展崩溃\n✅ 向后兼容",
+      "date": "2026-02-18T13:52:14Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b731c3b10eb5ac12f0c8d5f3893894693c613199"
+    },
+    {
+      "sha": "ca6d5d8",
+      "message": "fix: 添加 WebDAV 下载文件大小限制，防止扩展崩溃\n\n问题：拉取大备份文件时扩展崩溃并自动重载\n\n原因：ArrayBuffer 转 number[] 导致内存溢出\n- 10MB ZIP = 10,000,000 个数字\n- 每个数字 ~8 字节 + 序列化开销\n- 超过扩展内存限制导致崩溃\n\n解决方案：\n- 添加 50MB 文件大小限制\n- 超过限制时给出明确错误提示\n- 防止扩展因内存溢出而重载\n\n临时方案，后续可优化为 Base64 编码以支持更大文件",
+      "date": "2026-02-18T13:51:05Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ca6d5d83fcb7836ee2929cd9cbe22ba52d677fb8"
+    },
+    {
+      "sha": "7263207",
+      "message": "improve: 增强 WebDAV 错误日志，便于诊断 Firefox 兼容性问题\n\n- 在 handleWebDavRequest 错误处理中添加详细的调试信息\n- 输出请求方法、URL、错误消息和堆栈信息\n- 帮助诊断 Firefox 中的 'Failed to fetch' 问题",
+      "date": "2026-02-18T13:45:30Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/7263207953c3d52c0c418011f9fea3e5bbe1af62"
+    },
+    {
+      "sha": "f02440a",
+      "message": "fix: 修复 Firefox manifest 使用 scripts 而非 service_worker\n\n- 将 manifest.firefox.json 中的 background.service_worker 改为 background.scripts\n- Firefox Manifest V3 不支持 service_worker，需要使用 scripts 格式\n- 修复 Issue #20 中关于 Firefox 导入扩展时的错误\n\n背景：Firefox 对 Manifest V3 的支持与 Chrome 不同，\nbackground.service_worker 在 Firefox 中被禁用，必须使用 background.scripts。",
+      "date": "2026-02-18T12:59:56Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/f02440ac16ebb6f9be7e013e264e20f57e21f165"
+    },
+    {
+      "sha": "9b90549",
+      "message": "自动提交",
+      "date": "2026-02-17T15:36:04Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9b90549af66f4908d9aafe139fc0cb73470c48eb"
+    },
+    {
+      "sha": "3f718db",
+      "message": "自动提交",
+      "date": "2026-02-17T14:42:31Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/3f718db442f6a7c8ecb3d2474199aa79f40dbb53"
+    },
+    {
+      "sha": "fff9682",
+      "message": "自动提交",
+      "date": "2026-02-17T11:32:26Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/fff968288e390dd189b742b0856e45d5db5e3c74"
+    },
+    {
+      "sha": "9d20c8a",
+      "message": "删除 WORKFLOW_COMPLETION_SUMMARY.md",
+      "date": "2026-02-17T10:27:02Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9d20c8a23a325b2e947327ab2d477f9c3c8de208"
+    },
+    {
+      "sha": "ebb9228",
+      "message": "删除 WORKFLOW_UPDATE_SUMMARY.md",
+      "date": "2026-02-17T10:26:30Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ebb9228b6fbdab9aca333cfe450d93a98b72663a"
+    },
+    {
+      "sha": "2e56452",
+      "message": "feat: 添加 Firefox 兼容性和 GitHub Actions CI/CD 支持\n\n主要修改：\n\n1. Firefox 兼容性\n- 添加 Firefox 专用 manifest 文件\n- 实现 browser API 兼容层\n- 添加 TypeScript 类型声明\n- 支持双浏览器并行构建\n\n2. GitHub Actions 工作流\n- 新增 Browser-CI.yml（PR 质量检查）\n- 新增 Browser-Release.yml（自动发布）\n- 重构 Browser-Extension.yml（支持多浏览器）\n- 添加 Manifest 验证步骤\n\n3. 文档体系\n- 添加 Firefox 兼容性文档\n- 添加 GitHub Actions 详细文档\n- 添加快速参考手册\n- 添加工作流更新总结\n\n技术细节：\n- 使用 cross-env 支持跨平台环境变量\n- Chrome/Edge 和 Firefox 并行构建\n- 完整的 TypeScript 类型检查\n- ESLint 代码质量检查\n- 自动化版本发布流程\n\n构建命令：\n- Chrome/Edge: npm run build\n- Firefox: npm run build:firefox\n\n版本发布：\n- 创建 browser-v* 标签自动触发 Release\n- 自动生成 Chrome/Edge 和 Firefox 扩展包",
+      "date": "2026-02-17T10:06:54Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/2e5645202317b0da3b1cf7a9d883c2b425fafac2"
+    },
+    {
+      "sha": "df5cba1",
+      "message": "自动提交",
+      "date": "2026-02-17T08:06:19Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/df5cba1e25c9a51a15a343f2ed3f82fe83a65e8a"
+    },
+    {
+      "sha": "e0d1d5b",
+      "message": "自动提交",
+      "date": "2026-02-17T03:21:14Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e0d1d5b6784de7c94d86382764a5f482f8e63cc3"
+    },
+    {
+      "sha": "49818e6",
+      "message": "Merge pull request #19 from aiguozhi123456/main\n\n更新Workflow 修复插件编译错误 修复插件ESLint报错",
+      "date": "2026-02-16T16:05:16Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/49818e64570422a7b1c66551c3caa00d06b63494"
+    },
+    {
+      "sha": "0591cde",
+      "message": "Revert \"删除 package-lock.json\"\n\nThis reverts commit 596b5980c08a4162e26cd1d0b712a4cc738d5184.",
+      "date": "2026-02-16T15:37:17Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0591cdebf5e2213ecac1344bbac6b13f578fe545"
+    },
+    {
+      "sha": "dc78b52",
+      "message": "fix: resolve TypeScript compilation errors\n\n- Fix Window type casting in content.ts using unknown first\n- Fix generate2FACode function signature (removed unused algorithm parameter)\n- Add AegisJsonEntry interface for proper type safety\n- Fix itemData type to match SecureItem requirements\n- Add proper type guards for Note, Document, and BankCard types\n- Fix parseInt calls with proper undefined handling",
+      "date": "2026-02-16T15:33:45Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/dc78b52b21d44cff66e90944e74d48ffd3681ad7"
+    },
+    {
+      "sha": "596b598",
+      "message": "删除 package-lock.json",
+      "date": "2026-02-16T15:29:23Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/596b5980c08a4162e26cd1d0b712a4cc738d5184"
+    },
+    {
+      "sha": "a302601",
+      "message": "chore: make ESLint step non-blocking in workflow\n\nAdd continue-on-error: true to ESLint step to prevent workflow termination",
+      "date": "2026-02-16T15:26:34Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/a3026014d3dcc174264ab042d33e03e8c424e988"
+    },
+    {
+      "sha": "6f787c4",
+      "message": "fix: resolve all eslint errors and warnings\n\n- Fix TypeScript any types with proper type annotations\n- Remove unused variables\n- Optimize data loading with useCallback\n- Fix variable declaration order\n- Update eslint config to disable react-hooks/set-state-in-effect rule",
+      "date": "2026-02-16T15:14:37Z",
+      "author": "aiguozhi123456",
+      "url": "https://github.com/JoyinJoester/Monica/commit/6f787c4db16dc356c8123d31602ab6151926aae0"
+    },
+    {
+      "sha": "cbf47c8",
+      "message": "Merge branch 'JoyinJoester:main' into main",
+      "date": "2026-02-16T14:55:19Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/cbf47c8008e535a8d0d590c48efbb7635dd425b5"
+    },
+    {
+      "sha": "0310d1d",
+      "message": "自动提交",
+      "date": "2026-02-16T14:26:47Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0310d1d370fa764a120170c193f080d550d0b286"
+    },
+    {
+      "sha": "fa808f7",
+      "message": "chore: keep empty stratum_icons/icons folder (.gitkeep)",
+      "date": "2026-02-16T13:02:35Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/fa808f72c09057d168333e15ced087a27728d3f7"
+    },
+    {
+      "sha": "06da431",
+      "message": "自动提交",
+      "date": "2026-02-16T12:58:29Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/06da431c7149638d3de0bdae7180baf19e56e799"
+    },
+    {
+      "sha": "9e7ab6d",
+      "message": "自动提交",
+      "date": "2026-02-16T11:15:45Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9e7ab6d90f7f2d60cc84098b0e94a29f85b20b6d"
+    },
+    {
+      "sha": "0a0c871",
+      "message": "自动提交",
+      "date": "2026-02-15T13:44:06Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0a0c871621f273d0a9e7a202bc61ef0241617169"
+    },
+    {
+      "sha": "35402e9",
+      "message": "gitignore: 忽略 stratumauthapp",
+      "date": "2026-02-15T11:20:33Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/35402e98b9cd2e5b9c1d392dfb9689075391553e"
+    },
+    {
+      "sha": "c54ee72",
+      "message": "自动提交",
+      "date": "2026-02-15T11:05:35Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c54ee7261b92195966ff7be99e62787e1b6da3ee"
+    },
+    {
+      "sha": "6b83fef",
+      "message": "自动提交",
+      "date": "2026-02-15T10:24:49Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/6b83fef241d13bc56d866a34d11eb0459260a689"
+    },
+    {
+      "sha": "0bed0c1",
+      "message": "gitignore: 忽略 _tmp_keyguard",
+      "date": "2026-02-15T10:15:24Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0bed0c1c79fd2bfe0e0679b75c934a7928c276ab"
+    },
+    {
+      "sha": "b0ae501",
+      "message": "自动提交",
+      "date": "2026-02-15T09:07:09Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b0ae501b3a45f112ccd9b454a21cc863bdf59078"
+    },
+    {
+      "sha": "057444f",
+      "message": "自动提交",
+      "date": "2026-02-15T03:22:21Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/057444fab5b01a2c00fccb61efa6c7ff4f598c4f"
+    },
+    {
+      "sha": "90cf44c",
+      "message": "自动提交",
+      "date": "2026-02-14T13:43:54Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/90cf44cab69bd54b092612a26e88aadcac10a278"
+    },
+    {
+      "sha": "aca4428",
+      "message": "自动提交",
+      "date": "2026-02-14T12:10:13Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/aca4428dd5f49a82f9bac46c05474bfddfc071f8"
+    },
+    {
+      "sha": "8dc92e1",
+      "message": "自动提交",
+      "date": "2026-02-14T05:59:22Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/8dc92e18b4bdcb4c6089d3bfc772d1a7714a5530"
+    },
+    {
+      "sha": "99208c2",
+      "message": "自动提交",
+      "date": "2026-02-13T12:57:40Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/99208c272ec79e3eac2bf6b7d02e478c18beee2d"
+    },
+    {
+      "sha": "5385b21",
+      "message": "自动提交",
+      "date": "2026-02-13T12:44:45Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/5385b210e1dc9072a6c3e461d2dde534328f7a82"
+    },
+    {
+      "sha": "2bbed54",
+      "message": "自动提交",
+      "date": "2026-02-13T11:00:17Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/2bbed54a9af55d6d57b8a77b180480de36996c22"
+    },
+    {
+      "sha": "67acf9f",
+      "message": "自动提交",
+      "date": "2026-02-13T04:25:44Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/67acf9f0555a74fe54a68c722d188809f94e5ca8"
+    },
+    {
+      "sha": "5055eb7",
+      "message": "自动提交",
+      "date": "2026-02-13T03:33:41Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/5055eb7ebe899211500c1a88aaa9b393acf84179"
+    },
+    {
+      "sha": "222d99f",
+      "message": "自动提交",
+      "date": "2026-02-12T12:10:19Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/222d99fe3061f79a2f7a8c240e3f0468a824a108"
+    },
+    {
+      "sha": "2b75a1e",
+      "message": "自动提交",
+      "date": "2026-02-12T11:56:10Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/2b75a1e04babb01b8baa5ab53d5f1b3b6025dd43"
+    },
+    {
+      "sha": "d5da658",
+      "message": "Delete 兼容文件/兼容文件 directory",
+      "date": "2026-02-10T01:16:51Z",
+      "author": "Joyin",
+      "url": "https://github.com/JoyinJoester/Monica/commit/d5da658508114024203d056b51c7e01bba568ea9"
+    },
+    {
+      "sha": "b13c2f7",
+      "message": "自动提交",
+      "date": "2026-02-09T05:29:07Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b13c2f72d7006da1d89a9fff975efb2615153190"
+    },
+    {
+      "sha": "610a03a",
+      "message": "自动提交",
+      "date": "2026-02-09T05:15:09Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/610a03ab2f7917f8fd38261a72a8d55c036e65fe"
+    },
+    {
+      "sha": "4b66946",
+      "message": "自动提交",
+      "date": "2026-02-09T03:16:43Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4b66946a1e5fbc045993d63fb638962ab49acb8b"
+    },
+    {
+      "sha": "8ea044c",
+      "message": "自动提交",
+      "date": "2026-02-08T16:22:17Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/8ea044cbd834415b671c6be149735426250fa5a0"
+    },
+    {
+      "sha": "876ef5e",
+      "message": "自动提交",
+      "date": "2026-02-08T16:08:09Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/876ef5e8ea7390b66ca07ae8cc69dd730c8f87e8"
+    },
+    {
+      "sha": "eaa64fd",
+      "message": "自动提交",
+      "date": "2026-02-08T15:05:58Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/eaa64fdcd379b1d82ee8571b8437e28bfd727df7"
+    },
+    {
+      "sha": "b614c44",
+      "message": "自动提交",
+      "date": "2026-02-08T10:17:51Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b614c44df453f1be32cfc88f6ff626b666903623"
+    },
+    {
+      "sha": "0f3d6bd",
+      "message": "自动提交",
+      "date": "2026-02-08T09:41:04Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0f3d6bddc40282927e6a3401e4b032b1cf3ee574"
+    },
+    {
+      "sha": "d872679",
+      "message": "自动提交",
+      "date": "2026-02-07T12:13:38Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/d8726793abf5183b68a9294a58cbe4d9c51f09d7"
+    },
+    {
+      "sha": "5027f42",
+      "message": "自动提交",
+      "date": "2026-02-07T03:48:14Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/5027f426cd36a4d6e4741a4ab398caaba406c160"
+    },
+    {
+      "sha": "629c027",
+      "message": "自动提交",
+      "date": "2026-02-06T05:19:27Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/629c0270c3769d4b905f0312d17a94dcbf2103dc"
+    },
+    {
+      "sha": "27a0c20",
+      "message": "自动提交",
+      "date": "2026-02-06T04:49:12Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/27a0c200ec937c06d82e0fe1a88dbb3c3abb9d81"
+    },
+    {
+      "sha": "ce3e447",
+      "message": "自动提交",
+      "date": "2026-02-06T03:56:39Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ce3e447bf021e5dc513c7e4dcf98d2cda982cbd9"
+    },
+    {
+      "sha": "e15a3b8",
+      "message": "完善send功能",
+      "date": "2026-02-06T03:50:30Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e15a3b80507668dbb12344cbde9bce1077624a51"
+    },
+    {
+      "sha": "e577989",
+      "message": "Merge branch 'JoyinJoester:main' into main",
+      "date": "2026-02-05T16:29:02Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/e577989b5be96bfcd8cd7886dccd90d6bcf85f09"
+    },
+    {
+      "sha": "bcba90b",
+      "message": "feat: update Bitwarden sync UI with progress bar and hide when idle",
+      "date": "2026-02-05T05:49:35Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/bcba90b3eb8e39f9810337414f19196be292e512"
+    },
+    {
+      "sha": "0f2d1ca",
+      "message": "feat: implement Bitwarden folder selection and entry filtering",
+      "date": "2026-02-05T04:45:25Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0f2d1ca3600b19f262cdfa0ec24c4541297ccfe9"
+    },
+    {
+      "sha": "9fc53fa",
+      "message": "cleanup temp file",
+      "date": "2026-02-04T14:39:16Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9fc53fa934e39b98c065c15e87a627422ddb6979"
+    },
+    {
+      "sha": "b764e4d",
+      "message": "remove V2 components; keep Send as placeholder; cleanup imports and unused code",
+      "date": "2026-02-04T14:38:16Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b764e4dbce204b6cd03076db62917f8798d9c14d"
+    },
+    {
+      "sha": "4e1a1d3",
+      "message": "folder management: auto sync bitwarden folders on vault select",
+      "date": "2026-02-04T14:24:53Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/4e1a1d39e26bc7007c685d8fd8f427049b92aa5a"
+    },
+    {
+      "sha": "ffffcac",
+      "message": "bitwarden: never-lock + auto-unlock/sync before folder create; merge dedupe; topbar UI fix",
+      "date": "2026-02-04T14:19:21Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ffffcac57b26297cb3ca3274aaab32f70fa0167f"
+    },
+    {
+      "sha": "ba6875b",
+      "message": "bitwarden: add 'never lock' option + auto-unlock; folder mgmt: auto-sync before create and unlock flow; UI/dialog strings",
+      "date": "2026-02-04T13:30:58Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ba6875b8137afbbb3ed65a05f597490493922ca3"
+    },
+    {
+      "sha": "62d0029",
+      "message": "feat: add database folder management UI, KeePass group mapping, DB migration",
+      "date": "2026-02-04T11:55:54Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/62d0029c984af44f60f0b7ccf41332d354e6f2bc"
+    },
+    {
+      "sha": "9f17d91",
+      "message": "feat: passkey bindings, TOTP/password sync, DB migration, backup/restore, UI tweaks; fix Generator VerifyError",
+      "date": "2026-02-04T11:24:49Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/9f17d91ff4ca892691d33ee4b7da656164bc5456"
+    },
+    {
+      "sha": "b94fc5b",
+      "message": "perf(totp): 修复 TotpCodeCard 内存泄露\n\n问题：每个 TotpCodeCard 都创建 SettingsManager 并收集 Flow，导致严重内存泄露\n解决：当未传入 appSettings 时使用默认值，避免重复创建实例",
+      "date": "2026-02-03T14:00:36Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b94fc5b13725d2095cf4e61d6ff4adb43a11434f"
+    },
+    {
+      "sha": "3fa80d9",
+      "message": "fix(db): 修复 bitwarden_pending_operations 索引不匹配导致的崩溃\n\n问题：迁移脚本创建了 item_type 索引，但 Entity 定义中缺少该索引声明\n解决：在 BitwardenPendingOperation Entity 的 indices 中添加 item_type 索引\n\n此修复完全兼容现有用户数据，无需任何用户操作",
+      "date": "2026-02-03T13:50:49Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/3fa80d9dd930f51a9b5132fdb79156f85ae873bd"
+    },
+    {
+      "sha": "94db20b",
+      "message": "feat(bitwarden): 完成同步增强功能 Phase 1-6 + UI 集成\n\n核心功能:\n- 同步队列基础设施 (SyncQueueManager, NetworkMonitor, SyncWorker)\n- 6种数据类型映射器 (Login, Card, SecureNote, Identity, Totp, Passkey)\n- Cipher 同步处理器 (CipherSyncProcessor, CipherUploadProcessor)\n- 文件夹关联功能 (FolderSyncProcessor, CategoryDao 扩展)\n- 同步配置 UI (SyncConfigComponents, SyncQueueScreen)\n- 同步状态指示器 (SyncStatusIndicator)\n\nUI 集成:\n- PasswordEntryCard 显示同步状态\n- BankCardCard 显示同步状态\n- DocumentCard 显示同步状态\n- TotpCodeCard 显示同步状态\n- ExpressiveNoteCard 显示同步状态\n- BitwardenSettingsScreen 添加同步队列入口\n- 添加 SyncQueue 导航路由",
+      "date": "2026-02-03T13:46:46Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/94db20bca4e0271da57447a9e3412862892bc048"
+    },
+    {
+      "sha": "8805f8a",
+      "message": "修复文件夹显示：显示所有分类而非仅有密码的分类",
+      "date": "2026-02-03T11:02:15Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/8805f8a8bd1f0fe32337da72f8d2bb17ff535537"
+    },
+    {
+      "sha": "100cb36",
+      "message": "重构VaultHomeScreen为M3E设计\n\n- 显示三个区域：数据库、类型、文件夹\n- 数据库：Monica本地、KeePass、Bitwarden\n- 类型：登录、银行卡、证件、安全笔记、通行密钥\n- 文件夹：显示有密码的分类及数量\n- 不显示无分类的密码列表\n- 移除V2ViewModel依赖，简化数据流",
+      "date": "2026-02-03T10:55:06Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/100cb36763be7f9d3363c67f51f5bc1570eb54bf"
+    },
+    {
+      "sha": "64e61bf",
+      "message": "Merge branch 'JoyinJoester:main' into main",
+      "date": "2026-02-03T10:48:31Z",
+      "author": "wuyiyi",
+      "url": "https://github.com/JoyinJoester/Monica/commit/64e61bf68647e6decb96cd43e7b02bd376bc6ca6"
+    },
+    {
+      "sha": "cc40efe",
+      "message": "优化 GitHub Actions Workflows\n\n- Android-Preview: 添加 path 条件监听 Monica for Android 目录\n- main.yml (CI Build): 添加 path 条件、lint check job、7天留存\n- Browser-Extension: 新增 workflow 自动构建浏览器扩展\n- Android.yml: 保持原样不变",
+      "date": "2026-02-03T10:41:18Z",
+      "author": "Saison Developer",
+      "url": "https://github.com/JoyinJoester/Monica/commit/cc40efe32a2847d64c9fdc8524c8f4badde04141"
+    },
+    {
+      "sha": "f270480",
+      "message": "修复V2导航闪退：用Crossfade替代key()\n\n- 移除导致LayoutNode.onChildRemoved NullPointerException的key()包装器\n- 改用Crossfade实现动态内容平滑切换\n- 避免Compose重组时节点销毁竞态条件",
+      "date": "2026-02-03T10:32:03Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/f270480e1db16aaff1841f82a4a4d965f4107cc3"
+    },
+    {
+      "sha": "cf093dc",
+      "message": "重构V2导航栏：改用5位置模型代替子页面模型\n\n- 底栏5个固定位置：库、[动态内容]、发送、生成、设置\n- 位置1(动态内容)由用户在库首页点击的项决定\n- 不再使用selectedSubPage概念，简化为selectedPosition和dynamicContent\n- VaultHomeScreen点击项时切换位置1内容并选中位置1\n- 修复FAB和选择模式工具栏逻辑",
+      "date": "2026-02-03T10:27:13Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/cf093dca41b624a8397e201fd3b6bba4375c9896"
+    },
+    {
+      "sha": "ee48dba",
+      "message": "V2 nav: fix routing, persist last subpage, restore selection bar and FAB behavior",
+      "date": "2026-02-03T09:21:57Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/ee48dbabb45291fa0fc7d32f5b56bfc92b5fba76"
+    },
+    {
+      "sha": "c137613",
+      "message": "feat: 添加减少动画设置以解决 HyperOS 2/Android 15 动画卡顿问题\n\n- AppSettings 新增 reduceAnimations 属性\n- SettingsManager 新增 updateReduceAnimations 方法\n- 添加 LocalReduceAnimations CompositionLocal 用于传递动画状态\n- MainActivity 通过 CompositionLocalProvider 提供 reduceAnimations 值\n- SimpleMainScreen/PasswordDetailScreen 在 reduceAnimations 启用时跳过 sharedBounds\n- SettingsScreen 新增减少动画开关设置项\n- 添加多语言支持 (中/英/日/越)",
+      "date": "2026-02-03T02:36:30Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/c137613dc749b8f79e5622cf6ecbee6f4dc40e15"
+    },
+    {
+      "sha": "29b0e47",
+      "message": "feat(bitwarden): add user-friendly error messages for login failures\n\n- Parse technical error codes to Chinese messages\n- Handle invalid_username_or_password, OTP errors, network issues, etc.\n- Truncate long error messages for cleaner UI",
+      "date": "2026-02-03T02:05:39Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/29b0e476a703a4ce7b2d42c5a7e73e30ba54c621"
+    },
+    {
+      "sha": "0924d6f",
+      "message": "fix(passwords): guard favicon/app icon loading and custom fields to avoid intermittent crash on password cards/details",
+      "date": "2026-02-02T16:27:25Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/0924d6f2bf7eb6e5e4eaf90642ade79e5d405a04"
+    },
+    {
+      "sha": "575fa47",
+      "message": "fix(bitwarden): add User-Agent header, improve login logging, support new device OTP flow; merge local changes",
+      "date": "2026-02-02T16:03:00Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/575fa475d6f4fa044f92d9b006e30e76229f6405"
+    },
+    {
+      "sha": "2fe66dd",
+      "message": "Refactor: Bank Card and ID Card screens to M3E design, fix Authenticator UI and crashes",
+      "date": "2026-02-02T05:26:29Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/2fe66ddbc88afd72960c9335d6946401a6a81424"
+    },
+    {
+      "sha": "77d3015",
+      "message": "Refactor: AddEditTotpScreen M3E design, fix UI alignment and photo picker crash",
+      "date": "2026-02-02T04:59:35Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/77d30150a26e572f3bb06cdeeaa9a679f0ec563c"
+    },
+    {
+      "sha": "66c6254",
+      "message": "Add SharedTransition compatibility helper",
+      "date": "2026-02-01T17:06:24Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/66c6254a1832e35049aed9a1e5be1593758b2b20"
+    },
+    {
+      "sha": "b8726fd",
+      "message": "Restore passkeys; fix selection toolbars; add shared transitions; remove FAB ripple",
+      "date": "2026-02-01T17:00:58Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b8726fdb324d241348dd23cab2cb1043b0b0669b"
+    },
+    {
+      "sha": "d0a1bf2",
+      "message": "fix(passkey): 修复通行密钥流程 — 修正 PendingIntent 标志、Activity 配置与返回异常处理，避免登录时立即出现 'Authentication failed' 并确保返回调用方",
+      "date": "2026-02-01T15:15:18Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/d0a1bf297790d9209b1d5bf079cdc123a30fa129"
+    },
+    {
+      "sha": "b693cd9",
+      "message": "feat(backup): WebDAV备份支持验证密钥(Passkey)，合并历史与回收站选项\n\n- 新增 BackupPreferences.includePasskeys 字段\n- 新增 BackupPreferences.includeTrashAndHistory 合并选项\n- WebDavHelper 添加 Passkey 备份逻辑 (passkeys.json)\n- SelectiveBackupCard UI 添加验证密钥选项\n- 将密码生成历史、操作历史、回收站合并为回收站与历史\n- 添加中英文字符串资源",
+      "date": "2026-02-01T11:50:38Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b693cd9a1f80be5d4463bcdde9ac985c02817200"
+    },
+    {
+      "sha": "b53260e",
+      "message": "fix(passkey): 修复 Passkey 列表重复注解，替换为 Monica 图标并允许设备凭据回退",
+      "date": "2026-02-01T11:31:51Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/b53260e06c79f4ba3250c43a547b701da8467c6a"
+    },
+    {
+      "sha": "63b1794",
+      "message": "fix(passkey): EC keypair, store private key Base64, support clientDataHash, manual CBOR, add Monica AAGUID, auth/sign fixes",
+      "date": "2026-02-01T11:06:31Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/63b1794487c808d6dce6410af505e4b7591a6f56"
+    },
+    {
+      "sha": "283134a",
+      "message": "feat: 预设自定义字段功能\n\n新增功能：\n- 预设自定义字段模板系统\n  - 支持7种字段类型：文本、密码、数字、日期、网址、邮箱、电话\n  - 可设置字段为敏感数据（默认隐藏显示）\n  - 可设置字段为必填\n  - 支持默认值和占位提示\n\n核心特性：\n- 预设字段在添加密码页面自动出现\n- 预设字段带锁定标记，不可删除（防止误删重要字段）\n- 编辑已有密码时，自动合并预设字段与现有字段\n- 字段名称相同时保留现有值并标记为预设\n\nUI改进：\n- PasswordFieldCustomizationScreen 新增预设字段管理区域\n- 添加/编辑预设字段对话框\n- 预设字段卡片显示类型图标、锁定标记、必填/敏感标签\n- 支持清空所有预设字段\n\n技术实现：\n- PresetCustomField 数据类（JSON序列化/反序列化）\n- PresetFieldType 枚举（7种类型）\n- CustomFieldDraft 扩展支持预设标记\n- SettingsManager 添加预设字段CRUD操作",
+      "date": "2026-02-01T04:46:10Z",
+      "author": "JoyinJoester",
+      "url": "https://github.com/JoyinJoester/Monica/commit/283134a6d3e29a87fbce72c63c18a1eac6122d5a"
+    }
+  ],
+  "contributors": [
+    {
+      "login": "JoyinJoester",
+      "avatar_url": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "html_url": "https://github.com/JoyinJoester",
+      "contributions": 188,
+      "ratio": "79.3"
+    },
+    {
+      "login": "aiguozhi123456",
+      "avatar_url": "https://avatars.githubusercontent.com/u/126325311?v=4",
+      "html_url": "https://github.com/aiguozhi123456",
+      "contributions": 49,
+      "ratio": "20.7"
+    }
+  ]
+}

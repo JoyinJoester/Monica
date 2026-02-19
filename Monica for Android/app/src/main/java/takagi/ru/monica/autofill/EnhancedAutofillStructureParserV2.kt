@@ -7,36 +7,17 @@ import android.view.View
 import android.view.autofill.AutofillId
 import androidx.autofill.HintConstants
 import takagi.ru.monica.autofill.core.safeTextOrNull
+import java.util.Locale
 
-/**
- * 增强的自动填充结构解析器
- * 
- * 基于 Keyguard 的实现，提供更准确的字段识别：
- * - 多语言标签支持（中文、英文、俄语等）
- * - 准确度评分系统
- * - WebView 检测
- * - HTML 属性解析
- * - 更多字段类型支持
- * 
- * @author Monica Development Team
- * @version 2.0
- */
 class EnhancedAutofillStructureParserV2 {
-    
-    /**
-     * 解析结果数据类
-     */
     data class ParsedStructure(
         val applicationId: String? = null,
         val webScheme: String? = null,
         val webDomain: String? = null,
         val webView: Boolean = false,
-        val items: List<ParsedItem>
+        val items: List<ParsedItem>,
     )
-    
-    /**
-     * 解析的字段项
-     */
+
     data class ParsedItem(
         val id: AutofillId,
         val hint: FieldHint,
@@ -45,805 +26,982 @@ class EnhancedAutofillStructureParserV2 {
         val isFocused: Boolean = false,
         val isVisible: Boolean = true,
         val parentWebViewNodeId: Int? = null,
-        val traversalIndex: Int = 0 // 新增：遍历顺序索引，用于根据垂直位置纠错
+        val traversalIndex: Int = 0,
     )
-    
-    /**
-     * 字段类型提示
-     */
+
     enum class FieldHint {
         USERNAME,
         PASSWORD,
         NEW_PASSWORD,
         EMAIL_ADDRESS,
         PHONE_NUMBER,
-        SEARCH_FIELD,  // 搜索字段 - 不应触发自动填充
+        SEARCH_FIELD,
         CREDIT_CARD_NUMBER,
         CREDIT_CARD_EXPIRATION_DATE,
         CREDIT_CARD_SECURITY_CODE,
-        CREDIT_CARD_HOLDER_NAME,  // 新增: 持卡人姓名
+        CREDIT_CARD_HOLDER_NAME,
         POSTAL_ADDRESS,
         POSTAL_CODE,
         PERSON_NAME,
         OTP_CODE,
-        UNKNOWN
+        UNKNOWN,
     }
-    
-    /**
-     * 准确度评分
-     */
+
     enum class Accuracy(val score: Float) {
         LOWEST(0.3f),
         LOW(0.7f),
         MEDIUM(1.5f),
         HIGH(4f),
-        HIGHEST(10f)
+        HIGHEST(10f),
     }
-    
-    /**
-     * 标签匹配器
-     */
-    private data class LabelMatcher(
-        val hint: FieldHint,
-        val pattern: String,
-        val accuracy: Accuracy = Accuracy.HIGH,
-        val partialMatch: Boolean = false
+
+    private enum class InternalHint {
+        USERNAME,
+        PASSWORD,
+        NEW_PASSWORD,
+        EMAIL_ADDRESS,
+        PHONE_NUMBER,
+        CREDIT_CARD_NUMBER,
+        CREDIT_CARD_EXPIRATION_DATE,
+        CREDIT_CARD_EXPIRATION_MONTH,
+        CREDIT_CARD_EXPIRATION_YEAR,
+        CREDIT_CARD_EXPIRATION_DAY,
+        CREDIT_CARD_SECURITY_CODE,
+        CREDIT_CARD_HOLDER_NAME,
+        POSTAL_ADDRESS,
+        POSTAL_CODE,
+        PERSON_NAME,
+        OTP_CODE,
+        OFF,
+        UNKNOWN,
+    }
+
+    private data class RawParsedStructure(
+        val webScheme: String? = null,
+        val webDomain: String? = null,
+        val webView: Boolean = false,
+        val items: List<RawParsedItem>,
+    )
+
+    private data class RawParsedItem(
+        val id: AutofillId,
+        val accuracy: Accuracy,
+        val hint: InternalHint,
+        val value: String? = null,
+        val reason: String? = null,
+        val parentWebViewNodeId: Int? = null,
+        val isFocused: Boolean = false,
+        val isVisible: Boolean = true,
+        val traversalIndex: Int = 0,
+    )
+
+    private data class ParsedItemBuilder(
+        val accuracy: Accuracy,
+        val hint: InternalHint,
+        val value: String? = null,
+        val reason: String? = null,
+    )
+
+    private data class HintScore(
+        val score: Float,
+        val hint: InternalHint,
+        val value: String?,
+        val accuracy: Accuracy,
+        val isFocused: Boolean,
+        val isVisible: Boolean,
+        val parentWebViewNodeId: Int?,
+        val traversalIndex: Int,
+    )
+
+    private data class ParseContext(
+        var traversalIndex: Int = 0,
+    )
+
+    private class AutofillHintMatcher(
+        val hint: InternalHint,
+        val target: String,
+        val partly: Boolean = false,
     ) {
-        fun matches(text: String): Boolean {
-            return if (partialMatch) {
-                text.contains(pattern, ignoreCase = true)
-            } else {
-                text.equals(pattern, ignoreCase = true)
-            }
+        val accuracy = if (partly) Accuracy.MEDIUM else Accuracy.HIGH
+
+        fun matches(value: String): Boolean = if (partly) {
+            value.contains(target, ignoreCase = true)
+        } else {
+            value.equals(target, ignoreCase = true)
         }
     }
-    
-    // ==================== 多语言标签定义 ====================
-    
-    /**
-     * 密码字段的多语言翻译
-     */
-    private val passwordTranslations = listOf(
-        "password",     // 英语
-        "密码",         // 中文简体
-        "密碼",         // 中文繁体
-        "パスワード",   // 日语
-        "비밀번호",     // 韩语
-        "passwort",     // 德语
-        "mot de passe", // 法语
-        "contraseña",   // 西班牙语
-        "senha",        // 葡萄牙语
-        "пароль",       // 俄语
-        "wachtwoord",   // 荷兰语
-        "hasło",        // 波兰语
-        "şifre",        // 土耳其语
-        "รหัสผ่าน",    // 泰语
-        "mật khẩu",     // 越南语
+
+    private val autofillLabelPasswordTranslations = listOf(
+        "password",
+        "парол",
+        "parol",
+        "passwort",
+        "passe",
+        "密码",
+        "密碼",
     )
-    
-    /**
-     * 用户名字段的多语言翻译
-     */
-    private val usernameTranslations = listOf(
-        "username",     // 英语
-        "login",
-        "account",
-        "用户名",       // 中文简体
-        "用戶名",       // 中文繁体
-        "账号",
-        "帐号",
-        "ユーザー名",   // 日语
-        "사용자명",     // 韩语
-        "benutzername", // 德语
-        "utilisateur",  // 法语
-        "usuario",      // 西班牙语
-        "usuário",      // 葡萄牙语
-        "пользователь", // 俄语
-        "gebruiker",    // 荷兰语
-        "użytkownik",   // 波兰语
-        "kullanıcı",    // 土耳其语
-        "ชื่อผู้ใช้",  // 泰语
-        "tên người dùng", // 越南语
-        "nickname",
-        "customer",
-    )
-    
-    /**
-     * 邮箱字段的多语言翻译
-     */
-    private val emailTranslations = listOf(
-        "email",        // 英语
-        "e-mail",
-        "mail",
-        "电子邮件",     // 中文简体
-        "电子邮箱",
-        "邮箱",
-        "電子郵件",     // 中文繁体
-        "電子郵箱",
-        "郵箱",
-        "メール",       // 日语
-        "이메일",       // 韩语
-        "correo",       // 西班牙语
-        "почта",        // 俄语
-        "posta",        // 土耳其语
-        "อีเมล",       // 泰语
-    )
-    
-    /**
-     * 电话字段的多语言翻译
-     */
-    private val phoneTranslations = listOf(
-        "phone",        // 英语
-        "telephone",
-        "tel",
-        "mobile",
-        "电话",         // 中文简体
-        "手机",
-        "電話",         // 中文繁体
-        "手機",
-        "電話番号",     // 日语
-        "전화",         // 韩语
-        "telefon",      // 德语/土耳其语
-        "téléphone",    // 法语
-        "teléfono",     // 西班牙语
-        "telefone",     // 葡萄牙语
-        "телефон",      // 俄语
-        "โทรศัพท์",   // 泰语
-    )
-    
-    /**
-     * OTP/验证码字段的翻译
-     */
-    private val otpTranslations = listOf(
+
+    private val autofillLabel2faTranslations = listOf(
+        "totp",
         "otp",
         "2fa",
-        "mfa",
-        "code",
-        "verification",
-        "verify",
-        "验证码",       // 中文简体
-        "驗證碼",       // 中文繁体
-        "認證コード",   // 日语
-        "인증코드",     // 韩语
-        "код",          // 俄语
-        "doğrulama",    // 土耳其语
-        "xác minh",     // 越南语
     )
-    
-    /**
-     * 信用卡号的翻译
-     */
-    private val creditCardNumberTranslations = listOf(
-        "card number",
-        "card",
-        "credit",
-        "debit",
-        "卡号",         // 中文简体
-        "銀行卡",
-        "信用卡",
-        "クレジットカード", // 日语
-        "카드번호",     // 韩语
-        "tarjeta",      // 西班牙语
-        "cartão",       // 葡萄牙语
-        "карта",        // 俄语
-        "kart",         // 土耳其语
-    )
-    
-    /**
-     * 信用卡有效期的翻译
-     */
-    private val creditCardExpiryTranslations = listOf(
-        "expiry",
-        "expiration",
-        "exp date",
-        "valid",
-        "有效期",       // 中文简体
-        "到期日",
-        "有效日期",
-        "有効期限",     // 日语
-        "만료일",       // 韩语
-        "vencimiento",  // 西班牙语
-        "validade",     // 葡萄牙语
-        "срок",         // 俄语
-        "son kullanma", // 土耳其语
-    )
-    
-    /**
-     * CVV/安全码的翻译
-     */
-    private val creditCardCvvTranslations = listOf(
-        "cvv",
-        "cvc",
-        "cid",
-        "security code",
-        "verification",
-        "安全码",       // 中文简体
-        "验证码",
-        "セキュリティコード", // 日语
-        "보안코드",     // 韩语
-        "código",       // 西班牙语/葡萄牙语
-        "код",          // 俄语
-        "güvenlik",     // 土耳其语
-    )
-    
-    /**
-     * 持卡人姓名的翻译
-     */
-    private val cardHolderNameTranslations = listOf(
-        "cardholder",
-        "card holder",
-        "name on card",
-        "持卡人",       // 中文简体
-        "姓名",
-        "カード名義",   // 日语
-        "카드소유자",   // 韩语
-        "titular",      // 西班牙语/葡萄牙语
-        "владелец",     // 俄语
-        "kart sahibi",  // 土耳其语
-    )
-    
-    /**
-     * 邮政编码的翻译
-     */
-    private val postalCodeTranslations = listOf(
-        "zip",
-        "zip code",
-        "postal",
-        "postcode",
-        "邮编",         // 中文简体
-        "邮政编码",
-        "郵便番号",     // 日语
-        "우편번호",     // 韩语
-        "código postal", // 西班牙语
-        "código postal", // 葡萄牙语
-        "почтовый индекс", // 俄语
-        "posta kodu",   // 土耳其语
-    )
-    
-    /**
-     * 地址的翻译
-     */
-    private val addressTranslations = listOf(
-        "address",
-        "street",
-        "billing",
-        "地址",         // 中文简体
-        "住所",         // 日语
-        "주소",         // 韩语
-        "dirección",    // 西班牙语
-        "endereço",     // 葡萄牙语
-        "адрес",        // 俄语
-        "adres",        // 土耳其语
-    )
-    
-    /**
-     * 非凭据字段的翻译（用于过滤，避免在非登录输入框弹出自动填充）
-     * 包括：搜索框、评论框、聊天框、发帖框、备注框等
-     * 
-     * ⚠️ 重要：这些关键词会被用于排除非凭据输入框，防止在评论/聊天/搜索等场景误触发自动填充
-     */
-    private val searchTranslations = listOf(
-        // ========== 搜索相关 ==========
-        "search", "query", "find", "lookup", "explore", "filter", "q",
-        "searchbox", "searchfield", "searchinput", "searchbar",
-        "搜索", "查找", "检索", "探索", "筛选", "搜一搜",
-        "搜尋", "查詢", "檢索",
-        "検索", "探す",
-        "검색", "찾기",
-        "поиск", "искать",
-        "buscar", "búsqueda",
-        "pesquisar", "busca",
-        
-        // ========== 评论相关 (增强) ==========
-        "comment", "comments", "commenting", "reply", "replies", "replying",
-        "review", "reviews", "feedback", "feedbacks",
-        "评论", "留言", "回复", "回覆", "评价", "吐槽", "弹幕", "发言",
-        "发表评论", "写评论", "添加评论", "我要评论", "说点什么", "来说点什么吧",
-        "说一个", "输入评论", "评论框", "留言板",
-        "コメント", "返信", "댓글", "답글", "отзыв", "комментарий",
-        
-        // ========== 聊天/消息相关 (增强) ==========
-        "chat", "chatting", "message", "messages", "messaging", "msg",
-        "messenger", "send", "sending", "input_message", "messagebox",
-        "im_input", "chat_input", "chatinput", "inputbox", "inputtext",
-        "聊天", "消息", "私信", "发送", "訊息", "私訊", "信息", "短信",
-        "发消息", "说些什么", "输入消息", "写消息", "发送消息", "聊天框",
-        "输入点什么", "打字机", "键盘输入", "写点什么",
-        "チャット", "メッセージ", "送信", "채팅", "메시지", "чат", "сообщение",
-        
-        // ========== 发帖/发推/社交相关 (增强) ==========
-        "post", "posting", "tweet", "tweeting", "toot", "status", "statuses",
-        "compose", "composing", "write", "writing", "publish", "publishing",
-        "share", "sharing", "newpost", "new_post", "createpost", "create_post",
-        "发帖", "发推", "发文", "发布", "分享", "动态", "發文", "说说",
-        "朋友圈", "微博", "想法", "问答", "提问", "回答", "举报", "发布动态",
-        "投稿", "ツイート", "게시", "글쓰기",
-        
-        // ========== 备注/说明相关 ==========
-        "note", "notes", "noting", "memo", "memos", "remark", "remarks",
-        "description", "descriptions", "bio", "biography", "about", "aboutme",
-        "备注", "说明", "简介", "描述", "自我介绍", "个人简介", "个性签名", "签到",
-        "メモ", "備考", "メモ帳", "メモを入力", "메모", "заметка",
-        
-        // ========== 标题/内容/编辑相关 (增强) ==========
-        "title", "titles", "content", "contents", "body", "bodies",
-        "text", "texts", "article", "articles", "editor", "editing",
 
-        "textarea", "textfield", "textbox", "edittext", "inputfield",
-        "input_bar", "bottom_bar", "input_panel", "smile_panel",
-        "标题", "内容", "正文", "文章", "编辑", "输入框", "文本内容",
-        "主题", "摘要", "引言",
-        
-        // ========== 其他非凭据字段 ==========
-        "caption", "captions", "tag", "tags", "hashtag", "hashtags",
-        "label", "labels", "location", "locations", "place", "places",
-        "address_search", "poi", "keyword", "keywords",
-        "标签", "位置", "地点", "关键词", "关键字", "分类",
-        
-        // ========== 游戏/应用特定 ==========
-        "nickname", "nick", "gameid", "playerid", "ingame",
-        "昵称", "游戏名", "角色名", "玩家名", "绰号", "别名",
-        
-        // ========== 表单非凭据字段 ==========
-        "subject", "subjects", "reason", "reasons", "purpose", "purposes",
-        "suggestion", "suggestions", "opinion", "opinions", "idea", "ideas",
-        "主题", "原因", "目的", "建议", "意见", "想法", "问题", "回答内容"
+    private val autofillLabelEmailTranslations = listOf(
+        "email",
+        "e-mail",
+        "почта",
+        "пошта",
+        "мейл",
+        "мэйл",
+        "майл",
+        "电子邮箱",
+        "電子郵箱",
     )
-    
-    // ==================== 标签匹配器列表 ====================
-    
-    private val labelMatchers = buildList {
-        // 密码匹配
-        passwordTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.PASSWORD, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // 用户名匹配
-        usernameTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.USERNAME, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // 邮箱匹配
-        emailTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.EMAIL_ADDRESS, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // 电话匹配
-        phoneTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.PHONE_NUMBER, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // OTP 匹配
-        otpTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.OTP_CODE, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // 信用卡号匹配
-        creditCardNumberTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.CREDIT_CARD_NUMBER, translation, Accuracy.MEDIUM, partialMatch = true))
-        }
-        
-        // 信用卡有效期匹配
-        creditCardExpiryTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.CREDIT_CARD_EXPIRATION_DATE, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // CVV/安全码匹配
-        creditCardCvvTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.CREDIT_CARD_SECURITY_CODE, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // 持卡人姓名匹配
-        cardHolderNameTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.CREDIT_CARD_HOLDER_NAME, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // 邮政编码匹配
-        postalCodeTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.POSTAL_CODE, translation, Accuracy.HIGH, partialMatch = true))
-        }
-        
-        // 地址匹配
-        addressTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.POSTAL_ADDRESS, translation, Accuracy.MEDIUM, partialMatch = true))
-        }
-        
-        // 搜索字段匹配（用于过滤，设置为HIGHEST优先级确保优先检测）
-        searchTranslations.forEach { translation ->
-            add(LabelMatcher(FieldHint.SEARCH_FIELD, translation, Accuracy.HIGHEST, partialMatch = true))
-        }
-    }
-    
-    /**
-     * 解析 AssistStructure
-     */
+
+    private val autofillLabelUsernameTranslations = listOf(
+        "nickname",
+        "username",
+        "utilisateur",
+        "login",
+        "логин",
+        "логін",
+        "користувач",
+        "пользовател",
+        "用户名",
+        "用戶名",
+        "id",
+        "customer",
+    )
+
+    private val autofillLabelCreditCardNumberTranslations = listOf(
+        ".*(credit|debit|card)+.*number.*".toRegex(),
+    )
+
+    private val autofillHintMatchers = listOf(
+        AutofillHintMatcher(
+            hint = InternalHint.EMAIL_ADDRESS,
+            target = HintConstants.AUTOFILL_HINT_EMAIL_ADDRESS,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.EMAIL_ADDRESS,
+            target = "email",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.USERNAME,
+            target = HintConstants.AUTOFILL_HINT_USERNAME,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.USERNAME,
+            target = "nickname",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PASSWORD,
+            target = HintConstants.AUTOFILL_HINT_PASSWORD,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PASSWORD,
+            target = "password",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PHONE_NUMBER,
+            target = HintConstants.AUTOFILL_HINT_PHONE,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PHONE_NUMBER,
+            target = HintConstants.AUTOFILL_HINT_PHONE_NUMBER,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PHONE_NUMBER,
+            target = "phone",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.NEW_PASSWORD,
+            target = "new-password",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.USERNAME,
+            target = "new-username",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_NUMBER,
+            target = HintConstants.AUTOFILL_HINT_CREDIT_CARD_NUMBER,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_NUMBER,
+            target = "cc-number",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_NUMBER,
+            target = "credit_card_number",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_SECURITY_CODE,
+            target = HintConstants.AUTOFILL_HINT_CREDIT_CARD_SECURITY_CODE,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_SECURITY_CODE,
+            target = "cc-csc",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_SECURITY_CODE,
+            target = "credit_card_csv",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_DATE,
+            target = HintConstants.AUTOFILL_HINT_CREDIT_CARD_EXPIRATION_DATE,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_DATE,
+            target = "cc-exp",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_MONTH,
+            target = "cc-exp-month",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_YEAR,
+            target = "cc-exp-year",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.POSTAL_ADDRESS,
+            target = HintConstants.AUTOFILL_HINT_POSTAL_ADDRESS,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.POSTAL_CODE,
+            target = HintConstants.AUTOFILL_HINT_POSTAL_CODE,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PERSON_NAME,
+            target = HintConstants.AUTOFILL_HINT_PERSON_NAME,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PERSON_NAME,
+            target = HintConstants.AUTOFILL_HINT_NAME,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OTP_CODE,
+            target = "one-time-code",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OTP_CODE,
+            target = "sms-otp",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OTP_CODE,
+            target = "email-otp",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OTP_CODE,
+            target = "totp",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OTP_CODE,
+            target = "2fa",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OFF,
+            target = "chrome-off",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OFF,
+            target = "off",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OFF,
+            target = "no",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.OFF,
+            target = "nope",
+        ),
+    )
+
     fun parse(structure: AssistStructure, respectAutofillOff: Boolean = true): ParsedStructure {
-        val items = mutableListOf<ParsedItem>()
-        var applicationId: String? = null
-        var webScheme: String? = null
-        var webDomain: String? = null
-        var isWebView = false
-        
-        // 获取应用ID
-        applicationId = structure.activityComponent.packageName
-        
-        // 全局遍历计数器
-        var globalTraversalIndex = 0
-        
-        // 遍历所有窗口和节点
+        var applicationId: String? = structure.activityComponent?.packageName
+        var rawStructure: RawParsedStructure? = null
+        val parseContext = ParseContext()
+
         for (i in 0 until structure.windowNodeCount) {
             val windowNode = structure.getWindowNodeAt(i)
-            val rootNode = windowNode.rootViewNode
+            val appIdCandidate = windowNode.title?.toString()?.split("/")?.firstOrNull()
+            if (!appIdCandidate.isNullOrBlank()) {
+                if (appIdCandidate.contains(":")) {
+                    continue
+                }
+                applicationId = appIdCandidate
+            }
 
-            val info = WebViewInfo()
-            
-            // 使用可变计数器进行遍历
-            globalTraversalIndex = traverseNode(
-                node = rootNode,
-                items = items,
-                respectAutofillOff = respectAutofillOff,
-                webViewInfo = info,
-                startIndex = globalTraversalIndex
+            val nodeStructure = parseViewNode(
+                node = windowNode.rootViewNode,
+                context = parseContext,
             )
-
-            if (info.isWebView) {
-                isWebView = true
+            if (rawStructure == null) {
+                rawStructure = nodeStructure
             }
-
-            if (info.webDomain != null) {
-                webDomain = info.webDomain
-            }
-
-            if (info.webScheme != null) {
-                webScheme = info.webScheme
+            val hasItems = nodeStructure.items.any { it.hint != InternalHint.OFF }
+            if (hasItems) {
+                rawStructure = nodeStructure
+                break
             }
         }
-        
-        // 按准确度排序
-        items.sortByDescending { it.accuracy.score }
-        
-        android.util.Log.d("EnhancedParser", "Parsed ${items.size} items, webView=$isWebView, domain=$webDomain")
-        
+
+        val allowOnlyWebViewItems = rawStructure?.webView == true
+        var candidateItems = rawStructure?.items.orEmpty()
+        if (allowOnlyWebViewItems) {
+            candidateItems = candidateItems.filter { it.parentWebViewNodeId != null }
+        }
+
+        val confidenceFilteredItems = candidateItems.let { list ->
+            val onlyLowAccuracy = list.all {
+                it.accuracy.score <= Accuracy.LOW.score || it.hint == InternalHint.OFF
+            }
+            if (!onlyLowAccuracy) {
+                return@let list
+            }
+
+            val hasUsernameAndPassword =
+                list.any {
+                    val usernameLike =
+                        it.hint == InternalHint.USERNAME ||
+                            it.hint == InternalHint.EMAIL_ADDRESS ||
+                            it.hint == InternalHint.PHONE_NUMBER
+                    usernameLike && it.accuracy.score > Accuracy.LOWEST.score
+                } &&
+                    list.any {
+                        val passwordLike =
+                            it.hint == InternalHint.PASSWORD ||
+                                it.hint == InternalHint.NEW_PASSWORD
+                        passwordLike && it.accuracy.score > Accuracy.LOWEST.score
+                    }
+            if (hasUsernameAndPassword) {
+                list
+            } else {
+                emptyList()
+            }
+        }
+
+        val items = mutableListOf<ParsedItem>()
+        confidenceFilteredItems
+            .groupBy { it.id }
+            .forEach { groupedById ->
+                val forceAutofillOff = groupedById.value.any {
+                    it.hint == InternalHint.OFF && it.accuracy == Accuracy.HIGHEST
+                }
+                var structureItems = if (forceAutofillOff) {
+                    return@forEach
+                } else if (respectAutofillOff) {
+                    if (groupedById.value.any { it.hint == InternalHint.OFF }) {
+                        return@forEach
+                    }
+                    groupedById.value
+                } else {
+                    groupedById.value.filter { it.hint != InternalHint.OFF }
+                }
+
+                val derivesOfPassword = structureItems.any {
+                    it.hint == InternalHint.CREDIT_CARD_SECURITY_CODE || it.hint == InternalHint.OTP_CODE
+                }
+                if (derivesOfPassword) {
+                    structureItems = structureItems.filter { it.hint != InternalHint.PASSWORD }
+                }
+
+                val derivesOfUsername = structureItems.any {
+                    it.hint == InternalHint.CREDIT_CARD_NUMBER ||
+                        it.hint == InternalHint.CREDIT_CARD_EXPIRATION_DATE ||
+                        it.hint == InternalHint.CREDIT_CARD_EXPIRATION_MONTH ||
+                        it.hint == InternalHint.CREDIT_CARD_EXPIRATION_YEAR ||
+                        it.hint == InternalHint.CREDIT_CARD_EXPIRATION_DAY
+                }
+                if (derivesOfUsername) {
+                    structureItems = structureItems.filter { it.hint != InternalHint.USERNAME }
+                }
+
+                val selectedItem = structureItems
+                    .groupBy { it.hint }
+                    .mapNotNull { groupedByHint ->
+                        val score = groupedByHint.value.fold(0f) { acc, item ->
+                            acc + item.accuracy.score
+                        }
+                        val best = groupedByHint.value
+                            .maxByOrNull { it.accuracy.score }
+                            ?: return@mapNotNull null
+                        val value = groupedByHint.value
+                            .sortedByDescending { it.accuracy.score }
+                            .asSequence()
+                            .mapNotNull { it.value }
+                            .firstOrNull()
+                        HintScore(
+                            score = score,
+                            hint = groupedByHint.key,
+                            value = value,
+                            accuracy = best.accuracy,
+                            isFocused = best.isFocused,
+                            isVisible = best.isVisible,
+                            parentWebViewNodeId = best.parentWebViewNodeId,
+                            traversalIndex = best.traversalIndex,
+                        )
+                    }
+                    .maxByOrNull { it.score }
+                    ?: return@forEach
+
+                if (selectedItem.score <= Accuracy.LOWEST.score + 0.1f) {
+                    val shouldSkip = rawStructure?.items.orEmpty().any {
+                        it.hint == selectedItem.hint &&
+                            it.accuracy.score > Accuracy.LOWEST.score
+                    }
+                    if (shouldSkip) {
+                        return@forEach
+                    }
+                }
+
+                val mappedHint = mapHint(selectedItem.hint) ?: return@forEach
+                items += ParsedItem(
+                    id = groupedById.key,
+                    hint = mappedHint,
+                    value = selectedItem.value,
+                    accuracy = selectedItem.accuracy,
+                    isFocused = selectedItem.isFocused,
+                    isVisible = selectedItem.isVisible,
+                    parentWebViewNodeId = selectedItem.parentWebViewNodeId,
+                    traversalIndex = selectedItem.traversalIndex,
+                )
+            }
+
+        val isInSelfHostedServer = kotlin.run {
+            val webDomain = rawStructure?.webDomain
+            val webView = rawStructure?.webView == true
+            webView && (webDomain == "127.0.0.1" || webDomain == "localhost")
+        }
+
         return ParsedStructure(
             applicationId = applicationId,
-            webScheme = webScheme,
-            webDomain = webDomain,
-            webView = isWebView,
-            items = items
+            webDomain = rawStructure?.webDomain.takeUnless { isInSelfHostedServer },
+            webScheme = rawStructure?.webScheme.takeUnless { isInSelfHostedServer },
+            webView = if (isInSelfHostedServer) false else rawStructure?.webView == true,
+            items = items.sortedBy { it.traversalIndex },
         )
     }
-    
-    /**
-     * WebView 信息
-     */
-    private data class WebViewInfo(
-        var isWebView: Boolean = false,
-        var webScheme: String? = null,
-        var webDomain: String? = null
-    )
-    
-    /**
-     * 递归遍历节点
-     */
-    private fun traverseNode(
+
+    private fun parseViewNode(
         node: AssistStructure.ViewNode,
-        items: MutableList<ParsedItem>,
-        respectAutofillOff: Boolean,
         parentWebViewNodeId: Int? = null,
-        webViewInfo: WebViewInfo,
-        startIndex: Int
-    ): Int {
-        var currentIndex = startIndex
-        
-        // 检查是否是 WebView
-        val currentWebViewNodeId = if (node.className == "android.webkit.WebView") {
-            webViewInfo.isWebView = true
-            node.id
+        context: ParseContext,
+    ): RawParsedStructure {
+        var webView = false
+        var webDomain: String? = node.webDomain?.takeIf { it.isNotEmpty() }
+        var webScheme: String? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            node.webScheme?.takeIf { it.isNotEmpty() }
         } else {
-            parentWebViewNodeId
+            null
         }
 
-        if (currentWebViewNodeId != null) {
-            webViewInfo.isWebView = true
-        }
+        val out = mutableListOf<RawParsedItem>()
+        if (node.visibility == View.VISIBLE) {
+            webView = node.className == "android.webkit.WebView"
+            val webViewNodeId = node.id.takeIf { webView } ?: parentWebViewNodeId
 
-        // 尝试提取 WebView 或浏览器提供的域名信息
-        node.webDomain?.let { domain ->
-            if (webViewInfo.webDomain == null) {
-                webViewInfo.webDomain = domain
-            }
-            val scheme = node.webScheme ?: "https"
-            if (webViewInfo.webScheme == null) {
-                webViewInfo.webScheme = scheme
-            }
-        }
-        
-        // 检查是否需要忽略（autofill=off）
-        // IMPORTANT_FOR_AUTOFILL_NO 只跳过当前节点检测，不跳过子节点；
-        // IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS 才跳过整棵子树。
-        val importantForAutofill = node.importantForAutofill
-        if (respectAutofillOff && importantForAutofill == View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS) {
-            android.util.Log.d("EnhancedParser", "Skipping subtree with autofill=off_exclude_descendants: ${node.idEntry}")
-            return currentIndex
-        }
-        val skipCurrentNodeDetection = respectAutofillOff && importantForAutofill == View.IMPORTANT_FOR_AUTOFILL_NO
-        if (skipCurrentNodeDetection) {
-            android.util.Log.d("EnhancedParser", "Skipping node with autofill=off: ${node.idEntry}")
-        }
-        
-        // 增加遍历索引（仅对可见节点计数，或者对所有节点计数皆可，这里统计所有节点以保持相对顺序）
-        currentIndex++
-        
-        // 尝试解析当前节点
-        val autofillId = node.autofillId
-        if (!skipCurrentNodeDetection && autofillId != null && isAutofillCandidateNode(node)) {
-            detectFieldType(node, currentWebViewNodeId)?.let { parsedItem ->
-                // 过滤搜索字段，不将其添加到可填充字段列表中
-                if (parsedItem.hint == FieldHint.SEARCH_FIELD) {
-                    android.util.Log.d("EnhancedParser", "🔍 Skipping search field: ${node.idEntry ?: node.hint ?: "unknown"}")
-                    return@let
+            if (node.autofillId != null) {
+                val outBuilders = mutableListOf<ParsedItemBuilder>()
+                val hints = node.autofillHints
+                if (!hints.isNullOrEmpty()) {
+                    outBuilders += parseNodeByAutofillHint(node)
                 }
-                
-                // 添加带有遍历索引的项
-                val itemWithIndex = parsedItem.copy(traversalIndex = currentIndex)
-                items.add(itemWithIndex)
-                
-                android.util.Log.d("EnhancedParser", "Found ${parsedItem.hint} field with accuracy ${parsedItem.accuracy} at index $currentIndex")
-            }
-        }
-        
-        // 递归处理子节点
-        for (i in 0 until node.childCount) {
-            node.getChildAt(i)?.let { childNode ->
-                currentIndex = traverseNode(childNode, items, respectAutofillOff, currentWebViewNodeId, webViewInfo, currentIndex)
-            }
-        }
-        
-        return currentIndex
-    }
 
-    private fun isAutofillCandidateNode(node: AssistStructure.ViewNode): Boolean {
-        if (node.autofillType != View.AUTOFILL_TYPE_NONE) return true
-        if (!node.autofillHints.isNullOrEmpty()) return true
-        if (!node.idEntry.isNullOrBlank()) return true
-        return !node.hint.isNullOrBlank()
-    }
-    
-    /**
-     * 检测字段类型
-     * 
-     * ⚠️ 优先级说明：
-     * - 首先检查是否为非凭据字段（评论/聊天/搜索等），避免误触发
-     * - 然后按 autofillHints > HTML属性 > inputType > 文本标签 的优先级检测
-     */
-    private fun detectFieldType(
-        node: AssistStructure.ViewNode,
-        parentWebViewNodeId: Int?
-    ): ParsedItem? {
-        val autofillId = node.autofillId ?: return null
-        
-        // ========== 首先：检查是否为非凭据字段（最高优先级排除）==========
-        // 收集所有可用于匹配的文本
-        val allTexts = listOfNotNull(
-            node.idEntry?.lowercase(),
-            node.hint?.lowercase(),
-            node.text?.toString()?.lowercase(),
-            node.contentDescription?.toString()?.lowercase()
-        )
-        
-        // 检查是否匹配任何非凭据字段关键词
-        for (text in allTexts) {
-            for (searchKeyword in searchTranslations) {
-                if (text.contains(searchKeyword, ignoreCase = true)) {
-                    android.util.Log.d("EnhancedParser", "⛔ Non-credential field detected: '$text' contains '$searchKeyword'")
-                    return ParsedItem(
-                        id = autofillId,
-                        hint = FieldHint.SEARCH_FIELD,
-                        accuracy = Accuracy.HIGHEST,
-                        value = null,
+                outBuilders += parseNodeByHtmlAttributes(node)
+                val inputOut = parseNodeByAndroidInput(node)
+                val labelOut = parseNodeByLabel(node)
+                outBuilders += inputOut + labelOut
+
+                out += outBuilders.map { builder ->
+                    context.traversalIndex += 1
+                    RawParsedItem(
+                        id = node.autofillId!!,
+                        accuracy = builder.accuracy,
+                        hint = builder.hint,
+                        value = builder.value ?: node.autofillValue.safeTextOrNull(
+                            tag = "EnhancedParserV2",
+                            fieldDescription = builder.hint.name,
+                        ),
+                        reason = builder.reason,
+                        parentWebViewNodeId = webViewNodeId,
                         isFocused = node.isFocused,
                         isVisible = node.visibility == View.VISIBLE,
-                        parentWebViewNodeId = parentWebViewNodeId,
-                        traversalIndex = 0
+                        traversalIndex = context.traversalIndex,
                     )
                 }
             }
-        }
-        
-        var bestMatch: Pair<FieldHint, Accuracy>? = null
-        
-        // ========== 策略 1: 检查 autofillHints（最高优先级）==========
-        node.autofillHints?.forEach { hint ->
-            val detected = detectFromAutofillHint(hint)
-            if (detected != null && (bestMatch == null || detected.second.score > bestMatch!!.second.score)) {
-                bestMatch = detected
+
+            for (i in 0 until node.childCount) {
+                val childStructure = parseViewNode(
+                    node = node.getChildAt(i),
+                    parentWebViewNodeId = webViewNodeId,
+                    context = context,
+                )
+                if (childStructure.webView) {
+                    webView = true
+                }
+                webDomain = webDomain ?: childStructure.webDomain
+                webScheme = webScheme ?: childStructure.webScheme
+                out += childStructure.items
             }
         }
-        
-        // ========== 策略 2: 检查 HTML 属性 ==========
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val detected = detectFromHtmlAttributes(node)
-                if (detected != null && (bestMatch == null || detected.second.score > bestMatch!!.second.score)) {
-                    bestMatch = detected
-                }
-        }
-        
-        // ========== 策略 3: 检查 inputType ==========
-        val detected = detectFromInputType(node.inputType)
-        if (detected != null && (bestMatch == null || detected.second.score > bestMatch!!.second.score)) {
-            bestMatch = detected
-        }
-        
-        // ========== 策略 4: 检查文本标签（最低优先级）==========
-        val labelTexts = listOfNotNull(
-            node.idEntry,
-            node.hint,
-            node.text?.toString(),
-            node.contentDescription?.toString()
+
+        return RawParsedStructure(
+            webScheme = webScheme,
+            webDomain = webDomain,
+            webView = webView,
+            items = out,
         )
-        
-        labelTexts.forEach { labelText ->
-            labelMatchers.forEach { matcher ->
-                if (matcher.matches(labelText)) {
-                    val detectedAccuracy = if (matcher.partialMatch) Accuracy.MEDIUM else matcher.accuracy
-                    if (bestMatch == null || detectedAccuracy.score > bestMatch!!.second.score) {
-                        bestMatch = matcher.hint to detectedAccuracy
+    }
+
+    private fun parseNodeByAutofillHint(
+        node: AssistStructure.ViewNode,
+    ): List<ParsedItemBuilder> = kotlin.run {
+        val out = mutableListOf<ParsedItemBuilder>()
+        node.autofillHints?.forEach { value ->
+            val matchers = autofillHintMatchers.filter { matcher -> matcher.matches(value) }
+            matchers.forEach { matcher ->
+                out += ParsedItemBuilder(
+                    accuracy = matcher.accuracy,
+                    hint = matcher.hint,
+                    reason = "autofill-hint",
+                )
+            }
+        }
+        out
+    }
+
+    private fun parseNodeByHtmlAttributes(
+        node: AssistStructure.ViewNode,
+    ): List<ParsedItemBuilder> = kotlin.run {
+        val out = mutableListOf<ParsedItemBuilder>()
+        val nodeHtml = node.htmlInfo
+        when (nodeHtml?.tag?.lowercase(Locale.ENGLISH)) {
+            "input" -> {
+                val attributes = kotlin.run {
+                    nodeHtml.attributes
+                        ?.map { it.first to it.second }
+                        ?.takeUnless { it.isEmpty() } ?: kotlin.runCatching {
+                        val values = nodeHtml.javaClass.getDeclaredField("mValues")
+                            .apply { isAccessible = true }
+                            .get(nodeHtml)
+                        val names = nodeHtml.javaClass.getDeclaredField("mNames")
+                            .apply { isAccessible = true }
+                            .get(nodeHtml)
+                        if (values is Array<*> && names is Array<*>) {
+                            values.mapIndexed { i, v -> v.toString() to names[i].toString() }
+                        } else if (values is Collection<*> && names is Collection<*>) {
+                            val namesList = names.toList()
+                            values.mapIndexed { i, v -> v.toString() to namesList[i].toString() }
+                        } else {
+                            null
+                        }
+                    }.getOrNull()
+                }
+
+                attributes?.forEach { attribute ->
+                    val key = attribute.first.lowercase(Locale.ENGLISH)
+                    when (key) {
+                        "autocomplete",
+                        "ua-autofill-hints",
+                        -> {
+                            val value = attribute.second?.lowercase(Locale.ENGLISH).orEmpty()
+                            val matchers = autofillHintMatchers.filter { matcher ->
+                                matcher.matches(value)
+                            }
+                            matchers.forEach { matcher ->
+                                out += ParsedItemBuilder(
+                                    accuracy = matcher.accuracy,
+                                    hint = matcher.hint,
+                                    reason = key,
+                                )
+                            }
+                        }
+
+                        "type" -> {
+                            val type = attribute.second.orEmpty()
+                            extractOfType(type).let(out::addAll)
+                        }
+
+                        "name" -> {
+                            val type = attribute.second.orEmpty()
+                            extractOfId(type).let(out::addAll)
+                        }
+
+                        "id" -> {
+                            val type = attribute.second.orEmpty()
+                            extractOfId(type).let(out::addAll)
+                        }
+
+                        "label" -> {
+                            val label = attribute.second.orEmpty()
+                            extractOfLabel(label).let(out::addAll)
+                        }
                     }
                 }
             }
         }
-        
-        // 如果找到匹配，返回结果
-        return bestMatch?.let { (hint, accuracy) ->
-            ParsedItem(
-                id = autofillId,
-                hint = hint,
-                accuracy = accuracy,
-                value = (node.autofillValue)
-                    .safeTextOrNull(tag = "EnhancedParserV2", fieldDescription = hint.name),
-                isFocused = node.isFocused,
-                isVisible = node.visibility == View.VISIBLE,
-                parentWebViewNodeId = parentWebViewNodeId,
-                traversalIndex = 0 // 默认为0，将在 traverseNode 中重新赋值
+        out
+    }
+
+    private fun parseNodeByLabel(
+        node: AssistStructure.ViewNode,
+    ): List<ParsedItemBuilder> {
+        val hint = node.hint ?: return emptyList()
+        return extractOfLabel(hint)
+    }
+
+    private fun extractOfType(
+        value: String,
+    ): List<ParsedItemBuilder> = when (value.lowercase(Locale.ENGLISH)) {
+        "tel" -> ParsedItemBuilder(
+            accuracy = Accuracy.MEDIUM,
+            hint = InternalHint.PHONE_NUMBER,
+            reason = "type",
+        )
+
+        "email" -> ParsedItemBuilder(
+            accuracy = Accuracy.MEDIUM,
+            hint = InternalHint.EMAIL_ADDRESS,
+            reason = "type",
+        )
+
+        "username" -> ParsedItemBuilder(
+            accuracy = Accuracy.MEDIUM,
+            hint = InternalHint.USERNAME,
+            reason = "type",
+        )
+
+        "text" -> ParsedItemBuilder(
+            accuracy = Accuracy.LOWEST,
+            hint = InternalHint.USERNAME,
+            reason = "type",
+        )
+
+        "password" -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.PASSWORD,
+            reason = "type",
+        )
+
+        "totp",
+        "twofa",
+        "2fa",
+        -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.OTP_CODE,
+            reason = "type",
+        )
+
+        "expdate" -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_DATE,
+            reason = "type",
+        )
+
+        else -> null
+    }.let { listOfNotNull(it) }
+
+    private fun extractOfId(
+        value: String,
+    ): List<ParsedItemBuilder> = kotlin.run {
+        val id = value.lowercase(Locale.ENGLISH)
+        when {
+            "email" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.EMAIL_ADDRESS,
+                reason = "id",
             )
-        }
+
+            "username" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.USERNAME,
+                reason = "id",
+            )
+
+            "password" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.PASSWORD,
+                reason = "id",
+            )
+
+            "totp" in id || "twofa" in id || "2fa" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.OTP_CODE,
+                reason = "id",
+            )
+
+            else -> null
+        }.let { listOfNotNull(it) }
     }
-    
-    /**
-     * 从 autofillHints 检测字段类型
-     */
-    private fun detectFromAutofillHint(hint: String): Pair<FieldHint, Accuracy>? {
-        return when (hint) {
-            HintConstants.AUTOFILL_HINT_USERNAME,
-            "username" -> FieldHint.USERNAME to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_PASSWORD,
-            "password",
-            "current-password" -> FieldHint.PASSWORD to Accuracy.HIGHEST
-            
-            "new-password" -> FieldHint.NEW_PASSWORD to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_EMAIL_ADDRESS,
-            "email" -> FieldHint.EMAIL_ADDRESS to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_PHONE,
-            HintConstants.AUTOFILL_HINT_PHONE_NUMBER,
-            "tel" -> FieldHint.PHONE_NUMBER to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_CREDIT_CARD_NUMBER,
-            "cc-number" -> FieldHint.CREDIT_CARD_NUMBER to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_CREDIT_CARD_EXPIRATION_DATE,
-            "cc-exp" -> FieldHint.CREDIT_CARD_EXPIRATION_DATE to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_CREDIT_CARD_SECURITY_CODE,
-            "cc-csc" -> FieldHint.CREDIT_CARD_SECURITY_CODE to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_POSTAL_ADDRESS,
-            "address" -> FieldHint.POSTAL_ADDRESS to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_POSTAL_CODE,
-            "postal-code" -> FieldHint.POSTAL_CODE to Accuracy.HIGHEST
-            
-            HintConstants.AUTOFILL_HINT_NAME,
-            HintConstants.AUTOFILL_HINT_PERSON_NAME,
-            "name" -> FieldHint.PERSON_NAME to Accuracy.HIGHEST
-            
-            "one-time-code",
-            "sms-otp" -> FieldHint.OTP_CODE to Accuracy.HIGHEST
-            
+
+    private fun extractOfLabel(
+        value: String,
+    ): List<ParsedItemBuilder> {
+        val hint = value.lowercase(Locale.ENGLISH).trim()
+        if (hint.isBlank()) {
+            return emptyList()
+        }
+
+        val out = when {
+            autofillLabelEmailTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.EMAIL_ADDRESS,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelUsernameTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.USERNAME,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelPasswordTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.PASSWORD,
+                    reason = "label:$hint",
+                )
+
+            autofillLabel2faTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.OTP_CODE,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelCreditCardNumberTranslations.any { it.matches(hint) } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.CREDIT_CARD_NUMBER,
+                    reason = "label:$hint",
+                )
+
             else -> null
         }
+        return listOfNotNull(out)
     }
-    
-    /**
-     * 从 HTML 属性检测字段类型
-     */
-    private fun detectFromHtmlAttributes(htmlInfo: android.app.assist.AssistStructure.ViewNode): Pair<FieldHint, Accuracy>? {
-        // 检查 autocomplete 属性
-        val autocomplete = htmlInfo.htmlInfo?.attributes
-            ?.find { attr -> attr.first == "autocomplete" }
-            ?.second?.lowercase()
-        
-        autocomplete?.let { value ->
-            return when {
-                value.contains("username") || value.contains("email") -> FieldHint.USERNAME to Accuracy.HIGH
-                value.contains("current-password") -> FieldHint.PASSWORD to Accuracy.HIGH
-                value.contains("new-password") -> FieldHint.NEW_PASSWORD to Accuracy.HIGH
-                value.contains("tel") -> FieldHint.PHONE_NUMBER to Accuracy.HIGH
-                value.contains("cc-number") -> FieldHint.CREDIT_CARD_NUMBER to Accuracy.HIGH
-                value.contains("one-time-code") -> FieldHint.OTP_CODE to Accuracy.HIGH
-                else -> null
+
+    private fun parseNodeByAndroidInput(
+        node: AssistStructure.ViewNode,
+    ): List<ParsedItemBuilder> {
+        val out = mutableListOf<ParsedItemBuilder>()
+
+        if (node.idType.orEmpty().equals("id", ignoreCase = true)) {
+            val idEntry = node.idEntry.orEmpty()
+            if (
+                idEntry.contains("url", ignoreCase = true) ||
+                idEntry.contentEquals(other = "location_bar_edit_text", ignoreCase = true)
+            ) {
+                out += ParsedItemBuilder(
+                    accuracy = Accuracy.HIGHEST,
+                    hint = InternalHint.OFF,
+                )
+                return out
             }
         }
-        
-        // 检查 type 属性
-        val type = htmlInfo.htmlInfo?.attributes
-            ?.find { attr -> attr.first == "type" }
-            ?.second?.lowercase()
-        
-        type?.let { typeValue ->
-            return when (typeValue) {
-                "password" -> FieldHint.PASSWORD to Accuracy.HIGH
-                "email" -> FieldHint.EMAIL_ADDRESS to Accuracy.HIGH
-                "tel" -> FieldHint.PHONE_NUMBER to Accuracy.HIGH
-                else -> null
+
+        val importance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            node.importantForAutofill
+        } else {
+            View.IMPORTANT_FOR_AUTOFILL_AUTO
+        }
+        if (importance == View.IMPORTANT_FOR_AUTOFILL_NO) {
+            out += ParsedItemBuilder(
+                accuracy = Accuracy.HIGHEST,
+                hint = InternalHint.OFF,
+            )
+            return out
+        }
+
+        val inputType = node.inputType
+        when (inputType and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_TEXT -> {
+                when {
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                        InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+                    ) -> {
+                        out += ParsedItemBuilder(
+                            accuracy = Accuracy.HIGH,
+                            hint = InternalHint.EMAIL_ADDRESS,
+                        )
+                    }
+
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
+                    ) -> {
+                        out += ParsedItemBuilder(
+                            accuracy = Accuracy.LOW,
+                            hint = InternalHint.PERSON_NAME,
+                        )
+                    }
+
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_TEXT_VARIATION_NORMAL,
+                        InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
+                        InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT,
+                    ) -> {
+                        out += ParsedItemBuilder(
+                            accuracy = Accuracy.LOWEST,
+                            hint = InternalHint.USERNAME,
+                        )
+                        extractOfType(node.idType.orEmpty()).let(out::addAll)
+                        extractOfId(node.idEntry.orEmpty()).let(out::addAll)
+                    }
+
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                    ) -> {
+                        val hasUsername = out.any {
+                            it.hint == InternalHint.USERNAME ||
+                                it.hint == InternalHint.EMAIL_ADDRESS ||
+                                it.hint == InternalHint.PHONE_NUMBER
+                        }
+                        if (hasUsername) {
+                            out += ParsedItemBuilder(
+                                accuracy = Accuracy.LOWEST,
+                                hint = InternalHint.PASSWORD,
+                            )
+                        } else {
+                            out += ParsedItemBuilder(
+                                accuracy = Accuracy.LOWEST,
+                                hint = InternalHint.USERNAME,
+                            )
+                        }
+                    }
+
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                        InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                    ) -> {
+                        out += ParsedItemBuilder(
+                            accuracy = Accuracy.HIGH,
+                            hint = InternalHint.PASSWORD,
+                        )
+                    }
+
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_TEXT_VARIATION_EMAIL_SUBJECT,
+                        InputType.TYPE_TEXT_VARIATION_FILTER,
+                        InputType.TYPE_TEXT_VARIATION_LONG_MESSAGE,
+                        InputType.TYPE_TEXT_VARIATION_PHONETIC,
+                        InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS,
+                        InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE,
+                        InputType.TYPE_TEXT_VARIATION_URI,
+                    ) -> {
+                    }
+
+                    else -> {
+                    }
+                }
+            }
+
+            InputType.TYPE_CLASS_NUMBER -> {
+                when {
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_NUMBER_VARIATION_NORMAL,
+                    ) -> {
+                        out += ParsedItemBuilder(
+                            accuracy = if (importance == View.IMPORTANT_FOR_AUTOFILL_YES) {
+                                Accuracy.MEDIUM
+                            } else {
+                                Accuracy.LOW
+                            },
+                            hint = InternalHint.USERNAME,
+                        )
+                    }
+
+                    inputIsVariationType(
+                        inputType,
+                        InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+                    ) -> {
+                        out += ParsedItemBuilder(
+                            accuracy = Accuracy.LOW,
+                            hint = InternalHint.PASSWORD,
+                        )
+                    }
+
+                    else -> {
+                    }
+                }
             }
         }
-        
-        // 检查 name 属性
-        val name = htmlInfo.htmlInfo?.attributes
-            ?.find { attr -> attr.first == "name" }
-            ?.second?.lowercase()
-        
-        name?.let { nameValue ->
-            return when {
-                nameValue.contains("password") -> FieldHint.PASSWORD to Accuracy.MEDIUM
-                nameValue.contains("email") -> FieldHint.EMAIL_ADDRESS to Accuracy.MEDIUM
-                nameValue.contains("username") || nameValue.contains("login") -> FieldHint.USERNAME to Accuracy.MEDIUM
-                nameValue.contains("tel") || nameValue.contains("phone") -> FieldHint.PHONE_NUMBER to Accuracy.MEDIUM
-                nameValue.contains("otp") || nameValue.contains("code") -> FieldHint.OTP_CODE to Accuracy.MEDIUM
-                else -> null
-            }
-        }
-        
-        return null
+
+        return out
     }
-    
-    /**
-     * 从 inputType 检测字段类型
-     */
-    private fun detectFromInputType(inputType: Int): Pair<FieldHint, Accuracy>? {
-        return when {
-            // 密码类型
-            (inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0 ||
-            (inputType and InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) != 0 ||
-            (inputType and InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) != 0 -> 
-                FieldHint.PASSWORD to Accuracy.HIGH
-            
-            // 邮箱类型
-            (inputType and InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS) != 0 ||
-            (inputType and InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS) != 0 -> 
-                FieldHint.EMAIL_ADDRESS to Accuracy.HIGH
-            
-            // 电话类型
-            (inputType and InputType.TYPE_CLASS_PHONE) != 0 -> 
-                FieldHint.PHONE_NUMBER to Accuracy.HIGH
-            
-            // 纯数字类型在登录场景常被账号框复用（如 QQ 号），
-            // 不应仅凭 inputType 判定为 OTP，交给关键词策略判断。
-            (inputType and InputType.TYPE_CLASS_NUMBER) != 0 ->
-                null
-            
-            // 人名类型
-            (inputType and InputType.TYPE_TEXT_VARIATION_PERSON_NAME) != 0 -> 
-                FieldHint.PERSON_NAME to Accuracy.HIGH
-            
-            // 地址类型
-            (inputType and InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS) != 0 -> 
-                FieldHint.POSTAL_ADDRESS to Accuracy.HIGH
-            
-            else -> null
+
+    private fun isEditableTextLikeNode(node: AssistStructure.ViewNode): Boolean {
+        if (node.visibility != View.VISIBLE) return false
+        if (node.autofillId == null) return false
+
+        if (node.autofillType == View.AUTOFILL_TYPE_TEXT) return true
+        if (node.inputType != 0) return true
+
+        val className = node.className?.lowercase(Locale.ENGLISH).orEmpty()
+        if (
+            className.contains("edittext") ||
+            className.contains("textinput") ||
+            className.contains("textfield") ||
+            className.contains("autocompletetextview")
+        ) {
+            return true
         }
+
+        val htmlTag = node.htmlInfo?.tag?.lowercase(Locale.ENGLISH).orEmpty()
+        if (htmlTag == "input" || htmlTag == "textarea") return true
+
+        val htmlType = node.htmlInfo?.attributes
+            ?.firstOrNull { it.first.equals("type", ignoreCase = true) }
+            ?.second
+            ?.lowercase(Locale.ENGLISH)
+            .orEmpty()
+        return htmlType == "text" ||
+            htmlType == "email" ||
+            htmlType == "tel" ||
+            htmlType == "password"
+    }
+
+    private fun mapHint(hint: InternalHint): FieldHint? = when (hint) {
+        InternalHint.USERNAME -> FieldHint.USERNAME
+        InternalHint.PASSWORD -> FieldHint.PASSWORD
+        InternalHint.NEW_PASSWORD -> FieldHint.NEW_PASSWORD
+        InternalHint.EMAIL_ADDRESS -> FieldHint.EMAIL_ADDRESS
+        InternalHint.PHONE_NUMBER -> FieldHint.PHONE_NUMBER
+        InternalHint.CREDIT_CARD_NUMBER -> FieldHint.CREDIT_CARD_NUMBER
+        InternalHint.CREDIT_CARD_EXPIRATION_DATE,
+        InternalHint.CREDIT_CARD_EXPIRATION_MONTH,
+        InternalHint.CREDIT_CARD_EXPIRATION_YEAR,
+        InternalHint.CREDIT_CARD_EXPIRATION_DAY,
+        -> FieldHint.CREDIT_CARD_EXPIRATION_DATE
+        InternalHint.CREDIT_CARD_SECURITY_CODE -> FieldHint.CREDIT_CARD_SECURITY_CODE
+        InternalHint.CREDIT_CARD_HOLDER_NAME -> FieldHint.CREDIT_CARD_HOLDER_NAME
+        InternalHint.POSTAL_ADDRESS -> FieldHint.POSTAL_ADDRESS
+        InternalHint.POSTAL_CODE -> FieldHint.POSTAL_CODE
+        InternalHint.PERSON_NAME -> FieldHint.PERSON_NAME
+        InternalHint.OTP_CODE -> FieldHint.OTP_CODE
+        InternalHint.OFF -> null
+        InternalHint.UNKNOWN -> FieldHint.UNKNOWN
+    }
+
+    private fun inputIsVariationType(inputType: Int, vararg type: Int): Boolean {
+        type.forEach {
+            if (inputType and InputType.TYPE_MASK_VARIATION == it) {
+                return true
+            }
+        }
+        return false
     }
 }

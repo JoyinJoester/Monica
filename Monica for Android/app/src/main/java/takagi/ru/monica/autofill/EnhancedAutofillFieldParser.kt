@@ -277,3 +277,4 @@ class EnhancedAutofillFieldParser(private val structure: AssistStructure) {
         return null
     }
 }
+

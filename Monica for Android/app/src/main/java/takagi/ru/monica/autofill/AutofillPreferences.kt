@@ -509,3 +509,4 @@ class AutofillPreferences(private val context: Context) {
         return signatures.contains(normalized)
     }
 }
+

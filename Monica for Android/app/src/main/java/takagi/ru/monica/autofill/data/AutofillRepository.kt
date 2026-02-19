@@ -343,3 +343,4 @@ class AutofillRepository(
         return cache.getStats()
     }
 }
+

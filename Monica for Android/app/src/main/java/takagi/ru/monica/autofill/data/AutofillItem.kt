@@ -18,3 +18,4 @@ sealed class AutofillItem {
      */
     data class Payment(val info: PaymentInfo) : AutofillItem()
 }
+

@@ -658,3 +658,4 @@ object SmartFieldDetector {
         "wechatpay", "cashier-password", "safe_pwd", "wallet_pwd", "secure-pay"
     )
 }
+

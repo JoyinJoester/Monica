@@ -1,6 +1,8 @@
 package takagi.ru.monica.autofill.core
 
+import android.content.Context
 import android.util.Log
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -27,6 +29,9 @@ object AutofillLogger {
     
     private const val TAG = "MonicaAutofill"
     private const val MAX_LOG_ENTRIES = 500
+    private const val LOG_DIR_NAME = "autofill_logs"
+    private const val LOG_FILE_NAME = "autofill_structured_v3.log"
+    private const val MAX_LOG_FILE_BYTES = 1024 * 1024L
     
     enum class Level {
         DEBUG, INFO, WARN, ERROR
@@ -52,6 +57,27 @@ object AutofillLogger {
     
     private val logs = mutableListOf<LogEntry>()
     private var isEnabled = true // 默认启用，生产环境可设置为 false
+    private val fileLock = Any()
+    @Volatile
+    private var persistentLogFile: File? = null
+
+    /**
+     * 初始化持久化日志文件。
+     * 可重复调用，首次成功后后续调用无副作用。
+     */
+    fun initialize(context: Context) {
+        if (persistentLogFile != null) return
+        synchronized(fileLock) {
+            if (persistentLogFile != null) return
+            runCatching {
+                val logDir = File(context.applicationContext.filesDir, LOG_DIR_NAME)
+                if (!logDir.exists()) {
+                    logDir.mkdirs()
+                }
+                persistentLogFile = File(logDir, LOG_FILE_NAME)
+            }
+        }
+    }
     
     /**
      * DEBUG 级别日志
@@ -98,6 +124,7 @@ object AutofillLogger {
         // 自动脱敏
         val sanitizedMessage = sanitize(message)
         val sanitizedMetadata = metadata.mapValues { sanitize(it.value.toString()) }
+        val entry = LogEntry(System.currentTimeMillis(), level, category, sanitizedMessage, sanitizedMetadata)
         
         // 控制台输出
         val logMessage = "[$category] $sanitizedMessage${
@@ -108,11 +135,12 @@ object AutofillLogger {
         // 内存存储（最近 500 条）
         if (isEnabled) {
             synchronized(logs) {
-                logs.add(LogEntry(System.currentTimeMillis(), level, category, sanitizedMessage, sanitizedMetadata))
+                logs.add(entry)
                 if (logs.size > MAX_LOG_ENTRIES) {
                     logs.removeAt(0)
                 }
             }
+            appendPersistentLog(entry)
         }
     }
     
@@ -185,6 +213,15 @@ object AutofillLogger {
         synchronized(logs) {
             logs.clear()
         }
+        synchronized(fileLock) {
+            runCatching {
+                persistentLogFile?.let { file ->
+                    if (file.exists()) {
+                        file.writeText("")
+                    }
+                }
+            }
+        }
         emitAndroidLog(Level.INFO, "日志已清除")
     }
     
@@ -218,6 +255,21 @@ object AutofillLogger {
     }
 
     /**
+     * 导出持久化日志（按行截取最近 maxEntries 条）。
+     */
+    fun exportPersistedLogs(maxEntries: Int = 1200): String {
+        val file = persistentLogFile ?: return ""
+        if (!file.exists()) return ""
+        return synchronized(fileLock) {
+            runCatching {
+                file.readLines()
+                    .takeLast(maxEntries.coerceAtLeast(1))
+                    .joinToString(separator = "\n")
+            }.getOrDefault("")
+        }
+    }
+
+    /**
      * 封装 android.util.Log，避免在 JVM 单元测试环境崩溃
      */
     private fun emitAndroidLog(level: Level, message: String) {
@@ -230,6 +282,22 @@ object AutofillLogger {
             }
         } catch (ignored: RuntimeException) {
             // 本地 JVM 测试环境没有 Android Log 实现，直接忽略
+        }
+    }
+
+    private fun appendPersistentLog(entry: LogEntry) {
+        val file = persistentLogFile ?: return
+        synchronized(fileLock) {
+            runCatching {
+                if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
+                    file.writeText(
+                        "=== log rotated at ${
+                            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                        } ===\n"
+                    )
+                }
+                file.appendText(entry.format() + "\n")
+            }
         }
     }
 }
@@ -262,3 +330,4 @@ object AutofillLogCategory {
     /** 用户操作 (选择密码、取消操作、生物识别) */
     const val USER_ACTION = "UserAction"
 }
+

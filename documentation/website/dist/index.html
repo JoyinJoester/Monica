@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monica - 你的全能数字保险箱</title>
+
+  <!-- Google Fonts: Outfit (Display) & Inter (Body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Outfit:wght@500;700;800&display=swap"
+    rel="stylesheet">
+
+  <!-- Boxicons -->
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+
+  <script type="module" crossorigin src="/Monica/assets/main-wkbLMWlE.js"></script>
+  <link rel="stylesheet" crossorigin href="/Monica/assets/main-YP0-5Y7a.css">
+</head>
+
+<body>
+
+  <!-- Navigation -->
+  <header>
+    <div class="logo">
+      <i class='bx bxs-check-shield'></i> <span>Monica</span>
+    </div>
+    <nav style="display: flex; align-items: center; gap: 16px;">
+      <!-- Language Switcher -->
+      <button id="lang-toggle" class="btn btn-outlined"
+        style="border:none; padding: 0 12px; height: 40px; min-width: auto; font-size: 0.9rem;">
+        <i class='bx bx-globe'></i> <span id="current-lang">ZH</span>
+      </button>
+
+      <a href="docs.html" class="btn btn-outlined" style="border:none; height: 40px; padding: 0 12px;"
+        data-i18n="nav.docs">文档</a>
+      <a href="https://github.com/JoyinJoester/Monica" target="_blank" class="btn btn-filled"
+        style="height: 40px; padding: 0 16px;" data-i18n="nav.download_app">下载 App</a>
+    </nav>
+  </header>
+
+  <!-- Premium Hero Section -->
+  <section class="hero container">
+    <div class="hero-overlay"></div> <!-- Texture Overlay -->
+
+    <div class="hero-content">
+      <h1 class="hero-title" data-i18n="hero.title"><span>安全。</span><br><span>本地。</span><br><span>开源。</span></h1>
+      <p class="hero-subtitle" data-i18n="hero.subtitle">Monica 是一个开源的本地密码管理器。<br>密码管理、2FA 验证、安全笔记，所有数据完全本地存储。</p>
+
+      <div class="hero-actions">
+        <a href="https://github.com/JoyinJoester/Monica/releases" target="_blank" class="btn btn-filled">
+          <i class='bx bxl-android'></i> <span data-i18n="hero.download_android">下载 Android 版</span>
+        </a>
+        <a href="https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser" target="_blank"
+          class="btn btn-outlined">
+          <i class='bx bxl-chrome'></i> <span data-i18n="hero.browser_extension">浏览器插件</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="container features-section">
+    <h2 style="font-family: var(--font-display); font-size: 2.5rem; margin-bottom: 2rem; text-align: center;"
+      data-i18n="features.title">功能一览</h2>
+
+    <div class="bento-grid">
+      <!-- 1. Password Manager -->
+      <div class="bento-item large">
+        <i class='bx bxs-key bento-icon'></i>
+        <div>
+          <h3 data-i18n="features.password_manager_title">密码管理器</h3>
+          <p data-i18n="features.password_manager_desc">支持账号密码自动填充、多字段存储。采用 AES-256 加密，数据仅存储在你的设备本地。</p>
+        </div>
+      </div>
+
+      <!-- 2. 2FA -->
+      <div class="bento-item">
+        <i class='bx bxs-time-five bento-icon'></i>
+        <div>
+          <h3 data-i18n="features.2fa_title">2FA 验证器</h3>
+          <p data-i18n="features.2fa_desc">内置 TOTP 验证器，扫码即用。支持即将过期自动复制下一码。</p>
+        </div>
+      </div>
+
+      <!-- 3. Cards & Notes -->
+      <div class="bento-item">
+        <i class='bx bxs-wallet bento-icon'></i>
+        <div>
+          <h3 data-i18n="features.cards_notes_title">卡包 & 笔记</h3>
+          <p data-i18n="features.cards_notes_desc">安全存储银行卡、证件照片和私密笔记。一切尽在掌握。</p>
+        </div>
+      </div>
+
+      <!-- 4. Design -->
+      <div class="bento-item large accent-primary">
+        <i class='bx bxs-palette bento-icon'></i>
+        <div>
+          <h3 data-i18n="features.design_title">Material Design 3</h3>
+          <p data-i18n="features.design_desc">遵循 Google Material Design 3 设计规范。支持动态取色主题与深色模式，界面整洁无广告。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Security Section -->
+  <section class="container" style="padding: 50px 0;">
+    <h2 style="font-family: var(--font-display); font-size: 2.5rem; margin-bottom: 2rem; text-align: center;"
+      data-i18n="security.title">安全架构</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+      <div class="bento-item" style="padding: 24px; text-align: center; height: auto; min-height: 200px;">
+        <i class='bx bxs-lock-alt' style="font-size: 40px; color: var(--sys-light-primary); margin-bottom: 16px;"></i>
+        <h3 data-i18n="security.encryption_title">军工级加密</h3>
+        <p data-i18n="security.encryption_desc" style="color: var(--sys-light-secondary); margin-top: 8px;">数据库采用
+          AES-256-GCM 加密保护。</p>
+      </div>
+      <div class="bento-item" style="padding: 24px; text-align: center; height: auto; min-height: 200px;">
+        <i class='bx bxs-microchip' style="font-size: 40px; color: var(--sys-light-primary); margin-bottom: 16px;"></i>
+        <h3 data-i18n="security.keystore_title">硬件级密钥库</h3>
+        <p data-i18n="security.keystore_desc" style="color: var(--sys-light-secondary); margin-top: 8px;">密钥由 Android
+          Keystore System (TEE) 保护。</p>
+      </div>
+      <div class="bento-item" style="padding: 24px; text-align: center; height: auto; min-height: 200px;">
+        <i class='bx bxs-no-wifi' style="font-size: 40px; color: var(--sys-light-primary); margin-bottom: 16px;"></i>
+        <h3 data-i18n="security.network_title">零知识证明</h3>
+        <p data-i18n="security.network_desc" style="color: var(--sys-light-secondary); margin-top: 8px;">
+          无需网络权限，默认完全离线运行。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Showcase Gallery -->
+  <section class="container" style="padding: 50px 0;">
+    <h2 style="font-family: var(--font-display); font-size: 2rem; margin-bottom: 2rem;">界面预览</h2>
+    <div class="showcase-scroll">
+      <img src="images/natural_theme.jpg" class="glass-card" alt="Theme Preview">
+      <img src="images/monet_theme.jpg" class="glass-card" alt="Theme Preview">
+      <img src="images/password_page.jpg" class="glass-card" alt="App Preview">
+      <img src="images/authenticator_page.jpg" class="glass-card" alt="App Preview">
+      <img src="images/cards_page.jpg" class="glass-card" alt="App Preview">
+    </div>
+  </section>
+
+  <!-- Community Section -->
+  <section class="container" style="padding: 50px 0 100px;">
+    <h2 style="font-family: var(--font-display); font-size: 2.5rem; margin-bottom: 2rem; text-align: center;"
+      data-i18n="community.title">社区动态</h2>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: start;">
+      <!-- Timeline -->
+      <div class="bento-item" style="flex: 1; min-width: 300px; padding: 24px; height: auto;">
+        <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+          <i class='bx bxs-time-five'></i> <span data-i18n="community.recent_commits">最近更新</span>
+        </h3>
+        <div id="commit-timeline" style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="text-align: center; color: var(--sys-light-secondary);">Loading commits...</div>
+        </div>
+      </div>
+
+      <!-- Contributors -->
+      <div class="bento-item" style="flex: 1; min-width: 300px; padding: 24px; height: auto;">
+        <h3 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+          <i class='bx bxs-user-account'></i> <span data-i18n="community.contributors">贡献者</span>
+        </h3>
+        <div id="contributors-list" style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <div style="text-align: center; color: var(--sys-light-secondary);">Loading contributors...</div>
+        </div>
+
+        <!-- Repo Stats (NEW) -->
+        <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
+          <i class='bx bxs-bar-chart-alt-2'></i> <span data-i18n="community.stats">项目数据</span>
+        </h3>
+        <div id="repo-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
+            <i class='bx bxs-star' style="color: #ffd700;"></i>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-stars">0</div>
+            <div style="font-size: 0.7rem; opacity: 0.7;">Stars</div>
+          </div>
+          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
+            <i class='bx bx-git-repo-forked' style="color: var(--sys-light-primary);"></i>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-forks">0</div>
+            <div style="font-size: 0.7rem; opacity: 0.7;">Forks</div>
+          </div>
+          <div class="glass-card" style="padding: 12px; text-align: center; border-radius: 16px;">
+            <i class='bx bxs-error-circle' style="color: #ff5252;"></i>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 4px;" id="stat-issues">0</div>
+            <div style="font-size: 0.7rem; opacity: 0.7;">Issues</div>
+          </div>
+        </div>
+
+        <!-- Platforms (Renamed from Tech Stack) -->
+        <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
+          <i class='bx bxs-devices'></i> <span data-i18n="community.platforms">支持平台</span>
+        </h3>
+        <div class="glass-card"
+          style="padding: 24px; display: flex; justify-content: space-around; align-items: center; border-radius: 16px;">
+          <div style="text-align: center;">
+            <i class='bx bxl-android' style="font-size: 2.5rem; color: #3DDC84;"></i>
+            <div style="font-size: 0.85rem; margin-top: 8px; font-weight: 500;">Android</div>
+          </div>
+          <div style="width: 1px; height: 40px; background: var(--sys-light-outline-variant);"></div>
+          <div style="text-align: center;">
+            <i class='bx bxl-chrome' style="font-size: 2.5rem; color: #4285F4;"></i>
+            <div style="font-size: 0.85rem; margin-top: 8px; font-weight: 500;">Chrome / Edge</div>
+          </div>
+        </div>
+
+        <!-- Support (Refined) -->
+        <h3 style="margin: 32px 0 16px; display: flex; align-items: center; gap: 8px;">
+          <i class='bx bxs-heart'></i> <span data-i18n="community.support">支持作者</span>
+        </h3>
+        <div class="glass-card"
+          style="padding: 24px; border-radius: 24px; display: flex; flex-direction: column; gap: 20px; background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);">
+
+          <p style="font-size: 0.85rem; line-height: 1.6; opacity: 0.8; text-align: center;"
+            data-i18n="community.support_desc">
+            您的支持将激励我持续完善项目与开发新功能。
+          </p>
+
+          <div style="display: flex; gap: 12px; justify-content: center;">
+            <a href="https://afdian.com/a/JoyinJoester" target="_blank" class="btn btn-filled"
+              style="flex: 1; justify-content: center; background: #946ce6; color: white; border: none; height: 44px; border-radius: 12px;">
+              <i class='bx bx-bolt-circle'></i> <span style="margin-left: 8px;">爱发电</span>
+            </a>
+            <a href="https://ko-fi.com/joyinjoester" target="_blank" class="btn btn-filled"
+              style="flex: 1; justify-content: center; background: #29abe0; color: white; border: none; height: 44px; border-radius: 12px;">
+              <i class='bx bx-coffee'></i> <span style="margin-left: 8px;">Ko-fi</span>
+            </a>
+          </div>
+
+          <!-- WeChat & Alipay Text Link -->
+          <div style="text-align: center; margin-top: -4px;">
+            <span
+              style="font-size: 0.9rem; font-weight: 500; cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: background 0.2s;"
+              onclick="document.getElementById('lightbox-img').src='images/support_author.jpg'; document.getElementById('lightbox').classList.add('active');"
+              onmouseover="this.style.background='rgba(255,255,255,0.05)'"
+              onmouseout="this.style.background='transparent'">
+              <span style="color: #07C160;">微信</span> & <span style="color: #1677FF;">支付宝</span>
+            </span>
+            <div style="font-size: 0.75rem; opacity: 0.5; margin-top: 4px;">Click to view QR Code</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activity Chart -->
+    <div class="bento-item" style="margin-top: 24px; padding: 32px; height: auto; width: 100%;">
+      <h3 style="margin-bottom: 24px; display: flex; align-items: center; gap: 8px;">
+        <i class='bx bxs-analyse'></i> <span data-i18n="community.activity_chart">最近30天活跃度</span>
+      </h3>
+      <div style="height: 200px; width: 100%; position: relative;">
+        <canvas id="commit-chart" style="width: 100%; height: 100%;"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer
+    style="text-align: center; padding: 60px 40px; border-top: 1px solid rgba(0,0,0,0.05); color: var(--sys-light-secondary);">
+    <p data-i18n="footer.copyright">&copy; 2026 JoyinJoester. 基于 GNU GPLv3 协议开源。</p>
+  </footer>
+
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox">
+    <img src="" alt="Full View" class="lightbox-img" id="lightbox-img">
+  </div>
+
+</body>
+
+</html>

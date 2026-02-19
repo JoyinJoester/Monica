@@ -50,3 +50,4 @@ class SmartCopyReceiver : BroadcastReceiver() {
         SmartCopyNotificationHelper.dismissNotification(context)
     }
 }
+

@@ -379,3 +379,4 @@ class ImprovedFieldParser(private val structure: AssistStructure) {
         )
     }
 }
+

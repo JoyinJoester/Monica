@@ -149,3 +149,4 @@ object AutofillResultHandler {
         return Pair(selectionType, if (id != null && id != -1L) id else null)
     }
 }
+

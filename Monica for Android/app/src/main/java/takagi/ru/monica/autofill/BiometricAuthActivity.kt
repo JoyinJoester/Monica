@@ -200,3 +200,4 @@ class BiometricAuthActivity : AppCompatActivity() {
         // BiometricHelper会在Activity销毁时自动清理
     }
 }
+

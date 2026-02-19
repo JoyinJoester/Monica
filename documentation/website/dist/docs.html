@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monica 使用文档</title>
+    <!-- Same fonts and generic styles -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Outfit:wght@500;700;800&display=swap"
+        rel="stylesheet">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+
+    <!-- Markdown Styles -->
+    <style>
+        .docs-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            max-width: 1400px;
+            margin: 100px auto 40px;
+            gap: 40px;
+            padding: 0 24px;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 100px;
+            height: calc(100vh - 140px);
+            overflow-y: auto;
+            border-right: 1px solid var(--sys-light-outline-variant);
+            padding-right: 20px;
+        }
+
+        .sidebar h3 {
+            font-family: var(--font-display);
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .markdown-body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.8;
+            color: var(--sys-light-on-surface);
+            background: var(--sys-light-surface-container-low);
+            padding: 40px;
+            border-radius: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+            border: 1px solid var(--sys-light-outline-variant);
+            min-height: 500px;
+        }
+
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3 {
+            font-family: var(--font-display);
+            margin-top: 1.5em;
+            margin-bottom: 0.8em;
+            color: var(--sys-light-primary);
+        }
+
+        .markdown-body img {
+            border-radius: 16px;
+            margin: 24px 0;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            max-width: 100%;
+            height: auto;
+        }
+
+        .markdown-body a {
+            color: var(--sys-light-primary);
+            text-decoration: underline;
+        }
+
+        .markdown-body pre {
+            background: #1e1e1e;
+            color: #fff;
+            padding: 16px;
+            border-radius: 12px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+
+        .markdown-body code {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 900px) {
+            .docs-layout {
+                grid-template-columns: 1fr;
+                margin-top: 80px;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .markdown-body {
+                padding: 24px;
+                border-radius: 16px;
+            }
+        }
+    </style>
+  <script type="module" crossorigin src="/Monica/assets/docs-8ZAeIx-d.js"></script>
+  <link rel="modulepreload" crossorigin href="/Monica/assets/main-wkbLMWlE.js">
+  <link rel="stylesheet" crossorigin href="/Monica/assets/main-YP0-5Y7a.css">
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <a href="index.html"
+                style="display:flex; align-items:center; gap:8px; font-family: var(--font-display); font-weight: 700;">
+                <i class='bx bx-arrow-back'></i> <span>返回首页</span>
+            </a>
+        </div>
+        <div style="font-weight: bold; font-family: var(--font-display);">使用文档</div>
+    </header>
+
+    <div class="docs-layout">
+        <aside class="sidebar" id="toc">
+            <!-- Table of Contents injected here -->
+            <h3>目录</h3>
+            <ul style="list-style: none; padding: 0;" id="toc-list"></ul>
+        </aside>
+
+        <main class="markdown-body" id="content">
+            <div style="text-align: center; padding: 80px;">
+                <i class='bx bx-loader-alt bx-spin' style="font-size: 3rem; color: var(--sys-light-primary);"></i>
+                <p style="margin-top: 16px; color: var(--sys-light-secondary);">正在加载文档...</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Lightbox reuse -->
+    <div class="lightbox" id="lightbox">
+        <img src="" alt="Full View" class="lightbox-img" id="lightbox-img">
+    </div>
+
+    <!-- Mark Library via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</body>
+
+</html>

@@ -33,3 +33,4 @@ private fun describeType(value: AutofillValue): String = when {
     value.isDate -> "date"
     else -> "unknown"
 }
+

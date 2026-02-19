@@ -39,7 +39,7 @@ object AutofillPickerLauncher {
         fieldSignatureKey: String? = null
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
-        val fillTargets = credentialTargetsOverride
+        val rawFillTargets = credentialTargetsOverride
             ?.filter { item ->
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
                     item.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
@@ -48,6 +48,7 @@ object AutofillPickerLauncher {
             }
             ?.ifEmpty { null }
             ?: selectCredentialFillTargets(parsedStructure)
+        val fillTargets = normalizeCredentialTargetsById(rawFillTargets)
         val authTargets = selectAuthenticationTargets(fillTargets)
 
         if (fillTargets.isEmpty() || authTargets.isEmpty()) {
@@ -95,7 +96,7 @@ object AutofillPickerLauncher {
             setImageViewResource(R.id.icon_app, R.drawable.ic_key) 
         }
         
-        // 3. keyguard 风格：按字段创建入口 Dataset，提升触发稳定性
+        // 3. 字段级入口：对每个认证目标字段挂一个触发项，避免单入口在部分 OEM 上二次不弹
         authTargets.forEach { item ->
             val datasetBuilder = Dataset.Builder(presentation)
             datasetBuilder.setValue(item.id, null, presentation)
@@ -103,9 +104,11 @@ object AutofillPickerLauncher {
             responseBuilder.addDataset(datasetBuilder.build())
         }
         
-        // 4. 添加最小化 SaveInfo
-        addMinimalSaveInfo(responseBuilder, parsedStructure)
-        
+        // 4. Keyguard-aligned behavior:
+        // do not attach SaveInfo on the authentication-entry response path.
+        // Keeping this response "selection-only" avoids sticky sessions
+        // that can block second-pass autofill requests on some OEM builds.
+
         return responseBuilder.build()
     }
     
@@ -497,7 +500,6 @@ object AutofillPickerLauncher {
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
         
-        // keyguard 风格：按字段创建认证入口
         authTargets.forEach { item ->
             val datasetBuilder = Dataset.Builder(presentation)
             datasetBuilder.setValue(item.id, null, presentation)
@@ -535,6 +537,40 @@ object AutofillPickerLauncher {
         }
     }
 
+    private fun normalizeCredentialTargetsById(
+        targets: List<EnhancedAutofillStructureParserV2.ParsedItem>
+    ): List<EnhancedAutofillStructureParserV2.ParsedItem> {
+        if (targets.isEmpty()) return emptyList()
+        val prioritized = targets.sortedWith(
+            compareByDescending<EnhancedAutofillStructureParserV2.ParsedItem> { it.isFocused }
+                .thenByDescending { credentialHintPriority(it.hint) }
+                .thenByDescending { it.accuracy.score }
+                .thenBy { it.traversalIndex }
+        )
+        val deduped = LinkedHashMap<AutofillId, EnhancedAutofillStructureParserV2.ParsedItem>()
+        prioritized.forEach { candidate ->
+            val existing = deduped[candidate.id]
+            if (existing == null) {
+                deduped[candidate.id] = candidate
+                return@forEach
+            }
+            if (credentialHintPriority(candidate.hint) > credentialHintPriority(existing.hint)) {
+                deduped[candidate.id] = candidate
+            }
+        }
+        return deduped.values.sortedBy { it.traversalIndex }
+    }
+
+    private fun credentialHintPriority(hint: EnhancedAutofillStructureParserV2.FieldHint): Int {
+        return when (hint) {
+            EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+            EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> 3
+            EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+            EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> 2
+            else -> 1
+        }
+    }
+
     private fun selectAuthenticationTargets(
         fillTargets: List<EnhancedAutofillStructureParserV2.ParsedItem>
     ): List<EnhancedAutofillStructureParserV2.ParsedItem> {
@@ -555,7 +591,6 @@ object AutofillPickerLauncher {
         return fillTargets
             .sortedWith(priority)
             .distinctBy { it.id }
-            .take(8)
     }
 
     private fun buildFieldSignatureKey(
@@ -664,3 +699,4 @@ object AutofillPickerLauncher {
         return generator.generatePassword(options)
     }
 }
+

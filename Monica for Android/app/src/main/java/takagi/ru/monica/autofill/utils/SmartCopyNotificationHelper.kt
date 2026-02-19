@@ -116,3 +116,4 @@ object SmartCopyNotificationHelper {
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
     }
 }
+

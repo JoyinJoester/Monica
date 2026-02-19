@@ -334,3 +334,4 @@ object SaveInfoBuilder {
         return if (flagList.isEmpty()) "UNKNOWN($flags)" else flagList.joinToString(" | ")
     }
 }
+

@@ -592,3 +592,4 @@ fun PasswordStrengthIndicator(strength: PasswordStrengthCalculator.PasswordStren
         }
     }
 }
+
