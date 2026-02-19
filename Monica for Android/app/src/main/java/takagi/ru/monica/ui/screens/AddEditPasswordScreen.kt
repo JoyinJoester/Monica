@@ -62,10 +62,12 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.CustomFieldEditCard
 import takagi.ru.monica.ui.components.CustomFieldSectionHeader
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
+import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -585,18 +587,27 @@ fun AddEditPasswordScreen(
                     if (currentAuthKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
                         // 检查是否已有相同密钥的验证器
                         val existingTotp = totpViewModel.findTotpBySecret(currentAuthKey)
+                        val existingTotpData = existingTotp?.let {
+                            runCatching { Json.decodeFromString<TotpData>(it.itemData) }.getOrNull()
+                        }
                         val totpIdToSave = existingTotp?.id ?: existingTotpId // 优先选择相同密钥的，其次是原本绑定的
 
                         val totpData = TotpData(
                             secret = currentAuthKey,
-                            issuer = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).issuer } ?: currentTitle,
-                            accountName = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).accountName } ?: currentUsername,
+                            issuer = existingTotpData?.issuer ?: currentTitle,
+                            accountName = existingTotpData?.accountName ?: currentUsername,
                             boundPasswordId = firstPasswordId,
-                            otpType = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).otpType } ?: takagi.ru.monica.data.model.OtpType.TOTP,
-                            digits = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).digits } ?: 6,
-                            period = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).period } ?: 30,
-                            algorithm = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).algorithm } ?: "SHA1",
-                            counter = existingTotp?.let { Json.decodeFromString<TotpData>(it.itemData).counter } ?: 0
+                            otpType = existingTotpData?.otpType ?: takagi.ru.monica.data.model.OtpType.TOTP,
+                            digits = existingTotpData?.digits ?: 6,
+                            period = existingTotpData?.period ?: 30,
+                            algorithm = existingTotpData?.algorithm ?: "SHA1",
+                            counter = existingTotpData?.counter ?: 0,
+                            pin = existingTotpData?.pin ?: "",
+                            link = existingTotpData?.link ?: "",
+                            associatedApp = existingTotpData?.associatedApp ?: "",
+                            customIconType = existingTotpData?.customIconType ?: PASSWORD_ICON_TYPE_NONE,
+                            customIconValue = existingTotpData?.customIconValue,
+                            customIconUpdatedAt = existingTotpData?.customIconUpdatedAt ?: 0L
                         )
 
                         totpViewModel.saveTotpItem(
@@ -1519,61 +1530,32 @@ fun AddEditPasswordScreen(
     }
 
     if (showCustomIconDialog) {
-        AlertDialog(
-            onDismissRequest = { showCustomIconDialog = false },
-            title = { Text(stringResource(R.string.custom_icon_dialog_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = {
-                            customIconSearchQuery = ""
-                            showCustomIconDialog = false
-                            showSimpleIconPicker = true
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(stringResource(R.string.custom_icon_pick_simple))
-                    }
-                    TextButton(
-                        onClick = {
-                            showCustomIconDialog = false
-                            imagePickerLauncher.launch("image/*")
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(stringResource(R.string.custom_icon_upload_image))
-                    }
-                    if (customIconType != PASSWORD_ICON_TYPE_NONE) {
-                        TextButton(
-                            onClick = {
-                                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
-                                    normalizedIconFileName(customIconValue)
-                                } else {
-                                    null
-                                }
-                                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
-                                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
-                                }
-                                customIconType = PASSWORD_ICON_TYPE_NONE
-                                customIconValue = null
-                                customIconUpdatedAt = System.currentTimeMillis()
-                                showCustomIconDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = stringResource(R.string.custom_icon_clear),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                }
+        CustomIconActionDialog(
+            showClearAction = customIconType != PASSWORD_ICON_TYPE_NONE,
+            onPickFromLibrary = {
+                customIconSearchQuery = ""
+                showCustomIconDialog = false
+                showSimpleIconPicker = true
             },
-            confirmButton = {
-                TextButton(onClick = { showCustomIconDialog = false }) {
-                    Text(stringResource(R.string.close))
+            onUploadImage = {
+                showCustomIconDialog = false
+                imagePickerLauncher.launch("image/*")
+            },
+            onClearIcon = {
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
                 }
-            }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+                customIconType = PASSWORD_ICON_TYPE_NONE
+                customIconValue = null
+                customIconUpdatedAt = System.currentTimeMillis()
+                showCustomIconDialog = false
+            },
+            onDismissRequest = { showCustomIconDialog = false }
         )
     }
 
@@ -1590,121 +1572,37 @@ fun AddEditPasswordScreen(
         val visibleOptions = remember(iconOptions, iconVisibleCount) {
             iconOptions.take(iconVisibleCount.coerceAtMost(iconOptions.size))
         }
-        AlertDialog(
-            onDismissRequest = { showSimpleIconPicker = false },
-            title = { Text(stringResource(R.string.custom_icon_pick_simple)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = customIconSearchQuery,
-                        onValueChange = {
-                            customIconSearchQuery = it
-                            iconVisibleCount = ICON_PICKER_PAGE_SIZE
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        placeholder = { Text(stringResource(R.string.custom_icon_search_hint)) }
-                    )
-                    if (iconOptions.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.custom_icon_search_empty),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 360.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            items(visibleOptions, key = { it.slug }) { option ->
-                                val optionBitmap = rememberSimpleIconBitmap(
-                                    slug = option.slug,
-                                    tintColor = MaterialTheme.colorScheme.primary,
-                                    enabled = settings.iconCardsEnabled
-                                )
-                                val selected = customIconType == PASSWORD_ICON_TYPE_SIMPLE && customIconValue == option.slug
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
-                                                normalizedIconFileName(customIconValue)
-                                            } else {
-                                                null
-                                            }
-                                            if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
-                                                PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
-                                            }
-                                            customIconType = PASSWORD_ICON_TYPE_SIMPLE
-                                            customIconValue = option.slug
-                                            customIconUpdatedAt = System.currentTimeMillis()
-                                            showSimpleIconPicker = false
-                                        },
-                                    color = if (selected) {
-                                        MaterialTheme.colorScheme.secondaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceContainerLow
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        if (optionBitmap != null) {
-                                            Image(
-                                                bitmap = optionBitmap,
-                                                contentDescription = option.label,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = Icons.Default.Image,
-                                                contentDescription = option.label,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                        Text(
-                                            text = option.label,
-                                            modifier = Modifier.weight(1f),
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                }
-                            }
-                            if (visibleOptions.size < iconOptions.size) {
-                                item("load_more_icons") {
-                                    TextButton(
-                                        onClick = {
-                                            iconVisibleCount = (iconVisibleCount + ICON_PICKER_PAGE_SIZE)
-                                                .coerceAtMost(iconOptions.size)
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = stringResource(
-                                                R.string.custom_icon_load_more,
-                                                iconOptions.size - visibleOptions.size
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        SimpleIconPickerBottomSheet(
+            searchQuery = customIconSearchQuery,
+            onSearchQueryChange = {
+                customIconSearchQuery = it
+                iconVisibleCount = ICON_PICKER_PAGE_SIZE
             },
-            confirmButton = {
-                TextButton(onClick = { showSimpleIconPicker = false }) {
-                    Text(stringResource(R.string.close))
+            iconOptions = iconOptions,
+            visibleOptions = visibleOptions,
+            hasMore = visibleOptions.size < iconOptions.size,
+            remainingCount = iconOptions.size - visibleOptions.size,
+            iconCardsEnabled = settings.iconCardsEnabled,
+            selectedSlug = if (customIconType == PASSWORD_ICON_TYPE_SIMPLE) customIconValue else null,
+            onSelectOption = { option ->
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
                 }
-            }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+                customIconType = PASSWORD_ICON_TYPE_SIMPLE
+                customIconValue = option.slug
+                customIconUpdatedAt = System.currentTimeMillis()
+                showSimpleIconPicker = false
+            },
+            onLoadMore = {
+                iconVisibleCount = (iconVisibleCount + ICON_PICKER_PAGE_SIZE)
+                    .coerceAtMost(iconOptions.size)
+            },
+            onDismissRequest = { showSimpleIconPicker = false }
         )
     }
 

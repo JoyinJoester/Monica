@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -6212,35 +6213,40 @@ private fun MultiPasswordEntryCard(
                          Image(
                             bitmap = simpleIcon,
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp)
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(32.dp).padding(1.dp)
                          )
                          Spacer(modifier = Modifier.width(12.dp))
                     } else if (uploadedIcon != null) {
                          Image(
                             bitmap = uploadedIcon,
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(32.dp).padding(1.dp)
                          )
                          Spacer(modifier = Modifier.width(12.dp))
                     } else if (autoMatchedSimpleIcon.bitmap != null) {
                          Image(
                             bitmap = autoMatchedSimpleIcon.bitmap,
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(32.dp).padding(1.dp)
                          )
                          Spacer(modifier = Modifier.width(12.dp))
                     } else if (favicon != null) {
                          Image(
                             bitmap = favicon,
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(32.dp).padding(1.dp)
                          )
                          Spacer(modifier = Modifier.width(12.dp))
                     } else if (appIcon != null) {
                          Image(
                             bitmap = appIcon,
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(32.dp).padding(1.dp)
                          )
                          Spacer(modifier = Modifier.width(12.dp))
                     }
@@ -6642,35 +6648,40 @@ private fun PasswordEntryCard(
                      Image(
                         bitmap = simpleIcon,
                         contentDescription = null,
-                        modifier = Modifier.size(40.dp)
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(40.dp).padding(2.dp)
                      )
                      Spacer(modifier = Modifier.width(16.dp))
                 } else if (uploadedIcon != null) {
                      Image(
                         bitmap = uploadedIcon,
                         contentDescription = null,
-                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(40.dp).padding(2.dp)
                      )
                      Spacer(modifier = Modifier.width(16.dp))
                 } else if (autoMatchedSimpleIcon.bitmap != null) {
                      Image(
                         bitmap = autoMatchedSimpleIcon.bitmap,
                         contentDescription = null,
-                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(40.dp).padding(2.dp)
                      )
                      Spacer(modifier = Modifier.width(16.dp))
                 } else if (favicon != null) {
                      Image(
                         bitmap = favicon,
                         contentDescription = null,
-                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(40.dp).padding(2.dp)
                      )
                      Spacer(modifier = Modifier.width(16.dp))
                 } else if (appIcon != null) {
                      Image(
                         bitmap = appIcon,
                         contentDescription = null,
-                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(40.dp).padding(2.dp)
                      )
                      Spacer(modifier = Modifier.width(16.dp))
                 } else {

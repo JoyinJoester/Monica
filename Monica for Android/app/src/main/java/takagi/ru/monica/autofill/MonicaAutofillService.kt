@@ -86,7 +86,29 @@ class MonicaAutofillService : AutofillService() {
     
     // 缓存应用信息以提高性能
     private val appInfoCache = mutableMapOf<String, String>()
-    private val interactionTtlMillis = 2 * 60 * 1000L
+    private val manualRequestFlagMask = 0x1
+    private val compatibilityRequestFlagMask = 0x2
+    private val preferredTriggerPackages = setOf(
+        "com.tencent.mobileqq",
+        "com.tencent.tim"
+    )
+
+    private enum class TriggerMode {
+        AUTO,
+        COMPATIBILITY,
+        MANUAL
+    }
+
+    private data class WebCredentialFallbackIds(
+        val usernameId: AutofillId?,
+        val passwordId: AutofillId?
+    )
+
+    private data class WebCandidateMetadata(
+        val isCredentialCandidate: Boolean,
+        val isPassword: Boolean,
+        val isExcludedNonCredential: Boolean
+    )
     
     override fun onCreate() {
         super.onCreate()
@@ -246,38 +268,27 @@ class MonicaAutofillService : AutofillService() {
         serviceScope.launch {
             val startTime = System.currentTimeMillis()
             try {
-                // 🎯 根据设备品牌设置动态超时时间
-                val recommendedTimeout = DeviceUtils.getRecommendedAutofillTimeout()
-                AutofillLogger.i("REQUEST", "Using device-specific timeout: ${recommendedTimeout}ms (Brand: ${DeviceUtils.getManufacturer()})")
-                
-                val result = withTimeoutOrNull(recommendedTimeout) {
+                // Keyguard 风格：单次稳定处理，不做短超时+二次重试，避免首击丢响应。
+                val processingTimeout = maxOf(DeviceUtils.getRecommendedAutofillTimeout() * 2, 9000L)
+                AutofillLogger.i(
+                    "REQUEST",
+                    "Using stable processing timeout: ${processingTimeout}ms (Brand: ${DeviceUtils.getManufacturer()})"
+                )
+
+                val result = withTimeoutOrNull(processingTimeout) {
                     processFillRequest(request, cancellationSignal)
                 }
-                
+
                 val processingTime = System.currentTimeMillis() - startTime
                 diagnostics.logRequestTime(processingTime)
-                
+
                 if (result != null) {
                     AutofillLogger.i("REQUEST", "Fill request completed successfully in ${processingTime}ms")
                     callback.onSuccess(result)
                 } else {
-                    // 🔄 国产ROM支持重试机制
-                    if (DeviceUtils.getRecommendedRetryCount() > 1) {
-                        AutofillLogger.w("REQUEST", "First attempt timed out, retrying...")
-                        android.util.Log.w("MonicaAutofill", "Fill request timed out, retrying for Chinese ROM...")
-                        
-                        val retryResult = withTimeoutOrNull(recommendedTimeout) {
-                            processFillRequest(request, cancellationSignal)
-                        }
-                        
-                        val totalTime = System.currentTimeMillis() - startTime
-                        diagnostics.logRequestTime(totalTime)
-                        callback.onSuccess(retryResult)
-                    } else {
-                        AutofillLogger.w("REQUEST", "Fill request timed out after ${recommendedTimeout}ms")
-                        android.util.Log.w("MonicaAutofill", "Fill request timed out")
-                        callback.onSuccess(null)
-                    }
+                    AutofillLogger.w("REQUEST", "Fill request returned null/timed out after ${processingTime}ms")
+                    android.util.Log.w("MonicaAutofill", "Fill request returned null/timed out")
+                    callback.onSuccess(null)
                 }
                 
             } catch (e: Exception) {
@@ -412,29 +423,6 @@ class MonicaAutofillService : AutofillService() {
             accuracy = avgAccuracy
         )
         
-        // 检查是否有可填充的凭据字段
-        val hasUsernameOrEmail = parsedStructure.items.any { 
-            it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS 
-        }
-        val hasPassword = parsedStructure.items.any { 
-            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
-        }
-        
-        if (!hasUsernameOrEmail && !hasPassword) {
-            AutofillLogger.w("PARSING", "No credential fields found")
-            android.util.Log.d("MonicaAutofill", "No credential fields found in enhanced parser")
-            // 后备检查
-            if (!fieldCollection.hasCredentialFields() && !enhancedCollection.hasCredentialFields()) {
-                val hasFallbackTargets = parsedStructure.items.isNotEmpty()
-                if (!hasFallbackTargets) {
-                    android.util.Log.d("MonicaAutofill", "No credential fields found in any parser")
-                    return null
-                }
-                AutofillLogger.w("PARSING", "No credential hints, fallback to generic autofill targets")
-                android.util.Log.d("MonicaAutofill", "No credential hints, using generic targets fallback")
-            }
-        }
-        
         // 获取标识符 - 修复Chrome浏览器域名提取
         val packageName = parsedStructure.applicationId ?: structure.activityComponent.packageName
         
@@ -445,10 +433,95 @@ class MonicaAutofillService : AutofillService() {
             webDomain = extractDomainFromStructure(structure)
         }
         
-        val identifier = webDomain ?: packageName
+        val identifier = buildInteractionIdentifier(packageName, webDomain, parsedStructure.webView)
+        val isPreferredTriggerPackage = preferredTriggerPackages.any { packageName.startsWith(it) }
         
         AutofillLogger.d("MATCHING", "Package: $packageName, WebDomain: $webDomain, Identifier: $identifier")
         android.util.Log.d("MonicaAutofill", "Identifier: $identifier (package: $packageName, web: $webDomain)")
+
+        val parserCredentialTargets = selectCredentialFillTargets(parsedStructure)
+        val isWebContext = parsedStructure.webView || !webDomain.isNullOrBlank()
+        val focusedWebUsernameFallbackId = if (isWebContext) {
+            findFocusedUsernameLikeAutofillId(structure)
+        } else {
+            null
+        }
+        val webCredentialFallbackIds = if (isWebContext) {
+            findWebCredentialFallbackIds(structure)
+        } else {
+            WebCredentialFallbackIds(usernameId = null, passwordId = null)
+        }
+        val historicalCredentialTargets = collectHistoricalCredentialTargets(
+            fillContexts = request.fillContexts.dropLast(1),
+            respectAutofillOff = respectAutofillOff
+        )
+        val compatibilityCredentialTargets = buildCompatibilityCredentialTargets(
+            parsedStructure = parsedStructure,
+            fieldCollection = fieldCollection,
+            enhancedCollection = enhancedCollection,
+            packageName = packageName,
+            isWebContext = isWebContext,
+            focusedWebUsernameFallbackId = focusedWebUsernameFallbackId,
+            webHeuristicUsernameFallbackId = webCredentialFallbackIds.usernameId,
+            webHeuristicPasswordFallbackId = webCredentialFallbackIds.passwordId
+        )
+        val mergedWithCompatibility = mergeCredentialItems(parsedStructure.items, compatibilityCredentialTargets)
+        val mergedItems = mergeCredentialItems(mergedWithCompatibility, historicalCredentialTargets)
+        val effectiveParsedStructure = if (mergedItems === parsedStructure.items) {
+            parsedStructure
+        } else {
+            parsedStructure.copy(items = mergedItems)
+        }
+        val effectiveCredentialTargets = selectCredentialFillTargets(effectiveParsedStructure)
+
+        if (effectiveCredentialTargets.isEmpty()) {
+            AutofillLogger.w("PARSING", "No credential targets found after compatibility merge")
+            android.util.Log.d("MonicaAutofill", "No credential targets found after compatibility merge")
+            return null
+        }
+
+        val hasPasswordTarget = effectiveCredentialTargets.any {
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
+        }
+        val hasUsernameTarget = effectiveCredentialTargets.any {
+            it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS
+        }
+        val hasStrongUsernameSignal = parserCredentialTargets.any {
+            (it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS) &&
+                it.accuracy.score >= EnhancedAutofillStructureParserV2.Accuracy.HIGH.score
+        }
+        val fieldSignatureKey = buildFieldSignatureKey(packageName, webDomain, effectiveCredentialTargets)
+        val isLearnedSignature = autofillPreferences.isFieldSignatureLearned(fieldSignatureKey)
+        val triggerMode = resolveTriggerMode(request.flags)
+        // 用户名单字段场景只允许高置信信号或历史学习命中，避免搜索/聊天输入框误触发。
+        if (!hasPasswordTarget &&
+            hasUsernameTarget &&
+            !hasStrongUsernameSignal &&
+            !isLearnedSignature &&
+            !isWebContext &&
+            !isPreferredTriggerPackage &&
+            triggerMode == TriggerMode.AUTO
+        ) {
+            AutofillLogger.w(
+                "PARSING",
+                "Weak username-only context blocked (not learned): " +
+                    "package=$packageName, trigger=$triggerMode, web=$isWebContext"
+            )
+            android.util.Log.d("MonicaAutofill", "Weak username-only context blocked (not learned)")
+            return null
+        }
+        if (!hasPasswordTarget && !hasUsernameTarget) {
+            AutofillLogger.w("PARSING", "No usable credential targets after filtering")
+            android.util.Log.d("MonicaAutofill", "No usable credential targets after filtering")
+            return null
+        }
+        AutofillLogger.d(
+            "PARSING",
+            "Credential targets: parser=${parserCredentialTargets.size}, compat=${compatibilityCredentialTargets.size}, " +
+                "history=${historicalCredentialTargets.size}, " +
+                "effective=${effectiveCredentialTargets.size}, learned=$isLearnedSignature, " +
+                "web=$isWebContext, trigger=$triggerMode"
+        )
         
         // 🔍 可选：使用增强的密码匹配器
         // val matchStrategy = autofillPreferences.domainMatchStrategy.first()
@@ -488,9 +561,9 @@ class MonicaAutofillService : AutofillService() {
                 val autofillContext = AutofillContext(
                     packageName = packageName,
                     domain = webDomain,
-                    webUrl = parsedStructure.webDomain,
-                    isWebView = parsedStructure.webView,
-                    detectedFields = parsedStructure.items.map { it.hint.name }
+                    webUrl = effectiveParsedStructure.webDomain,
+                    isWebView = effectiveParsedStructure.webView,
+                    detectedFields = effectiveParsedStructure.items.map { it.hint.name }
                 )
                 
                 // 调用新引擎
@@ -536,11 +609,13 @@ class MonicaAutofillService : AutofillService() {
         
         return buildFillResponseEnhanced(
             passwords = matchedPasswords, 
-            parsedStructure = parsedStructure,
+            parsedStructure = effectiveParsedStructure,
             fieldCollection = fieldCollection,
             enhancedCollection = enhancedCollection,
             packageName = packageName, 
-            inlineRequest = inlineRequest
+            inlineRequest = inlineRequest,
+            credentialTargets = effectiveCredentialTargets,
+            fieldSignatureKey = fieldSignatureKey
         )
     }
     
@@ -1217,7 +1292,9 @@ class MonicaAutofillService : AutofillService() {
         fieldCollection: AutofillFieldCollection,
         enhancedCollection: EnhancedAutofillFieldCollection,
         packageName: String,
-        inlineRequest: InlineSuggestionsRequest? = null
+        inlineRequest: InlineSuggestionsRequest? = null,
+        credentialTargets: List<ParsedItem>,
+        fieldSignatureKey: String
     ): FillResponse {
         // 🎯 新用户体验: 直接显示所有匹配的密码 + "手动选择"选项
         AutofillLogger.i("RESPONSE", "Creating direct list response with ${passwords.size} passwords")
@@ -1225,31 +1302,11 @@ class MonicaAutofillService : AutofillService() {
         
         return try {
             val domain = parsedStructure.webDomain
-            val identifier = (domain ?: packageName).trim().lowercase()
             
             // 🔧 修复: 获取所有密码的 ID,以便"手动选择"时可以显示所有密码
             val allPasswords = passwordRepository.getAllPasswordEntries().first()
             val allPasswordIds = allPasswords.map { it.id }
             android.util.Log.d("MonicaAutofill", "📋 Total passwords available for manual selection: ${allPasswordIds.size}")
-
-            val lastFilledPassword = if (identifier.isNotBlank()) {
-                val now = System.currentTimeMillis()
-                val interaction = autofillPreferences.getAutofillInteractionState(identifier)
-                val isExpired = interaction == null || (now - interaction.startedAt) > interactionTtlMillis
-
-                if (isExpired) {
-                    autofillPreferences.beginAutofillInteraction(identifier)
-                    null
-                } else if (interaction?.completed == true) {
-                    interaction.lastFilledPasswordId?.let { lastId ->
-                        allPasswords.firstOrNull { it.id == lastId }
-                    }
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
             
             val directListResponse = AutofillPickerLauncher.createDirectListResponse(
                 context = applicationContext,
@@ -1258,7 +1315,8 @@ class MonicaAutofillService : AutofillService() {
                 packageName = packageName,
                 domain = domain,
                 parsedStructure = parsedStructure,
-                lastFilledPassword = lastFilledPassword
+                credentialTargetsOverride = credentialTargets,
+                fieldSignatureKey = fieldSignatureKey
             )
             
             android.util.Log.d("MonicaAutofill", "✓ Direct list response created successfully")
@@ -1676,12 +1734,16 @@ class MonicaAutofillService : AutofillService() {
             
             // 创建跳转到选择器的 Intent
             val fillTargets = selectCredentialFillTargets(parsedStructure)
+            if (fillTargets.isEmpty()) {
+                return null
+            }
             val args = AutofillPickerActivityV2.Args(
                 applicationId = packageName,
                 webDomain = domain,
                 autofillIds = ArrayList(fillTargets.map { it.id }),
                 autofillHints = ArrayList(fillTargets.map { it.hint.name }),
-                isSaveMode = false
+                isSaveMode = false,
+                fieldSignatureKey = buildFieldSignatureKey(packageName, domain, fillTargets)
             )
             val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
             
@@ -1720,29 +1782,359 @@ class MonicaAutofillService : AutofillService() {
     }
 
     private fun selectCredentialFillTargets(parsedStructure: ParsedStructure): List<ParsedItem> {
-        val credentialTargets = parsedStructure.items.filter { item ->
+        return parsedStructure.items.filter { item ->
             item.hint == FieldHint.USERNAME ||
                 item.hint == FieldHint.EMAIL_ADDRESS ||
                 item.hint == FieldHint.PASSWORD ||
                 item.hint == FieldHint.NEW_PASSWORD
         }
-        return if (credentialTargets.isNotEmpty()) credentialTargets else parsedStructure.items
+    }
+
+    private fun buildCompatibilityCredentialTargets(
+        parsedStructure: ParsedStructure,
+        fieldCollection: AutofillFieldCollection,
+        enhancedCollection: EnhancedAutofillFieldCollection,
+        packageName: String,
+        isWebContext: Boolean,
+        focusedWebUsernameFallbackId: AutofillId?,
+        webHeuristicUsernameFallbackId: AutofillId?,
+        webHeuristicPasswordFallbackId: AutofillId?
+    ): List<ParsedItem> {
+        val existingCredentialIds = selectCredentialFillTargets(parsedStructure).map { it.id }.toSet()
+        val compatibilityTargets = mutableListOf<ParsedItem>()
+        val isPreferredTriggerPackage = preferredTriggerPackages.any { packageName.startsWith(it) }
+        val hasPasswordSignal = parsedStructure.items.any {
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
+        } || enhancedCollection.passwordField != null || fieldCollection.passwordField != null
+
+        fun addTarget(id: AutofillId?, hint: FieldHint) {
+            if (id == null || existingCredentialIds.contains(id)) return
+            if (compatibilityTargets.any { it.id == id && it.hint == hint }) return
+            compatibilityTargets.add(
+                ParsedItem(
+                    id = id,
+                    hint = hint,
+                    accuracy = EnhancedAutofillStructureParserV2.Accuracy.LOWEST,
+                    value = null,
+                    isFocused = false,
+                    isVisible = true,
+                    traversalIndex = Int.MAX_VALUE - compatibilityTargets.size
+                )
+            )
+        }
+
+        val usernameFallbackId = enhancedCollection.usernameField
+            ?: fieldCollection.usernameField
+            ?: if (hasPasswordSignal || isPreferredTriggerPackage) enhancedCollection.phoneField else null
+        addTarget(usernameFallbackId, FieldHint.USERNAME)
+        if (usernameFallbackId == null && isWebContext) {
+            addTarget(focusedWebUsernameFallbackId, FieldHint.USERNAME)
+            addTarget(webHeuristicUsernameFallbackId, FieldHint.USERNAME)
+        }
+        if ((hasPasswordSignal || isPreferredTriggerPackage) && usernameFallbackId == null) {
+            val focusedNumericCandidate = parsedStructure.items.firstOrNull { item ->
+                item.isFocused && (item.hint == FieldHint.PHONE_NUMBER || item.hint == FieldHint.OTP_CODE)
+            }?.id
+            addTarget(focusedNumericCandidate, FieldHint.USERNAME)
+
+            val firstPhoneCandidate = parsedStructure.items.firstOrNull { item ->
+                item.hint == FieldHint.PHONE_NUMBER
+            }?.id
+            addTarget(firstPhoneCandidate, FieldHint.USERNAME)
+        }
+        if (isPreferredTriggerPackage) {
+            val focusedItem = parsedStructure.items.firstOrNull { it.isFocused }
+            if (focusedItem != null) {
+                val focusedAlreadyCovered = existingCredentialIds.contains(focusedItem.id) ||
+                    compatibilityTargets.any { it.id == focusedItem.id }
+                if (!focusedAlreadyCovered) {
+                    val focusedHint = when (focusedItem.hint) {
+                        FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> FieldHint.PASSWORD
+                        FieldHint.USERNAME, FieldHint.EMAIL_ADDRESS, FieldHint.PHONE_NUMBER, FieldHint.OTP_CODE -> FieldHint.USERNAME
+                        else -> null
+                    }
+                    if (focusedHint != null) {
+                        addTarget(focusedItem.id, focusedHint)
+                    }
+                }
+            }
+        }
+        if (enhancedCollection.emailField != null && enhancedCollection.emailField != enhancedCollection.usernameField) {
+            addTarget(enhancedCollection.emailField, FieldHint.EMAIL_ADDRESS)
+        }
+        val usernameLikeIds = mutableSetOf<AutofillId>().apply {
+            addAll(
+                parsedStructure.items.filter {
+                    it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS
+                }.map { it.id }
+            )
+            addAll(
+                compatibilityTargets.filter {
+                    it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS
+                }.map { it.id }
+            )
+        }
+        val passwordFallbackIdRaw = enhancedCollection.passwordField
+            ?: fieldCollection.passwordField
+            ?: if (isWebContext) webHeuristicPasswordFallbackId else null
+        val passwordFallbackId = passwordFallbackIdRaw?.takeUnless { usernameLikeIds.contains(it) }
+            ?: if (isWebContext) {
+                webHeuristicPasswordFallbackId?.takeUnless { usernameLikeIds.contains(it) }
+            } else {
+                null
+            }
+        addTarget(passwordFallbackId, FieldHint.PASSWORD)
+
+        return compatibilityTargets
+    }
+
+    private fun mergeCredentialItems(
+        existingItems: List<ParsedItem>,
+        compatibilityTargets: List<ParsedItem>
+    ): List<ParsedItem> {
+        if (compatibilityTargets.isEmpty()) return existingItems
+        val merged = existingItems.toMutableList()
+        compatibilityTargets.forEach { candidate ->
+            val duplicated = merged.any { it.id == candidate.id && it.hint == candidate.hint }
+            if (!duplicated) {
+                merged.add(candidate)
+            }
+        }
+        return merged
+    }
+
+    private fun collectHistoricalCredentialTargets(
+        fillContexts: List<FillContext>,
+        respectAutofillOff: Boolean
+    ): List<ParsedItem> {
+        if (fillContexts.isEmpty()) return emptyList()
+        val collected = mutableListOf<ParsedItem>()
+        val seen = mutableSetOf<Pair<AutofillId, FieldHint>>()
+
+        for (fillContext in fillContexts.asReversed()) {
+            try {
+                val parsed = enhancedParserV2.parse(fillContext.structure, respectAutofillOff)
+                for (item in parsed.items) {
+                    val isCredentialHint =
+                        item.hint == FieldHint.USERNAME ||
+                            item.hint == FieldHint.EMAIL_ADDRESS ||
+                            item.hint == FieldHint.PASSWORD ||
+                            item.hint == FieldHint.NEW_PASSWORD
+                    if (!isCredentialHint) continue
+
+                    val key = item.id to item.hint
+                    if (!seen.add(key)) continue
+
+                    collected.add(
+                        ParsedItem(
+                            id = item.id,
+                            hint = item.hint,
+                            accuracy = EnhancedAutofillStructureParserV2.Accuracy.LOWEST,
+                            value = null,
+                            isFocused = false,
+                            isVisible = true,
+                            traversalIndex = Int.MAX_VALUE - collected.size
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                AutofillLogger.w("PARSING", "Skip one historical context parse failure: ${e.message}")
+            }
+        }
+
+        return collected
+    }
+
+    private fun buildFieldSignatureKey(
+        packageName: String,
+        domain: String?,
+        credentialTargets: List<ParsedItem>
+    ): String {
+        val normalizedPackage = packageName.trim().lowercase()
+        val normalizedDomain = domain?.trim()?.lowercase().orEmpty()
+        val fingerprint = credentialTargets
+            .sortedWith(compareBy<ParsedItem>({ it.traversalIndex }, { it.hint.name }))
+            .joinToString(separator = "|") { item ->
+                "${item.hint.name}:${item.traversalIndex}"
+            }
+        return "pkg=$normalizedPackage;dom=$normalizedDomain;sig=$fingerprint"
+    }
+
+    private fun isManualFillRequest(requestFlags: Int): Boolean {
+        // FLAG_MANUAL_REQUEST is not exposed on some SDK stubs; use the platform bitmask directly.
+        return (requestFlags and manualRequestFlagMask) != 0
+    }
+
+    private fun isCompatibilityFillRequest(requestFlags: Int): Boolean {
+        // FLAG_COMPATIBILITY_MODE_REQUEST is not exposed on some SDK stubs; use the platform bitmask directly.
+        return (requestFlags and compatibilityRequestFlagMask) != 0
+    }
+
+    private fun resolveTriggerMode(requestFlags: Int): TriggerMode {
+        return when {
+            isManualFillRequest(requestFlags) -> TriggerMode.MANUAL
+            isCompatibilityFillRequest(requestFlags) -> TriggerMode.COMPATIBILITY
+            else -> TriggerMode.AUTO
+        }
+    }
+
+    private fun buildInteractionIdentifier(packageName: String, domain: String?, isWebView: Boolean): String {
+        val normalizedPackage = packageName.trim().lowercase()
+        val normalizedDomain = domain?.trim()?.lowercase().orEmpty()
+        return if (isWebView && normalizedDomain.isNotBlank()) {
+            normalizedDomain
+        } else {
+            normalizedPackage
+        }
+    }
+
+    private fun findFocusedUsernameLikeAutofillId(structure: AssistStructure): AutofillId? {
+        fun walk(node: AssistStructure.ViewNode): AutofillId? {
+            val nodeAutofillId = node.autofillId
+            if (nodeAutofillId != null && node.isFocused && node.visibility == android.view.View.VISIBLE) {
+                val isTextField = node.autofillType == android.view.View.AUTOFILL_TYPE_TEXT
+                val isPasswordInput =
+                    (node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0 ||
+                        (node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) != 0 ||
+                        (node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) != 0
+                if (isTextField && !isPasswordInput) {
+                    return nodeAutofillId
+                }
+            }
+            for (i in 0 until node.childCount) {
+                val child = walk(node.getChildAt(i))
+                if (child != null) return child
+            }
+            return null
+        }
+
+        for (i in 0 until structure.windowNodeCount) {
+            val found = walk(structure.getWindowNodeAt(i).rootViewNode)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findWebCredentialFallbackIds(structure: AssistStructure): WebCredentialFallbackIds {
+        data class Candidate(
+            val id: AutofillId,
+            val isPassword: Boolean,
+            val isFocused: Boolean,
+            val order: Int
+        )
+
+        val candidates = mutableListOf<Candidate>()
+        var traversalOrder = 0
+
+        fun analyzeWebCandidate(node: AssistStructure.ViewNode): WebCandidateMetadata {
+            val className = (node.className ?: "").lowercase()
+            val idEntry = (node.idEntry ?: "").lowercase()
+            val hintText = (node.hint ?: "").lowercase()
+            val textValue = node.text?.toString()?.lowercase().orEmpty()
+            val contentDesc = node.contentDescription?.toString()?.lowercase().orEmpty()
+            val joined = listOf(idEntry, hintText, textValue, contentDesc).joinToString(" ")
+
+            val hintTokens = node.autofillHints
+                ?.map { it.lowercase() }
+                .orEmpty()
+            val hasTextInputType = node.autofillType == android.view.View.AUTOFILL_TYPE_TEXT
+            val hasInputTypeSignal = node.inputType != 0
+            val hasHintSignal = hintTokens.isNotEmpty()
+            val hasFieldKeyword = listOf("user", "email", "account", "login", "pass", "pwd", "password")
+                .any { joined.contains(it) }
+            val hasEditClassSignal =
+                className.contains("edittext") || className.contains("textfield") || className.contains("autocompletetextview")
+
+            val isCredentialCandidate =
+                hasTextInputType || hasInputTypeSignal || hasHintSignal || hasEditClassSignal || hasFieldKeyword
+
+            val isPasswordFromInputType =
+                (node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0 ||
+                    (node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) != 0 ||
+                    (node.inputType and android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) != 0
+            val isPasswordFromHint = hintTokens.any { hint ->
+                hint.contains("password") || hint.contains("current-password") || hint.contains("new-password")
+            }
+            val isPasswordFromText =
+                joined.contains("password") || joined.contains("pass") || joined.contains("pwd") ||
+                    joined.contains("密码") || joined.contains("密碼")
+            val isPassword = isPasswordFromInputType || isPasswordFromHint || isPasswordFromText
+
+            val isExcludedNonCredential = listOf(
+                "search", "query", "find", "chat", "message", "comment", "reply",
+                "搜索", "查找", "聊天", "消息", "评论", "回复"
+            ).any { joined.contains(it) }
+
+            return WebCandidateMetadata(
+                isCredentialCandidate = isCredentialCandidate,
+                isPassword = isPassword,
+                isExcludedNonCredential = isExcludedNonCredential
+            )
+        }
+
+        fun walk(node: AssistStructure.ViewNode) {
+            val nodeAutofillId = node.autofillId
+            if (nodeAutofillId != null &&
+                node.visibility == android.view.View.VISIBLE
+            ) {
+                val metadata = analyzeWebCandidate(node)
+                if (metadata.isCredentialCandidate && !metadata.isExcludedNonCredential) {
+                    candidates.add(
+                        Candidate(
+                            id = nodeAutofillId,
+                            isPassword = metadata.isPassword,
+                            isFocused = node.isFocused,
+                            order = traversalOrder++
+                        )
+                    )
+                }
+            }
+            for (i in 0 until node.childCount) {
+                walk(node.getChildAt(i))
+            }
+        }
+
+        for (i in 0 until structure.windowNodeCount) {
+            walk(structure.getWindowNodeAt(i).rootViewNode)
+        }
+
+        if (candidates.isEmpty()) {
+            return WebCredentialFallbackIds(usernameId = null, passwordId = null)
+        }
+
+        val passwordCandidate = candidates
+            .filter { it.isPassword }
+            .sortedWith(compareByDescending<Candidate> { it.isFocused }.thenBy { it.order })
+            .firstOrNull()
+        val passwordId = passwordCandidate?.id
+
+        val usernameCandidate = candidates
+            .filter { !it.isPassword && it.id != passwordId }
+            .sortedWith(compareByDescending<Candidate> { it.isFocused }.thenBy { it.order })
+            .firstOrNull()
+        val usernameId = usernameCandidate?.id
+
+        return WebCredentialFallbackIds(usernameId = usernameId, passwordId = passwordId)
     }
 
     private fun selectAuthenticationTargets(fillTargets: List<ParsedItem>): List<ParsedItem> {
         if (fillTargets.isEmpty()) return emptyList()
-        val username = fillTargets.firstOrNull {
-            it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS
-        }
-        val password = fillTargets.firstOrNull {
-            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
-        }
+        val priority = compareByDescending<ParsedItem> { it.isFocused }
+            .thenByDescending {
+                when (it.hint) {
+                    FieldHint.PASSWORD,
+                    FieldHint.NEW_PASSWORD -> 3
+                    FieldHint.USERNAME,
+                    FieldHint.EMAIL_ADDRESS -> 2
+                    else -> 1
+                }
+            }
+            .thenBy { it.traversalIndex }
 
-        val pair = listOfNotNull(username, password).distinctBy { it.id }
-        if (pair.isNotEmpty()) return pair
-
-        val focused = fillTargets.firstOrNull { it.isFocused }
-        return listOf(focused ?: fillTargets.first())
+        return fillTargets
+            .sortedWith(priority)
+            .distinctBy { it.id }
+            .take(8)
     }
     
     /**

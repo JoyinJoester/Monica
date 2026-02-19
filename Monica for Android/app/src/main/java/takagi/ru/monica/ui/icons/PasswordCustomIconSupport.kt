@@ -242,7 +242,8 @@ fun resolveAutoMatchedSimpleIconSlug(
     title: String? = null,
     appPackageName: String? = null
 ): String? {
-    if (website.isBlank()) return null
+    val hasAnyInput = website.isNotBlank() || !title.isNullOrBlank() || !appPackageName.isNullOrBlank()
+    if (!hasAnyInput) return null
     val availableSlugs = SimpleIconCatalog.getSlugs(context)
     if (availableSlugs.isEmpty()) return null
 
@@ -475,7 +476,8 @@ fun rememberAutoMatchedSimpleIcon(
     var resolved by remember(website, title, appPackageName, enabled) { mutableStateOf(!enabled) }
 
     LaunchedEffect(website, title, appPackageName, enabled) {
-        if (!enabled || website.isBlank()) {
+        val hasAnyInput = website.isNotBlank() || !title.isNullOrBlank() || !appPackageName.isNullOrBlank()
+        if (!enabled || !hasAnyInput) {
             matchedSlug = null
             resolved = true
             return@LaunchedEffect

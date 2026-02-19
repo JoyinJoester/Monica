@@ -31,6 +31,9 @@ data class TotpData(
     val pin: String = "",                  // PIN码（仅mOTP使用，应加密存储）
     val link: String = "",                 // 关联链接
     val associatedApp: String = "",        // 关联应用
+    val customIconType: String = "NONE",   // NONE / SIMPLE_ICON / UPLOADED
+    val customIconValue: String? = null,   // SIMPLE_ICON: slug, UPLOADED: local file name
+    val customIconUpdatedAt: Long = 0L,    // 图标更新时间（毫秒）
     val boundPasswordId: Long? = null,     // 绑定的密码ID
     val categoryId: Long? = null,          // 分类ID（用于验证器分类筛选）
     val keepassDatabaseId: Long? = null    // 归属的 KeePass 数据库ID

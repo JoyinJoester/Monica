@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalContext
@@ -225,12 +226,29 @@ fun TotpCodeCard(
     val iconWebsite = remember(totpData.link) { totpData.link.trim() }
     val iconTitle = remember(item.title, totpData.issuer) { totpData.issuer.ifBlank { item.title } }
     val associatedAppPackage = remember(totpData.associatedApp) { totpData.associatedApp.trim() }
+    val selectedSimpleIconBitmap = takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
+        slug = if (totpData.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+            totpData.customIconValue
+        } else {
+            null
+        },
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = settings.iconCardsEnabled
+    )
+    val selectedUploadedIconBitmap = takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(
+        value = if (totpData.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+            totpData.customIconValue
+        } else {
+            null
+        }
+    )
     val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
         website = iconWebsite,
         title = iconTitle,
         appPackageName = associatedAppPackage.ifBlank { null },
         tintColor = MaterialTheme.colorScheme.primary,
-        enabled = settings.iconCardsEnabled
+        enabled = settings.iconCardsEnabled &&
+            totpData.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
     )
     val favicon = if (iconWebsite.isNotBlank()) {
         takagi.ru.monica.autofill.ui.rememberFavicon(
@@ -288,13 +306,28 @@ fun TotpCodeCard(
                 ) {
                     if (settings.iconCardsEnabled) {
                         when {
+                            selectedSimpleIconBitmap != null -> {
+                                Image(
+                                    bitmap = selectedSimpleIconBitmap,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                            selectedUploadedIconBitmap != null -> {
+                                Image(
+                                    bitmap = selectedUploadedIconBitmap,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
                             autoMatchedSimpleIcon.bitmap != null -> {
                                 Image(
                                     bitmap = autoMatchedSimpleIcon.bitmap,
                                     contentDescription = null,
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
+                                    modifier = Modifier.size(40.dp),
+                                    contentScale = ContentScale.Fit
                                 )
                             }
                             favicon != null -> {

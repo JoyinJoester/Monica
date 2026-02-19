@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
@@ -28,7 +27,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -36,6 +34,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -1019,36 +1018,36 @@ fun PasswordEntryCard(
                             Image(
                                 bitmap = uploadedIcon,
                                 contentDescription = "Uploaded Icon",
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
                                     .padding(end = 12.dp)
                             )
                         } else if (autoMatchedSimpleIcon.bitmap != null) {
                             Image(
                                 bitmap = autoMatchedSimpleIcon.bitmap,
                                 contentDescription = "Auto Matched Icon",
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
                                     .padding(end = 12.dp)
                             )
                         } else if (favicon != null) {
                             Image(
                                 bitmap = favicon,
                                 contentDescription = "Website Icon",
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
                                     .padding(end = 12.dp)
                             )
                         } else if (appIcon != null) {
                             Image(
                                 painter = rememberDrawablePainter(drawable = appIcon),
                                 contentDescription = "App Icon",
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
                                     .padding(end = 12.dp)
                             )
                         } else {
