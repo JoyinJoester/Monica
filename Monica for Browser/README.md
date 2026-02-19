@@ -244,6 +244,93 @@ Monica Browser 扩展支持从其他密码管理器导入数据，确保数据�
 - **保存新密码**：登录时自动提示保存
 - **2FA 自动填充**：开启/关闭 2FA 自动填充
 
+## 🌐 浏览器兼容性
+
+### 支持的浏览器
+
+- **Chrome**: ✅ 88+ 完全支持
+- **Edge**: ✅ 88+ 完全支持
+- **Firefox**: ⚠️ 109+ 部分支持（需要使用Firefox专用构建）
+- **Safari**: ⚠️ 不支持（缺少Manifest V3支持）
+
+### Firefox 构建说明
+
+Firefox对Manifest V3的支持不完整，需要使用专用构建命令：
+
+```bash
+# 构建Firefox版本
+npm run build:firefox
+```
+
+Firefox版本的差异：
+- 使用IIFE格式而非ES module格式
+- 移除了background service worker的"type": "module"
+- 使用兼容性层处理API差异
+- 不支持chrome.action.openPopup() API
+
+## 🔄 CI/CD
+
+### GitHub Actions 工作流
+
+本项目使用 GitHub Actions 自动化构建和测试浏览器扩展。
+
+#### 1. **Browser-Extension.yml** - 构建工作流
+
+在以下情况下触发：
+- 推送到 `main` 或 `develop` 分支
+- 针对 `main` 或 `develop` 分支的 Pull Request
+- 手动触发 (workflow_dispatch)
+
+**构建产物**:
+- Chrome/Edge 扩展 ZIP 文件
+- Firefox 扩展 ZIP 文件
+- 构建目录
+
+#### 2. **Browser-CI.yml** - CI 工作流
+
+在 Pull Request 时运行，执行以下检查：
+- TypeScript 类型检查
+- ESLint 代码检查
+- Chrome/Edge 构建
+- Firefox 构建
+- Manifest 文件验证
+
+#### 3. **Browser-Release.yml** - 发布工作流
+
+当推送格式为 `browser-v*` 的标签时触发：
+- 构建 Chrome/Edge 和 Firefox 版本
+- 创建 GitHub Release
+- 上传构建产物
+
+**使用方法**:
+```bash
+# 创建并推送新版本标签
+git tag browser-v1.0.0
+git push origin browser-v1.0.0
+```
+
+### 本地测试工作流
+
+在提交代码前，可以本地运行以下命令：
+
+```bash
+# 安装依赖
+npm ci
+
+# 运行类型检查
+npx tsc --noEmit
+
+# 运行 lint
+npm run lint
+
+# 构建所有版本
+npm run build
+npm run build:firefox
+
+# 验证构建产物
+ls -la dist/
+```
+
 ## 🔧 开发指南
 
 ### 项目结构

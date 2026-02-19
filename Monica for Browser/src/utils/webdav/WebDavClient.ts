@@ -25,7 +25,8 @@ interface BackgroundResponse {
     statusText?: string;
     headers?: Record<string, string>;
     body?: string;
-    arrayBuffer?: number[];
+    arrayBuffer?: number[];  // Deprecated
+    arrayBufferBase64?: string;  // More efficient Base64 encoding
     error?: string;
 }
 
@@ -65,7 +66,18 @@ class WebDavClientService {
         body?: string
     ): Promise<BackgroundResponse> {
         return new Promise((resolve) => {
-            chrome.runtime.sendMessage(
+            const api = typeof chrome !== 'undefined' ? chrome.runtime : (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime);
+
+            // Set timeout for message response (30 seconds)
+            const timeout = setTimeout(() => {
+                console.warn('[WebDav] Request timeout:', method, url);
+                resolve({
+                    success: false,
+                    error: `请求超时 (30秒) - ${method} ${url}`,
+                });
+            }, 30000);
+
+            api.sendMessage(
                 {
                     type: 'WEBDAV_REQUEST',
                     method,
@@ -74,11 +86,27 @@ class WebDavClientService {
                     body,
                 },
                 (response: BackgroundResponse) => {
-                    if (chrome.runtime.lastError) {
-                        resolve({
-                            success: false,
-                            error: chrome.runtime.lastError.message || 'Background script error',
-                        });
+                    clearTimeout(timeout);
+
+                    // Explicitly check and consume runtime.lastError to suppress Chrome warnings
+                    const lastError = api.lastError;
+
+                    if (lastError) {
+                        const errorMessage = lastError.message || 'Background script error';
+                        console.warn('[WebDav] Runtime lastError:', errorMessage);
+
+                        // Handle port closed error gracefully
+                        if (errorMessage.includes('message port closed') || errorMessage.includes('receiving end')) {
+                            resolve({
+                                success: false,
+                                error: `消息连接已关闭，可能是页面刷新或超时 - ${method} ${url}`,
+                            });
+                        } else {
+                            resolve({
+                                success: false,
+                                error: errorMessage,
+                            });
+                        }
                     } else {
                         resolve(response || { success: false, error: 'No response from background' });
                     }
@@ -340,14 +368,28 @@ class WebDavClientService {
         const path = `/Monica_Backups/${filename}`;
         const response = await this.request('GET', path);
 
-        if (!response.success || !response.arrayBuffer) {
+        // Try Base64 first (newer format), fallback to number array (old format)
+        if (!response.success) {
             throw new Error(`Download failed: ${response.error || `HTTP ${response.status}`}`);
         }
 
-        // Convert number array back to ArrayBuffer
-        const uint8Array = new Uint8Array(response.arrayBuffer);
-        console.log('[WebDav] Downloaded:', path);
-        return uint8Array.buffer as ArrayBuffer;
+        if (response.arrayBufferBase64) {
+            // Convert Base64 string back to ArrayBuffer
+            const binaryString = atob(response.arrayBufferBase64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            console.log('[WebDav] Downloaded (Base64):', path);
+            return bytes.buffer;
+        } else if (response.arrayBuffer) {
+            // Legacy format: convert number array back to ArrayBuffer
+            const uint8Array = new Uint8Array(response.arrayBuffer);
+            console.log('[WebDav] Downloaded (legacy):', path);
+            return uint8Array.buffer as ArrayBuffer;
+        } else {
+            throw new Error(`Download failed: No data received`);
+        }
     }
 
     /**
@@ -381,7 +423,12 @@ class WebDavClientService {
             }
 
             const text = response.body;
-            console.log('[WebDav] PROPFIND response:', text.substring(0, 500));
+            if (!text || text.length === 0) {
+                console.warn('[WebDav] Empty response body');
+                return [];
+            }
+
+            console.log('[WebDav] PROPFIND response:', text.substring(0, Math.min(500, text.length)));
 
             // Parse XML response
             const parser = new DOMParser();
@@ -390,33 +437,46 @@ class WebDavClientService {
             const backups: BackupFile[] = [];
             const responses = doc.querySelectorAll('response, D\\:response');
 
-            responses.forEach((resp) => {
-                const href = resp.querySelector('href, D\\:href')?.textContent || '';
-                const displayName = resp.querySelector('displayname, D\\:displayname')?.textContent || '';
-                const contentLength = resp.querySelector('getcontentlength, D\\:getcontentlength')?.textContent || '0';
-                const lastModified = resp.querySelector('getlastmodified, D\\:getlastmodified')?.textContent || '';
-                const resourceType = resp.querySelector('resourcetype, D\\:resourcetype');
-                const isCollection = resourceType?.querySelector('collection, D\\:collection');
+            if (!responses || responses.length === 0) {
+                console.log('[WebDav] No backup files found');
+                return [];
+            }
 
-                if (isCollection) return;
+            for (let i = 0; i < responses.length; i++) {
+                try {
+                    const resp = responses[i];
+                    if (!resp) continue;
 
-                const filename = displayName || decodeURIComponent(href.split('/').pop() || '');
-                if (!filename.endsWith('.zip')) return;
+                    const href = resp.querySelector('href, D\\:href')?.textContent || '';
+                    const displayName = resp.querySelector('displayname, D\\:displayname')?.textContent || '';
+                    const contentLength = resp.querySelector('getcontentlength, D\\:getcontentlength')?.textContent || '0';
+                    const lastModified = resp.querySelector('getlastmodified, D\\:getlastmodified')?.textContent || '';
+                    const resourceType = resp.querySelector('resourcetype, D\\:resourcetype');
+                    const isCollection = resourceType?.querySelector('collection, D\\:collection');
 
-                backups.push({
-                    filename,
-                    path: href,
-                    size: parseInt(contentLength, 10) || 0,
-                    lastModified: lastModified ? new Date(lastModified) : new Date(),
-                    isEncrypted: filename.includes('.enc.'),
-                });
-            });
+                    if (isCollection) continue;
+
+                    const filename = displayName || decodeURIComponent(href.split('/').pop() || '');
+                    if (!filename.endsWith('.zip')) continue;
+
+                    backups.push({
+                        filename,
+                        path: href,
+                        size: parseInt(contentLength, 10) || 0,
+                        lastModified: lastModified ? new Date(lastModified) : new Date(),
+                        isEncrypted: filename.includes('.enc.'),
+                    });
+                } catch (itemError) {
+                    console.error('[WebDav] Error parsing backup item:', itemError);
+                    // Continue to next item
+                }
+            }
 
             backups.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
             console.log('[WebDav] Found', backups.length, 'backups');
             return backups;
         } catch (e) {
-            console.error('[WebDav] Error listing backups:', e);
+            console.error('[WebDav] Error listing backups:', e, (e as Error).stack);
             return [];
         }
     }

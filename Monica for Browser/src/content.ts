@@ -3,6 +3,11 @@
  * Detects login forms, injects icons, and shows autofill popup
  */
 
+// Browser compatibility layer
+const browserAPI = {
+  runtime: typeof chrome !== 'undefined' ? chrome.runtime : (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime),
+}
+
 // Prevent duplicate injection - if already loaded, do nothing
 if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
   console.log('[Monica] Content script already loaded, skipping');
@@ -24,6 +29,28 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     url?: string;
     username?: string;
     password?: string;
+  }
+
+  interface GetAllPasswordsResponse {
+    success: boolean;
+    passwords: PasswordItem[];
+  }
+
+  interface VerifyMasterPasswordResponse {
+    success: boolean;
+    verified: boolean;
+    error?: string;
+  }
+
+  interface GetTotpsResponse {
+    success: boolean;
+    totps: TotpItem[];
+    matchedTotps: TotpItem[];
+  }
+
+  interface SavePasswordResponse {
+    success: boolean;
+    error?: string;
   }
 
   interface AutofillResponse {
@@ -93,7 +120,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
 
     // Use actual Monica icon image
     const icon = document.createElement('img');
-    icon.src = chrome.runtime.getURL('icons/icon.png');
+    icon.src = browserAPI.runtime.getURL('icons/icon.png');
     icon.style.cssText = `
     position: absolute;
     z-index: 10000;
@@ -340,7 +367,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
 
     // Event: Manage passwords (open extension)
     container.querySelector('.monica-popup-footer')?.addEventListener('click', () => {
-      chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
+      browserAPI.runtime.sendMessage({ type: 'OPEN_POPUP' });
       hidePopup();
     });
 
@@ -367,7 +394,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     if (showAllBtn) showAllBtn.style.display = 'none';
 
     // Fetch all passwords
-    chrome.runtime.sendMessage({ type: 'GET_ALL_PASSWORDS' }, (response) => {
+    browserAPI.runtime.sendMessage({ type: 'GET_ALL_PASSWORDS' }, (response: GetAllPasswordsResponse) => {
       if (response?.success) {
         allPasswords = response.passwords || [];
         renderPasswords();
@@ -475,9 +502,9 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     popupContainer.style.left = `${left}px`;
 
     // Fetch passwords
-    chrome.runtime.sendMessage<AutofillMessage, AutofillResponse>(
+    browserAPI.runtime.sendMessage<AutofillMessage, AutofillResponse>(
       { type: 'GET_PASSWORDS_FOR_AUTOFILL', url: window.location.href },
-      (response) => {
+      (response: AutofillResponse) => {
         if (response?.success) {
           matchedPasswords = response.matchedPasswords || [];
           renderPasswords();
@@ -613,7 +640,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     if (trackedTotpInputs.has(input)) return;
 
     const icon = document.createElement('img');
-    icon.src = chrome.runtime.getURL('icons/icon.png');
+    icon.src = browserAPI.runtime.getURL('icons/icon.png');
     icon.style.cssText = `
       position: absolute;
       z-index: 10000;
@@ -780,9 +807,9 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
       unlockBtn?.setAttribute('disabled', 'true');
       (unlockBtn as HTMLElement).textContent = '验证中...';
 
-      chrome.runtime.sendMessage(
+      browserAPI.runtime.sendMessage(
         { type: 'VERIFY_MASTER_PASSWORD', password },
-        (response) => {
+        (response: VerifyMasterPasswordResponse) => {
           if (response?.success && response.verified) {
             // Password correct, load 2FA list
             load2FAListAfterVerification();
@@ -797,8 +824,8 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
       );
     };
 
-    unlockBtn?.addEventListener('click', tryUnlock);
-    passwordInput?.addEventListener('keydown', (e) => {
+      unlockBtn?.addEventListener('click', tryUnlock);
+      passwordInput?.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter') tryUnlock();
     });
 
@@ -811,10 +838,10 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     const content = totpPopupContainer?.querySelector('.monica-2fa-content');
     if (content) content.innerHTML = '<div class="monica-loading">加载中...</div>';
 
-    chrome.runtime.sendMessage(
+    browserAPI.runtime.sendMessage(
       { type: 'GET_TOTPS_FOR_AUTOFILL', url: window.location.href },
-      (response) => {
-        if (chrome.runtime.lastError) {
+      (response: GetTotpsResponse) => {
+        if (browserAPI.runtime.lastError) {
           console.error('[Monica 2FA] Error:', chrome.runtime.lastError);
           const content = totpPopupContainer?.querySelector('.monica-2fa-content');
           if (content) content.innerHTML = '<div class="monica-empty">扩展连接失败</div>';
@@ -860,7 +887,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
       <div class="monica-2fa-footer">
         <div class="monica-footer-manage">
           <div class="monica-footer-icon">
-            <img src="${chrome.runtime.getURL('icons/icon.png')}" />
+            <img src="${browserAPI.runtime.getURL('icons/icon.png')}" />
           </div>
           <span>2FA 验证码</span>
         </div>
@@ -1209,19 +1236,20 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
   }
 
   // Message Listener for explicit requests
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message.type === 'CHECK_PASSWORD_FORM') {
+  (browserAPI.runtime.onMessage as typeof chrome.runtime.onMessage).addListener((message: unknown, _sender: chrome.runtime.MessageSender, sendResponse: (response: unknown) => void) => {
+    const msg = message as Record<string, unknown>;
+    if (msg.type === 'CHECK_PASSWORD_FORM') {
       const hasPw = document.querySelectorAll('input[type="password"]').length > 0;
       sendResponse({ hasPasswordForm: hasPw });
       return true; // async
     }
-    if (message.type === 'FILL_CREDENTIALS') {
+    if (msg.type === 'FILL_CREDENTIALS') {
       // Logic for extension-icon triggered fill (generic)
       // Re-use logic or define new
       const pw = document.querySelector('input[type="password"]') as HTMLInputElement;
       if (pw) {
         activeInput = pw; // pretend interaction
-        fillCredentials({ username: message.username, password: message.password } as PasswordItem);
+        fillCredentials({ username: msg.username as string, password: msg.password as string } as PasswordItem);
       }
       sendResponse({ success: true });
       return true;
@@ -1372,10 +1400,10 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
 
   function showSavePrompt(credentials: { website: string; title: string; username: string; password: string }) {
     // First check if this password already exists
-    chrome.runtime.sendMessage(
+    browserAPI.runtime.sendMessage(
       { type: 'GET_PASSWORDS_FOR_AUTOFILL', url: credentials.website },
-      (response) => {
-        if (chrome.runtime.lastError) {
+      (response: AutofillResponse) => {
+        if (browserAPI.runtime.lastError) {
           // Extension error, skip check and show prompt
           displaySavePromptUI(credentials);
           return;
@@ -1409,7 +1437,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     prompt.id = 'monica-save-prompt';
     prompt.innerHTML = `
     <div class="monica-save-header">
-      <img src="${chrome.runtime.getURL('icons/icon.png')}" class="monica-save-logo" />
+      <img src="${browserAPI.runtime.getURL('icons/icon.png')}" class="monica-save-logo" />
       <span class="monica-save-title">Monica</span>
       <span class="monica-save-close">×</span>
     </div>
@@ -1533,7 +1561,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     });
 
     document.getElementById('monica-save-yes')?.addEventListener('click', () => {
-      chrome.runtime.sendMessage({ type: 'SAVE_PASSWORD', credentials }, (response) => {
+      browserAPI.runtime.sendMessage({ type: 'SAVE_PASSWORD', credentials }, (response: SavePasswordResponse) => {
         if (response?.success) {
           prompt.remove();
           savePromptShown = false;

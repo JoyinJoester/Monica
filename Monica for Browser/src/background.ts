@@ -3,6 +3,15 @@
  * Handles WebDAV requests to bypass CORS restrictions
  */
 
+// Browser compatibility layer
+const browserAPI = {
+  runtime: typeof chrome !== 'undefined' ? chrome.runtime : (typeof browser !== 'undefined' ? browser.runtime : chrome.runtime),
+  storage: typeof chrome !== 'undefined' ? chrome.storage : (typeof browser !== 'undefined' ? browser.storage : chrome.storage),
+  scripting: typeof chrome !== 'undefined' ? chrome.scripting : (typeof browser !== 'undefined' ? browser.scripting : chrome.scripting),
+  tabs: typeof chrome !== 'undefined' ? chrome.tabs : (typeof browser !== 'undefined' ? browser.tabs : chrome.tabs),
+  action: typeof chrome !== 'undefined' ? chrome.action : (typeof browser !== 'undefined' ? browser.browserAction : chrome.action),
+}
+
 // Message types
 interface WebDavRequest {
     type: 'WEBDAV_REQUEST';
@@ -18,7 +27,8 @@ interface WebDavResponse {
     statusText?: string;
     headers?: Record<string, string>;
     body?: string;
-    arrayBuffer?: number[];  // ArrayBuffer as number array for serialization
+    arrayBuffer?: number[];  // ArrayBuffer as number array for serialization (deprecated)
+    arrayBufferBase64?: string;  // ArrayBuffer as Base64 string (more efficient)
     error?: string;
 }
 
@@ -52,25 +62,42 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
 
         const response = await fetch(request.url, fetchOptions);
 
-        // Get response headers
+        // Get response headers (safe check)
         const responseHeaders: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
-            responseHeaders[key] = value;
-        });
+        if (response && response.headers) {
+            try {
+                response.headers.forEach((value, key) => {
+                    responseHeaders[key] = value;
+                });
+            } catch (e) {
+                console.error('[Background] Failed to iterate headers:', e);
+            }
+        }
 
         // Check if response is binary (for downloads)
-        const contentType = response.headers.get('content-type') || '';
+        const contentType = response?.headers?.get('content-type') || '';
         const isBinary = contentType.includes('octet-stream') ||
             contentType.includes('zip') ||
             request.method === 'GET';
 
         let responseBody: string | undefined;
-        let arrayBuffer: number[] | undefined;
+        let arrayBufferBase64: string | undefined;
 
         if (isBinary && response.ok) {
-            // Return as array of numbers for serialization
+            // Return as Base64 string for more efficient serialization
             const buffer = await response.arrayBuffer();
-            arrayBuffer = Array.from(new Uint8Array(buffer));
+            // Limit file size to prevent memory overflow (max 100MB)
+            const maxSize = 100 * 1024 * 1024; // 100MB
+            if (buffer.byteLength > maxSize) {
+                throw new Error(`文件过大 (${(buffer.byteLength / 1024 / 1024).toFixed(2)}MB)，超过 100MB 限制`);
+            }
+            // Convert ArrayBuffer to Base64 string
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            arrayBufferBase64 = btoa(binary);
         } else {
             responseBody = await response.text();
         }
@@ -81,14 +108,30 @@ async function handleWebDavRequest(request: WebDavRequest): Promise<WebDavRespon
             statusText: response.statusText,
             headers: responseHeaders,
             body: responseBody,
-            arrayBuffer,
+            arrayBufferBase64,
         };
     } catch (error) {
-        const err = error as Error;
-        console.error('[Background] WebDAV request failed:', err);
+        const err = error as Error & { cause?: unknown };
+        console.error('[Background] WebDAV request failed:', {
+            method: request.method,
+            url: request.url,
+            error: err.message,
+            errorDetails: err.stack,
+            errorName: err.name,
+            cause: err.cause,
+        });
+
+        // Check for specific error types
+        if (err.message.includes('Failed to fetch')) {
+            return {
+                success: false,
+                error: `网络请求失败 (${request.method} ${request.url})。可能原因：CORS、HTTPS证书、或网络连接`,
+            };
+        }
+
         return {
             success: false,
-            error: err.message || 'Network error',
+            error: `${err.message} (${request.method} ${request.url})`,
         };
     }
 }
@@ -226,7 +269,7 @@ async function hashPassword(password: string, saltArray: number[]): Promise<stri
 // Verify master password
 async function verifyMasterPassword(password: string): Promise<boolean> {
     try {
-        const result = await chrome.storage.local.get([MASTER_PASSWORD_HASH_KEY, MASTER_PASSWORD_SALT_KEY]);
+        const result = await browserAPI.storage.local.get([MASTER_PASSWORD_HASH_KEY, MASTER_PASSWORD_SALT_KEY]);
         const storedHash = result[MASTER_PASSWORD_HASH_KEY] as string | undefined;
         const saltBase64 = result[MASTER_PASSWORD_SALT_KEY] as string | undefined;
 
@@ -250,8 +293,8 @@ async function verifyMasterPassword(password: string): Promise<boolean> {
 // Get passwords from storage
 async function getPasswordsFromStorage(): Promise<PasswordItem[]> {
     try {
-        // Try chrome.storage.local first
-        const result = await chrome.storage.local.get(STORAGE_KEY);
+        // Try browser storage first
+        const result = await browserAPI.storage.local.get(STORAGE_KEY);
         const rawItems = result[STORAGE_KEY];
 
         // Return empty if no items
@@ -305,7 +348,7 @@ async function getAllPasswords(): Promise<PasswordItem[]> {
 // Get TOTPs from storage
 async function getTotpsFromStorage(): Promise<TotpItem[]> {
     try {
-        const result = await chrome.storage.local.get(STORAGE_KEY);
+        const result = await browserAPI.storage.local.get(STORAGE_KEY);
         const rawItems = result[STORAGE_KEY];
 
         if (!rawItems || !Array.isArray(rawItems) || rawItems.length === 0) {
@@ -379,12 +422,12 @@ function generateTotpCode(totp: TotpItem): { code: string; timeRemaining: number
 
 
 // Handle autofill requests
-chrome.runtime.onMessage.addListener(
-    (request: AutofillRequest | WebDavRequest | SavePasswordRequest | GetAllPasswordsRequest | OpenPopupRequest, _sender, sendResponse: (response: AutofillResponse | WebDavResponse | SavePasswordResponse | GetAllPasswordsResponse | { success: boolean }) => void) => {
+(browserAPI.runtime.onMessage as typeof chrome.runtime.onMessage).addListener(
+    (request: AutofillRequest | WebDavRequest | SavePasswordRequest | GetAllPasswordsRequest | OpenPopupRequest, _sender: chrome.runtime.MessageSender, sendResponse: (response: AutofillResponse | WebDavResponse | SavePasswordResponse | GetAllPasswordsResponse | { success: boolean }) => void) => {
         if (request.type === 'GET_PASSWORDS_FOR_AUTOFILL') {
             Promise.all([
                 getPasswordsFromStorage(),
-                chrome.storage.local.get('i18nextLng')
+                browserAPI.storage.local.get('i18nextLng')
             ]).then(([passwords, langResult]) => {
                 const matched = matchPasswordsByUrl(passwords, request.url);
                 const lang = (langResult.i18nextLng as string) || 'en';
@@ -422,10 +465,16 @@ chrome.runtime.onMessage.addListener(
 
         if (request.type === 'OPEN_POPUP') {
             // Open extension popup by focusing/creating a new tab
-            chrome.action.openPopup().catch(() => {
-                // Fallback: create tab with extension page
-                chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
-            });
+            // Firefox doesn't support openPopup(), so we always use fallback
+            if (browserAPI.action && browserAPI.action.openPopup) {
+                browserAPI.action.openPopup().catch(() => {
+                    // Fallback: create tab with extension page
+                    browserAPI.tabs.create({ url: browserAPI.runtime.getURL('index.html') });
+                });
+            } else {
+                // Firefox fallback
+                browserAPI.tabs.create({ url: browserAPI.runtime.getURL('index.html') });
+            }
             sendResponse({ success: true });
             return true;
         }
@@ -514,13 +563,12 @@ chrome.runtime.onMessage.addListener(
 
 // Save new password to storage
 async function saveNewPassword(credentials: { website: string; title: string; username: string; password: string }) {
-    const result = await chrome.storage.local.get(STORAGE_KEY);
+    const result = await browserAPI.storage.local.get(STORAGE_KEY);
     const rawItems = result[STORAGE_KEY];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const items: any[] = Array.isArray(rawItems) ? rawItems : [];
+    const items: Record<string, unknown>[] = Array.isArray(rawItems) ? rawItems : [];
 
     // Generate new ID
-    const maxId = items.reduce((max, item) => Math.max(max, item.id || 0), 0);
+    const maxId = items.reduce((max, item) => Math.max(max, (item as Record<string, unknown>).id as number || 0), 0);
 
     // Create item matching SecureItem interface
     const newPassword = {
@@ -541,34 +589,37 @@ async function saveNewPassword(credentials: { website: string; title: string; us
     };
 
     items.push(newPassword);
-    await chrome.storage.local.set({ [STORAGE_KEY]: items });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: items });
     console.log('[Monica] Password saved:', newPassword.title);
 }
 
 // ========== Automatic Content Script Injection ==========
 // Content script is now injected via manifest.json
 // But we still try to inject into existing tabs upon installation to avoid reload
-chrome.runtime.onInstalled.addListener(async () => {
+browserAPI.runtime.onInstalled.addListener(async () => {
     console.log('[Monica] Extension installed');
 
     // Inject into all existing tabs
-    const tabs = await chrome.tabs.query({});
+    const tabs = await browserAPI.tabs.query({});
     for (const tab of tabs) {
         // Skip restricted URLs
         if (!tab.url || tab.url.startsWith('chrome://') ||
             tab.url.startsWith('chrome-extension://') ||
             tab.url.startsWith('about:') ||
             tab.url.startsWith('edge://') ||
-            tab.url.startsWith('file://')) { // Also skip file:// if not allowed
+            tab.url.startsWith('file://') ||
+            tab.url.startsWith('moz-extension://')) { // Also skip file:// if not allowed
             continue;
         }
 
         if (tab.id) {
             try {
-                await chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    files: ['content.js']
-                });
+                if (browserAPI.scripting && browserAPI.scripting.executeScript) {
+                    await browserAPI.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        files: ['content.js']
+                    });
+                }
             } catch (err) {
                 // Ignore "Cannot access contents of the page" error which is expected for some pages
                 if (err instanceof Error && !err.message.includes('Cannot access contents of the page')) {

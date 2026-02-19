@@ -201,6 +201,7 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings, 
     const [isCreatingBackup, setIsCreatingBackup] = useState(false);
     const [backupReport, setBackupReport] = useState<BackupReport | null>(null);
     const [restoreReport, setRestoreReport] = useState<RestoreReport | null>(null);
+    const [countdown, setCountdown] = useState(0);
 
     // Preferences
     const [preferences, setPreferences] = useState<BackupPreferences>({
@@ -227,6 +228,18 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings, 
         };
         init();
     }, []);
+
+    // Countdown timer for page reload after restore
+    useEffect(() => {
+        if (countdown > 0) {
+            const timer = setTimeout(() => {
+                setCountdown(countdown - 1);
+            }, 1000);
+            return () => clearTimeout(timer);
+        } else if (countdown === 0 && restoreReport?.success) {
+            window.location.reload();
+        }
+    }, [countdown, restoreReport?.success]);
 
     const loadBackups = async () => {
         setIsLoading(true);
@@ -288,15 +301,16 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings, 
         setIsRestoring(true);
         setRestoreReport(null);
         setShowDecryptModal(false);
+        setCountdown(0);
 
         try {
             const data = await webDavClient.downloadBackup(backup.filename);
             const report = await backupManager.restoreBackup(data, password);
             setRestoreReport(report);
 
-            // Reload the page to show new data
+            // Start countdown for page reload (5 seconds)
             if (report.success) {
-                setTimeout(() => window.location.reload(), 2000);
+                setCountdown(5);
             }
         } catch (e) {
             const err = e as Error;
@@ -398,9 +412,16 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onBack, onOpenSettings, 
                     {restoreReport.success ? <Check size={20} /> : <AlertCircle size={20} />}
                     <div>
                         {restoreReport.success ? (
-                            isZh
-                                ? `恢复成功！密码: ${restoreReport.passwordsRestored}, 笔记: ${restoreReport.notesRestored}, 验证器: ${restoreReport.totpsRestored}, 证件: ${restoreReport.documentsRestored}`
-                                : `Restore success! Passwords: ${restoreReport.passwordsRestored}, Notes: ${restoreReport.notesRestored}, TOTP: ${restoreReport.totpsRestored}, Docs: ${restoreReport.documentsRestored}`
+                            <>
+                                {isZh
+                                    ? `恢复成功！密码: ${restoreReport.passwordsRestored}, 笔记: ${restoreReport.notesRestored}, 验证器: ${restoreReport.totpsRestored}, 证件: ${restoreReport.documentsRestored}`
+                                    : `Restore success! Passwords: ${restoreReport.passwordsRestored}, Notes: ${restoreReport.notesRestored}, TOTP: ${restoreReport.totpsRestored}, Docs: ${restoreReport.documentsRestored}`}
+                                {countdown > 0 && (
+                                    <div style={{ marginTop: '8px', fontSize: '14px', opacity: 0.8 }}>
+                                        {isZh ? `页面将在 ${countdown} 秒后自动刷新` : `Page will reload in ${countdown} seconds`}
+                                    </div>
+                                )}
+                            </>
                         ) : restoreReport.errors.join(', ')}
                     </div>
                 </ResultBanner>
