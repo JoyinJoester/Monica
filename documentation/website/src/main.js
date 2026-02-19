@@ -213,14 +213,77 @@ function renderChart(commits) {
 }
 
 // 4. Github Data Render
+const GITHUB_REPO_OWNER = 'JoyinJoester';
+const GITHUB_REPO_NAME = 'Monica';
+
+async function fetchLiveGithubData() {
+    const headers = {
+        'Accept': 'application/vnd.github+json'
+    };
+    const base = `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`;
+
+    const [repoRes, commitsRes, contributorsRes] = await Promise.all([
+        fetch(base, { headers, cache: 'no-store' }),
+        fetch(`${base}/commits?per_page=30`, { headers, cache: 'no-store' }),
+        fetch(`${base}/contributors?per_page=30`, { headers, cache: 'no-store' })
+    ]);
+
+    if (!repoRes.ok || !commitsRes.ok || !contributorsRes.ok) {
+        throw new Error(`GitHub API failed: repo=${repoRes.status}, commits=${commitsRes.status}, contributors=${contributorsRes.status}`);
+    }
+
+    const repoRaw = await repoRes.json();
+    const commitsRaw = await commitsRes.json();
+    const contributorsRaw = await contributorsRes.json();
+
+    const totalContributions = contributorsRaw.reduce((sum, c) => sum + (c.contributions || 0), 0);
+
+    return {
+        stats: {
+            stars: repoRaw.stargazers_count || 0,
+            forks: repoRaw.forks_count || 0,
+            issues: repoRaw.open_issues_count || 0
+        },
+        commits: commitsRaw.map(c => ({
+            sha: (c.sha || '').slice(0, 7),
+            author: c.commit?.author?.name || 'unknown',
+            message: (c.commit?.message || '').split('\n')[0],
+            date: c.commit?.author?.date || new Date().toISOString(),
+            url: c.html_url || '#'
+        })),
+        contributors: contributorsRaw.map(c => ({
+            login: c.login,
+            avatar_url: c.avatar_url,
+            html_url: c.html_url,
+            contributions: c.contributions || 0,
+            ratio: totalContributions > 0
+                ? Math.round(((c.contributions || 0) / totalContributions) * 100)
+                : 0
+        }))
+    };
+}
+
+async function fetchCachedGithubData() {
+    const res = await fetch(`./data/github-data.json?v=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) {
+        throw new Error(`Local github-data.json fetch failed: ${res.status}`);
+    }
+    return res.json();
+}
+
 async function renderGithubData() {
     const commitTimeline = document.getElementById('commit-timeline');
     const contribList = document.getElementById('contributors-list');
 
     try {
-        const res = await fetch('./data/github-data.json');
-        if (!res.ok) return; // Fallback or silent fail
-        const data = await res.json();
+        let data;
+        try {
+            // Prefer live GitHub data so repo stats update in near real-time.
+            data = await fetchLiveGithubData();
+        } catch (liveError) {
+            console.warn('Live GitHub fetch failed, falling back to cached data.', liveError);
+            data = await fetchCachedGithubData();
+        }
 
         // Render Commits
         if (data.commits && data.commits.length > 0) {
