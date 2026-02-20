@@ -80,6 +80,8 @@ import takagi.ru.monica.ui.screens.ExportDataScreen
 import takagi.ru.monica.ui.screens.ForgotPasswordScreen
 import takagi.ru.monica.ui.screens.ImportDataScreen
 import takagi.ru.monica.ui.screens.LoginScreen
+import takagi.ru.monica.ui.screens.CardScannerScreen
+import takagi.ru.monica.ui.screens.DocumentScannerScreen
 import takagi.ru.monica.ui.screens.QrScannerScreen
 import takagi.ru.monica.ui.screens.ResetPasswordScreen
 import takagi.ru.monica.ui.screens.SecurityAnalysisScreen
@@ -572,6 +574,12 @@ fun MonicaContent(
                 onNavigateToQuickTotpScan = {
                     navController.navigate(Screen.QuickTotpScan.route)
                 },
+                onNavigateToCardScan = {
+                    navController.navigate(Screen.CardScanner.route)
+                },
+                onNavigateToDocumentScan = {
+                    navController.navigate(Screen.DocumentScanner.route)
+                },
                 onNavigateToAddBankCard = { cardId ->
                     navController.navigate(Screen.AddEditBankCard.createRoute(cardId))
                 },
@@ -833,10 +841,22 @@ fun MonicaContent(
 
         composable(Screen.AddEditBankCard.route) { backStackEntry ->
             val cardId = backStackEntry.arguments?.getString("cardId")?.toLongOrNull() ?: -1L
+            val cardScanResult = navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>("card_scan_result")
 
             takagi.ru.monica.ui.screens.AddEditBankCardScreen(
                 viewModel = bankCardViewModel,
                 cardId = if (cardId > 0) cardId else null,
+                cardScanResultJson = cardScanResult,
+                onCardScanResultConsumed = {
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.remove<String>("card_scan_result")
+                },
+                onScanCard = {
+                    navController.navigate(Screen.CardScanner.route)
+                },
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -845,10 +865,22 @@ fun MonicaContent(
 
         composable(Screen.AddEditDocument.route) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
+            val documentScanResult = navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>("document_scan_result")
 
             takagi.ru.monica.ui.screens.AddEditDocumentScreen(
                 viewModel = documentViewModel,
                 documentId = if (documentId > 0) documentId else null,
+                documentScanResultJson = documentScanResult,
+                onDocumentScanResultConsumed = {
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.remove<String>("document_scan_result")
+                },
+                onScanDocument = {
+                    navController.navigate(Screen.DocumentScanner.route)
+                },
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -932,6 +964,42 @@ fun MonicaContent(
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("qr_result", qrData)
+                    navController.popBackStack()
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.CardScanner.route) {
+            CardScannerScreen(
+                onCardScanned = { scanResult ->
+                    val payload = kotlinx.serialization.json.Json.encodeToString(
+                        takagi.ru.monica.data.model.CardScanResult.serializer(),
+                        scanResult
+                    )
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("card_scan_result", payload)
+                    navController.popBackStack()
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.DocumentScanner.route) {
+            DocumentScannerScreen(
+                onDocumentScanned = { scanResult ->
+                    val payload = kotlinx.serialization.json.Json.encodeToString(
+                        takagi.ru.monica.data.model.DocumentScanResult.serializer(),
+                        scanResult
+                    )
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("document_scan_result", payload)
                     navController.popBackStack()
                 },
                 onNavigateBack = {

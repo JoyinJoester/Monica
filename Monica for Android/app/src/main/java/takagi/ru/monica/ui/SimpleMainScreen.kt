@@ -744,6 +744,8 @@ fun SimpleMainScreen(
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
+    onNavigateToCardScan: () -> Unit,
+    onNavigateToDocumentScan: () -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
@@ -1914,6 +1916,7 @@ fun SimpleMainScreen(
                                         AddEditBankCardScreen(
                                             viewModel = bankCardViewModel,
                                             cardId = inlineBankCardEditorId,
+                                            onScanCard = onNavigateToCardScan,
                                             onNavigateBack = handleInlineBankCardEditorBack,
                                             modifier = Modifier.fillMaxSize()
                                         )
@@ -1942,6 +1945,7 @@ fun SimpleMainScreen(
                                         AddEditDocumentScreen(
                                             viewModel = documentViewModel,
                                             documentId = inlineDocumentEditorId,
+                                            onScanDocument = onNavigateToDocumentScan,
                                             onNavigateBack = handleInlineDocumentEditorBack,
                                             modifier = Modifier.fillMaxSize()
                                         )
@@ -2475,12 +2479,14 @@ fun SimpleMainScreen(
                             AddEditBankCardScreen(
                                 viewModel = bankCardViewModel,
                                 cardId = null,
+                                onScanCard = onNavigateToCardScan,
                                 onNavigateBack = collapse
                             )
                         } else {
                             AddEditDocumentScreen(
                                 viewModel = documentViewModel,
                                 documentId = null,
+                                onScanDocument = onNavigateToDocumentScan,
                                 onNavigateBack = collapse
                             )
                         }

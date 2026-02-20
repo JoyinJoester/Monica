@@ -131,6 +131,9 @@ dependencies {
     
     // ML Kit Barcode Scanning
     implementation 'com.google.mlkit:barcode-scanning:17.2.0'
+    // Use Play Services backed text recognition to avoid bundling large OCR model in APK.
+    // Tradeoff: first run may need model download, and devices without GMS may be limited.
+    implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.1'
     
     // Permissions
     implementation libs.accompanist.permissions

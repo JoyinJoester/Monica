@@ -479,47 +479,29 @@ class MonicaAutofillService : AutofillService() {
         AutofillLogger.d("MATCHING", "Package: $packageName, WebDomain: $webDomain, Identifier: $identifier")
         android.util.Log.d("MonicaAutofill", "Identifier: $identifier (package: $packageName, web: $webDomain)")
 
-        // Use the full resolver path (parser + compatibility + session recovery) so
-        // second-pass triggers and non-credential suppression behave consistently.
+        // Keyguard-aligned path:
+        // rely on parser-derived credential targets only; do not inject
+        // compatibility/session/web fallback targets in the fill path.
         val effectiveParsedStructure = parsedStructure
-        val triggerResolution = resolveCredentialTargetsForRequest(
-            requestFlags = request.flags,
-            fillContexts = request.fillContexts,
-            respectAutofillOff = respectAutofillOff,
-            parsedStructure = effectiveParsedStructure,
-            fieldCollection = fieldCollection,
-            enhancedCollection = enhancedCollection,
-            structure = structure,
-            packageName = packageName,
-            webDomain = webDomain
-        )
-        val parserCredentialTargets = triggerResolution.parserCredentialTargets
-        val effectiveCredentialTargets = triggerResolution.targets
+        val parserCredentialTargets = selectCredentialFillTargets(effectiveParsedStructure)
+        val effectiveCredentialTargets = normalizeCredentialTargetsById(parserCredentialTargets)
         if (effectiveCredentialTargets.isEmpty()) {
-            AutofillLogger.w("PARSING", "No credential targets resolved for this request")
-            android.util.Log.i("MonicaAutofill", "No credential targets resolved for this request")
+            AutofillLogger.w("PARSING", "No parser-derived credential targets for this request")
+            android.util.Log.i("MonicaAutofill", "No parser-derived credential targets for this request")
             return null
         }
-        if (shouldSuppressFocusedNonCredential(structure, triggerResolution.triggerMode, triggerResolution.isWebContext)) {
-            AutofillLogger.i("PARSING", "Suppressing autofill on focused non-credential field")
-            android.util.Log.i("MonicaAutofill", "Suppressing autofill on focused non-credential field")
-            return null
-        }
+        val triggerMode = resolveTriggerMode(request.flags)
         val lowConfidenceContext = isLowConfidenceCredentialContext(parserCredentialTargets)
         if (lowConfidenceContext &&
-            triggerResolution.triggerMode == TriggerMode.AUTO &&
-            !triggerResolution.isWebContext &&
-            !triggerResolution.repeatRequest &&
-            !triggerResolution.canRecoverFromSessionNow &&
-            !triggerResolution.hasPasswordSignalNow
+            triggerMode == TriggerMode.AUTO
         ) {
             AutofillLogger.i(
                 "PARSING",
-                "Suppressing low-confidence context without session recovery/password signal"
+                "Suppressing low-confidence parser context"
             )
             android.util.Log.i(
                 "MonicaAutofill",
-                "Suppressing low-confidence context without session recovery/password signal"
+                "Suppressing low-confidence parser context"
             )
             return null
         }
@@ -527,11 +509,11 @@ class MonicaAutofillService : AutofillService() {
         val fieldSignatureKey = buildFieldSignatureKey(packageName, webDomain, effectiveCredentialTargets)
         AutofillLogger.d(
             "PARSING",
-            "Credential targets: parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, mode=${triggerResolution.triggerMode}, webContext=${triggerResolution.isWebContext}, compatibilityAdded=${triggerResolution.compatibilityAdded}, sessionRecovery=${triggerResolution.sessionRecoveryAdded}, lowConfidence=$lowConfidenceContext, strategy=keyguard_aligned_resolver"
+            "Credential targets: parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, mode=$triggerMode, lowConfidence=$lowConfidenceContext, strategy=keyguard_parser_only"
         )
         android.util.Log.i(
             "MonicaAutofill",
-            "Resolved targets parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, mode=${triggerResolution.triggerMode}, webContext=${triggerResolution.isWebContext}, compatibilityAdded=${triggerResolution.compatibilityAdded}, sessionRecovery=${triggerResolution.sessionRecoveryAdded}, lowConfidence=$lowConfidenceContext"
+            "Resolved targets parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, mode=$triggerMode, lowConfidence=$lowConfidenceContext"
         )
         
         // 🔍 可选：使用增强的密码匹配器
@@ -2523,17 +2505,66 @@ class MonicaAutofillService : AutofillService() {
         isWebContext: Boolean
     ): Boolean {
         if (triggerMode != TriggerMode.AUTO) return false
-        if (isWebContext) return false
 
         val focusedNode = findFocusedViewNode(structure) ?: return false
+        if (isPasswordInputType(focusedNode.inputType)) return false
+
+        val htmlTag = focusedNode.htmlInfo?.tag?.lowercase().orEmpty()
+        val htmlAttributesText = focusedNode.htmlInfo?.attributes
+            ?.joinToString(" ") { "${it.first.lowercase()}=${it.second.lowercase()}" }
+            .orEmpty()
         val combined = listOfNotNull(
             focusedNode.idEntry,
             focusedNode.hint,
             focusedNode.contentDescription?.toString(),
-            focusedNode.text?.toString()
+            focusedNode.text?.toString(),
+            focusedNode.className,
+            htmlTag,
+            htmlAttributesText
         ).joinToString(" ").lowercase()
         if (combined.isBlank()) return false
-        return nonCredentialFocusKeywords.any { keyword -> combined.contains(keyword) }
+
+        // 只要有明确凭证信号，永不抑制，优先保证登录页可用性。
+        val credentialSignals = listOf(
+            "user", "username", "email", "mail", "account", "login", "password", "pass", "pwd",
+            "账号", "账户", "用户名", "邮箱", "登录", "密码"
+        )
+        val hasCredentialHint = focusedNode.autofillHints
+            ?.map { it.lowercase() }
+            ?.any { hint ->
+                hint.contains("username") ||
+                    hint.contains("email") ||
+                    hint.contains("account") ||
+                    hint.contains("login") ||
+                    hint.contains("password")
+            } == true
+        if (hasCredentialHint || credentialSignals.any { token -> combined.contains(token) }) {
+            return false
+        }
+
+        val htmlType = focusedNode.htmlInfo?.attributes
+            ?.firstOrNull { it.first.equals("type", ignoreCase = true) }
+            ?.second
+            ?.lowercase()
+            .orEmpty()
+        if (htmlType == "search" || htmlType == "url") return true
+
+        val variation = focusedNode.inputType and android.text.InputType.TYPE_MASK_VARIATION
+        if (variation == android.text.InputType.TYPE_TEXT_VARIATION_URI ||
+            variation == android.text.InputType.TYPE_TEXT_VARIATION_FILTER
+        ) {
+            return true
+        }
+
+        val keywordHit = nonCredentialFocusKeywords.any { keyword -> combined.contains(keyword) }
+        if (keywordHit) return true
+
+        // Web 场景仅在明确的搜索/地址栏关键词时抑制，避免误拦登录框。
+        if (isWebContext) {
+            val webNonCredentialHints = listOf("search", "query", "keyword", "url", "address", "omnibox", "搜索", "查找", "网址", "地址栏")
+            return webNonCredentialHints.any { token -> combined.contains(token) }
+        }
+        return false
     }
 
     private fun findFocusedViewNode(structure: AssistStructure): AssistStructure.ViewNode? {
