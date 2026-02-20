@@ -178,12 +178,30 @@ interface PasskeyDao {
      */
     @Query("SELECT * FROM passkeys WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): PasskeyEntry?
+
+    /**
+     * 根据 Bitwarden Cipher ID 获取所有 Passkey
+     */
+    @Query("SELECT * FROM passkeys WHERE bitwarden_cipher_id = :cipherId")
+    suspend fun getAllByBitwardenCipherId(cipherId: String): List<PasskeyEntry>
     
     /**
      * 获取指定 Vault 的所有 Passkeys
      */
     @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId")
     suspend fun getByBitwardenVaultId(vaultId: Long): List<PasskeyEntry>
+
+    /**
+     * 删除指定 Vault 的所有同步 Passkeys
+     */
+    @Query("DELETE FROM passkeys WHERE bitwarden_vault_id = :vaultId")
+    suspend fun deleteAllByBitwardenVaultId(vaultId: Long)
+
+    /**
+     * 删除不在服务器返回集合中的 Bitwarden Passkeys
+     */
+    @Query("DELETE FROM passkeys WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_id IS NOT NULL AND bitwarden_cipher_id NOT IN (:cipherIds)")
+    suspend fun deleteBitwardenEntriesNotIn(vaultId: Long, cipherIds: List<String>)
 
     /**
      * 获取绑定到指定密码的 Passkeys

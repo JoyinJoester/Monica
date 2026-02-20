@@ -489,7 +489,53 @@ data class CipherLoginApiData(
     val totp: String? = null,
     @JsonNames("uris")
     @SerialName("Uris")
-    val uris: List<CipherUriApiData>? = null
+    val uris: List<CipherUriApiData>? = null,
+    @JsonNames("fido2Credentials")
+    @SerialName("Fido2Credentials")
+    val fido2Credentials: List<CipherLoginFido2CredentialApiData>? = null
+)
+
+@Serializable
+data class CipherLoginFido2CredentialApiData(
+    @JsonNames("credentialId")
+    @SerialName("CredentialId")
+    val credentialId: String? = null,
+    @JsonNames("keyType")
+    @SerialName("KeyType")
+    val keyType: String? = null,
+    @JsonNames("keyAlgorithm")
+    @SerialName("KeyAlgorithm")
+    val keyAlgorithm: String? = null,
+    @JsonNames("keyCurve")
+    @SerialName("KeyCurve")
+    val keyCurve: String? = null,
+    @JsonNames("keyValue")
+    @SerialName("KeyValue")
+    val keyValue: String? = null,
+    @JsonNames("rpId")
+    @SerialName("RpId")
+    val rpId: String? = null,
+    @JsonNames("rpName")
+    @SerialName("RpName")
+    val rpName: String? = null,
+    @JsonNames("counter")
+    @SerialName("Counter")
+    val counter: String? = null,
+    @JsonNames("userHandle")
+    @SerialName("UserHandle")
+    val userHandle: String? = null,
+    @JsonNames("userName")
+    @SerialName("UserName")
+    val userName: String? = null,
+    @JsonNames("userDisplayName")
+    @SerialName("UserDisplayName")
+    val userDisplayName: String? = null,
+    @JsonNames("discoverable")
+    @SerialName("Discoverable")
+    val discoverable: String? = null,
+    @JsonNames("creationDate")
+    @SerialName("CreationDate")
+    val creationDate: String? = null
 )
 
 @Serializable

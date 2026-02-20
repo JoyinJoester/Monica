@@ -145,7 +145,7 @@ fun SwipeableAddFab(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f * expandProgress.value))
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f * expandProgress.value))
                     .pointerInput(Unit) {
                         // 拦截点击和拖拽，防止透传到下面
                         awaitPointerEventScope {

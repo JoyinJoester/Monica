@@ -1,6 +1,7 @@
 package takagi.ru.monica.bitwarden.service
 
 import android.content.Context
+import android.util.Base64
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
@@ -550,40 +551,284 @@ class CipherSyncProcessor(
         cipher: CipherApiResponse,
         symmetricKey: SymmetricCryptoKey
     ): CipherSyncResult {
+        val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
+        if (hasPendingDelete) {
+            return CipherSyncResult.Skipped("Pending local delete")
+        }
+
         val login = cipher.login
         val name = decryptString(cipher.name, symmetricKey) ?: "Passkey"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
-        val userName = decryptString(login?.username, symmetricKey) ?: ""
-        
-        // 从 URI 提取 rpId
-        val rpId = login?.uris?.firstOrNull()?.let { uri ->
-            val uriStr = decryptString(uri.uri, symmetricKey) ?: ""
-            extractRpIdFromUri(uriStr)
-        } ?: ""
-        
-        // 查找本地是否存在
-        val existing = passkeyDao.getByBitwardenCipherId(cipher.id)
-        
-        if (existing == null) {
-            // Passkey 从远程同步只能作为"引用"
-            // 真正的 Passkey 需要在本地重新创建
-            android.util.Log.i(TAG, "Passkey from Bitwarden detected: $name (reference only)")
-            // 不自动创建本地 Passkey，因为没有私钥
-            return CipherSyncResult.Skipped("Passkey can only be created locally")
-        } else {
-            // 更新元数据
-            val updated = existing.copy(
-                rpName = name.removeSuffix(" [Passkey]"),
-                userName = userName,
-                bitwardenVaultId = vault.id,
-                bitwardenCipherId = cipher.id
+        val fallbackUserName = decryptString(login?.username, symmetricKey) ?: ""
+
+        val fallbackRpId = login?.uris
+            ?.asSequence()
+            ?.mapNotNull { uri ->
+                val uriStr = decryptString(uri.uri, symmetricKey) ?: return@mapNotNull null
+                extractRpIdFromUri(uriStr).takeIf { it.isNotBlank() }
+            }
+            ?.firstOrNull()
+            .orEmpty()
+
+        val decodedCredentials = decodeFido2Credentials(login?.fido2Credentials, symmetricKey)
+
+        if (decodedCredentials.isEmpty()) {
+            // 兼容历史 Monica marker-only passkey：至少落一个引用记录
+            val referenceId = buildReferenceCredentialId(cipher.id, 0)
+            val existing = passkeyDao.getByBitwardenCipherId(cipher.id)
+                ?: passkeyDao.getPasskeyById(referenceId)
+
+            val rpId = fallbackRpId
+            val rpName = name.removeSuffix(" [Passkey]").ifBlank { rpId }
+            val userName = fallbackUserName
+            val now = System.currentTimeMillis()
+
+            if (existing == null) {
+                passkeyDao.insert(
+                    PasskeyEntry(
+                        credentialId = referenceId,
+                        rpId = rpId,
+                        rpName = rpName,
+                        userId = "",
+                        userName = userName,
+                        userDisplayName = userName,
+                        publicKeyAlgorithm = PasskeyEntry.ALGORITHM_ES256,
+                        publicKey = "",
+                        privateKeyAlias = "",
+                        createdAt = now,
+                        lastUsedAt = now,
+                        useCount = 0,
+                        iconUrl = null,
+                        isDiscoverable = true,
+                        isUserVerificationRequired = true,
+                        transports = PasskeyEntry.TRANSPORT_INTERNAL,
+                        aaguid = "",
+                        signCount = 0,
+                        isBackedUp = false,
+                        notes = notes,
+                        bitwardenVaultId = vault.id,
+                        bitwardenCipherId = cipher.id,
+                        syncStatus = "REFERENCE"
+                    )
+                )
+                android.util.Log.i(TAG, "Created reference-only passkey for cipher ${cipher.id}")
+                return CipherSyncResult.Added
+            }
+
+            passkeyDao.update(
+                existing.copy(
+                    rpId = rpId.ifBlank { existing.rpId },
+                    rpName = rpName.ifBlank { existing.rpName },
+                    userName = userName.ifBlank { existing.userName },
+                    userDisplayName = userName.ifBlank { existing.userDisplayName },
+                    notes = notes.ifBlank { existing.notes },
+                    bitwardenVaultId = vault.id,
+                    bitwardenCipherId = cipher.id,
+                    syncStatus = "REFERENCE"
+                )
             )
-            passkeyDao.update(updated)
             return CipherSyncResult.Updated
+        }
+
+        var added = 0
+        var updated = 0
+        val keepCredentialIds = mutableSetOf<String>()
+        val now = System.currentTimeMillis()
+
+        decodedCredentials.forEachIndexed { index, decoded ->
+            val resolvedCredentialId = normalizeCredentialId(decoded.credentialId)
+                ?: buildReferenceCredentialId(cipher.id, index)
+            keepCredentialIds += resolvedCredentialId
+
+            val rpId = decoded.rpId.ifBlank { fallbackRpId }
+            val rpName = decoded.rpName
+                .ifBlank { name.removeSuffix(" [Passkey]") }
+                .ifBlank { rpId }
+            val userName = decoded.userName.ifBlank { fallbackUserName }
+            val userDisplayName = decoded.userDisplayName.ifBlank { userName }
+
+            val existing = passkeyDao.getPasskeyById(resolvedCredentialId)
+            if (existing == null) {
+                val syncStatus = if (decoded.keyValue.isBlank()) "REFERENCE" else "SYNCED"
+                passkeyDao.insert(
+                    PasskeyEntry(
+                        credentialId = resolvedCredentialId,
+                        rpId = rpId,
+                        rpName = rpName,
+                        userId = decoded.userHandle,
+                        userName = userName,
+                        userDisplayName = userDisplayName,
+                        publicKeyAlgorithm = decoded.publicKeyAlgorithm,
+                        publicKey = "",
+                        privateKeyAlias = decoded.keyValue,
+                        createdAt = decoded.creationDateMillis ?: now,
+                        lastUsedAt = now,
+                        useCount = 0,
+                        iconUrl = null,
+                        isDiscoverable = decoded.discoverable,
+                        isUserVerificationRequired = true,
+                        transports = PasskeyEntry.TRANSPORT_INTERNAL,
+                        aaguid = "",
+                        signCount = decoded.counter,
+                        isBackedUp = false,
+                        notes = notes,
+                        bitwardenVaultId = vault.id,
+                        bitwardenCipherId = cipher.id,
+                        syncStatus = syncStatus
+                    )
+                )
+                added++
+            } else {
+                val mergedPrivateKey = decoded.keyValue.ifBlank { existing.privateKeyAlias }
+                val syncStatus = if (mergedPrivateKey.isBlank()) "REFERENCE" else "SYNCED"
+
+                passkeyDao.update(
+                    existing.copy(
+                        rpId = rpId.ifBlank { existing.rpId },
+                        rpName = rpName.ifBlank { existing.rpName },
+                        userId = decoded.userHandle.ifBlank { existing.userId },
+                        userName = userName.ifBlank { existing.userName },
+                        userDisplayName = userDisplayName.ifBlank { existing.userDisplayName },
+                        publicKeyAlgorithm = decoded.publicKeyAlgorithm,
+                        privateKeyAlias = mergedPrivateKey,
+                        isDiscoverable = decoded.discoverable,
+                        signCount = maxOf(existing.signCount, decoded.counter),
+                        notes = notes.ifBlank { existing.notes },
+                        bitwardenVaultId = vault.id,
+                        bitwardenCipherId = cipher.id,
+                        syncStatus = syncStatus
+                    )
+                )
+                updated++
+            }
+        }
+
+        val staleEntries = passkeyDao.getAllByBitwardenCipherId(cipher.id)
+            .filterNot { keepCredentialIds.contains(it.credentialId) }
+        staleEntries.forEach { passkeyDao.delete(it) }
+
+        return when {
+            added > 0 -> CipherSyncResult.Added
+            updated > 0 || staleEntries.isNotEmpty() -> CipherSyncResult.Updated
+            else -> CipherSyncResult.Skipped("No passkey changes")
         }
     }
     
     // ========== 辅助方法 ==========
+
+    private data class DecodedPasskeyCredential(
+        val credentialId: String,
+        val keyValue: String,
+        val rpId: String,
+        val rpName: String,
+        val userHandle: String,
+        val userName: String,
+        val userDisplayName: String,
+        val counter: Long,
+        val discoverable: Boolean,
+        val creationDateMillis: Long?,
+        val publicKeyAlgorithm: Int
+    )
+
+    private fun decodeFido2Credentials(
+        credentials: List<CipherLoginFido2CredentialApiData>?,
+        key: SymmetricCryptoKey
+    ): List<DecodedPasskeyCredential> {
+        if (credentials.isNullOrEmpty()) return emptyList()
+
+        return credentials.mapNotNull { credential ->
+            val credentialId = decryptOrPlain(credential.credentialId, key).orEmpty()
+            val keyValue = decryptOrPlain(credential.keyValue, key).orEmpty()
+            val rpId = decryptOrPlain(credential.rpId, key).orEmpty()
+            val rpName = decryptOrPlain(credential.rpName, key).orEmpty()
+            val userHandle = decryptOrPlain(credential.userHandle, key).orEmpty()
+            val userName = decryptOrPlain(credential.userName, key).orEmpty()
+            val userDisplayName = decryptOrPlain(credential.userDisplayName, key).orEmpty()
+            val counter = decryptOrPlain(credential.counter, key)?.toLongOrNull() ?: 0L
+            val discoverable = parseBooleanText(decryptOrPlain(credential.discoverable, key))
+            val creationDate = parseCreationDateMillis(decryptOrPlain(credential.creationDate, key))
+            val keyAlgorithm = decryptOrPlain(credential.keyAlgorithm, key)
+            val publicKeyAlgorithm = parseAlgorithm(keyAlgorithm)
+
+            val hasAnySignal = credentialId.isNotBlank() ||
+                keyValue.isNotBlank() ||
+                rpId.isNotBlank() ||
+                userName.isNotBlank()
+            if (!hasAnySignal) return@mapNotNull null
+
+            DecodedPasskeyCredential(
+                credentialId = credentialId,
+                keyValue = keyValue,
+                rpId = rpId,
+                rpName = rpName,
+                userHandle = userHandle,
+                userName = userName,
+                userDisplayName = userDisplayName,
+                counter = counter,
+                discoverable = discoverable,
+                creationDateMillis = creationDate,
+                publicKeyAlgorithm = publicKeyAlgorithm
+            )
+        }
+    }
+
+    private fun decryptOrPlain(value: String?, key: SymmetricCryptoKey): String? {
+        if (value.isNullOrBlank()) return null
+        val decrypted = decryptString(value, key)
+        if (decrypted != null) return decrypted
+        if (looksLikeCipherString(value)) return null
+        return value
+    }
+
+    private fun looksLikeCipherString(value: String): Boolean {
+        val dotIndex = value.indexOf('.')
+        if (dotIndex <= 0) return false
+        return value.substring(0, dotIndex).all(Char::isDigit)
+    }
+
+    private fun normalizeCredentialId(credentialId: String): String? {
+        if (credentialId.isBlank()) return null
+        val urlSafeFlags = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+        return try {
+            val decoded = Base64.decode(credentialId, urlSafeFlags)
+            Base64.encodeToString(decoded, urlSafeFlags)
+        } catch (_: Exception) {
+            try {
+                val decoded = Base64.decode(credentialId, Base64.DEFAULT)
+                Base64.encodeToString(decoded, urlSafeFlags)
+            } catch (_: Exception) {
+                credentialId
+            }
+        }
+    }
+
+    private fun parseBooleanText(value: String?): Boolean {
+        return when (value?.trim()?.lowercase()) {
+            "false", "0", "no" -> false
+            else -> true
+        }
+    }
+
+    private fun parseCreationDateMillis(value: String?): Long? {
+        if (value.isNullOrBlank()) return null
+        return runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
+    }
+
+    private fun parseAlgorithm(value: String?): Int {
+        val parsed = value?.trim()?.toIntOrNull()
+        if (parsed != null) return parsed
+        return when (value?.trim()?.lowercase()) {
+            "es256", "ecdsa" -> PasskeyEntry.ALGORITHM_ES256
+            "rs256", "rsa" -> PasskeyEntry.ALGORITHM_RS256
+            "ps256" -> PasskeyEntry.ALGORITHM_PS256
+            "eddsa", "ed25519" -> PasskeyEntry.ALGORITHM_EDDSA
+            else -> PasskeyEntry.ALGORITHM_ES256
+        }
+    }
+
+    private fun buildReferenceCredentialId(cipherId: String, index: Int): String {
+        return "bw_ref_${cipherId}_$index"
+    }
     
     private fun decryptString(encrypted: String?, key: SymmetricCryptoKey): String? {
         if (encrypted.isNullOrBlank()) return null

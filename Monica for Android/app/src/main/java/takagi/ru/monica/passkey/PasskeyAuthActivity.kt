@@ -582,7 +582,7 @@ private fun PasskeyAuthScreen(
                     imageVector = Icons.Default.Fingerprint,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onPrimary
                 )
             }
             
@@ -712,7 +712,7 @@ private fun PasskeyAuthScreen(
                 if (isAuthenticating) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         strokeWidth = 2.dp
                     )
                 } else {

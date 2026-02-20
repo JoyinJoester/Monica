@@ -831,7 +831,7 @@ private fun PasskeyCreateScreen(
                     imageVector = Icons.Default.Key,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onPrimary
                 )
             }
             

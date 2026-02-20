@@ -139,6 +139,7 @@ import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
@@ -775,6 +776,7 @@ fun SimpleMainScreen(
     var backPressedOnce by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
     
     // 处理返回键 - 需要按两次才能退出
     // 只有在没有子页面（如添加页面）打开时才启用
@@ -1251,27 +1253,47 @@ fun SimpleMainScreen(
     val confirmPasskeyDelete: () -> Unit = {
         val passkey = pendingPasskeyDelete
         if (passkey != null) {
-            val boundId = passkey.boundPasswordId
-            if (boundId != null) {
-                passwordById[boundId]?.let { entry ->
-                    val updatedBindings = PasskeyBindingCodec.removeBinding(
-                        entry.passkeyBindings,
-                        passkey.credentialId
-                    )
-                    passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
+            scope.launch {
+                val boundId = passkey.boundPasswordId
+                if (boundId != null) {
+                    passwordById[boundId]?.let { entry ->
+                        val updatedBindings = PasskeyBindingCodec.removeBinding(
+                            entry.passkeyBindings,
+                            passkey.credentialId
+                        )
+                        passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
+                    }
                 }
-            }
-            val isReferenceOnly = passkey.syncStatus == "REFERENCE" &&
-                passkey.privateKeyAlias.isBlank() &&
-                passkey.publicKey.isBlank()
-            if (!isReferenceOnly) {
-                passkeyViewModel.deletePasskey(passkey)
-            }
-            if (selectedPasskey?.credentialId == passkey.credentialId) {
-                selectedPasskey = null
+
+                val isReferenceOnly = passkey.syncStatus == "REFERENCE" &&
+                    passkey.privateKeyAlias.isBlank() &&
+                    passkey.publicKey.isBlank()
+                if (!isReferenceOnly) {
+                    val vaultId = passkey.bitwardenVaultId
+                    val cipherId = passkey.bitwardenCipherId
+                    if (vaultId != null && !cipherId.isNullOrBlank()) {
+                        val queueResult = bitwardenRepository.queueCipherDelete(
+                            vaultId = vaultId,
+                            cipherId = cipherId,
+                            itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
+                        )
+                        if (queueResult.isFailure) {
+                            Toast.makeText(
+                                context,
+                                "Bitwarden 删除入队失败",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@launch
+                        }
+                    }
+                    passkeyViewModel.deletePasskey(passkey)
+                }
+                if (selectedPasskey?.credentialId == passkey.credentialId) {
+                    selectedPasskey = null
+                }
+                pendingPasskeyDelete = null
             }
         }
-        pendingPasskeyDelete = null
     }
     val handleSendOpen: (BitwardenSend) -> Unit = { send ->
         if (!isCompactWidth) {

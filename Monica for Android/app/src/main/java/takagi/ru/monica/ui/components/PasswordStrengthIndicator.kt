@@ -54,11 +54,12 @@ fun PasswordStrengthIndicator(
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val colorScheme = MaterialTheme.colorScheme
     
     // 强度等级和颜色
     val level = PasswordStrengthAnalyzer.getStrengthLevel(strength)
     val levelText = PasswordStrengthAnalyzer.getStrengthLevelText(level, context)
-    val color = getStrengthColor(level)
+    val color = getStrengthColor(level, colorScheme)
     
     // 进度动画
     val animatedProgress by animateFloatAsState(
@@ -126,13 +127,16 @@ fun PasswordStrengthIndicator(
  * @param level 强度等级
  * @return 对应的颜色
  */
-private fun getStrengthColor(level: PasswordStrengthAnalyzer.StrengthLevel): Color {
+private fun getStrengthColor(
+    level: PasswordStrengthAnalyzer.StrengthLevel,
+    colorScheme: ColorScheme
+): Color {
     return when (level) {
-        PasswordStrengthAnalyzer.StrengthLevel.VERY_WEAK -> Color(0xFFD32F2F) // 红色
-        PasswordStrengthAnalyzer.StrengthLevel.WEAK -> Color(0xFFFF9800) // 橙色
-        PasswordStrengthAnalyzer.StrengthLevel.FAIR -> Color(0xFFFFC107) // 琥珀色
-        PasswordStrengthAnalyzer.StrengthLevel.STRONG -> Color(0xFF8BC34A) // 浅绿色
-        PasswordStrengthAnalyzer.StrengthLevel.VERY_STRONG -> Color(0xFF4CAF50) // 绿色
+        PasswordStrengthAnalyzer.StrengthLevel.VERY_WEAK -> colorScheme.error
+        PasswordStrengthAnalyzer.StrengthLevel.WEAK -> colorScheme.error.copy(alpha = 0.8f)
+        PasswordStrengthAnalyzer.StrengthLevel.FAIR -> colorScheme.tertiary
+        PasswordStrengthAnalyzer.StrengthLevel.STRONG -> colorScheme.secondary
+        PasswordStrengthAnalyzer.StrengthLevel.VERY_STRONG -> colorScheme.primary
     }
 }
 
@@ -250,7 +254,7 @@ fun PasswordSuggestionsList(
         suggestions.forEach { suggestion ->
             val isWarning = suggestion.startsWith("⚠️")
             val color = if (isWarning) {
-                Color(0xFFD32F2F) // 红色警告
+                MaterialTheme.colorScheme.error
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             }

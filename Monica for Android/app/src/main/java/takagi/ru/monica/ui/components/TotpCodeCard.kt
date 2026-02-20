@@ -579,7 +579,7 @@ fun TotpCodeCard(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.ExtraBold,
                     color = when {
-                        totpData.otpType == OtpType.STEAM -> Color(0xFF66BB6A)
+                        totpData.otpType == OtpType.STEAM -> MaterialTheme.colorScheme.tertiary
                         remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.primary
                     }.copy(alpha = blinkAlpha)

@@ -279,7 +279,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
                 database.passkeyDao().getDiscoverablePasskeysSync()
             }
             
-            val filteredPasskeys = passkeys
+            val filteredPasskeys = passkeys.filter(::isUsablePasskey)
             
             Log.d(TAG, "Found ${passkeys.size} passkeys, filtered to ${filteredPasskeys.size}")
             
@@ -313,6 +313,11 @@ class MonicaCredentialProviderService : CredentialProviderService() {
         }
         
         return entries
+    }
+
+    private fun isUsablePasskey(passkey: takagi.ru.monica.data.PasskeyEntry): Boolean {
+        if (passkey.syncStatus == "REFERENCE") return false
+        return passkey.privateKeyAlias.isNotBlank()
     }
 
     private fun normalizeCredentialId(credentialId: String): String? {

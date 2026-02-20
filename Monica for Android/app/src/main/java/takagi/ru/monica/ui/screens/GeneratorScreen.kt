@@ -67,13 +67,13 @@ import androidx.compose.material3.rememberModalBottomSheetState
  */
 @Composable
 fun colorizePassword(password: String): AnnotatedString {
-    val letterColor = MaterialTheme.colorScheme.onSurface
+    val colorScheme = MaterialTheme.colorScheme
     return buildAnnotatedString {
         password.forEach { char ->
             val color = when {
-                char.isDigit() -> Color(0xFF2196F3) // 蓝色
-                char.isLetter() -> letterColor // 主题自适应颜色
-                else -> Color(0xFFE91E63) // 红色 (符号)
+                char.isDigit() -> colorScheme.secondary
+                char.isLetter() -> colorScheme.onSurface
+                else -> colorScheme.error
             }
             withStyle(style = SpanStyle(color = color)) {
                 append(char)
@@ -1235,6 +1235,7 @@ private fun ResultCard(
     onCopy: (String) -> Unit
 ) {
     var showCopied by remember { mutableStateOf(false) }
+    val colorScheme = MaterialTheme.colorScheme
     
     LaunchedEffect(showCopied) {
         if (showCopied) {
@@ -1253,11 +1254,20 @@ private fun ResultCard(
     // 复制按钮背景颜色动画
     val buttonColor by animateColorAsState(
         targetValue = if (showCopied) 
-            Color(0xFF4CAF50) 
+            colorScheme.tertiaryContainer
         else 
-            MaterialTheme.colorScheme.secondaryContainer,
+            colorScheme.secondaryContainer,
         animationSpec = tween(durationMillis = 300),
         label = "button_color"
+    )
+    val buttonContentColor by animateColorAsState(
+        targetValue = if (showCopied) {
+            colorScheme.onTertiaryContainer
+        } else {
+            colorScheme.onSecondaryContainer
+        },
+        animationSpec = tween(durationMillis = 300),
+        label = "button_content_color"
     )
 
     ElevatedCard(
@@ -1274,7 +1284,7 @@ private fun ResultCard(
             defaultElevation = 4.dp
         ),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = colorScheme.primaryContainer
         )
     ) {
         Column(
@@ -1295,14 +1305,14 @@ private fun ResultCard(
                     Icon(
                         imageVector = Icons.Default.Key,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                     Text(
                         text = stringResource(R.string.generated_password),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = colorScheme.onPrimaryContainer,
                         maxLines = 1
                     )
                 }
@@ -1315,7 +1325,8 @@ private fun ResultCard(
                         showCopied = true
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = buttonColor
+                        containerColor = buttonColor,
+                        contentColor = buttonContentColor
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {

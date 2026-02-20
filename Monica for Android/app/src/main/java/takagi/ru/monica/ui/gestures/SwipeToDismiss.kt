@@ -167,7 +167,7 @@ fun SwipeableAction(
 data class SwipeAction(
     val icon: ImageVector,
     val color: Color,
-    val contentColor: Color = Color.White,
+    val contentColor: Color = Color.Unspecified,
     val description: String = "",
     val onClick: () -> Unit
 )

@@ -578,12 +578,15 @@ fun AddEditNoteScreen(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
                                             .size(24.dp)
-                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(bottomStart = 8.dp))
+                                            .background(
+                                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f),
+                                                RoundedCornerShape(bottomStart = 8.dp)
+                                            )
                                     ) {
                                         Icon(
                                             Icons.Default.Close, 
                                             contentDescription = "Remove",
-                                            tint = Color.White,
+                                            tint = MaterialTheme.colorScheme.onPrimary,
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }

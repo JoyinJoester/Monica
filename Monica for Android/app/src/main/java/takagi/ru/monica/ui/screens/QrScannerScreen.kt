@@ -252,9 +252,9 @@ private fun QrCodeScanner(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.46f),
+                            MaterialTheme.colorScheme.scrim.copy(alpha = 0.46f),
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.66f)
+                            MaterialTheme.colorScheme.scrim.copy(alpha = 0.66f)
                         )
                     )
                 )

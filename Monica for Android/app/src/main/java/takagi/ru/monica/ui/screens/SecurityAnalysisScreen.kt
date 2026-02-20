@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -157,6 +158,7 @@ fun SecurityAnalysisScreen(
 @Composable
 fun InitialAnalysisView(onStartAnalysis: () -> Unit) {
     val context = LocalContext.current
+    val colorScheme = MaterialTheme.colorScheme
     
     Column(
         modifier = Modifier
@@ -202,22 +204,22 @@ fun InitialAnalysisView(onStartAnalysis: () -> Unit) {
             FeatureItem(
                 icon = Icons.Default.ContentCopy,
                 text = context.getString(R.string.duplicate_passwords),
-                color = Color(0xFFFF9800)
+                color = securityDuplicatePasswordColor(colorScheme)
             )
             FeatureItem(
                 icon = Icons.Default.Link,
                 text = context.getString(R.string.duplicate_urls),
-                color = Color(0xFF2196F3)
+                color = securityDuplicateUrlColor(colorScheme)
             )
             FeatureItem(
                 icon = Icons.Default.Warning,
                 text = context.getString(R.string.compromised_passwords),
-                color = Color(0xFFF44336)
+                color = securityCompromisedColor(colorScheme)
             )
             FeatureItem(
                 icon = Icons.Default.Security,
                 text = context.getString(R.string.no_twofa),
-                color = Color(0xFF9C27B0)
+                color = securityTwoFaColor(colorScheme)
             )
         }
         
@@ -283,6 +285,7 @@ fun SecurityStatisticsCardsCompact(
     onStartAnalysis: () -> Unit
 ) {
     val context = LocalContext.current
+    val colorScheme = MaterialTheme.colorScheme
     
     Card(
         modifier = Modifier
@@ -325,28 +328,28 @@ fun SecurityStatisticsCardsCompact(
                     icon = Icons.Default.ContentCopy,
                     count = duplicatePasswordsCount,
                     label = context.getString(R.string.duplicate_short),
-                    color = Color(0xFFFF9800),
+                    color = securityDuplicatePasswordColor(colorScheme),
                     modifier = Modifier.weight(1f, fill = true)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Link,
                     count = duplicateUrlsCount,
                     label = context.getString(R.string.duplicate_url_short),
-                    color = Color(0xFF2196F3),
+                    color = securityDuplicateUrlColor(colorScheme),
                     modifier = Modifier.weight(1f, fill = true)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Warning,
                     count = compromisedPasswordsCount,
                     label = context.getString(R.string.compromised_short),
-                    color = Color(0xFFF44336),
+                    color = securityCompromisedColor(colorScheme),
                     modifier = Modifier.weight(1f, fill = true)
                 )
                 CompactStatCard(
                     icon = Icons.Default.Security,
                     count = no2FAAccountsCount,
                     label = context.getString(R.string.no_2fa_short),
-                    color = Color(0xFF9C27B0),
+                    color = securityTwoFaColor(colorScheme),
                     modifier = Modifier.weight(1f, fill = true)
                 )
             }
@@ -513,6 +516,7 @@ fun SecurityStatisticsCards(
     no2FAAccountsCount: Int
 ) {
     val context = LocalContext.current
+    val colorScheme = MaterialTheme.colorScheme
     
     Column(modifier = Modifier.padding(16.dp)) {
         Row(
@@ -523,14 +527,22 @@ fun SecurityStatisticsCards(
                 icon = Icons.Default.ContentCopy,
                 title = context.getString(R.string.duplicate_passwords),
                 count = duplicatePasswordsCount,
-                color = if (duplicatePasswordsCount > 0) Color(0xFFFF9800) else Color(0xFF4CAF50),
+                color = if (duplicatePasswordsCount > 0) {
+                    securityDuplicatePasswordColor(colorScheme)
+                } else {
+                    securitySafeColor(colorScheme)
+                },
                 modifier = Modifier.weight(1f)
             )
             StatCard(
                 icon = Icons.Default.Link,
                 title = context.getString(R.string.duplicate_urls),
                 count = duplicateUrlsCount,
-                color = if (duplicateUrlsCount > 0) Color(0xFF2196F3) else Color(0xFF4CAF50),
+                color = if (duplicateUrlsCount > 0) {
+                    securityDuplicateUrlColor(colorScheme)
+                } else {
+                    securitySafeColor(colorScheme)
+                },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -543,14 +555,22 @@ fun SecurityStatisticsCards(
                 icon = Icons.Default.Warning,
                 title = context.getString(R.string.compromised_passwords),
                 count = compromisedPasswordsCount,
-                color = if (compromisedPasswordsCount > 0) Color(0xFFF44336) else Color(0xFF4CAF50),
+                color = if (compromisedPasswordsCount > 0) {
+                    securityCompromisedColor(colorScheme)
+                } else {
+                    securitySafeColor(colorScheme)
+                },
                 modifier = Modifier.weight(1f)
             )
             StatCard(
                 icon = Icons.Default.Security,
                 title = context.getString(R.string.no_twofa),
                 count = no2FAAccountsCount,
-                color = if (no2FAAccountsCount > 0) Color(0xFF9C27B0) else Color(0xFF4CAF50),
+                color = if (no2FAAccountsCount > 0) {
+                    securityTwoFaColor(colorScheme)
+                } else {
+                    securitySafeColor(colorScheme)
+                },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -778,13 +798,14 @@ fun CompromisedPasswordCard(
     onNavigateToPassword: (Long) -> Unit
 ) {
     val context = LocalContext.current
+    val alertColor = MaterialTheme.colorScheme.error
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onNavigateToPassword(item.entry.id) },
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF44336).copy(alpha = 0.1f)
+            containerColor = alertColor.copy(alpha = 0.1f)
         )
     ) {
         Row(
@@ -815,13 +836,13 @@ fun CompromisedPasswordCard(
                     Icon(
                         Icons.Default.Warning,
                         contentDescription = null,
-                        tint = Color(0xFFF44336),
+                        tint = alertColor,
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
                         text = context.getString(R.string.breached_times, item.breachCount),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFF44336)
+                        color = alertColor
                     )
                 }
             }
@@ -865,6 +886,7 @@ fun No2FAAccountCard(
     onNavigateToPassword: (Long) -> Unit
 ) {
     val context = LocalContext.current
+    val twoFaColor = securityTwoFaColor(MaterialTheme.colorScheme)
     
     Card(
         modifier = Modifier
@@ -872,7 +894,7 @@ fun No2FAAccountCard(
             .clickable { onNavigateToPassword(account.entry.id) },
         colors = CardDefaults.cardColors(
             containerColor = if (account.supports2FA) 
-                Color(0xFF9C27B0).copy(alpha = 0.1f)
+                twoFaColor.copy(alpha = 0.1f)
             else 
                 MaterialTheme.colorScheme.surfaceVariant
         )
@@ -900,7 +922,7 @@ fun No2FAAccountCard(
                     Text(
                         text = context.getString(R.string.supports_twofa),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF9C27B0)
+                        color = twoFaColor
                     )
                 }
             }
@@ -953,6 +975,7 @@ fun EmptyStateView(
     icon: ImageVector,
     message: String
 ) {
+    val safeColor = securitySafeColor(MaterialTheme.colorScheme)
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -964,7 +987,7 @@ fun EmptyStateView(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
-            tint = Color(0xFF4CAF50)
+            tint = safeColor
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
@@ -974,3 +997,13 @@ fun EmptyStateView(
         )
     }
 }
+
+private fun securityDuplicatePasswordColor(colorScheme: ColorScheme): Color = colorScheme.tertiary
+
+private fun securityDuplicateUrlColor(colorScheme: ColorScheme): Color = colorScheme.secondary
+
+private fun securityCompromisedColor(colorScheme: ColorScheme): Color = colorScheme.error
+
+private fun securityTwoFaColor(colorScheme: ColorScheme): Color = colorScheme.primary
+
+private fun securitySafeColor(colorScheme: ColorScheme): Color = colorScheme.primary

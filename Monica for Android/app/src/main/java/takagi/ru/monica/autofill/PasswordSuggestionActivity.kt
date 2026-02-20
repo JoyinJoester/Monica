@@ -525,6 +525,7 @@ fun PasswordSuggestionDialog(
  */
 @Composable
 fun PasswordStrengthIndicator(strength: PasswordStrengthCalculator.PasswordStrength) {
+    val colorScheme = MaterialTheme.colorScheme
     val weakText = stringResource(R.string.password_strength_weak)
     val fairText = stringResource(R.string.password_strength_moderate)
     val goodText = stringResource(R.string.password_strength_strong)
@@ -532,11 +533,11 @@ fun PasswordStrengthIndicator(strength: PasswordStrengthCalculator.PasswordStren
     val veryStrongText = stringResource(R.string.password_strength_very_strong)
 
     val strengthColor = when (strength) {
-        PasswordStrengthCalculator.PasswordStrength.WEAK -> Color(0xFFEF5350)
-        PasswordStrengthCalculator.PasswordStrength.FAIR -> Color(0xFFFF9800)
-        PasswordStrengthCalculator.PasswordStrength.GOOD -> Color(0xFFFFC107)
-        PasswordStrengthCalculator.PasswordStrength.STRONG -> Color(0xFF66BB6A)
-        PasswordStrengthCalculator.PasswordStrength.VERY_STRONG -> Color(0xFF4CAF50)
+        PasswordStrengthCalculator.PasswordStrength.WEAK -> colorScheme.error
+        PasswordStrengthCalculator.PasswordStrength.FAIR -> colorScheme.error.copy(alpha = 0.8f)
+        PasswordStrengthCalculator.PasswordStrength.GOOD -> colorScheme.tertiary
+        PasswordStrengthCalculator.PasswordStrength.STRONG -> colorScheme.secondary
+        PasswordStrengthCalculator.PasswordStrength.VERY_STRONG -> colorScheme.primary
     }
     
     val strengthText = when (strength) {

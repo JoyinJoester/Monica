@@ -506,31 +506,41 @@ class CipherUploadProcessor(
         
         // 检查是否已加密（Bitwarden 加密字符串包含 "." 分隔符）
         fun isEncrypted(s: String?) = s?.contains(".") == true
+        fun encryptIfNeeded(value: String?): String? {
+            if (value.isNullOrBlank()) return value
+            return if (isEncrypted(value)) value else crypto.encryptString(value, symmetricKey)
+        }
         
         return request.copy(
-            name = if (isEncrypted(request.name)) request.name 
-                   else crypto.encryptString(request.name, symmetricKey),
-            notes = request.notes?.let { 
-                if (isEncrypted(it)) it else crypto.encryptString(it, symmetricKey) 
-            },
+            name = encryptIfNeeded(request.name) ?: request.name,
+            notes = encryptIfNeeded(request.notes),
             login = request.login?.let { login ->
                 login.copy(
-                    username = login.username?.let { 
-                        if (isEncrypted(it)) it else crypto.encryptString(it, symmetricKey) 
-                    },
-                    password = login.password?.let { 
-                        if (isEncrypted(it)) it else crypto.encryptString(it, symmetricKey) 
-                    },
-                    totp = login.totp?.let { 
-                        if (isEncrypted(it)) it else crypto.encryptString(it, symmetricKey) 
-                    },
+                    username = encryptIfNeeded(login.username),
+                    password = encryptIfNeeded(login.password),
+                    totp = encryptIfNeeded(login.totp),
                     uris = login.uris?.map { uri ->
                         uri.copy(
-                            uri = uri.uri?.let { 
-                                if (isEncrypted(it)) it else crypto.encryptString(it, symmetricKey) 
-                            }
+                            uri = encryptIfNeeded(uri.uri)
                         )
-                    }
+                    },
+                    fido2Credentials = login.fido2Credentials?.map { fido ->
+                        fido.copy(
+                            credentialId = encryptIfNeeded(fido.credentialId),
+                            keyType = encryptIfNeeded(fido.keyType),
+                            keyAlgorithm = encryptIfNeeded(fido.keyAlgorithm),
+                            keyCurve = encryptIfNeeded(fido.keyCurve),
+                            keyValue = encryptIfNeeded(fido.keyValue),
+                            rpId = encryptIfNeeded(fido.rpId),
+                            rpName = encryptIfNeeded(fido.rpName),
+                            counter = encryptIfNeeded(fido.counter),
+                            userHandle = encryptIfNeeded(fido.userHandle),
+                            userName = encryptIfNeeded(fido.userName),
+                            userDisplayName = encryptIfNeeded(fido.userDisplayName),
+                            discoverable = encryptIfNeeded(fido.discoverable),
+                            creationDate = encryptIfNeeded(fido.creationDate)
+                        )
+                    },
                 )
             }
         )

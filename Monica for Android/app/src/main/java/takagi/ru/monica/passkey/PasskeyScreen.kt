@@ -348,7 +348,7 @@ private fun PasskeyCard(
                 Text(
                     text = passkey.rpName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -442,7 +442,7 @@ private fun PasskeyDetailBottomSheet(
                         imageVector = Icons.Filled.Key,
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
-                        tint = Color.White
+                        tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
                 

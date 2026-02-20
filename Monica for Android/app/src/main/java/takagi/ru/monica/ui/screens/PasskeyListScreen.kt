@@ -53,6 +53,7 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
@@ -389,7 +390,84 @@ fun PasskeyListScreen(
     // 显示版本警告
     var showVersionWarning by remember { mutableStateOf(!isFullySupported) }
 
-    val deletePasskeyWithBinding: (PasskeyEntry) -> Unit = { passkey ->
+    suspend fun applyStorageTarget(passkey: PasskeyEntry, target: UnifiedMoveCategoryTarget): Result<PasskeyEntry> {
+        val currentVaultId = passkey.bitwardenVaultId
+        val currentCipherId = passkey.bitwardenCipherId
+        val targetVaultId = when (target) {
+            is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+            else -> null
+        }
+
+        val isLeavingCurrentCipher =
+            currentVaultId != null &&
+                !currentCipherId.isNullOrBlank() &&
+                currentVaultId != targetVaultId
+
+        if (isLeavingCurrentCipher) {
+            val queueResult = bitwardenRepository.queueCipherDelete(
+                vaultId = currentVaultId!!,
+                cipherId = currentCipherId!!,
+                itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
+            )
+            if (queueResult.isFailure) {
+                return Result.failure(
+                    queueResult.exceptionOrNull()
+                        ?: IllegalStateException("Queue Bitwarden delete failed")
+                )
+            }
+        }
+
+        val moved = when (target) {
+            UnifiedMoveCategoryTarget.Uncategorized -> passkey.copy(
+                categoryId = null,
+                keepassDatabaseId = null,
+                bitwardenVaultId = null
+            )
+            is UnifiedMoveCategoryTarget.MonicaCategory -> passkey.copy(
+                categoryId = target.categoryId,
+                keepassDatabaseId = null,
+                bitwardenVaultId = null
+            )
+            is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> passkey.copy(
+                bitwardenVaultId = target.vaultId,
+                keepassDatabaseId = null
+            )
+            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> passkey.copy(
+                bitwardenVaultId = target.vaultId,
+                keepassDatabaseId = null
+            )
+            is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
+                keepassDatabaseId = target.databaseId,
+                bitwardenVaultId = null
+            )
+            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
+                keepassDatabaseId = target.databaseId,
+                bitwardenVaultId = null
+            )
+        }
+
+        val keepExistingCipher =
+            !currentCipherId.isNullOrBlank() &&
+                currentVaultId != null &&
+                currentVaultId == targetVaultId
+
+        val resolvedSyncStatus = when {
+            moved.syncStatus == "REFERENCE" -> "REFERENCE"
+            targetVaultId == null -> "NONE"
+            keepExistingCipher -> if (passkey.syncStatus == "SYNCED") "SYNCED" else "PENDING"
+            else -> "PENDING"
+        }
+
+        return Result.success(
+            moved.copy(
+                bitwardenCipherId = if (keepExistingCipher) currentCipherId else null,
+                syncStatus = resolvedSyncStatus
+            )
+        )
+    }
+
+    suspend fun deletePasskeyWithBinding(passkey: PasskeyEntry): Boolean {
         val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
         if (boundPassword != null && passwordViewModel != null) {
             val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
@@ -400,29 +478,53 @@ fun PasskeyListScreen(
                 passkey.privateKeyAlias.isBlank() &&
                 passkey.publicKey.isBlank()
         if (!isReferenceOnly) {
+            val vaultId = passkey.bitwardenVaultId
+            val cipherId = passkey.bitwardenCipherId
+            if (vaultId != null && !cipherId.isNullOrBlank()) {
+                val queueResult = bitwardenRepository.queueCipherDelete(
+                    vaultId = vaultId,
+                    cipherId = cipherId,
+                    itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
+                )
+                if (queueResult.isFailure) {
+                    return false
+                }
+            }
             viewModel.deletePasskey(passkey)
         }
+        return true
     }
 
     val performDeleteTargets: (List<PasskeyEntry>) -> Unit = { targets ->
-        if (targets.isNotEmpty()) {
-            targets.forEach(deletePasskeyWithBinding)
-            if (selectionMode) {
-                selectionMode = false
-                selectedPasskeys = emptySet()
+        scope.launch {
+            if (targets.isNotEmpty()) {
+                var deletedCount = 0
+                var failedCount = 0
+                targets.forEach { passkey ->
+                    if (deletePasskeyWithBinding(passkey)) {
+                        deletedCount++
+                    } else {
+                        failedCount++
+                    }
+                }
+                if (selectionMode) {
+                    selectionMode = false
+                    selectedPasskeys = emptySet()
+                }
+                pendingDeletePasskey = null
+                showDeleteConfirmDialog = false
+                deletePasswordInput = ""
+                deletePasswordError = false
+                val msg = if (failedCount == 0) {
+                    context.getString(R.string.deleted_items, deletedCount)
+                } else {
+                    "${context.getString(R.string.deleted_items, deletedCount)}，失败$failedCount"
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            } else {
+                showDeleteConfirmDialog = false
+                pendingDeletePasskey = null
             }
-            pendingDeletePasskey = null
-            showDeleteConfirmDialog = false
-            deletePasswordInput = ""
-            deletePasswordError = false
-            Toast.makeText(
-                context,
-                context.getString(R.string.deleted_items, targets.size),
-                Toast.LENGTH_SHORT
-            ).show()
-        } else {
-            showDeleteConfirmDialog = false
-            pendingDeletePasskey = null
         }
     }
 
@@ -873,45 +975,25 @@ fun PasskeyListScreen(
         getKeePassGroups = getKeePassGroups,
         onTargetSelected = { target ->
             val passkey = passkeyToMoveCategory ?: return@UnifiedMoveToCategoryBottomSheet
-            val updated = when (target) {
-                UnifiedMoveCategoryTarget.Uncategorized -> passkey.copy(
-                    categoryId = null,
-                    keepassDatabaseId = null,
-                    bitwardenVaultId = null
-                )
-                is UnifiedMoveCategoryTarget.MonicaCategory -> passkey.copy(
-                    categoryId = target.categoryId,
-                    keepassDatabaseId = null,
-                    bitwardenVaultId = null
-                )
-                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> passkey.copy(
-                    bitwardenVaultId = target.vaultId,
-                    keepassDatabaseId = null
-                )
-                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> passkey.copy(
-                    bitwardenVaultId = target.vaultId,
-                    keepassDatabaseId = null
-                )
-                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
-                    keepassDatabaseId = target.databaseId,
-                    bitwardenVaultId = null
-                )
-                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
-                    keepassDatabaseId = target.databaseId,
-                    bitwardenVaultId = null
-                )
+            scope.launch {
+                val updateResult = applyStorageTarget(passkey, target)
+                if (updateResult.isFailure) {
+                    Toast.makeText(context, "Bitwarden 操作失败，未移动", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                viewModel.updatePasskey(updateResult.getOrThrow())
+                val targetLabel = when (target) {
+                    UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
+                    is UnifiedMoveCategoryTarget.MonicaCategory -> categoryMap[target.categoryId]?.name ?: context.getString(R.string.category_none)
+                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> context.getString(R.string.filter_bitwarden)
+                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> context.getString(R.string.filter_bitwarden)
+                    is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> keepassDatabases.find { it.id == target.databaseId }?.name ?: context.getString(R.string.filter_keepass)
+                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath.substringAfterLast('/')
+                }
+                Toast.makeText(context, context.getString(R.string.passkey_category_updated, targetLabel), Toast.LENGTH_SHORT).show()
+                passkeyToMoveCategory = null
             }
-            viewModel.updatePasskey(updated)
-            val targetLabel = when (target) {
-                UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
-                is UnifiedMoveCategoryTarget.MonicaCategory -> categoryMap[target.categoryId]?.name ?: context.getString(R.string.category_none)
-                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> context.getString(R.string.filter_bitwarden)
-                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> context.getString(R.string.filter_bitwarden)
-                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> keepassDatabases.find { it.id == target.databaseId }?.name ?: context.getString(R.string.filter_keepass)
-                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath.substringAfterLast('/')
-            }
-            Toast.makeText(context, context.getString(R.string.passkey_category_updated, targetLabel), Toast.LENGTH_SHORT).show()
-            passkeyToMoveCategory = null
         }
     )
 
@@ -924,50 +1006,32 @@ fun PasskeyListScreen(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
         onTargetSelected = { target ->
-            val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
-            val movable = selectedItems.filter { it.boundPasswordId == null && it.syncStatus != "REFERENCE" }
-            val lockedCount = selectedItems.size - movable.size
+            scope.launch {
+                val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
+                val movable = selectedItems.filter { it.boundPasswordId == null && it.syncStatus != "REFERENCE" }
+                val lockedCount = selectedItems.size - movable.size
+                var movedCount = 0
+                var failedCount = 0
 
-            movable.forEach { passkey ->
-                val updated = when (target) {
-                    UnifiedMoveCategoryTarget.Uncategorized -> passkey.copy(
-                        categoryId = null,
-                        keepassDatabaseId = null,
-                        bitwardenVaultId = null
-                    )
-                    is UnifiedMoveCategoryTarget.MonicaCategory -> passkey.copy(
-                        categoryId = target.categoryId,
-                        keepassDatabaseId = null,
-                        bitwardenVaultId = null
-                    )
-                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> passkey.copy(
-                        bitwardenVaultId = target.vaultId,
-                        keepassDatabaseId = null
-                    )
-                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> passkey.copy(
-                        bitwardenVaultId = target.vaultId,
-                        keepassDatabaseId = null
-                    )
-                    is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
-                        keepassDatabaseId = target.databaseId,
-                        bitwardenVaultId = null
-                    )
-                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
-                        keepassDatabaseId = target.databaseId,
-                        bitwardenVaultId = null
-                    )
+                movable.forEach { passkey ->
+                    val updateResult = applyStorageTarget(passkey, target)
+                    if (updateResult.isSuccess) {
+                        viewModel.updatePasskey(updateResult.getOrThrow())
+                        movedCount++
+                    } else {
+                        failedCount++
+                    }
                 }
-                viewModel.updatePasskey(updated)
+
+                val baseMessage = context.getString(R.string.selected_items, movedCount)
+                val skippedTotal = lockedCount + failedCount
+                val toastMessage = if (skippedTotal > 0) "$baseMessage，跳过$skippedTotal" else baseMessage
+                Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+
+                showBatchMoveCategoryDialog = false
+                selectionMode = false
+                selectedPasskeys = emptySet()
             }
-
-            val movedCount = movable.size
-            val baseMessage = context.getString(R.string.selected_items, movedCount)
-            val toastMessage = if (lockedCount > 0) "$baseMessage，跳过$lockedCount" else baseMessage
-            Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
-
-            showBatchMoveCategoryDialog = false
-            selectionMode = false
-            selectedPasskeys = emptySet()
         }
     )
 }

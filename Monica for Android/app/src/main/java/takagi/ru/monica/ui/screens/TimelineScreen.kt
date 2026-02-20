@@ -804,7 +804,7 @@ private fun ModernLogItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = colorScheme.onPrimary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -927,7 +927,7 @@ private fun AggregatedLogItem(
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = colorScheme.onPrimary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -1092,7 +1092,7 @@ private fun StandardLogDetailSheet(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = colorScheme.onPrimary,
                         modifier = Modifier.size(28.dp)
                     )
                 }

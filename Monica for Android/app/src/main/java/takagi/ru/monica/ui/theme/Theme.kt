@@ -10,6 +10,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -905,6 +906,40 @@ private fun customLightColorScheme(
         neutralVariantSeed = neutralVariant
     )
 
+private fun Color.toSeedLong(): Long = toArgb().toLong() and 0xFFFFFFFF
+
+private fun generatedSchemeForMonet(
+    darkTheme: Boolean,
+    primary: Color,
+    secondary: Color,
+    tertiary: Color,
+    neutral: Color,
+    neutralVariant: Color
+) = generateCustomMaterialColorScheme(
+    darkTheme = darkTheme,
+    primarySeed = primary.toSeedLong(),
+    secondarySeed = secondary.toSeedLong(),
+    tertiarySeed = tertiary.toSeedLong(),
+    neutralSeed = neutral.toSeedLong(),
+    neutralVariantSeed = neutralVariant.toSeedLong()
+)
+
+private fun generatedSchemeForCatppuccin(
+    darkTheme: Boolean,
+    primary: Color,
+    secondary: Color,
+    tertiary: Color,
+    neutral: Color,
+    neutralVariant: Color
+) = generateCustomMaterialColorScheme(
+    darkTheme = darkTheme,
+    primarySeed = primary.toSeedLong(),
+    secondarySeed = secondary.toSeedLong(),
+    tertiarySeed = tertiary.toSeedLong(),
+    neutralSeed = neutral.toSeedLong(),
+    neutralVariantSeed = neutralVariant.toSeedLong()
+)
+
 @Composable
 fun MonicaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -949,43 +984,223 @@ fun MonicaTheme(
         }
 
         colorScheme == ColorScheme.WATER_LILIES -> {
-            if (darkTheme) WaterLiliesDarkColorScheme else WaterLiliesLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForMonet(
+                    darkTheme = true,
+                    primary = WaterLiliesPrimaryDark,
+                    secondary = WaterLiliesSecondaryDark,
+                    tertiary = WaterLiliesTertiaryDark,
+                    neutral = WaterLiliesBackgroundDark,
+                    neutralVariant = WaterLiliesSurfaceDark
+                )
+            } else {
+                generatedSchemeForMonet(
+                    darkTheme = false,
+                    primary = WaterLiliesPrimary,
+                    secondary = WaterLiliesSecondary,
+                    tertiary = WaterLiliesTertiary,
+                    neutral = WaterLiliesBackground,
+                    neutralVariant = WaterLiliesSurface
+                )
+            }
         }
 
         colorScheme == ColorScheme.IMPRESSION_SUNRISE -> {
-            if (darkTheme) ImpressionSunriseDarkColorScheme else ImpressionSunriseLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForMonet(
+                    darkTheme = true,
+                    primary = ImpressionSunrisePrimaryDark,
+                    secondary = ImpressionSunriseSecondaryDark,
+                    tertiary = ImpressionSunriseTertiaryDark,
+                    neutral = ImpressionSunriseBackgroundDark,
+                    neutralVariant = ImpressionSunriseSurfaceDark
+                )
+            } else {
+                generatedSchemeForMonet(
+                    darkTheme = false,
+                    primary = ImpressionSunrisePrimary,
+                    secondary = ImpressionSunriseSecondary,
+                    tertiary = ImpressionSunriseTertiary,
+                    neutral = ImpressionSunriseBackground,
+                    neutralVariant = ImpressionSunriseSurface
+                )
+            }
         }
 
         colorScheme == ColorScheme.JAPANESE_BRIDGE -> {
-            if (darkTheme) JapaneseBridgeDarkColorScheme else JapaneseBridgeLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForMonet(
+                    darkTheme = true,
+                    primary = JapaneseBridgePrimaryDark,
+                    secondary = JapaneseBridgeSecondaryDark,
+                    tertiary = JapaneseBridgeTertiaryDark,
+                    neutral = JapaneseBridgeBackgroundDark,
+                    neutralVariant = JapaneseBridgeSurfaceDark
+                )
+            } else {
+                generatedSchemeForMonet(
+                    darkTheme = false,
+                    primary = JapaneseBridgePrimary,
+                    secondary = JapaneseBridgeSecondary,
+                    tertiary = JapaneseBridgeTertiary,
+                    neutral = JapaneseBridgeBackground,
+                    neutralVariant = JapaneseBridgeSurface
+                )
+            }
         }
 
         colorScheme == ColorScheme.HAYSTACKS -> {
-            if (darkTheme) HaystacksDarkColorScheme else HaystacksLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForMonet(
+                    darkTheme = true,
+                    primary = HaystacksPrimaryDark,
+                    secondary = HaystacksSecondaryDark,
+                    tertiary = HaystacksTertiaryDark,
+                    neutral = HaystacksBackgroundDark,
+                    neutralVariant = HaystacksSurfaceDark
+                )
+            } else {
+                generatedSchemeForMonet(
+                    darkTheme = false,
+                    primary = HaystacksPrimary,
+                    secondary = HaystacksSecondary,
+                    tertiary = HaystacksTertiary,
+                    neutral = HaystacksBackground,
+                    neutralVariant = HaystacksSurface
+                )
+            }
         }
 
         colorScheme == ColorScheme.ROUEN_CATHEDRAL -> {
-            if (darkTheme) RouenCathedralDarkColorScheme else RouenCathedralLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForMonet(
+                    darkTheme = true,
+                    primary = RouenCathedralPrimaryDark,
+                    secondary = RouenCathedralSecondaryDark,
+                    tertiary = RouenCathedralTertiaryDark,
+                    neutral = RouenCathedralBackgroundDark,
+                    neutralVariant = RouenCathedralSurfaceDark
+                )
+            } else {
+                generatedSchemeForMonet(
+                    darkTheme = false,
+                    primary = RouenCathedralPrimary,
+                    secondary = RouenCathedralSecondary,
+                    tertiary = RouenCathedralTertiary,
+                    neutral = RouenCathedralBackground,
+                    neutralVariant = RouenCathedralSurface
+                )
+            }
         }
 
         colorScheme == ColorScheme.PARLIAMENT_FOG -> {
-            if (darkTheme) ParliamentFogDarkColorScheme else ParliamentFogLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForMonet(
+                    darkTheme = true,
+                    primary = ParliamentFogPrimaryDark,
+                    secondary = ParliamentFogSecondaryDark,
+                    tertiary = ParliamentFogTertiaryDark,
+                    neutral = ParliamentFogBackgroundDark,
+                    neutralVariant = ParliamentFogSurfaceDark
+                )
+            } else {
+                generatedSchemeForMonet(
+                    darkTheme = false,
+                    primary = ParliamentFogPrimary,
+                    secondary = ParliamentFogSecondary,
+                    tertiary = ParliamentFogTertiary,
+                    neutral = ParliamentFogBackground,
+                    neutralVariant = ParliamentFogSurface
+                )
+            }
         }
 
         colorScheme == ColorScheme.CATPPUCCIN_LATTE -> {
-            if (darkTheme) CatLatteDarkColorScheme else CatLatteLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForCatppuccin(
+                    darkTheme = true,
+                    primary = CatLattePrimaryDark,
+                    secondary = CatLatteSecondaryDark,
+                    tertiary = CatLatteTertiaryDark,
+                    neutral = CatLatteBackgroundDark,
+                    neutralVariant = CatLatteSurfaceVariantDark
+                )
+            } else {
+                generatedSchemeForCatppuccin(
+                    darkTheme = false,
+                    primary = CatLattePrimary,
+                    secondary = CatLatteSecondary,
+                    tertiary = CatLatteTertiary,
+                    neutral = CatLatteBackground,
+                    neutralVariant = CatLatteSurfaceVariant
+                )
+            }
         }
 
         colorScheme == ColorScheme.CATPPUCCIN_FRAPPE -> {
-            if (darkTheme) CatFrappeDarkColorScheme else CatFrappeLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForCatppuccin(
+                    darkTheme = true,
+                    primary = CatFrappePrimary,
+                    secondary = CatFrappeSecondary,
+                    tertiary = CatFrappeTertiary,
+                    neutral = CatFrappeBackground,
+                    neutralVariant = CatFrappeSurfaceVariant
+                )
+            } else {
+                generatedSchemeForCatppuccin(
+                    darkTheme = false,
+                    primary = CatFrappePrimaryLight,
+                    secondary = CatFrappeSecondaryLight,
+                    tertiary = CatFrappeTertiaryLight,
+                    neutral = CatFrappeBackgroundLight,
+                    neutralVariant = CatFrappeSurfaceVariantLight
+                )
+            }
         }
 
         colorScheme == ColorScheme.CATPPUCCIN_MACCHIATO -> {
-            if (darkTheme) CatMacchiatoDarkColorScheme else CatMacchiatoLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForCatppuccin(
+                    darkTheme = true,
+                    primary = CatMacchiatoPrimary,
+                    secondary = CatMacchiatoSecondary,
+                    tertiary = CatMacchiatoTertiary,
+                    neutral = CatMacchiatoBackground,
+                    neutralVariant = CatMacchiatoSurfaceVariant
+                )
+            } else {
+                generatedSchemeForCatppuccin(
+                    darkTheme = false,
+                    primary = CatMacchiatoPrimaryLight,
+                    secondary = CatMacchiatoSecondaryLight,
+                    tertiary = CatMacchiatoTertiaryLight,
+                    neutral = CatMacchiatoBackgroundLight,
+                    neutralVariant = CatMacchiatoSurfaceVariantLight
+                )
+            }
         }
 
         colorScheme == ColorScheme.CATPPUCCIN_MOCHA -> {
-            if (darkTheme) CatMochaDarkColorScheme else CatMochaLightColorScheme
+            if (darkTheme) {
+                generatedSchemeForCatppuccin(
+                    darkTheme = true,
+                    primary = CatMochaPrimary,
+                    secondary = CatMochaSecondary,
+                    tertiary = CatMochaTertiary,
+                    neutral = CatMochaBackground,
+                    neutralVariant = CatMochaSurfaceVariant
+                )
+            } else {
+                generatedSchemeForCatppuccin(
+                    darkTheme = false,
+                    primary = CatMochaPrimaryLight,
+                    secondary = CatMochaSecondaryLight,
+                    tertiary = CatMochaTertiaryLight,
+                    neutral = CatMochaBackgroundLight,
+                    neutralVariant = CatMochaSurfaceVariantLight
+                )
+            }
         }
         
         colorScheme == ColorScheme.CUSTOM -> {

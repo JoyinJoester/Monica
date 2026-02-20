@@ -46,6 +46,7 @@ class BitwardenSyncService(
     private val pendingOpDao = database.bitwardenPendingOperationDao()
     private val passwordEntryDao = database.passwordEntryDao()
     private val secureItemDao = database.secureItemDao()
+    private val passkeyDao = database.passkeyDao()
     private val securityManager = SecurityManager(context)
     
     // 多类型 Cipher 同步处理器
@@ -225,9 +226,11 @@ class BitwardenSyncService(
         if (activeServerCipherIds.isEmpty()) {
             passwordEntryDao.deleteAllSyncedBitwardenEntries(vault.id)
             secureItemDao.deleteAllSyncedBitwardenEntries(vault.id)
+            passkeyDao.deleteAllByBitwardenVaultId(vault.id)
         } else {
             passwordEntryDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
             secureItemDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
+            passkeyDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
         }
 
         // 3. 清理已删除的文件夹 (服务器上不存在的)

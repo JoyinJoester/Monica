@@ -166,7 +166,7 @@ private fun PasskeyIntroSection(isSupported: Boolean) {
                     imageVector = if (isSupported) Icons.Filled.Key else Icons.Filled.Block,
                     contentDescription = null,
                     modifier = Modifier.size(36.dp),
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onPrimary
                 )
             }
             

@@ -1,6 +1,5 @@
 package takagi.ru.monica.bitwarden.mapper
 
-import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.PasskeyEntry
 
@@ -9,23 +8,35 @@ import takagi.ru.monica.data.PasskeyEntry
  * 
  * Monica PasskeyEntry <-> Bitwarden Login (Type 1)
  * 
- * ⚠️ 重要限制：
- * - Passkey 的私钥无法导出到 Bitwarden（安全设计）
- * - 只能同步 Passkey 的元数据（rpId、用户信息等）
- * - 从 Bitwarden 导入时，只能作为"引用"记录
- * 
  * 同步策略：
- * - Monica → Bitwarden: 同步元数据，私钥不发送
- * - Bitwarden → Monica: 只能创建"占位"记录，需要用户重新注册
+ * - Monica → Bitwarden: 优先同步完整 passkey（包含私钥材料）
+ * - Bitwarden → Monica: 支持导入可用 passkey；缺少私钥时降级为引用记录
  */
 class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
-    
-    private val json = Json { 
-        ignoreUnknownKeys = true 
-        encodeDefaults = true
-    }
-    
+
     override fun toCreateRequest(item: PasskeyEntry, folderId: String?): CipherCreateRequest {
+        val fido2Credentials = if (item.privateKeyAlias.isNotBlank() && item.rpId.isNotBlank()) {
+            listOf(
+                CipherLoginFido2CredentialApiData(
+                    credentialId = item.credentialId.takeIf { it.isNotBlank() },
+                    keyType = "public-key",
+                    keyAlgorithm = algorithmToBitwarden(item.publicKeyAlgorithm),
+                    keyCurve = "P-256",
+                    keyValue = item.privateKeyAlias,
+                    rpId = item.rpId,
+                    rpName = item.rpName.takeIf { it.isNotBlank() },
+                    counter = item.signCount.toString(),
+                    userHandle = item.userId.takeIf { it.isNotBlank() },
+                    userName = item.userName.takeIf { it.isNotBlank() },
+                    userDisplayName = item.userDisplayName.takeIf { it.isNotBlank() },
+                    discoverable = item.isDiscoverable.toString(),
+                    creationDate = java.time.Instant.ofEpochMilli(item.createdAt).toString()
+                )
+            )
+        } else {
+            null
+        }
+
         return CipherCreateRequest(
             type = 1, // Login
             name = "${item.rpName} [Passkey]",
@@ -39,46 +50,64 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
                         CipherUriApiData(uri = it)
                     )
                 },
-                username = item.userName.takeIf { it.isNotBlank() } ?: item.userDisplayName
+                username = item.userName.takeIf { it.isNotBlank() } ?: item.userDisplayName,
+                fido2Credentials = fido2Credentials,
             )
         )
     }
     
     override fun fromCipherResponse(cipher: CipherApiResponse, vaultId: Long): PasskeyEntry {
-        // 从 Bitwarden 创建 Passkey 占位记录
-        // 注意：这只是元数据，真正的 Passkey 需要重新在设备上注册
-        
         val login = cipher.login
+        val fido2 = login?.fido2Credentials?.firstOrNull()
         val rpId = extractRpIdFromUris(login?.uris)
-        
-        // 尝试从 notes 解析 Monica 元数据
         val metadata = parsePasskeyMetadata(cipher.notes)
-        
+
+        val credentialId = fido2?.credentialId
+            ?.takeIf { it.isNotBlank() }
+            ?: metadata?.credentialId
+            ?: buildReferenceCredentialId(cipher.id)
+        val keyValue = fido2?.keyValue.orEmpty()
+        val userName = fido2?.userName
+            ?.takeIf { it.isNotBlank() }
+            ?: login?.username
+            ?: ""
+        val userDisplayName = fido2?.userDisplayName
+            ?.takeIf { it.isNotBlank() }
+            ?: metadata?.userDisplayName
+            ?: userName
+        val resolvedRpId = fido2?.rpId?.takeIf { it.isNotBlank() } ?: (rpId ?: "")
+        val resolvedRpName = fido2?.rpName?.takeIf { it.isNotBlank() }
+            ?: cipher.name?.removeSuffix(" [Passkey]")
+            ?: resolvedRpId
+
         return PasskeyEntry(
-            credentialId = metadata?.credentialId ?: "",  // 空的，需要重新注册
-            rpId = rpId ?: "",
-            rpName = cipher.name?.removeSuffix(" [Passkey]") ?: "",
-            userId = metadata?.userId ?: "",
-            userName = login?.username ?: "",
-            userDisplayName = metadata?.userDisplayName ?: login?.username ?: "",
-            publicKeyAlgorithm = metadata?.publicKeyAlgorithm ?: PasskeyEntry.ALGORITHM_ES256,
-            publicKey = "",  // 公钥无法恢复
-            privateKeyAlias = "",  // 私钥无法恢复
-            createdAt = System.currentTimeMillis(),
+            credentialId = credentialId,
+            rpId = resolvedRpId,
+            rpName = resolvedRpName,
+            userId = fido2?.userHandle ?: metadata?.userId ?: "",
+            userName = userName,
+            userDisplayName = userDisplayName,
+            publicKeyAlgorithm = parseAlgorithm(
+                fido2?.keyAlgorithm,
+                metadata?.publicKeyAlgorithm ?: PasskeyEntry.ALGORITHM_ES256
+            ),
+            publicKey = "",
+            privateKeyAlias = keyValue,
+            createdAt = parseCreationDateMillis(fido2?.creationDate),
             lastUsedAt = System.currentTimeMillis(),
             useCount = 0,
             iconUrl = null,
-            isDiscoverable = true,
+            isDiscoverable = parseDiscoverable(fido2?.discoverable),
             isUserVerificationRequired = true,
             transports = PasskeyEntry.TRANSPORT_INTERNAL,
             aaguid = "",
-            signCount = 0,
+            signCount = fido2?.counter?.toLongOrNull() ?: 0,
             isBackedUp = false,
             notes = cipher.notes?.substringBefore("---")?.trim() ?: "",
             boundPasswordId = null,
             bitwardenVaultId = vaultId,
             bitwardenCipherId = cipher.id,
-            syncStatus = "REFERENCE"  // 标记为引用，需要重新注册
+            syncStatus = if (keyValue.isBlank()) "REFERENCE" else "SYNCED"
         )
     }
     
@@ -126,7 +155,7 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
             }
             appendLine()
             appendLine("🔐 This is a Passkey entry synced from Monica")
-            appendLine("⚠️ Private key is stored locally only and cannot be synced.")
+            appendLine("ℹ️ Private key availability depends on client capability.")
             appendLine()
             appendLine("---")
             appendLine("[Monica Passkey Metadata]")
@@ -196,6 +225,45 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
         val userDisplayName: String,
         val publicKeyAlgorithm: Int
     )
+
+    private fun parseDiscoverable(value: String?): Boolean {
+        return when (value?.trim()?.lowercase()) {
+            "false", "0", "no" -> false
+            else -> true
+        }
+    }
+
+    private fun parseCreationDateMillis(value: String?): Long {
+        if (value.isNullOrBlank()) return System.currentTimeMillis()
+        return runCatching { java.time.Instant.parse(value).toEpochMilli() }
+            .getOrElse { System.currentTimeMillis() }
+    }
+
+    private fun parseAlgorithm(value: String?, fallback: Int): Int {
+        val parsed = value?.trim()?.toIntOrNull()
+        if (parsed != null) return parsed
+        return when (value?.trim()?.lowercase()) {
+            "es256", "ecdsa" -> PasskeyEntry.ALGORITHM_ES256
+            "rs256", "rsa" -> PasskeyEntry.ALGORITHM_RS256
+            "ps256" -> PasskeyEntry.ALGORITHM_PS256
+            "eddsa", "ed25519" -> PasskeyEntry.ALGORITHM_EDDSA
+            else -> fallback
+        }
+    }
+
+    private fun algorithmToBitwarden(algorithm: Int): String {
+        return when (algorithm) {
+            PasskeyEntry.ALGORITHM_ES256 -> "ES256"
+            PasskeyEntry.ALGORITHM_RS256 -> "RS256"
+            PasskeyEntry.ALGORITHM_PS256 -> "PS256"
+            PasskeyEntry.ALGORITHM_EDDSA -> "EdDSA"
+            else -> "ES256"
+        }
+    }
+
+    private fun buildReferenceCredentialId(cipherId: String): String {
+        return "bw_ref_$cipherId"
+    }
     
     companion object {
         /**
@@ -203,16 +271,18 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
          */
         fun isPasskeyCipher(cipher: CipherApiResponse): Boolean {
             if (cipher.type != 1) return false
-            
-            // 通过名称后缀或 notes 中的标记判断
+
+            // 优先按 Bitwarden 原生字段识别
+            if (!cipher.login?.fido2Credentials.isNullOrEmpty()) return true
+
+            // 兼容早期 Monica 约定
             return cipher.name?.endsWith(" [Passkey]") == true ||
-                   cipher.notes?.contains("[Monica Passkey Metadata]") == true
+                cipher.notes?.contains("[Monica Passkey Metadata]") == true
         }
         
         /**
          * Passkey 私钥是否可同步
-         * 返回 false - Passkey 设计上私钥不可导出
          */
-        fun canSyncPrivateKey(): Boolean = false
+        fun canSyncPrivateKey(): Boolean = true
     }
 }

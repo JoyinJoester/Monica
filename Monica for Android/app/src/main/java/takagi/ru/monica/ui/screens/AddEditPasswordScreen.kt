@@ -1703,24 +1703,6 @@ private fun CollapsibleCard(
     }
 }
 
-/**
- * 彩色密码显示转换器
- */
-class ColoredPasswordVisualTransformation : VisualTransformation {
-    override fun filter(text: AnnotatedString): TransformedText {
-        val coloredText = buildAnnotatedString {
-            text.forEach { char ->
-                when {
-                    char.isLetter() -> withStyle(style = SpanStyle(color = Color(0xFFE0E0E0))) { append(char) }
-                    char.isDigit() -> withStyle(style = SpanStyle(color = Color(0xFF64B5F6))) { append(char) }
-                    else -> withStyle(style = SpanStyle(color = Color(0xFFEF5350))) { append(char) }
-                }
-            }
-        }
-        return TransformedText(coloredText, OffsetMapping.Identity)
-    }
-}
-
 @Composable
 fun PasswordGeneratorDialog(
     onDismiss: () -> Unit,
