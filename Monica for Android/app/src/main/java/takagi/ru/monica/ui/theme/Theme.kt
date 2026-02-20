@@ -10,7 +10,6 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -874,17 +873,21 @@ private val CatMochaDarkColorScheme = darkColorScheme(
 // ============================================
 // 🎨 自定义方案
 // ============================================
-private fun customDarkColorScheme(primary: Long, secondary: Long, tertiary: Long) = darkColorScheme(
-    primary = Color(primary),
-    secondary = Color(secondary),
-    tertiary = Color(tertiary)
-)
+private fun customDarkColorScheme(primary: Long, secondary: Long, tertiary: Long) =
+    generateCustomMaterialColorScheme(
+        darkTheme = true,
+        primarySeed = primary,
+        secondarySeed = secondary,
+        tertiarySeed = tertiary
+    )
 
-private fun customLightColorScheme(primary: Long, secondary: Long, tertiary: Long) = lightColorScheme(
-    primary = Color(primary),
-    secondary = Color(secondary),
-    tertiary = Color(tertiary)
-)
+private fun customLightColorScheme(primary: Long, secondary: Long, tertiary: Long) =
+    generateCustomMaterialColorScheme(
+        darkTheme = false,
+        primarySeed = primary,
+        secondarySeed = secondary,
+        tertiarySeed = tertiary
+    )
 
 @Composable
 fun MonicaTheme(

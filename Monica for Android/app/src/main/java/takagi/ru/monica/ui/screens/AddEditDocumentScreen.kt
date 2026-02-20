@@ -1,6 +1,5 @@
 package takagi.ru.monica.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.model.DocumentData
-import takagi.ru.monica.data.model.DocumentScanResult
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.ui.components.DualPhotoPicker
@@ -33,9 +31,6 @@ import kotlinx.serialization.decodeFromString
 fun AddEditDocumentScreen(
     viewModel: DocumentViewModel,
     documentId: Long? = null,
-    documentScanResultJson: String? = null,
-    onDocumentScanResultConsumed: (() -> Unit)? = null,
-    onScanDocument: (() -> Unit)? = null,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -97,23 +92,6 @@ fun AddEditDocumentScreen(
         }
     }
 
-    LaunchedEffect(documentScanResultJson) {
-        val payload = documentScanResultJson ?: return@LaunchedEffect
-        runCatching { Json.decodeFromString<DocumentScanResult>(payload) }
-            .onSuccess { result ->
-                if (result.documentNumber.isNotBlank()) documentNumber = result.documentNumber
-                if (result.fullName.isNotBlank()) fullName = result.fullName
-                if (result.issuedDate.isNotBlank()) issuedDate = result.issuedDate
-                if (result.expiryDate.isNotBlank()) expiryDate = result.expiryDate
-                if (result.nationality.isNotBlank()) nationality = result.nationality
-                Toast.makeText(context, context.getString(R.string.document_scan_result_applied), Toast.LENGTH_SHORT).show()
-            }
-            .onFailure {
-                Toast.makeText(context, context.getString(R.string.document_scan_failed), Toast.LENGTH_SHORT).show()
-            }
-        onDocumentScanResultConsumed?.invoke()
-    }
-    
     val canSave = documentNumber.isNotBlank() && !isSaving
     val save: () -> Unit = saveAction@{
         if (isSaving || documentNumber.isBlank()) return@saveAction
@@ -317,18 +295,6 @@ fun AddEditDocumentScreen(
                     }
                     
                     // Document Number
-                    if (onScanDocument != null) {
-                        OutlinedButton(
-                            onClick = onScanDocument,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.DocumentScanner, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.scan_document))
-                        }
-                    }
-
                     OutlinedTextField(
                         value = documentNumber,
                         onValueChange = { documentNumber = it },

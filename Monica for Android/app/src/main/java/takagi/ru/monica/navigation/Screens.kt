@@ -70,8 +70,6 @@ sealed class Screen(val route: String) {
         }
     }
     object QrScanner : Screen("qr_scanner")
-    object CardScanner : Screen("card_scanner")
-    object DocumentScanner : Screen("document_scanner")
     object QuickTotpScan : Screen("quick_totp_scan")  // 快速扫码添加验证器
     object Settings : Screen("settings")
     object ResetPassword : Screen("reset_password?skipCurrentPassword={skipCurrentPassword}") {

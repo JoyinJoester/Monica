@@ -28,7 +28,6 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
-import takagi.ru.monica.data.model.CardScanResult
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
@@ -43,9 +42,6 @@ import takagi.ru.monica.viewmodel.BankCardViewModel
 fun AddEditBankCardScreen(
     viewModel: BankCardViewModel,
     cardId: Long? = null,
-    cardScanResultJson: String? = null,
-    onCardScanResultConsumed: (() -> Unit)? = null,
-    onScanCard: (() -> Unit)? = null,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -155,33 +151,6 @@ fun AddEditBankCardScreen(
         }
     }
 
-    LaunchedEffect(cardScanResultJson) {
-        val payload = cardScanResultJson ?: return@LaunchedEffect
-        runCatching { Json.decodeFromString<CardScanResult>(payload) }
-            .onSuccess { scanResult ->
-                if (scanResult.cardNumber.isNotBlank()) {
-                    cardNumber = formatCardNumberForUi(scanResult.cardNumber)
-                }
-                if (scanResult.expiryMonth.isNotBlank()) {
-                    expiryMonth = scanResult.expiryMonth.take(2)
-                }
-                if (scanResult.expiryYear.isNotBlank()) {
-                    expiryYear = scanResult.expiryYear.takeLast(4)
-                }
-                if (scanResult.cardholderName.isNotBlank()) {
-                    cardholderName = scanResult.cardholderName
-                }
-                if (title.isBlank() && scanResult.cardNumber.length >= 4) {
-                    title = context.getString(R.string.bank_card_scanned_title_suffix, scanResult.cardNumber.takeLast(4))
-                }
-                Toast.makeText(context, context.getString(R.string.card_scan_result_applied), Toast.LENGTH_SHORT).show()
-            }
-            .onFailure {
-                Toast.makeText(context, context.getString(R.string.card_scan_failed), Toast.LENGTH_SHORT).show()
-            }
-        onCardScanResultConsumed?.invoke()
-    }
-    
     val canSave = cardNumber.isNotBlank() && !isSaving
     val save: () -> Unit = saveAction@{
         if (isSaving || cardNumber.isBlank()) return@saveAction
@@ -411,18 +380,6 @@ fun AddEditBankCardScreen(
                     }
                     
                     // Card Number
-                    if (onScanCard != null) {
-                        OutlinedButton(
-                            onClick = onScanCard,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.CreditCard, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.scan_bank_card))
-                        }
-                    }
-
                     OutlinedTextField(
                         value = cardNumber,
                         onValueChange = { 
@@ -758,10 +715,4 @@ private fun InfoCard(
             content()
         }
     }
-}
-
-private fun formatCardNumberForUi(rawCardNumber: String): String {
-    val digits = rawCardNumber.filter { it.isDigit() }
-    if (digits.isBlank()) return ""
-    return digits.chunked(4).joinToString(" ")
 }

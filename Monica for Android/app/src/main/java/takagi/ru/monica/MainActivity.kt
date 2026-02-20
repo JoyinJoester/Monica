@@ -80,8 +80,6 @@ import takagi.ru.monica.ui.screens.ExportDataScreen
 import takagi.ru.monica.ui.screens.ForgotPasswordScreen
 import takagi.ru.monica.ui.screens.ImportDataScreen
 import takagi.ru.monica.ui.screens.LoginScreen
-import takagi.ru.monica.ui.screens.CardScannerScreen
-import takagi.ru.monica.ui.screens.DocumentScannerScreen
 import takagi.ru.monica.ui.screens.QrScannerScreen
 import takagi.ru.monica.ui.screens.ResetPasswordScreen
 import takagi.ru.monica.ui.screens.SecurityAnalysisScreen
@@ -574,12 +572,6 @@ fun MonicaContent(
                 onNavigateToQuickTotpScan = {
                     navController.navigate(Screen.QuickTotpScan.route)
                 },
-                onNavigateToCardScan = {
-                    navController.navigate(Screen.CardScanner.route)
-                },
-                onNavigateToDocumentScan = {
-                    navController.navigate(Screen.DocumentScanner.route)
-                },
                 onNavigateToAddBankCard = { cardId ->
                     navController.navigate(Screen.AddEditBankCard.createRoute(cardId))
                 },
@@ -709,6 +701,7 @@ fun MonicaContent(
         composable(Screen.AddEditTotp.route) { backStackEntry ->
             val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: -1L
             val currentTotpFilter by totpViewModel.categoryFilter.collectAsState()
+            val context = LocalContext.current
 
             var initialData by remember { mutableStateOf<takagi.ru.monica.data.model.TotpData?>(null) }
             var initialTitle by remember { mutableStateOf("") }
@@ -725,11 +718,39 @@ fun MonicaContent(
             // 处理QR扫描结果
             LaunchedEffect(qrResult) {
                 qrResult?.let { uri ->
-                    val parseResult = takagi.ru.monica.util.TotpUriParser.parseUri(uri)
-                    if (parseResult != null) {
-                        initialData = parseResult.totpData
-                        if (initialTitle.isBlank()) {
-                            initialTitle = parseResult.label
+                    when (val scanResult = takagi.ru.monica.util.TotpUriParser.parseScannedContent(uri)) {
+                        is takagi.ru.monica.util.TotpScanParseResult.Single -> {
+                            initialData = scanResult.item.totpData
+                            if (initialTitle.isBlank()) {
+                                initialTitle = scanResult.item.label
+                            }
+                        }
+                        is takagi.ru.monica.util.TotpScanParseResult.Multiple -> {
+                            scanResult.items.firstOrNull()?.let { first ->
+                                initialData = first.totpData
+                                if (initialTitle.isBlank()) {
+                                    initialTitle = first.label
+                                }
+                            }
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.qr_migration_multiple_fill_first, scanResult.items.size),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        takagi.ru.monica.util.TotpScanParseResult.UnsupportedPhoneFactor -> {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.qr_phonefactor_not_supported),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        takagi.ru.monica.util.TotpScanParseResult.InvalidFormat -> {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.qr_invalid_authenticator),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                     // 清除结果
@@ -841,22 +862,10 @@ fun MonicaContent(
 
         composable(Screen.AddEditBankCard.route) { backStackEntry ->
             val cardId = backStackEntry.arguments?.getString("cardId")?.toLongOrNull() ?: -1L
-            val cardScanResult = navController.currentBackStackEntry
-                ?.savedStateHandle
-                ?.get<String>("card_scan_result")
 
             takagi.ru.monica.ui.screens.AddEditBankCardScreen(
                 viewModel = bankCardViewModel,
                 cardId = if (cardId > 0) cardId else null,
-                cardScanResultJson = cardScanResult,
-                onCardScanResultConsumed = {
-                    navController.currentBackStackEntry
-                        ?.savedStateHandle
-                        ?.remove<String>("card_scan_result")
-                },
-                onScanCard = {
-                    navController.navigate(Screen.CardScanner.route)
-                },
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -865,22 +874,10 @@ fun MonicaContent(
 
         composable(Screen.AddEditDocument.route) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
-            val documentScanResult = navController.currentBackStackEntry
-                ?.savedStateHandle
-                ?.get<String>("document_scan_result")
 
             takagi.ru.monica.ui.screens.AddEditDocumentScreen(
                 viewModel = documentViewModel,
                 documentId = if (documentId > 0) documentId else null,
-                documentScanResultJson = documentScanResult,
-                onDocumentScanResultConsumed = {
-                    navController.currentBackStackEntry
-                        ?.savedStateHandle
-                        ?.remove<String>("document_scan_result")
-                },
-                onScanDocument = {
-                    navController.navigate(Screen.DocumentScanner.route)
-                },
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -972,87 +969,103 @@ fun MonicaContent(
             )
         }
 
-        composable(Screen.CardScanner.route) {
-            CardScannerScreen(
-                onCardScanned = { scanResult ->
-                    val payload = kotlinx.serialization.json.Json.encodeToString(
-                        takagi.ru.monica.data.model.CardScanResult.serializer(),
-                        scanResult
-                    )
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("card_scan_result", payload)
-                    navController.popBackStack()
-                },
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
-        composable(Screen.DocumentScanner.route) {
-            DocumentScannerScreen(
-                onDocumentScanned = { scanResult ->
-                    val payload = kotlinx.serialization.json.Json.encodeToString(
-                        takagi.ru.monica.data.model.DocumentScanResult.serializer(),
-                        scanResult
-                    )
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("document_scan_result", payload)
-                    navController.popBackStack()
-                },
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
         // 快速扫码添加验证器 - 扫描后直接保存到数据库
         composable(Screen.QuickTotpScan.route) {
             val context = LocalContext.current
             takagi.ru.monica.ui.screens.QrScannerScreen(
                 onQrCodeScanned = { qrData ->
-                    // 解析扫描到的 otpauth:// URI
-                    val parseResult = takagi.ru.monica.util.TotpUriParser.parseUri(qrData)
-                    if (parseResult != null) {
-                        // 使用label作为标题，如果为空则用issuer或accountName
-                        val title = parseResult.label.takeIf { it.isNotBlank() }
-                            ?: parseResult.totpData.issuer.takeIf { it.isNotBlank() }
-                            ?: parseResult.totpData.accountName.takeIf { it.isNotBlank() }
-                            ?: "未命名验证器"
-                        
-                        // 检查是否已存在相同密钥的验证器
-                        val existingItem = totpViewModel.findTotpBySecret(parseResult.totpData.secret)
-                        if (existingItem != null) {
-                            // 已存在相同密钥，显示提示
-                            android.widget.Toast.makeText(
+                    fun resolveTitle(item: takagi.ru.monica.util.TotpParseResult): String {
+                        return item.label.takeIf { it.isNotBlank() }
+                            ?: item.totpData.issuer.takeIf { it.isNotBlank() }
+                            ?: item.totpData.accountName.takeIf { it.isNotBlank() }
+                            ?: context.getString(R.string.untitled)
+                    }
+
+                    when (val scanResult = takagi.ru.monica.util.TotpUriParser.parseScannedContent(qrData)) {
+                        is takagi.ru.monica.util.TotpScanParseResult.Single -> {
+                            val title = resolveTitle(scanResult.item)
+                            val existingItem = totpViewModel.findTotpBySecret(scanResult.item.totpData.secret)
+                            if (existingItem != null) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.qr_authenticator_duplicate, existingItem.title),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                totpViewModel.saveTotpItem(
+                                    id = null,
+                                    title = title,
+                                    notes = "",
+                                    totpData = scanResult.item.totpData,
+                                    isFavorite = false
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.qr_authenticator_added, title),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                        is takagi.ru.monica.util.TotpScanParseResult.Multiple -> {
+                            var addedCount = 0
+                            var duplicateCount = 0
+                            var invalidCount = 0
+                            val batchSecretSet = mutableSetOf<String>()
+
+                            scanResult.items.forEach { item ->
+                                val secret = item.totpData.secret.trim()
+                                if (secret.isBlank()) {
+                                    invalidCount++
+                                    return@forEach
+                                }
+
+                                if (!batchSecretSet.add(secret)) {
+                                    duplicateCount++
+                                    return@forEach
+                                }
+
+                                val existingItem = totpViewModel.findTotpBySecret(secret)
+                                if (existingItem != null) {
+                                    duplicateCount++
+                                    return@forEach
+                                }
+
+                                val title = resolveTitle(item)
+                                totpViewModel.saveTotpItem(
+                                    id = null,
+                                    title = title,
+                                    notes = "",
+                                    totpData = item.totpData,
+                                    isFavorite = false
+                                )
+                                addedCount++
+                            }
+
+                            Toast.makeText(
                                 context,
-                                "该验证器已存在: ${existingItem.title}",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        } else {
-                            // 直接保存到数据库
-                            totpViewModel.saveTotpItem(
-                                id = null,
-                                title = title,
-                                notes = "",
-                                totpData = parseResult.totpData,
-                                isFavorite = false
-                            )
-                            android.widget.Toast.makeText(
-                                context,
-                                "已添加验证器: $title",
-                                android.widget.Toast.LENGTH_SHORT
+                                context.getString(
+                                    R.string.qr_authenticator_migration_result,
+                                    addedCount,
+                                    duplicateCount,
+                                    invalidCount
+                                ),
+                                Toast.LENGTH_LONG
                             ).show()
                         }
-                    } else {
-                        // 解析失败，显示错误提示
-                        android.widget.Toast.makeText(
-                            context,
-                            "无效的二维码，请扫描有效的验证器二维码",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
+                        takagi.ru.monica.util.TotpScanParseResult.UnsupportedPhoneFactor -> {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.qr_phonefactor_not_supported),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        takagi.ru.monica.util.TotpScanParseResult.InvalidFormat -> {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.qr_invalid_authenticator),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
                     navController.popBackStack()
                 },
