@@ -3,11 +3,13 @@ package takagi.ru.monica.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -24,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.ColorScheme
+import takagi.ru.monica.ui.theme.generateCustomMaterialColorScheme
 import takagi.ru.monica.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
@@ -33,8 +36,25 @@ fun ColorSchemeSelectionScreen(
     onNavigateBack: () -> Unit,
     onNavigateToCustomColors: () -> Unit
 ) {
-    val context = LocalContext.current
     val settings by settingsViewModel.settings.collectAsState()
+    val isDarkTheme = isSystemInDarkTheme()
+    val customPreviewScheme = remember(
+        settings.customPrimaryColor,
+        settings.customSecondaryColor,
+        settings.customTertiaryColor,
+        settings.customNeutralColor,
+        settings.customNeutralVariantColor,
+        isDarkTheme
+    ) {
+        generateCustomMaterialColorScheme(
+            darkTheme = isDarkTheme,
+            primarySeed = settings.customPrimaryColor,
+            secondarySeed = settings.customSecondaryColor,
+            tertiarySeed = settings.customTertiaryColor,
+            neutralSeed = settings.customNeutralColor,
+            neutralVariantSeed = settings.customNeutralVariantColor
+        )
+    }
     
     // 用于即时预览的颜色方案
     var previewColorScheme by remember { mutableStateOf(settings.colorScheme) }
@@ -367,6 +387,7 @@ fun ColorSchemeSelectionScreen(
                 primaryColor = Color(settings.customPrimaryColor),
                 secondaryColor = Color(settings.customSecondaryColor),
                 tertiaryColor = Color(settings.customTertiaryColor),
+                customPreviewScheme = customPreviewScheme,
                 isSelected = previewColorScheme == ColorScheme.CUSTOM,
                 onClick = { 
                     // 导航到自定义颜色设置界面
@@ -386,6 +407,7 @@ fun ColorSchemeOption(
     primaryColor: Color,
     secondaryColor: Color,
     tertiaryColor: Color,
+    customPreviewScheme: androidx.compose.material3.ColorScheme? = null,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
@@ -404,30 +426,80 @@ fun ColorSchemeOption(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 颜色预览圆点
-            Row(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-            ) {
-                Box(
+            if (customPreviewScheme == null) {
+                // 传统三色预览（预设主题）
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(primaryColor)
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(secondaryColor)
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(tertiaryColor)
-                )
+                        .size(48.dp)
+                        .clip(CircleShape)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(primaryColor)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(secondaryColor)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(tertiaryColor)
+                    )
+                }
+            } else {
+                // M3 自定义主题预览（展示完整角色风格）
+                Surface(
+                    modifier = Modifier.size(60.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = customPreviewScheme.surfaceContainerLow
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(6.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(customPreviewScheme.primary)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(customPreviewScheme.secondary)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(customPreviewScheme.tertiary)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(customPreviewScheme.primaryContainer)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(customPreviewScheme.outlineVariant)
+                        )
+                    }
+                }
             }
             
             Spacer(modifier = Modifier.width(16.dp))

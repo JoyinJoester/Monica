@@ -168,7 +168,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 colorScheme = settings.colorScheme,
                 customPrimaryColor = settings.customPrimaryColor,
                 customSecondaryColor = settings.customSecondaryColor,
-                customTertiaryColor = settings.customTertiaryColor
+                customTertiaryColor = settings.customTertiaryColor,
+                customNeutralColor = settings.customNeutralColor,
+                customNeutralVariantColor = settings.customNeutralVariantColor
             ) {
                 AutofillPickerContent(
                     args = args,

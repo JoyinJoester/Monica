@@ -102,9 +102,15 @@ class SettingsViewModel(
         }
     }
 
-    fun updateCustomColors(primary: Long, secondary: Long, tertiary: Long) {
+    fun updateCustomColors(
+        primary: Long,
+        secondary: Long,
+        tertiary: Long,
+        neutral: Long = primary,
+        neutralVariant: Long = secondary
+    ) {
         viewModelScope.launch {
-            settingsManager.updateCustomColors(primary, secondary, tertiary)
+            settingsManager.updateCustomColors(primary, secondary, tertiary, neutral, neutralVariant)
         }
     }
 

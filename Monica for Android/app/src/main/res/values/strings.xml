@@ -917,17 +917,31 @@
     <string name="custom_color_scheme">Custom Colors</string>
     <string name="custom_color_scheme_description">Customize three seed colors for the app theme</string>
     <string name="custom_color_scheme_generated_hint">Material 3 roles (surface, container, outline, on-colors) are generated automatically from your seeds.</string>
+    <string name="custom_color_presets">Monica Presets</string>
     <string name="seed_colors">Seed Colors</string>
     <string name="live_preview">Live Preview</string>
     <string name="reset_custom_colors">Reset</string>
+    <string name="custom_preview_mode_dark">Preview mode: Dark</string>
+    <string name="custom_preview_mode_light">Preview mode: Light</string>
+    <string name="custom_preview_mini_title">Monica Preview</string>
     <string name="custom_preview_primary_container">Primary Container</string>
     <string name="custom_preview_surface_outline">Surface / Outline</string>
+    <string name="custom_preview_button">Button</string>
+    <string name="custom_preview_chip">Chip</string>
     <string name="current_colors">Current Colors</string>
     <string name="primary_color">Primary</string>
     <string name="secondary_color">Secondary</string>
     <string name="tertiary_color">Tertiary</string>
+    <string name="neutral_color">Neutral</string>
+    <string name="neutral_variant_color">Neutral Variant</string>
     <string name="apply_custom_colors">Apply Custom Colors</string>
     <string name="select_color">Select Color</string>
+    <string name="custom_color_hex_label">Hex Color</string>
+    <string name="custom_color_quick_swatches">Quick Swatches</string>
+    <string name="custom_color_invalid_hex">Invalid hex format. Use #RRGGBB</string>
+    <string name="custom_color_hue">Hue</string>
+    <string name="custom_color_saturation">Saturation</string>
+    <string name="custom_color_value">Brightness</string>
     <string name="select_from_preset_colors">Select from preset colors</string>
     
     <!-- Validator Progress Bar Style -->

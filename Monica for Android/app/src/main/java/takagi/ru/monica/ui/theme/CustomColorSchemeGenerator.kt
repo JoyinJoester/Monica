@@ -19,11 +19,15 @@ private fun buildCompositeDynamicScheme(
     darkTheme: Boolean,
     primarySeed: Long,
     secondarySeed: Long,
-    tertiarySeed: Long
+    tertiarySeed: Long,
+    neutralSeed: Long,
+    neutralVariantSeed: Long
 ): DynamicScheme {
     val primaryHct = Hct.fromInt(primarySeed.toArgbInt())
     val secondaryHct = Hct.fromInt(secondarySeed.toArgbInt())
     val tertiaryHct = Hct.fromInt(tertiarySeed.toArgbInt())
+    val neutralHct = Hct.fromInt(neutralSeed.toArgbInt())
+    val neutralVariantHct = Hct.fromInt(neutralVariantSeed.toArgbInt())
 
     return DynamicScheme(
         primaryHct,
@@ -33,8 +37,8 @@ private fun buildCompositeDynamicScheme(
         TonalPalette.fromHct(primaryHct),
         TonalPalette.fromHct(secondaryHct),
         TonalPalette.fromHct(tertiaryHct),
-        TonalPalette.fromHueAndChroma(primaryHct.hue, 8.0),
-        TonalPalette.fromHueAndChroma(secondaryHct.hue, 12.0)
+        TonalPalette.fromHct(neutralHct),
+        TonalPalette.fromHct(neutralVariantHct)
     )
 }
 
@@ -45,13 +49,17 @@ fun generateCustomMaterialColorScheme(
     darkTheme: Boolean,
     primarySeed: Long,
     secondarySeed: Long,
-    tertiarySeed: Long
+    tertiarySeed: Long,
+    neutralSeed: Long = primarySeed,
+    neutralVariantSeed: Long = secondarySeed
 ): ColorScheme {
     val scheme = buildCompositeDynamicScheme(
         darkTheme = darkTheme,
         primarySeed = primarySeed,
         secondarySeed = secondarySeed,
-        tertiarySeed = tertiarySeed
+        tertiarySeed = tertiarySeed,
+        neutralSeed = neutralSeed,
+        neutralVariantSeed = neutralVariantSeed
     )
     val roles = MaterialDynamicColors()
 

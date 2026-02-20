@@ -349,7 +349,9 @@ fun MonicaApp(
         colorScheme = settings.colorScheme,
         customPrimaryColor = settings.customPrimaryColor,
         customSecondaryColor = settings.customSecondaryColor,
-        customTertiaryColor = settings.customTertiaryColor
+        customTertiaryColor = settings.customTertiaryColor,
+        customNeutralColor = settings.customNeutralColor,
+        customNeutralVariantColor = settings.customNeutralVariantColor
     ) {
         // 应用防截屏保护
         ScreenshotProtection(enabled = settings.screenshotProtectionEnabled)

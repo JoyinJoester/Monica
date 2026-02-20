@@ -878,17 +878,31 @@
     <string name="custom_color_scheme">自定义颜色</string>
     <string name="custom_color_scheme_description">为应用主题设置三种种子色</string>
     <string name="custom_color_scheme_generated_hint">系统会根据种子色自动生成完整的 Material 3 角色色（表面、容器、描边、前景色等）。</string>
+    <string name="custom_color_presets">Monica 预置配色</string>
     <string name="seed_colors">种子颜色</string>
     <string name="live_preview">实时预览</string>
     <string name="reset_custom_colors">重置</string>
+    <string name="custom_preview_mode_dark">预览模式：深色</string>
+    <string name="custom_preview_mode_light">预览模式：浅色</string>
+    <string name="custom_preview_mini_title">Monica 预览</string>
     <string name="custom_preview_primary_container">主色容器</string>
     <string name="custom_preview_surface_outline">表面 / 描边</string>
+    <string name="custom_preview_button">按钮</string>
+    <string name="custom_preview_chip">标签</string>
     <string name="current_colors">当前颜色</string>
     <string name="primary_color">主要颜色</string>
     <string name="secondary_color">次要颜色</string>
     <string name="tertiary_color">第三颜色</string>
+    <string name="neutral_color">中性色</string>
+    <string name="neutral_variant_color">中性变体色</string>
     <string name="apply_custom_colors">应用自定义颜色</string>
     <string name="select_color">选择颜色</string>
+    <string name="custom_color_hex_label">16进制颜色</string>
+    <string name="custom_color_quick_swatches">快捷色板</string>
+    <string name="custom_color_invalid_hex">格式错误，请使用 #RRGGBB</string>
+    <string name="custom_color_hue">色相</string>
+    <string name="custom_color_saturation">饱和度</string>
+    <string name="custom_color_value">亮度</string>
     <string name="select_from_preset_colors">从预设颜色中选择</string>
     
     <!-- Validator Progress Bar Style -->

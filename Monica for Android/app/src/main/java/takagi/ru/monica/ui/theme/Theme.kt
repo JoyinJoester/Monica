@@ -873,20 +873,36 @@ private val CatMochaDarkColorScheme = darkColorScheme(
 // ============================================
 // 🎨 自定义方案
 // ============================================
-private fun customDarkColorScheme(primary: Long, secondary: Long, tertiary: Long) =
+private fun customDarkColorScheme(
+    primary: Long,
+    secondary: Long,
+    tertiary: Long,
+    neutral: Long,
+    neutralVariant: Long
+) =
     generateCustomMaterialColorScheme(
         darkTheme = true,
         primarySeed = primary,
         secondarySeed = secondary,
-        tertiarySeed = tertiary
+        tertiarySeed = tertiary,
+        neutralSeed = neutral,
+        neutralVariantSeed = neutralVariant
     )
 
-private fun customLightColorScheme(primary: Long, secondary: Long, tertiary: Long) =
+private fun customLightColorScheme(
+    primary: Long,
+    secondary: Long,
+    tertiary: Long,
+    neutral: Long,
+    neutralVariant: Long
+) =
     generateCustomMaterialColorScheme(
         darkTheme = false,
         primarySeed = primary,
         secondarySeed = secondary,
-        tertiarySeed = tertiary
+        tertiarySeed = tertiary,
+        neutralSeed = neutral,
+        neutralVariantSeed = neutralVariant
     )
 
 @Composable
@@ -898,6 +914,8 @@ fun MonicaTheme(
     customPrimaryColor: Long = 0xFF6650a4,
     customSecondaryColor: Long = 0xFF625b71,
     customTertiaryColor: Long = 0xFF7D5260,
+    customNeutralColor: Long = 0xFF605D66,
+    customNeutralVariantColor: Long = 0xFF625B71,
     content: @Composable () -> Unit
 ) {
     val finalColorScheme = when {
@@ -972,9 +990,21 @@ fun MonicaTheme(
         
         colorScheme == ColorScheme.CUSTOM -> {
             if (darkTheme) {
-                customDarkColorScheme(customPrimaryColor, customSecondaryColor, customTertiaryColor)
+                customDarkColorScheme(
+                    customPrimaryColor,
+                    customSecondaryColor,
+                    customTertiaryColor,
+                    customNeutralColor,
+                    customNeutralVariantColor
+                )
             } else {
-                customLightColorScheme(customPrimaryColor, customSecondaryColor, customTertiaryColor)
+                customLightColorScheme(
+                    customPrimaryColor,
+                    customSecondaryColor,
+                    customTertiaryColor,
+                    customNeutralColor,
+                    customNeutralVariantColor
+                )
             }
         }
         

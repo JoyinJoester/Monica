@@ -288,6 +288,8 @@ data class AppSettings(
     val customPrimaryColor: Long = 0xFF6650a4, // 默认紫色
     val customSecondaryColor: Long = 0xFF625b71, // 默认紫色灰色
     val customTertiaryColor: Long = 0xFF7D5260, // 默认粉色
+    val customNeutralColor: Long = 0xFF605D66, // 默认中性色
+    val customNeutralVariantColor: Long = 0xFF625B71, // 默认中性变体色
     val language: Language = Language.SYSTEM,
     val biometricEnabled: Boolean = false, // 生物识别认证默认关闭
     val autoLockMinutes: Int = 5, // Auto lock after X minutes of inactivity

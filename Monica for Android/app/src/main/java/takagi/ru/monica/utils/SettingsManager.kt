@@ -44,6 +44,8 @@ class SettingsManager(private val context: Context) {
         private val CUSTOM_PRIMARY_COLOR_KEY = longPreferencesKey("custom_primary_color")
         private val CUSTOM_SECONDARY_COLOR_KEY = longPreferencesKey("custom_secondary_color")
         private val CUSTOM_TERTIARY_COLOR_KEY = longPreferencesKey("custom_tertiary_color")
+        private val CUSTOM_NEUTRAL_COLOR_KEY = longPreferencesKey("custom_neutral_color")
+        private val CUSTOM_NEUTRAL_VARIANT_COLOR_KEY = longPreferencesKey("custom_neutral_variant_color")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
@@ -156,6 +158,10 @@ class SettingsManager(private val context: Context) {
             customPrimaryColor = preferences[CUSTOM_PRIMARY_COLOR_KEY] ?: 0xFF6650a4,
             customSecondaryColor = preferences[CUSTOM_SECONDARY_COLOR_KEY] ?: 0xFF625b71,
             customTertiaryColor = preferences[CUSTOM_TERTIARY_COLOR_KEY] ?: 0xFF7D5260,
+            customNeutralColor = preferences[CUSTOM_NEUTRAL_COLOR_KEY]
+                ?: (preferences[CUSTOM_PRIMARY_COLOR_KEY] ?: 0xFF605D66),
+            customNeutralVariantColor = preferences[CUSTOM_NEUTRAL_VARIANT_COLOR_KEY]
+                ?: (preferences[CUSTOM_SECONDARY_COLOR_KEY] ?: 0xFF625B71),
             language = Language.valueOf(
                 preferences[LANGUAGE_KEY] ?: Language.SYSTEM.name
             ),
@@ -317,11 +323,19 @@ class SettingsManager(private val context: Context) {
         }
     }
 
-    suspend fun updateCustomColors(primary: Long, secondary: Long, tertiary: Long) {
+    suspend fun updateCustomColors(
+        primary: Long,
+        secondary: Long,
+        tertiary: Long,
+        neutral: Long = primary,
+        neutralVariant: Long = secondary
+    ) {
         dataStore.edit { preferences ->
             preferences[CUSTOM_PRIMARY_COLOR_KEY] = primary
             preferences[CUSTOM_SECONDARY_COLOR_KEY] = secondary
             preferences[CUSTOM_TERTIARY_COLOR_KEY] = tertiary
+            preferences[CUSTOM_NEUTRAL_COLOR_KEY] = neutral
+            preferences[CUSTOM_NEUTRAL_VARIANT_COLOR_KEY] = neutralVariant
         }
     }
 
