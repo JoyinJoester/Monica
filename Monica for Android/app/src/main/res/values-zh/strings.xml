@@ -1901,6 +1901,11 @@
     <string name="sync_status_failed_full">同步失败</string>
     <string name="sync_status_conflict_full">存在同步冲突</string>
     <string name="sync_status_local_full">仅本地存储</string>
+    <string name="pull_release_to_search">松手搜索</string>
+    <string name="pull_release_to_sync_bitwarden">松手进行 Bitwarden 同步</string>
+    <string name="pull_syncing_bitwarden">正在同步 Bitwarden...</string>
+    <string name="pull_sync_requires_bitwarden_login">请先登录并解锁 Bitwarden</string>
+    <string name="pull_sync_success">Bitwarden 同步完成</string>
     <string name="time_just_now">刚刚</string>
     <string name="time_minutes_ago">%1$d 分钟前</string>
     <string name="time_hours_ago">%1$d 小时前</string>

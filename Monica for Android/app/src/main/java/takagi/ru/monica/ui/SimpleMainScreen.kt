@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -31,6 +32,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -70,6 +72,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -153,6 +156,9 @@ import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditNoteScreen
 import takagi.ru.monica.ui.screens.AddEditSendScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 private fun SelectionActionBar(
@@ -244,6 +250,143 @@ private fun ActionIcon(icon: ImageVector, contentDescription: String, onClick: (
             contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+private enum class PullActionVisualState {
+    IDLE,
+    SEARCH_READY,
+    SYNC_READY,
+    SYNCING,
+    SYNC_DONE
+}
+
+@Composable
+private fun ExpressiveShapeIndicator(
+    state: PullActionVisualState,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    val ringScale = when (state) {
+        PullActionVisualState.IDLE -> 0.86f
+        PullActionVisualState.SEARCH_READY -> 0.94f + (progress * 0.1f)
+        PullActionVisualState.SYNC_READY -> 1f + (progress * 0.14f)
+        PullActionVisualState.SYNCING -> 1.18f
+        PullActionVisualState.SYNC_DONE -> 1.12f
+    }
+    val coreColor = if (state == PullActionVisualState.SYNC_DONE) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    val ringColor = MaterialTheme.colorScheme.primary.copy(
+        alpha = when (state) {
+            PullActionVisualState.IDLE -> 0.12f
+            PullActionVisualState.SEARCH_READY -> 0.18f
+            PullActionVisualState.SYNC_READY -> 0.24f
+            PullActionVisualState.SYNCING -> 0.28f
+            PullActionVisualState.SYNC_DONE -> 0.24f
+        }
+    )
+    Box(
+        modifier = modifier.size(40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size((34f * ringScale).dp)
+                .clip(CircleShape)
+                .background(ringColor)
+        )
+        Canvas(modifier = Modifier.size(22.dp)) {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val baseRadius = size.minDimension * 0.42f
+            val lobeAmplitude = size.minDimension * 0.08f
+            val lobes = 9
+            val path = Path()
+            for (i in 0..120) {
+                val t = (i.toFloat() / 120f) * (2f * PI.toFloat())
+                val radius = baseRadius + lobeAmplitude * sin(lobes * t)
+                val x = cx + radius * cos(t)
+                val y = cy + radius * sin(t)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            drawPath(path = path, color = coreColor)
+        }
+    }
+}
+
+@Composable
+private fun PullGestureIndicator(
+    state: PullActionVisualState,
+    searchProgress: Float,
+    syncProgress: Float,
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val highlight = state == PullActionVisualState.SYNC_READY ||
+            state == PullActionVisualState.SYNCING ||
+            state == PullActionVisualState.SYNC_DONE
+    val containerColor = if (highlight) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val contentColor = if (highlight) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val indicatorProgress = when (state) {
+        PullActionVisualState.SEARCH_READY -> searchProgress
+        PullActionVisualState.SYNC_READY -> syncProgress
+        PullActionVisualState.SYNCING -> 1f
+        PullActionVisualState.SYNC_DONE -> 1f
+        PullActionVisualState.IDLE -> 0f
+    }
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = containerColor,
+        tonalElevation = 4.dp,
+        shadowElevation = 6.dp,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ExpressiveShapeIndicator(
+                    state = state,
+                    progress = indicatorProgress
+                )
+
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = contentColor,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            LinearProgressIndicator(
+                progress = {
+                    if (state == PullActionVisualState.SYNCING) 1f else indicatorProgress.coerceIn(0f, 1f)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(50)),
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 
@@ -2917,8 +3060,18 @@ private fun PasswordListContent(
     // Pull-to-search state
     var currentOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
     val triggerDistance = remember(density) { with(density) { 40.dp.toPx() } }
+    val syncTriggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
     val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
+    val syncHoldMillis = 500L
     var hasVibrated by remember { mutableStateOf(false) }
+    var hasSyncStageVibrated by remember { mutableStateOf(false) }
+    var syncHintArmed by remember { mutableStateOf(false) }
+    var isBitwardenSyncing by remember { mutableStateOf(false) }
+    var lockPullUntilSyncFinished by remember { mutableStateOf(false) }
+    var canRunBitwardenSync by remember { mutableStateOf(false) }
+    var showSyncFeedback by remember { mutableStateOf(false) }
+    var syncFeedbackMessage by remember { mutableStateOf("") }
+    var syncFeedbackIsSuccess by remember { mutableStateOf(false) }
     
     // Vibrator
     val vibrator = remember {
@@ -2931,9 +3084,162 @@ private fun PasswordListContent(
         }
     }
 
+    suspend fun resolveSyncableVaultId(): Long? {
+        val activeVault = bitwardenRepository.getActiveVault() ?: run {
+            canRunBitwardenSync = false
+            return null
+        }
+        val unlocked = bitwardenRepository.isVaultUnlocked(activeVault.id)
+        canRunBitwardenSync = unlocked
+        return if (unlocked) activeVault.id else null
+    }
+
+    fun vibratePullThreshold(isSyncStage: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (isSyncStage && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                vibrator?.vibrate(
+                    android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_DOUBLE_CLICK)
+                )
+            } else {
+                vibrator?.vibrate(
+                    android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1)
+                )
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(if (isSyncStage) 36 else 20)
+        }
+    }
+
+    fun updatePullThresholdHaptics(oldOffset: Float, newOffset: Float) {
+        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
+            hasVibrated = true
+            vibratePullThreshold(isSyncStage = false)
+        } else if (newOffset < triggerDistance) {
+            hasVibrated = false
+        }
+
+        if (oldOffset < syncTriggerDistance && newOffset >= syncTriggerDistance && !hasSyncStageVibrated) {
+            hasSyncStageVibrated = true
+            vibratePullThreshold(isSyncStage = true)
+        } else if (newOffset < syncTriggerDistance) {
+            hasSyncStageVibrated = false
+        }
+    }
+
+    suspend fun collapsePullOffsetSmoothly() {
+        if (currentOffset <= 0.5f) {
+            currentOffset = 0f
+            return
+        }
+        androidx.compose.animation.core.Animatable(currentOffset).animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = 220)
+        ) {
+            currentOffset = value
+        }
+    }
+
+    fun onPullRelease(): Boolean {
+        if (syncHintArmed && !isBitwardenSyncing) {
+            syncHintArmed = false
+            isBitwardenSyncing = true
+            lockPullUntilSyncFinished = true
+            currentOffset = syncTriggerDistance
+            coroutineScope.launch {
+                val vaultId = resolveSyncableVaultId()
+                if (vaultId == null) {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.pull_sync_requires_bitwarden_login),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    isBitwardenSyncing = false
+                    lockPullUntilSyncFinished = false
+                    hasVibrated = false
+                    hasSyncStageVibrated = false
+                    collapsePullOffsetSmoothly()
+                    return@launch
+                }
+
+                val syncResult = bitwardenRepository.sync(vaultId)
+                when (syncResult) {
+                    is takagi.ru.monica.bitwarden.repository.BitwardenRepository.SyncResult.Success -> {
+                        syncFeedbackIsSuccess = true
+                        syncFeedbackMessage = context.getString(R.string.pull_sync_success)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.pull_sync_success),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is takagi.ru.monica.bitwarden.repository.BitwardenRepository.SyncResult.Error -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.message,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is takagi.ru.monica.bitwarden.repository.BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.reason,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                isBitwardenSyncing = false
+                lockPullUntilSyncFinished = false
+                hasVibrated = false
+                hasSyncStageVibrated = false
+                collapsePullOffsetSmoothly()
+                kotlinx.coroutines.delay(1400)
+                showSyncFeedback = false
+            }
+            return true
+        }
+
+        if (currentOffset >= triggerDistance) {
+            isSearchExpanded = true
+            hasVibrated = false
+        }
+        return false
+    }
+
+    LaunchedEffect(Unit) {
+        resolveSyncableVaultId()
+    }
+
+    LaunchedEffect(currentOffset >= syncTriggerDistance, isBitwardenSyncing) {
+        if (currentOffset >= syncTriggerDistance && !isBitwardenSyncing) {
+            resolveSyncableVaultId()
+        }
+    }
+
+    LaunchedEffect(currentOffset, canRunBitwardenSync, isBitwardenSyncing) {
+        if (currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+            kotlinx.coroutines.delay(syncHoldMillis)
+            if (currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+                syncHintArmed = true
+            }
+        } else {
+            syncHintArmed = false
+        }
+    }
+
     val nestedScrollConnection = remember {
         object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
             override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
                 if (currentOffset > 0 && available.y < 0) {
                     val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
                     val consumed = currentOffset - newOffset
@@ -2944,36 +3250,25 @@ private fun PasswordListContent(
             }
             
             override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
                  // Allow UserInput to trigger pull
                 if (available.y > 0 && source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
                     val delta = available.y * 0.5f // Damping
                     val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
                     val oldOffset = currentOffset
                     currentOffset = newOffset
-                    
-                    if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                        hasVibrated = true
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                             vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
-                        } else {
-                            @Suppress("DEPRECATION")
-                            vibrator?.vibrate(20)
-                        }
-                    } else if (newOffset < triggerDistance) {
-                        hasVibrated = false
-                    }
+                    updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
                     return available
                 }
                 return androidx.compose.ui.geometry.Offset.Zero
             }
             
             override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
-                if (currentOffset >= triggerDistance) {
-                     isSearchExpanded = true
-                     hasVibrated = false
-                }
-                androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
-                    currentOffset = value
+                val syncStarted = onPullRelease()
+                if (!syncStarted && !lockPullUntilSyncFinished) {
+                    collapsePullOffsetSmoothly()
                 }
                 return androidx.compose.ui.unit.Velocity.Zero
             }
@@ -3654,84 +3949,128 @@ private fun PasswordListContent(
                     expandedGroups = emptySet()
                 }
         ) {
-            if (passwordEntries.isEmpty() && searchQuery.isEmpty()) {
-                // Empty state with pull-to-search
+            val searchProgress = (currentOffset / triggerDistance).coerceIn(0f, 1f)
+            val syncProgress = ((currentOffset - triggerDistance) / (syncTriggerDistance - triggerDistance))
+                .coerceIn(0f, 1f)
+            val pullVisualState = when {
+                isBitwardenSyncing -> PullActionVisualState.SYNCING
+                showSyncFeedback -> PullActionVisualState.SYNC_DONE
+                syncHintArmed -> PullActionVisualState.SYNC_READY
+                currentOffset >= triggerDistance -> PullActionVisualState.SEARCH_READY
+                else -> PullActionVisualState.IDLE
+            }
+            val pullHintText = when (pullVisualState) {
+                PullActionVisualState.SYNCING -> stringResource(R.string.pull_syncing_bitwarden)
+                PullActionVisualState.SYNC_DONE -> syncFeedbackMessage.ifBlank {
+                    if (syncFeedbackIsSuccess) {
+                        stringResource(R.string.pull_sync_success)
+                    } else {
+                        stringResource(R.string.sync_status_failed_full)
+                    }
+                }
+                PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
+                PullActionVisualState.SEARCH_READY -> stringResource(R.string.pull_release_to_search)
+                PullActionVisualState.IDLE -> null
+            }
+            val revealHeightTarget = with(density) {
+                currentOffset.toDp().coerceIn(0.dp, 112.dp)
+            }
+            val revealHeight by animateDpAsState(
+                targetValue = revealHeightTarget,
+                animationSpec = tween(durationMillis = 90),
+                label = "pull_reveal_height"
+            )
+            val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+
+            Column(modifier = Modifier.fillMaxSize()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
-                        .pointerInput(Unit) {
-                            detectDragGesturesAfterLongPress(
-                                onDrag = { _, _ -> } // Consume long press to prevent issues
-                            )
-                        }
-                        .pointerInput(Unit) {
-                             detectVerticalDragGestures(
-                                onVerticalDrag = { _, dragAmount ->
-                                    if (dragAmount > 0) {
-                                        val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
-                                        val oldOffset = currentOffset
-                                        currentOffset = newOffset
-                                        
-                                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                                            hasVibrated = true
-                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                                 vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
-                                            } else {
-                                                @Suppress("DEPRECATION")
-                                                vibrator?.vibrate(20)
-                                            }
-                                        } else if (newOffset < triggerDistance) {
-                                           hasVibrated = false
-                                        }
-                                    }
-                                },
-                                onDragEnd = {
-                                    if (currentOffset >= triggerDistance) {
-                                        isSearchExpanded = true
-                                        hasVibrated = false
-                                    }
-                                    coroutineScope.launch {
-                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) { currentOffset = value }
-                                    }
-                                },
-                                onDragCancel = {
-                                    coroutineScope.launch {
-                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) { currentOffset = value }
-                                    }
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .height(revealHeight),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
-                    ) {
-                        Icon(
-                            Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = stringResource(R.string.no_passwords_saved),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    if (showPullIndicator) {
+                        PullGestureIndicator(
+                            state = pullVisualState,
+                            searchProgress = searchProgress,
+                            syncProgress = syncProgress,
+                            text = pullHintText ?: "",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                                .padding(bottom = 8.dp)
                         )
                     }
                 }
-            } else {
-                LazyColumn(
-                    state = androidx.compose.foundation.lazy.rememberLazyListState(),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .offset { androidx.compose.ui.unit.IntOffset(0, currentOffset.toInt()) }
-                        .nestedScroll(nestedScrollConnection),
-                    contentPadding = PaddingValues(horizontal = 16.dp)
-                ) {
+                if (showPullIndicator) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                if (passwordEntries.isEmpty() && searchQuery.isEmpty()) {
+                    // Empty state with pull-to-search
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                detectDragGesturesAfterLongPress(
+                                    onDrag = { _, _ -> } // Consume long press to prevent issues
+                                )
+                            }
+                            .pointerInput(Unit) {
+                                 detectVerticalDragGestures(
+                                    onVerticalDrag = { _, dragAmount ->
+                                        if (lockPullUntilSyncFinished) {
+                                            return@detectVerticalDragGestures
+                                        }
+                                        if (dragAmount > 0) {
+                                            val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
+                                            val oldOffset = currentOffset
+                                            currentOffset = newOffset
+                                            updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        val syncStarted = onPullRelease()
+                                        if (!syncStarted && !lockPullUntilSyncFinished) {
+                                            coroutineScope.launch { collapsePullOffsetSmoothly() }
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        if (!lockPullUntilSyncFinished) {
+                                            coroutineScope.launch { collapsePullOffsetSmoothly() }
+                                        }
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                             Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = stringResource(R.string.no_passwords_saved),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = androidx.compose.foundation.lazy.rememberLazyListState(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .nestedScroll(nestedScrollConnection),
+                        contentPadding = PaddingValues(horizontal = 16.dp)
+                    ) {
                     groupedPasswords.forEach { (groupKey, passwords) ->
                     val isExpanded = when (effectiveStackCardMode) {
                         StackCardMode.AUTO -> expandedGroups.contains(groupKey)
@@ -3896,13 +4235,14 @@ private fun PasswordListContent(
                 }
             }
             
-            item {
-                Spacer(modifier = Modifier.height(80.dp))
+                    item {
+                        Spacer(modifier = Modifier.height(80.dp))
+                    }
+                }
+                }
             }
         }
-            } // Close else
-        } // Close Box
-    } // Close PasswordListContent
+    }
     
     val activity = context as? FragmentActivity
     val biometricHelper = remember { BiometricHelper(context) }
