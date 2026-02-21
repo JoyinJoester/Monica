@@ -1,10 +1,14 @@
 ### Monica for Android
+## 因为技术原因Monica的passkey可能无法与bitwarden同步
 ## 新增与优化
 - 升级自动填充兼容性，这次应该不会出现自动填充不触发的问题了。。。应该？
 - 自定义图标功能
 - 更换了新的扫码逻辑
 - 修复bitwarden通行秘钥同步问题
+- 优化了一下bitwarden以及webdav丢数据的问题
 
 ## UI/UX更新优化
 - 优化堆叠卡片展开收缩UX
+- 卡包页面证件和银行卡彻底合并
+- 自定义颜色功能更加好用
 ## bitwarden相关

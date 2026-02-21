@@ -8,10 +8,12 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.security.SecurityManager
@@ -28,6 +30,7 @@ class DocumentViewModel(
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
     securityManager: SecurityManager? = null
 ) : ViewModel() {
+    private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
 
     private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
         KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
@@ -280,12 +283,48 @@ class DocumentViewModel(
     fun deleteDocument(id: Long, softDelete: Boolean = true) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { item ->
+                val vaultId = item.bitwardenVaultId
+                val cipherId = item.bitwardenCipherId
+                val isBitwardenCipher = vaultId != null && !cipherId.isNullOrBlank()
+
+                if (isBitwardenCipher) {
+                    val queueResult = bitwardenRepository?.queueCipherDelete(
+                        vaultId = vaultId!!,
+                        cipherId = cipherId!!,
+                        entryId = item.id,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_DOCUMENT
+                    )
+                    if (queueResult?.isFailure == true) {
+                        Log.e("DocumentViewModel", "Queue Bitwarden delete failed: ${queueResult.exceptionOrNull()?.message}")
+                        return@launch
+                    }
+                }
+
                 if (item.keepassDatabaseId != null) {
                     val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
                     if (deleteResult?.isFailure == true) {
                         Log.e("DocumentViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        return@launch
                     }
                 }
+
+                if (isBitwardenCipher) {
+                    val softDeletedItem = item.copy(
+                        isDeleted = true,
+                        deletedAt = Date(),
+                        updatedAt = Date(),
+                        bitwardenLocalModified = true
+                    )
+                    repository.updateItem(softDeletedItem)
+                    OperationLogger.logDelete(
+                        itemType = OperationLogItemType.DOCUMENT,
+                        itemId = id,
+                        itemTitle = item.title,
+                        detail = "移入回收站（待同步删除）"
+                    )
+                    return@launch
+                }
+
                 if (softDelete) {
                     // 软删除：移动到回收站
                     repository.softDeleteItem(item)

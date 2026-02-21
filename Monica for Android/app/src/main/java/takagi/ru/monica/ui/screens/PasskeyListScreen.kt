@@ -59,6 +59,8 @@ import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.SyncStatusBadge
+import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
@@ -75,6 +77,7 @@ import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.autofill.ui.rememberAppIcon
 import takagi.ru.monica.autofill.ui.rememberFavicon
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
+import takagi.ru.monica.bitwarden.sync.SyncStatus
 
 /**
  * Passkey 列表屏幕
@@ -299,6 +302,17 @@ fun PasskeyListScreen(
         } else {
             categoryFilteredPasskeys.filterNot { it.credentialId == deletingId }
         }
+    }
+    val failedPasskeyCount = remember(visiblePasskeys) {
+        visiblePasskeys.count { it.syncStatus == "FAILED" }
+    }
+    var lastShownFailedPasskeyCount by remember { mutableIntStateOf(0) }
+    LaunchedEffect(failedPasskeyCount) {
+        if (failedPasskeyCount > 0 && failedPasskeyCount != lastShownFailedPasskeyCount) {
+            val message = context.getString(R.string.sync_status_failed_short) + " ($failedPasskeyCount)"
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+        lastShownFailedPasskeyCount = failedPasskeyCount
     }
     
     // 下拉搜索相关
@@ -927,40 +941,57 @@ fun PasskeyListScreen(
             onPasswordSelected = { password ->
                 val passkey = passkeyToBind!!
                 val previousPasswordId = passkey.boundPasswordId
+                scope.launch {
+                    if (passwordViewModel != null) {
+                        val newBinding = PasskeyBinding(
+                            credentialId = passkey.credentialId,
+                            rpId = passkey.rpId,
+                            rpName = passkey.rpName,
+                            userName = passkey.userName,
+                            userDisplayName = passkey.userDisplayName
+                        )
 
-                if (passwordViewModel != null) {
-                    val newBinding = PasskeyBinding(
-                        credentialId = passkey.credentialId,
-                        rpId = passkey.rpId,
-                        rpName = passkey.rpName,
-                        userName = passkey.userName,
-                        userDisplayName = passkey.userDisplayName
-                    )
+                        val targetEntry = passwordMap[password.id]
+                        if (targetEntry != null) {
+                            val updatedBindings = PasskeyBindingCodec.addBinding(targetEntry.passkeyBindings, newBinding)
+                            passwordViewModel.updatePasskeyBindings(password.id, updatedBindings)
+                        }
 
-                    val targetEntry = passwordMap[password.id]
-                    if (targetEntry != null) {
-                        val updatedBindings = PasskeyBindingCodec.addBinding(targetEntry.passkeyBindings, newBinding)
-                        passwordViewModel.updatePasskeyBindings(password.id, updatedBindings)
-                    }
-
-                    if (previousPasswordId != null && previousPasswordId != password.id) {
-                        val previousEntry = passwordMap[previousPasswordId]
-                        if (previousEntry != null) {
-                            val updatedBindings = PasskeyBindingCodec.removeBinding(previousEntry.passkeyBindings, passkey.credentialId)
-                            passwordViewModel.updatePasskeyBindings(previousPasswordId, updatedBindings)
+                        if (previousPasswordId != null && previousPasswordId != password.id) {
+                            val previousEntry = passwordMap[previousPasswordId]
+                            if (previousEntry != null) {
+                                val updatedBindings = PasskeyBindingCodec.removeBinding(previousEntry.passkeyBindings, passkey.credentialId)
+                                passwordViewModel.updatePasskeyBindings(previousPasswordId, updatedBindings)
+                            }
                         }
                     }
-                }
 
-                if (passkey.syncStatus != "REFERENCE") {
-                    viewModel.updatePasskey(
-                        passkey.copy(
-                            boundPasswordId = password.id,
-                            categoryId = password.categoryId
+                    if (passkey.syncStatus != "REFERENCE") {
+                        val vaultId = passkey.bitwardenVaultId
+                        val cipherId = passkey.bitwardenCipherId
+                        if (vaultId != null && !cipherId.isNullOrBlank()) {
+                            val queueResult = bitwardenRepository.queueCipherDelete(
+                                vaultId = vaultId,
+                                cipherId = cipherId,
+                                itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
+                            )
+                            if (queueResult.isFailure) {
+                                Toast.makeText(context, "操作失败", Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                        }
+                        viewModel.updatePasskey(
+                            passkey.copy(
+                                boundPasswordId = password.id,
+                                categoryId = password.categoryId,
+                                bitwardenVaultId = null,
+                                bitwardenCipherId = null,
+                                syncStatus = "NONE"
+                            )
                         )
-                    )
+                    }
+                    passkeyToBind = null
                 }
-                passkeyToBind = null
             }
         )
     }
@@ -1347,6 +1378,7 @@ private fun PasskeyListItem(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val syncStatus = remember(passkey.syncStatus) { SyncStatus.fromDbValue(passkey.syncStatus) }
     LaunchedEffect(selectionMode) {
         if (selectionMode && expanded) {
             expanded = false
@@ -1496,15 +1528,22 @@ private fun PasskeyListItem(
                         onCheckedChange = { onToggleSelect() }
                     )
                 } else {
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) {
-                            stringResource(R.string.collapse)
-                        } else {
-                            stringResource(R.string.expand)
-                        },
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SyncStatusIcon(
+                            status = syncStatus.takeIf { passkey.bitwardenVaultId != null || it == SyncStatus.FAILED },
+                            size = 16.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (expanded) {
+                                stringResource(R.string.collapse)
+                            } else {
+                                stringResource(R.string.expand)
+                            },
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             
@@ -1568,6 +1607,13 @@ private fun PasskeyListItem(
                             icon = Icons.Default.Numbers
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    SyncStatusBadge(
+                        status = syncStatus.takeIf { passkey.bitwardenVaultId != null || it == SyncStatus.FAILED },
+                        showLabel = true
+                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
 

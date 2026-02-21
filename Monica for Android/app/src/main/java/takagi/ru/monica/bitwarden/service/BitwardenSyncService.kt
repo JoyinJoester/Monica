@@ -57,6 +57,11 @@ class BitwardenSyncService(
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
+
+    private data class ParsedLoginUris(
+        val website: String = "",
+        val appPackageName: String = ""
+    )
     
     /**
      * 执行全量同步
@@ -382,18 +387,40 @@ class BitwardenSyncService(
             val password = decryptedPassword ?: ""
             val notes = decryptString(cipher.notes, symmetricKey) ?: ""
             val totp = decryptString(login.totp, symmetricKey) ?: ""
-            val primaryUri = login.uris?.firstOrNull()?.let { 
-                decryptString(it.uri, symmetricKey) 
-            } ?: ""
+            val parsedUris = parseLoginUris(login.uris, symmetricKey)
+            val customFields = parsePasswordCustomFieldMap(cipher.fields, symmetricKey)
             val encryptedPassword = securityManager.encryptData(password)
             
             return PasswordEntry(
                 title = name,
-                website = primaryUri,
+                website = parsedUris.website,
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
+                appPackageName = customFields["monica_app_package"]
+                    ?: customFields["appPackageName"]
+                    ?: parsedUris.appPackageName,
+                appName = customFields["monica_app_name"]
+                    ?: customFields["appName"]
+                    ?: "",
+                email = customFields["monica_email"]
+                    ?: customFields["email"]
+                    ?: "",
+                phone = customFields["monica_phone"]
+                    ?: customFields["phone"]
+                    ?: "",
+                addressLine = customFields["monica_address_line"]
+                    ?: customFields["addressLine"]
+                    ?: customFields["address"]
+                    ?: "",
+                city = customFields["monica_city"] ?: customFields["city"] ?: "",
+                state = customFields["monica_state"] ?: customFields["state"] ?: "",
+                zipCode = customFields["monica_zip_code"]
+                    ?: customFields["zipCode"]
+                    ?: "",
+                country = customFields["monica_country"] ?: customFields["country"] ?: "",
+                passkeyBindings = customFields["monica_passkey_bindings"].orEmpty(),
                 isFavorite = cipher.favorite,
                 createdAt = Date(),
                 updatedAt = Date(),
@@ -429,17 +456,49 @@ class BitwardenSyncService(
             val encryptedPassword = decryptedPassword?.let { securityManager.encryptData(it) } ?: entry.password
             val notes = decryptString(cipher.notes, symmetricKey) ?: entry.notes
             val totp = decryptString(login.totp, symmetricKey) ?: entry.authenticatorKey
-            val primaryUri = login.uris?.firstOrNull()?.let {
-                decryptString(it.uri, symmetricKey)
-            } ?: entry.website
+            val parsedUris = parseLoginUris(login.uris, symmetricKey)
+            val customFields = parsePasswordCustomFieldMap(cipher.fields, symmetricKey)
+            val remoteAppPackage = customFields["monica_app_package"]
+                ?: customFields["appPackageName"]
+                ?: parsedUris.appPackageName
+            val remoteAppName = customFields["monica_app_name"]
+                ?: customFields["appName"]
+                ?: ""
+            val remoteEmail = customFields["monica_email"]
+                ?: customFields["email"]
+                ?: ""
+            val remotePhone = customFields["monica_phone"]
+                ?: customFields["phone"]
+                ?: ""
+            val remoteAddress = customFields["monica_address_line"]
+                ?: customFields["addressLine"]
+                ?: customFields["address"]
+                ?: ""
+            val remoteCity = customFields["monica_city"] ?: customFields["city"] ?: ""
+            val remoteState = customFields["monica_state"] ?: customFields["state"] ?: ""
+            val remoteZip = customFields["monica_zip_code"]
+                ?: customFields["zipCode"]
+                ?: ""
+            val remoteCountry = customFields["monica_country"] ?: customFields["country"] ?: ""
+            val remotePasskeyBindings = customFields["monica_passkey_bindings"].orEmpty()
             
             return entry.copy(
                 title = name,
-                website = primaryUri,
+                website = parsedUris.website.ifBlank { entry.website },
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
+                appPackageName = remoteAppPackage.ifBlank { entry.appPackageName },
+                appName = remoteAppName.ifBlank { entry.appName },
+                email = remoteEmail.ifBlank { entry.email },
+                phone = remotePhone.ifBlank { entry.phone },
+                addressLine = remoteAddress.ifBlank { entry.addressLine },
+                city = remoteCity.ifBlank { entry.city },
+                state = remoteState.ifBlank { entry.state },
+                zipCode = remoteZip.ifBlank { entry.zipCode },
+                country = remoteCountry.ifBlank { entry.country },
+                passkeyBindings = remotePasskeyBindings.ifBlank { entry.passkeyBindings },
                 isFavorite = cipher.favorite,
                 updatedAt = Date(),
                 bitwardenVaultId = vaultId,
@@ -765,9 +824,29 @@ class BitwardenSyncService(
         symmetricKey: SymmetricCryptoKey
     ): Boolean {
         try {
-            val updateRequest = passwordEntryToCipherUpdateRequest(entry, symmetricKey)
-            
             val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val mergedFields = runCatching {
+                val remote = vaultApi.getCipher(
+                    authorization = "Bearer $accessToken",
+                    cipherId = cipherId
+                )
+                if (remote.isSuccessful) {
+                    mergeCipherFieldsPreservingUnknown(
+                        localFields = buildEncryptedPasswordCustomFields(entry, symmetricKey),
+                        remoteFields = remote.body()?.fields,
+                        symmetricKey = symmetricKey
+                    )
+                } else {
+                    null
+                }
+            }.getOrNull()
+
+            val updateRequest = passwordEntryToCipherUpdateRequest(
+                entry = entry,
+                symmetricKey = symmetricKey,
+                mergedFields = mergedFields
+            )
+
             val response = vaultApi.updateCipher(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId,
@@ -864,14 +943,7 @@ class BitwardenSyncService(
             totp = if (entry.authenticatorKey.isNotBlank()) {
                 crypto.encryptString(entry.authenticatorKey, symmetricKey)
             } else null,
-            uris = if (entry.website.isNotBlank()) {
-                listOf(
-                    CipherUriApiData(
-                        uri = crypto.encryptString(entry.website, symmetricKey),
-                        match = null
-                    )
-                )
-            } else null
+            uris = buildEncryptedLoginUris(entry, symmetricKey)
         )
         
         return CipherCreateRequest(
@@ -880,6 +952,7 @@ class BitwardenSyncService(
             name = encryptedName,
             notes = encryptedNotes,
             login = loginData,
+            fields = buildEncryptedPasswordCustomFields(entry, symmetricKey),
             favorite = entry.isFavorite
         )
     }
@@ -889,7 +962,8 @@ class BitwardenSyncService(
      */
     private fun passwordEntryToCipherUpdateRequest(
         entry: PasswordEntry,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        mergedFields: List<CipherFieldApiData>? = null
     ): CipherUpdateRequest {
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
         val plainPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
@@ -909,14 +983,7 @@ class BitwardenSyncService(
             totp = if (entry.authenticatorKey.isNotBlank()) {
                 crypto.encryptString(entry.authenticatorKey, symmetricKey)
             } else null,
-            uris = if (entry.website.isNotBlank()) {
-                listOf(
-                    CipherUriApiData(
-                        uri = crypto.encryptString(entry.website, symmetricKey),
-                        match = null
-                    )
-                )
-            } else null
+            uris = buildEncryptedLoginUris(entry, symmetricKey)
         )
         
         return CipherUpdateRequest(
@@ -925,8 +992,152 @@ class BitwardenSyncService(
             name = encryptedName,
             notes = encryptedNotes,
             login = loginData,
+            fields = mergedFields ?: buildEncryptedPasswordCustomFields(entry, symmetricKey),
             favorite = entry.isFavorite
         )
+    }
+
+    private fun mergeCipherFieldsPreservingUnknown(
+        localFields: List<CipherFieldApiData>?,
+        remoteFields: List<CipherFieldApiData>?,
+        symmetricKey: SymmetricCryptoKey
+    ): List<CipherFieldApiData>? {
+        if (localFields.isNullOrEmpty()) return remoteFields
+        if (remoteFields.isNullOrEmpty()) return localFields
+
+        val localFieldNames = localFields.mapNotNull { field ->
+            decryptOrPlain(field.name, symmetricKey)?.trim()?.takeIf { it.isNotEmpty() }
+        }.toSet()
+
+        val preservedRemote = remoteFields.filter { remote ->
+            val remoteName = decryptOrPlain(remote.name, symmetricKey)?.trim()
+            if (remoteName.isNullOrEmpty()) {
+                true
+            } else {
+                remoteName !in localFieldNames
+            }
+        }
+
+        return (preservedRemote + localFields).ifEmpty { null }
+    }
+
+    private fun buildEncryptedLoginUris(
+        entry: PasswordEntry,
+        symmetricKey: SymmetricCryptoKey
+    ): List<CipherUriApiData>? {
+        val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        val uris = mutableListOf<CipherUriApiData>()
+        if (entry.website.isNotBlank()) {
+            uris.add(
+                CipherUriApiData(
+                    uri = crypto.encryptString(entry.website, symmetricKey),
+                    match = null
+                )
+            )
+        }
+        if (entry.appPackageName.isNotBlank()) {
+            val pkg = entry.appPackageName.removePrefix("androidapp://")
+            uris.add(
+                CipherUriApiData(
+                    uri = crypto.encryptString("androidapp://$pkg", symmetricKey),
+                    match = null
+                )
+            )
+        }
+        return uris.ifEmpty { null }
+    }
+
+    private fun buildEncryptedPasswordCustomFields(
+        entry: PasswordEntry,
+        symmetricKey: SymmetricCryptoKey
+    ): List<CipherFieldApiData>? {
+        val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        val fields = mutableListOf<Pair<String, String>>()
+
+        fun addField(name: String, value: String) {
+            if (value.isNotBlank()) fields.add(name to value)
+        }
+
+        addField("monica_app_package", entry.appPackageName)
+        addField("appPackageName", entry.appPackageName)
+        addField("monica_app_name", entry.appName)
+        addField("appName", entry.appName)
+        addField("monica_email", entry.email)
+        addField("email", entry.email)
+        addField("monica_phone", entry.phone)
+        addField("phone", entry.phone)
+        addField("monica_address_line", entry.addressLine)
+        addField("monica_city", entry.city)
+        addField("monica_state", entry.state)
+        addField("monica_zip_code", entry.zipCode)
+        addField("monica_country", entry.country)
+        addField("monica_passkey_bindings", entry.passkeyBindings)
+
+        val legacyAddress = listOf(entry.addressLine, entry.city, entry.state, entry.zipCode, entry.country)
+            .filter { it.isNotBlank() }
+            .joinToString(", ")
+        addField("address", legacyAddress)
+
+        if (fields.isEmpty()) return null
+
+        return fields.map { (name, value) ->
+            CipherFieldApiData(
+                name = crypto.encryptString(name, symmetricKey),
+                value = crypto.encryptString(value, symmetricKey),
+                type = 0
+            )
+        }
+    }
+
+    private fun parseLoginUris(
+        uris: List<CipherUriApiData>?,
+        symmetricKey: SymmetricCryptoKey
+    ): ParsedLoginUris {
+        if (uris.isNullOrEmpty()) return ParsedLoginUris()
+
+        var website = ""
+        var appPackageName = ""
+        uris.forEach { uriData ->
+            val uri = decryptString(uriData.uri, symmetricKey) ?: return@forEach
+            when {
+                uri.startsWith("androidapp://", ignoreCase = true) -> {
+                    if (appPackageName.isBlank()) {
+                        appPackageName = uri.removePrefix("androidapp://")
+                    }
+                }
+                website.isBlank() -> website = uri
+            }
+        }
+        return ParsedLoginUris(website = website, appPackageName = appPackageName)
+    }
+
+    private fun parsePasswordCustomFieldMap(
+        fields: List<CipherFieldApiData>?,
+        symmetricKey: SymmetricCryptoKey
+    ): Map<String, String> {
+        if (fields.isNullOrEmpty()) return emptyMap()
+        return buildMap {
+            fields.forEach { field ->
+                val name = decryptOrPlain(field.name, symmetricKey).orEmpty().trim()
+                if (name.isBlank()) return@forEach
+                val value = decryptOrPlain(field.value, symmetricKey).orEmpty()
+                put(name, value)
+            }
+        }
+    }
+
+    private fun decryptOrPlain(value: String?, key: SymmetricCryptoKey): String? {
+        if (value.isNullOrBlank()) return null
+        val decrypted = decryptString(value, key)
+        if (decrypted != null) return decrypted
+        if (looksLikeCipherString(value)) return null
+        return value
+    }
+
+    private fun looksLikeCipherString(value: String): Boolean {
+        val dotIndex = value.indexOf('.')
+        if (dotIndex <= 0) return false
+        return value.substring(0, dotIndex).all(Char::isDigit)
     }
 
     /**

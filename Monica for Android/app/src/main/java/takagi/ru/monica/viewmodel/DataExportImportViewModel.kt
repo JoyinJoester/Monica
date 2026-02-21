@@ -736,6 +736,8 @@ class DataExportImportViewModel(
                         
                         val content = restoreResult.content
                         val passwordIdMap = mutableMapOf<Long, Long>() // originalId -> newId (or existingId)
+                        val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                        val customFieldDao = database.customFieldDao()
                         
                         // 1. 插入密码并建立ID映射
                         content.passwords.forEach { entry ->
@@ -783,6 +785,19 @@ class DataExportImportViewModel(
                                         passwordRepository.updatePasswordEntry(updatedEntry)
                                         android.util.Log.d("DataImport", "Updated authenticatorKey for existing password: ${entry.title}")
                                         count++
+                                    } else if (
+                                        !entry.customIconType.equals("NONE", ignoreCase = true) &&
+                                        existingEntry.customIconType.equals("NONE", ignoreCase = true)
+                                    ) {
+                                        val updatedEntry = existingEntry.copy(
+                                            customIconType = entry.customIconType,
+                                            customIconValue = entry.customIconValue?.let { java.io.File(it).name },
+                                            customIconUpdatedAt = entry.customIconUpdatedAt,
+                                            updatedAt = java.util.Date()
+                                        )
+                                        passwordRepository.updatePasswordEntry(updatedEntry)
+                                        android.util.Log.d("DataImport", "Restored custom icon for existing password: ${entry.title}")
+                                        count++
                                     } else {
                                         // 现有版本更新或相同，跳过
                                         skippedCount++
@@ -791,6 +806,36 @@ class DataExportImportViewModel(
                             } catch (e: Exception) {
                                 errorCount++
                                 android.util.Log.e("DataImport", "Failed to insert password: ${entry.title}", e)
+                            }
+                        }
+
+                        // 1.8 恢复自定义字段（覆盖同条目已有字段，避免旧值残留）
+                        if (content.customFieldsMap.isNotEmpty()) {
+                            var restoredFieldCount = 0
+                            content.customFieldsMap.forEach { (originalId, fieldBackups) ->
+                                val mappedId = passwordIdMap[originalId] ?: return@forEach
+                                val fields = fieldBackups.mapIndexed { index, backup ->
+                                    takagi.ru.monica.data.CustomField(
+                                        id = 0,
+                                        entryId = mappedId,
+                                        title = backup.title,
+                                        value = backup.value,
+                                        isProtected = backup.isProtected,
+                                        sortOrder = index
+                                    )
+                                }
+                                try {
+                                    customFieldDao.replaceFieldsForEntry(mappedId, fields)
+                                    restoredFieldCount += fields.size
+                                } catch (e: Exception) {
+                                    android.util.Log.w(
+                                        "DataImport",
+                                        "Failed to restore custom fields for password $originalId -> $mappedId: ${e.message}"
+                                    )
+                                }
+                            }
+                            if (restoredFieldCount > 0) {
+                                android.util.Log.d("DataImport", "Restored $restoredFieldCount custom fields from ZIP backup")
                             }
                         }
                         

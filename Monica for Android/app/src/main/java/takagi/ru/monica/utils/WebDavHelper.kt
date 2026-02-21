@@ -816,7 +816,7 @@ class WebDavHelper(
                                 ssoProvider = password.ssoProvider,
                                 ssoRefEntryId = password.ssoRefEntryId,
                                 customIconType = password.customIconType,
-                                customIconValue = password.customIconValue,
+                                customIconValue = normalizeBackupIconValue(password.customIconType, password.customIconValue),
                                 customIconUpdatedAt = password.customIconUpdatedAt,
                                 // ✅ 自定义字段
                                 customFields = fields
@@ -2654,6 +2654,7 @@ class WebDavHelper(
             val content = file.readText(Charsets.UTF_8)
             val json = Json { ignoreUnknownKeys = true }
             val backup = json.decodeFromString<PasswordBackupEntry>(content)
+            val normalizedIconValue = normalizeBackupIconValue(backup.customIconType, backup.customIconValue)
             val entry = PasswordEntry(
                 id = backup.id, // 暂存原始ID，用于后续TOTP关联映射
                 title = backup.title,
@@ -2678,7 +2679,7 @@ class WebDavHelper(
                 ssoProvider = backup.ssoProvider,
                 ssoRefEntryId = backup.ssoRefEntryId,
                 customIconType = backup.customIconType,
-                customIconValue = backup.customIconValue,
+                customIconValue = normalizedIconValue,
                 customIconUpdatedAt = backup.customIconUpdatedAt
             )
             // 临时存储自定义字段到全局 map（将在恢复时使用）
@@ -2974,6 +2975,15 @@ class WebDavHelper(
     private fun splitCsvLine(line: String): List<String> {
         return line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)".toRegex())
             .map { it.trim().removeSurrounding("\"").replace("\"\"", "\"") }
+    }
+
+    private fun normalizeBackupIconValue(iconType: String, iconValue: String?): String? {
+        if (iconValue.isNullOrBlank()) return iconValue
+        return if (iconType.equals("UPLOADED", ignoreCase = true)) {
+            File(iconValue).name
+        } else {
+            iconValue
+        }
     }
 
     private enum class PasswordCsvFormat {

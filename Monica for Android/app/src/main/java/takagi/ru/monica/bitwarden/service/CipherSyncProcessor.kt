@@ -35,6 +35,11 @@ class CipherSyncProcessor(
     companion object {
         private const val TAG = "CipherSyncProcessor"
     }
+
+    private data class ParsedLoginUris(
+        val website: String = "",
+        val appPackageName: String = ""
+    )
     
     private val database = PasswordDatabase.getDatabase(context)
     private val passwordEntryDao = database.passwordEntryDao()
@@ -119,9 +124,31 @@ class CipherSyncProcessor(
         val password = decryptedPassword ?: ""
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
         val totp = decryptString(login.totp, symmetricKey) ?: ""
-        val primaryUri = login.uris?.firstOrNull()?.let { 
-            decryptString(it.uri, symmetricKey) 
-        } ?: ""
+        val parsedUris = parseLoginUris(login.uris, symmetricKey)
+        val customFields = decryptCustomFieldMap(cipher.fields, symmetricKey)
+        val remoteAppPackage = customFields["monica_app_package"]
+            ?: customFields["appPackageName"]
+            ?: parsedUris.appPackageName
+        val remoteAppName = customFields["monica_app_name"]
+            ?: customFields["appName"]
+            ?: ""
+        val remoteEmail = customFields["monica_email"]
+            ?: customFields["email"]
+            ?: ""
+        val remotePhone = customFields["monica_phone"]
+            ?: customFields["phone"]
+            ?: ""
+        val remoteAddress = customFields["monica_address_line"]
+            ?: customFields["addressLine"]
+            ?: customFields["address"]
+            ?: ""
+        val remoteCity = customFields["monica_city"] ?: customFields["city"] ?: ""
+        val remoteState = customFields["monica_state"] ?: customFields["state"] ?: ""
+        val remoteZip = customFields["monica_zip_code"]
+            ?: customFields["zipCode"]
+            ?: ""
+        val remoteCountry = customFields["monica_country"] ?: customFields["country"] ?: ""
+        val remotePasskeyBindings = customFields["monica_passkey_bindings"].orEmpty()
         val encryptedPassword = securityManager.encryptData(password)
         
         if (existing == null) {
@@ -131,11 +158,21 @@ class CipherSyncProcessor(
             // 创建新条目（不吞并本地同名条目，保持数据源独立）
             val newEntry = PasswordEntry(
                 title = name,
-                website = primaryUri,
+                website = parsedUris.website,
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
+                appPackageName = remoteAppPackage,
+                appName = remoteAppName,
+                email = remoteEmail,
+                phone = remotePhone,
+                addressLine = remoteAddress,
+                city = remoteCity,
+                state = remoteState,
+                zipCode = remoteZip,
+                country = remoteCountry,
+                passkeyBindings = remotePasskeyBindings,
                 isFavorite = cipher.favorite == true,
                 createdAt = Date(),
                 updatedAt = Date(),
@@ -171,11 +208,21 @@ class CipherSyncProcessor(
             
             val updated = existing.copy(
                 title = name,
-                website = primaryUri,
+                website = parsedUris.website.ifBlank { existing.website },
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
                 authenticatorKey = totp,
+                appPackageName = remoteAppPackage.ifBlank { existing.appPackageName },
+                appName = remoteAppName.ifBlank { existing.appName },
+                email = remoteEmail.ifBlank { existing.email },
+                phone = remotePhone.ifBlank { existing.phone },
+                addressLine = remoteAddress.ifBlank { existing.addressLine },
+                city = remoteCity.ifBlank { existing.city },
+                state = remoteState.ifBlank { existing.state },
+                zipCode = remoteZip.ifBlank { existing.zipCode },
+                country = remoteCountry.ifBlank { existing.country },
+                passkeyBindings = remotePasskeyBindings.ifBlank { existing.passkeyBindings },
                 isFavorite = cipher.favorite == true,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
@@ -475,25 +522,40 @@ class CipherSyncProcessor(
         
         val name = decryptString(cipher.name, symmetricKey) ?: "Identity"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
+        val customFieldMap = decryptCustomFieldMap(cipher.fields, symmetricKey)
+        val fieldDocumentType = parseDocumentType(customFieldMap["monica_document_type"])
+        val resolvedDocumentType = fieldDocumentType ?: guessDocumentType(identity)
         
         // 解密身份字段
         val firstName = decryptString(identity.firstName, symmetricKey) ?: ""
+        val middleName = decryptString(identity.middleName, symmetricKey) ?: ""
         val lastName = decryptString(identity.lastName, symmetricKey) ?: ""
-        val fullName = "$firstName $lastName".trim()
-        val idNumber = decryptString(identity.licenseNumber, symmetricKey) 
-            ?: decryptString(identity.passportNumber, symmetricKey) 
-            ?: decryptString(identity.ssn, symmetricKey) 
-            ?: ""
+        val fullName = listOf(firstName, middleName, lastName)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+        val passportNumber = decryptString(identity.passportNumber, symmetricKey).orEmpty()
+        val licenseNumber = decryptString(identity.licenseNumber, symmetricKey).orEmpty()
+        val ssn = decryptString(identity.ssn, symmetricKey).orEmpty()
+        val idNumber = when (resolvedDocumentType) {
+            DocumentType.PASSPORT -> passportNumber.ifBlank { ssn.ifBlank { licenseNumber } }
+            DocumentType.DRIVER_LICENSE -> licenseNumber.ifBlank { ssn.ifBlank { passportNumber } }
+            DocumentType.ID_CARD, DocumentType.SOCIAL_SECURITY, DocumentType.OTHER -> {
+                ssn.ifBlank { licenseNumber.ifBlank { passportNumber } }
+            }
+        }
         
         val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
         
         // 构建证件数据（使用 IdentityMapper.kt 中的 DocumentItemData 结构）
         val docData = DocumentData(
-            documentType = guessDocumentType(identity),
+            documentType = resolvedDocumentType,
             documentNumber = idNumber,
             fullName = fullName,
+            issuedDate = customFieldMap["monica_issue_date"].orEmpty(),
+            expiryDate = customFieldMap["monica_expiry_date"].orEmpty(),
             issuedBy = decryptString(identity.company, symmetricKey) ?: "",
-            nationality = decryptString(identity.country, symmetricKey) ?: ""
+            nationality = decryptString(identity.country, symmetricKey) ?: "",
+            additionalInfo = customFieldMap["monica_additional_info"].orEmpty()
         )
         val itemData = json.encodeToString(docData)
         
@@ -872,6 +934,56 @@ class CipherSyncProcessor(
             !identity.licenseNumber.isNullOrBlank() -> DocumentType.DRIVER_LICENSE
             !identity.ssn.isNullOrBlank() -> DocumentType.ID_CARD
             else -> DocumentType.OTHER
+        }
+    }
+
+    private fun decryptCustomFieldMap(
+        fields: List<CipherFieldApiData>?,
+        key: SymmetricCryptoKey
+    ): Map<String, String> {
+        if (fields.isNullOrEmpty()) return emptyMap()
+
+        return buildMap {
+            fields.forEach { field ->
+                val name = decryptOrPlain(field.name, key).orEmpty().trim()
+                if (name.isBlank()) return@forEach
+                val value = decryptOrPlain(field.value, key).orEmpty()
+                put(name, value)
+            }
+        }
+    }
+
+    private fun parseLoginUris(
+        uris: List<CipherUriApiData>?,
+        key: SymmetricCryptoKey
+    ): ParsedLoginUris {
+        if (uris.isNullOrEmpty()) return ParsedLoginUris()
+
+        var website = ""
+        var appPackageName = ""
+        uris.forEach { uriData ->
+            val uri = decryptString(uriData.uri, key) ?: return@forEach
+            when {
+                uri.startsWith("androidapp://", ignoreCase = true) -> {
+                    if (appPackageName.isBlank()) {
+                        appPackageName = uri.removePrefix("androidapp://")
+                    }
+                }
+                website.isBlank() -> website = uri
+            }
+        }
+        return ParsedLoginUris(website = website, appPackageName = appPackageName)
+    }
+
+    private fun parseDocumentType(raw: String?): DocumentType? {
+        val normalized = raw?.trim()?.uppercase() ?: return null
+        return when (normalized) {
+            "PASSPORT" -> DocumentType.PASSPORT
+            "DRIVER_LICENSE", "DRIVERLICENCE", "DRIVING_LICENSE", "DRIVING_LICENCE" -> DocumentType.DRIVER_LICENSE
+            "SOCIAL_SECURITY", "SSN" -> DocumentType.SOCIAL_SECURITY
+            "ID_CARD", "IDENTITY_CARD", "IDENTITY" -> DocumentType.ID_CARD
+            "OTHER" -> DocumentType.OTHER
+            else -> null
         }
     }
 }

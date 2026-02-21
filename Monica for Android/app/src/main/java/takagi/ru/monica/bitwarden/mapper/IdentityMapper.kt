@@ -205,6 +205,7 @@ data class DocumentItemData(
     // 联系方式
     val email: String = "",
     val phone: String = "",
+    val additionalInfo: String = "",
     
     // 特定证件号码
     val ssn: String = "",                 // 社保号

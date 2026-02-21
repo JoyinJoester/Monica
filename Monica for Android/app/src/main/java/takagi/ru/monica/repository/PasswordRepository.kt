@@ -7,6 +7,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
+import java.util.Date
 import java.util.Locale
 
 /**
@@ -252,13 +253,29 @@ class PasswordRepository(
      * 更新绑定的验证器密钥
      */
     suspend fun updateAuthenticatorKey(id: Long, authenticatorKey: String) {
-        passwordEntryDao.updateAuthenticatorKey(id, authenticatorKey)
+        val existing = passwordEntryDao.getPasswordEntryById(id) ?: return
+        val isBitwardenCipher = existing.bitwardenVaultId != null && !existing.bitwardenCipherId.isNullOrBlank()
+        passwordEntryDao.updatePasswordEntry(
+            existing.copy(
+                authenticatorKey = authenticatorKey,
+                updatedAt = Date(),
+                bitwardenLocalModified = if (isBitwardenCipher) true else existing.bitwardenLocalModified
+            )
+        )
     }
 
     /**
      * 更新绑定的通行密钥元数据
      */
     suspend fun updatePasskeyBindings(id: Long, passkeyBindings: String) {
-        passwordEntryDao.updatePasskeyBindings(id, passkeyBindings)
+        val existing = passwordEntryDao.getPasswordEntryById(id) ?: return
+        val isBitwardenCipher = existing.bitwardenVaultId != null && !existing.bitwardenCipherId.isNullOrBlank()
+        passwordEntryDao.updatePasswordEntry(
+            existing.copy(
+                passkeyBindings = passkeyBindings,
+                updatedAt = Date(),
+                bitwardenLocalModified = if (isBitwardenCipher) true else existing.bitwardenLocalModified
+            )
+        )
     }
 }

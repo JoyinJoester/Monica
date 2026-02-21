@@ -1,5 +1,6 @@
 package takagi.ru.monica.bitwarden.service
 
+import android.util.Base64
 import android.content.Context
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -16,6 +17,9 @@ import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.data.model.TotpData
 import java.util.Date
+import java.security.KeyFactory
+import java.security.KeyStore
+import java.security.spec.PKCS8EncodedKeySpec
 
 /**
  * 多类型 Cipher 上传处理器
@@ -29,6 +33,7 @@ class CipherUploadProcessor(
 ) {
     companion object {
         private const val TAG = "CipherUploadProcessor"
+        private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     }
     
     private val database = PasswordDatabase.getDatabase(context)
@@ -145,8 +150,19 @@ class CipherUploadProcessor(
         symmetricKey: SymmetricCryptoKey
     ): UploadItemResult {
         return try {
+            suspend fun fail(message: String): UploadItemResult {
+                passkeyDao.markFailed(passkey.credentialId)
+                return UploadItemResult.Error(message)
+            }
+
+            val normalizedPasskey = normalizePasskeyForUpload(passkey)
             val mapper = PasskeyMapper()
-            val request = mapper.toCreateRequest(passkey, null)
+            val request = mapper.toCreateRequest(normalizedPasskey, null)
+            if (request.login?.fido2Credentials.isNullOrEmpty()) {
+                return fail(
+                    "Passkey key material is missing or invalid; cannot sync as FIDO2 credential"
+                )
+            }
             
             // 加密请求
             val encryptedRequest = encryptCipherRequest(request, symmetricKey)
@@ -158,10 +174,13 @@ class CipherUploadProcessor(
             )
             
             if (!response.isSuccessful) {
-                return UploadItemResult.Error("Create cipher failed: ${response.code()}")
+                return fail("Create cipher failed: ${response.code()}")
             }
             
-            val createdCipher = response.body() ?: return UploadItemResult.Error("Empty response")
+            val createdCipher = response.body() ?: return fail("Empty response")
+            if (createdCipher.login?.fido2Credentials.isNullOrEmpty()) {
+                return fail("Server created cipher without FIDO2 credential")
+            }
             
             // 更新本地 Passkey
             passkeyDao.markSynced(passkey.credentialId, createdCipher.id)
@@ -169,9 +188,46 @@ class CipherUploadProcessor(
             android.util.Log.d(TAG, "Uploaded Passkey ${passkey.credentialId} as cipher ${createdCipher.id}")
             UploadItemResult.Success(createdCipher.id)
         } catch (e: Exception) {
+            runCatching { passkeyDao.markFailed(passkey.credentialId) }
             android.util.Log.e(TAG, "Upload Passkey failed: ${e.message}", e)
             UploadItemResult.Error(e.message ?: "Unknown error")
         }
+    }
+
+    private fun normalizePasskeyForUpload(passkey: PasskeyEntry): PasskeyEntry {
+        if (isPkcs8PrivateKeyBase64(passkey.privateKeyAlias)) return passkey
+
+        val alias = passkey.privateKeyAlias
+        if (alias.isBlank()) return passkey
+
+        return try {
+            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
+            keyStore.load(null)
+            val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
+            val encoded = entry?.privateKey?.encoded
+            if (encoded == null || encoded.isEmpty()) {
+                passkey
+            } else {
+                passkey.copy(privateKeyAlias = Base64.encodeToString(encoded, Base64.NO_WRAP))
+            }
+        } catch (_: Exception) {
+            passkey
+        }
+    }
+
+    private fun isPkcs8PrivateKeyBase64(value: String): Boolean {
+        if (value.isBlank()) return false
+        val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull() ?: return false
+        val keySpec = PKCS8EncodedKeySpec(decoded)
+        val ecValid = runCatching {
+            KeyFactory.getInstance("EC").generatePrivate(keySpec)
+            true
+        }.getOrDefault(false)
+        if (ecValid) return true
+        return runCatching {
+            KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+            true
+        }.getOrDefault(false)
     }
     
     /**
@@ -358,6 +414,19 @@ class CipherUploadProcessor(
         val docData = parseDocumentData(item)
         
         val crypto = BitwardenCrypto
+        val identityNumberForLicense = docData.documentNumber.takeIf {
+            it.isNotBlank() && docData.documentType == DocumentType.DRIVER_LICENSE.name
+        }
+        val identityNumberForPassport = docData.documentNumber.takeIf {
+            it.isNotBlank() && docData.documentType == DocumentType.PASSPORT.name
+        }
+        val identityNumberForSsn = docData.documentNumber.takeIf {
+            it.isNotBlank() && (
+                docData.documentType == DocumentType.ID_CARD.name ||
+                    docData.documentType == DocumentType.SOCIAL_SECURITY.name ||
+                    docData.documentType == DocumentType.OTHER.name
+                )
+        }
         
         return CipherCreateRequest(
             type = 4,  // Identity
@@ -374,20 +443,23 @@ class CipherUploadProcessor(
                 lastName = docData.lastName.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                licenseNumber = docData.documentNumber.takeIf { 
-                    it.isNotBlank() && docData.documentType == DocumentType.DRIVER_LICENSE.name
-                }?.let {
+                licenseNumber = identityNumberForLicense?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                passportNumber = docData.documentNumber.takeIf { 
-                    it.isNotBlank() && docData.documentType == DocumentType.PASSPORT.name
-                }?.let {
+                passportNumber = identityNumberForPassport?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                ssn = identityNumberForSsn?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
                 company = docData.issuingAuthority.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
+                },
+                country = docData.country.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
                 }
-            )
+            ),
+            fields = buildEncryptedDocumentFields(docData, symmetricKey)
         )
     }
 
@@ -459,6 +531,8 @@ class CipherUploadProcessor(
                 issueDate = appData.issuedDate,
                 expiryDate = appData.expiryDate,
                 issuingAuthority = appData.issuedBy,
+                country = appData.nationality,
+                additionalInfo = appData.additionalInfo,
                 firstName = names.first,
                 lastName = names.second
             )
@@ -468,6 +542,29 @@ class CipherUploadProcessor(
             } catch (_: Exception) {
                 DocumentItemData()
             }
+        }
+    }
+
+    private fun buildEncryptedDocumentFields(
+        docData: DocumentItemData,
+        symmetricKey: SymmetricCryptoKey
+    ): List<CipherFieldApiData>? {
+        val crypto = BitwardenCrypto
+        val rawFields = listOf(
+            "monica_document_type" to docData.documentType,
+            "monica_issue_date" to docData.issueDate,
+            "monica_expiry_date" to docData.expiryDate,
+            "monica_additional_info" to docData.additionalInfo
+        ).filter { it.second.isNotBlank() }
+
+        if (rawFields.isEmpty()) return null
+
+        return rawFields.map { (name, value) ->
+            CipherFieldApiData(
+                name = crypto.encryptString(name, symmetricKey),
+                value = crypto.encryptString(value, symmetricKey),
+                type = 0
+            )
         }
     }
 

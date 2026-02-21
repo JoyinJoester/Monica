@@ -7,12 +7,14 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
@@ -80,6 +82,7 @@ class TotpViewModel(
     } else {
         null
     }
+    private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
     private val settingsManager = context?.let { SettingsManager(it.applicationContext) }
     
     // 搜索查询
@@ -456,7 +459,31 @@ class TotpViewModel(
                     keepassDatabaseId = keepassDatabaseId
                 )
                 val itemDataJson = Json.encodeToString(updatedTotpData)
-                
+                val shouldFollowBoundPassword = updatedTotpData.boundPasswordId != null
+
+                if (shouldFollowBoundPassword &&
+                    existingItem != null &&
+                    existingItem.bitwardenVaultId != null &&
+                    !existingItem.bitwardenCipherId.isNullOrBlank()
+                ) {
+                    val queueResult = bitwardenRepository?.queueCipherDelete(
+                        vaultId = existingItem.bitwardenVaultId,
+                        cipherId = existingItem.bitwardenCipherId,
+                        entryId = existingItem.id,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_TOTP
+                    )
+                    if (queueResult?.isSuccess != true) {
+                        Log.e(
+                            "TotpViewModel",
+                            "Queue Bitwarden delete failed: ${queueResult?.exceptionOrNull()?.message ?: "Bitwarden repository unavailable"}"
+                        )
+                        return@launch
+                    }
+                }
+
+                val resolvedBitwardenVaultId = if (shouldFollowBoundPassword) null else bitwardenVaultId
+                val resolvedBitwardenFolderId = if (shouldFollowBoundPassword) null else bitwardenFolderId
+                 
                 val item = if (id != null && id > 0) {
                     // 更新现有项目
                     val existing = repository.getItemById(id)
@@ -466,10 +493,18 @@ class TotpViewModel(
                         itemData = itemDataJson,
                         categoryId = categoryId,
                         keepassDatabaseId = keepassDatabaseId,
-                        bitwardenVaultId = bitwardenVaultId,
-                        bitwardenFolderId = bitwardenFolderId,
-                        bitwardenLocalModified = existing.bitwardenCipherId != null && bitwardenVaultId != null,
-                        syncStatus = if (bitwardenVaultId != null) {
+                        bitwardenVaultId = resolvedBitwardenVaultId,
+                        bitwardenFolderId = resolvedBitwardenFolderId,
+                        bitwardenCipherId = if (shouldFollowBoundPassword) null else existing.bitwardenCipherId,
+                        bitwardenRevisionDate = if (shouldFollowBoundPassword) null else existing.bitwardenRevisionDate,
+                        bitwardenLocalModified = if (shouldFollowBoundPassword) {
+                            false
+                        } else {
+                            existing.bitwardenCipherId != null && resolvedBitwardenVaultId != null
+                        },
+                        syncStatus = if (shouldFollowBoundPassword) {
+                            "NONE"
+                        } else if (resolvedBitwardenVaultId != null) {
                             if (existing.bitwardenCipherId != null) "PENDING" else existing.syncStatus
                         } else {
                             "NONE"
@@ -486,9 +521,9 @@ class TotpViewModel(
                         isFavorite = isFavorite,
                         categoryId = categoryId,
                         keepassDatabaseId = keepassDatabaseId,
-                        bitwardenVaultId = bitwardenVaultId,
-                        bitwardenFolderId = bitwardenFolderId,
-                        syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
+                        bitwardenVaultId = resolvedBitwardenVaultId,
+                        bitwardenFolderId = resolvedBitwardenFolderId,
+                        syncStatus = if (resolvedBitwardenVaultId != null) "PENDING" else "NONE",
                         createdAt = Date(),
                         updatedAt = Date(),
                         imagePaths = ""
@@ -615,12 +650,6 @@ class TotpViewModel(
      */
     fun deleteTotpItem(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
-            if (item.keepassDatabaseId != null) {
-                val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                if (deleteResult?.isFailure == true) {
-                    Log.e("TotpViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                }
-            }
             val totpData = try {
                 Json.decodeFromString<TotpData>(item.itemData)
             } catch (e: Exception) {
@@ -648,6 +677,49 @@ class TotpViewModel(
 
             // Virtual TOTP items are derived from password.authenticatorKey and are not persisted in secure_items.
             if (item.id <= 0) {
+                return@launch
+            }
+
+            val vaultId = item.bitwardenVaultId
+            val cipherId = item.bitwardenCipherId
+            val isBitwardenCipher = vaultId != null && !cipherId.isNullOrBlank()
+
+            if (isBitwardenCipher) {
+                val queueResult = bitwardenRepository?.queueCipherDelete(
+                    vaultId = vaultId!!,
+                    cipherId = cipherId!!,
+                    entryId = item.id,
+                    itemType = BitwardenPendingOperation.ITEM_TYPE_TOTP
+                )
+                if (queueResult?.isFailure == true) {
+                    Log.e("TotpViewModel", "Queue Bitwarden delete failed: ${queueResult.exceptionOrNull()?.message}")
+                    return@launch
+                }
+            }
+
+            if (item.keepassDatabaseId != null) {
+                val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                if (deleteResult?.isFailure == true) {
+                    Log.e("TotpViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    return@launch
+                }
+            }
+
+            if (isBitwardenCipher) {
+                repository.updateItem(
+                    item.copy(
+                        isDeleted = true,
+                        deletedAt = Date(),
+                        updatedAt = Date(),
+                        bitwardenLocalModified = true
+                    )
+                )
+                OperationLogger.logDelete(
+                    itemType = OperationLogItemType.TOTP,
+                    itemId = item.id,
+                    itemTitle = item.title,
+                    detail = "移入回收站（待同步删除）"
+                )
                 return@launch
             }
 

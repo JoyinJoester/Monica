@@ -423,7 +423,8 @@ class PasskeyCreateActivity : FragmentActivity() {
             val publicKeyB64 = Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP)
 
             val discoverable = parseDiscoverable(requestJson)
-            
+            val initialBitwardenVaultId = if (pendingBoundPasswordId != null) null else pendingBitwardenVaultId
+             
             // 保存到数据库
             val passkeyEntry = PasskeyEntry(
                 credentialId = credentialIdB64,
@@ -443,8 +444,8 @@ class PasskeyCreateActivity : FragmentActivity() {
                 boundPasswordId = pendingBoundPasswordId,
                 categoryId = pendingCategoryId,
                 keepassDatabaseId = pendingKeepassDatabaseId,
-                bitwardenVaultId = pendingBitwardenVaultId,
-                syncStatus = if (pendingBitwardenVaultId != null) "PENDING" else "NONE"
+                bitwardenVaultId = initialBitwardenVaultId,
+                syncStatus = if (initialBitwardenVaultId != null) "PENDING" else "NONE"
             )
             
             // 在协程中保存

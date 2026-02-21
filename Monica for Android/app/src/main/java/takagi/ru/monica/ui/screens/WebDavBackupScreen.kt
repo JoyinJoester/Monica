@@ -1102,6 +1102,17 @@ private fun BackupItem(
                         // This ensures TOTP items can still bind to the existing password
                         if (existingEntry != null) {
                              passwordIdMap[originalId] = existingEntry.id
+                             if (
+                                 !password.customIconType.equals("NONE", ignoreCase = true) &&
+                                 existingEntry.customIconType.equals("NONE", ignoreCase = true)
+                             ) {
+                                 val patchedEntry = existingEntry.copy(
+                                     customIconType = password.customIconType,
+                                     customIconValue = password.customIconValue?.let { java.io.File(it).name },
+                                     customIconUpdatedAt = password.customIconUpdatedAt
+                                 )
+                                 passwordRepository.updatePasswordEntry(patchedEntry)
+                             }
                         }
                         passwordSkipped++
                     }

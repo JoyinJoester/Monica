@@ -2,6 +2,9 @@ package takagi.ru.monica.bitwarden.mapper
 
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.PasskeyEntry
+import java.security.KeyFactory
+import java.security.spec.PKCS8EncodedKeySpec
+import android.util.Base64
 
 /**
  * Passkey 数据映射器
@@ -15,7 +18,7 @@ import takagi.ru.monica.data.PasskeyEntry
 class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
 
     override fun toCreateRequest(item: PasskeyEntry, folderId: String?): CipherCreateRequest {
-        val fido2Credentials = if (item.privateKeyAlias.isNotBlank() && item.rpId.isNotBlank()) {
+        val fido2Credentials = if (canUseAsBitwardenKeyValue(item.privateKeyAlias) && item.rpId.isNotBlank()) {
             listOf(
                 CipherLoginFido2CredentialApiData(
                     credentialId = item.credentialId.takeIf { it.isNotBlank() },
@@ -253,12 +256,30 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
 
     private fun algorithmToBitwarden(algorithm: Int): String {
         return when (algorithm) {
-            PasskeyEntry.ALGORITHM_ES256 -> "ES256"
-            PasskeyEntry.ALGORITHM_RS256 -> "RS256"
+            PasskeyEntry.ALGORITHM_ES256 -> "ECDSA"
+            PasskeyEntry.ALGORITHM_RS256 -> "RSA"
             PasskeyEntry.ALGORITHM_PS256 -> "PS256"
             PasskeyEntry.ALGORITHM_EDDSA -> "EdDSA"
-            else -> "ES256"
+            else -> "ECDSA"
         }
+    }
+
+    private fun canUseAsBitwardenKeyValue(value: String): Boolean {
+        if (value.isBlank()) return false
+
+        val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull() ?: return false
+        val keySpec = PKCS8EncodedKeySpec(decoded)
+
+        val ecValid = runCatching {
+            KeyFactory.getInstance("EC").generatePrivate(keySpec)
+            true
+        }.getOrDefault(false)
+        if (ecValid) return true
+
+        return runCatching {
+            KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+            true
+        }.getOrDefault(false)
     }
 
     private fun buildReferenceCredentialId(cipherId: String): String {

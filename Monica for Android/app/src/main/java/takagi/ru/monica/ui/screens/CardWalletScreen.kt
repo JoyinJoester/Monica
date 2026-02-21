@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -52,6 +53,8 @@ import takagi.ru.monica.ui.components.EmptyState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.LoadingIndicator
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.security.SecurityManager
@@ -127,6 +130,8 @@ fun CardWalletScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var showTypeMenu by remember { mutableStateOf(false) }
+    var showCategoryFilterDialog by remember { mutableStateOf(false) }
+    var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
@@ -237,7 +242,7 @@ fun CardWalletScreen(
         selectedIds = emptySet()
     }
 
-    val filteredItems = remember(allItems, currentTab, searchQuery) {
+    val filteredItems = remember(allItems, currentTab, searchQuery, selectedCategoryFilter) {
         val query = searchQuery.trim()
         allItems
             .asSequence()
@@ -247,6 +252,9 @@ fun CardWalletScreen(
                     CardWalletTab.BANK_CARDS -> item.itemType == ItemType.BANK_CARD
                     CardWalletTab.DOCUMENTS -> item.itemType == ItemType.DOCUMENT
                 }
+            }
+            .filter { item ->
+                itemMatchesCategoryFilter(item, selectedCategoryFilter)
             }
             .filter { item ->
                 if (query.isBlank()) {
@@ -342,6 +350,12 @@ fun CardWalletScreen(
             },
             searchHint = stringResource(R.string.topbar_search_hint),
             actions = {
+                IconButton(onClick = { showCategoryFilterDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = stringResource(R.string.category)
+                    )
+                }
                 Box {
                     IconButton(onClick = { showTypeMenu = true }) {
                         Icon(
@@ -619,6 +633,18 @@ fun CardWalletScreen(
         )
     }
 
+    UnifiedCategoryFilterBottomSheet(
+        visible = showCategoryFilterDialog,
+        onDismiss = { showCategoryFilterDialog = false },
+        selected = selectedCategoryFilter,
+        onSelect = { selection -> selectedCategoryFilter = selection },
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = getKeePassGroups
+    )
+
     UnifiedMoveToCategoryBottomSheet(
         visible = showBatchMoveCategoryDialog,
         onDismiss = { showBatchMoveCategoryDialog = false },
@@ -655,5 +681,39 @@ private fun itemMatchesSearch(
         } ?: false
 
         else -> false
+    }
+}
+
+private fun itemMatchesCategoryFilter(
+    item: SecureItem,
+    filter: UnifiedCategoryFilterSelection
+): Boolean {
+    val vaultId = item.bitwardenVaultId
+    val folderId = item.bitwardenFolderId
+    val keePassId = item.keepassDatabaseId
+    val groupPath = item.keepassGroupPath
+    val isLocal = vaultId == null && keePassId == null
+    return when (filter) {
+        UnifiedCategoryFilterSelection.All -> true
+        UnifiedCategoryFilterSelection.Local -> isLocal
+        UnifiedCategoryFilterSelection.Starred -> item.isFavorite
+        UnifiedCategoryFilterSelection.Uncategorized -> item.categoryId == null
+        UnifiedCategoryFilterSelection.LocalStarred -> isLocal && item.isFavorite
+        UnifiedCategoryFilterSelection.LocalUncategorized -> isLocal && item.categoryId == null
+        is UnifiedCategoryFilterSelection.Custom -> item.categoryId == filter.categoryId
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> vaultId == filter.vaultId
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
+            vaultId == filter.vaultId && folderId == filter.folderId
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
+            vaultId == filter.vaultId && item.isFavorite
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
+            vaultId == filter.vaultId && item.categoryId == null
+        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> keePassId == filter.databaseId
+        is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
+            keePassId == filter.databaseId && groupPath == filter.groupPath
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
+            keePassId == filter.databaseId && item.isFavorite
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
+            keePassId == filter.databaseId && item.categoryId == null
     }
 }

@@ -362,13 +362,50 @@ class NoteViewModel(
     // @param softDelete 是否软删除（移入回收站），默认为 true
     fun deleteNote(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
-            if (softDelete) {
-                if (item.keepassDatabaseId != null) {
-                    val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                    if (deleteResult?.isFailure == true) {
-                        Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                    }
+            val vaultId = item.bitwardenVaultId
+            val cipherId = item.bitwardenCipherId
+            val isBitwardenCipher = vaultId != null && !cipherId.isNullOrBlank()
+
+            if (isBitwardenCipher) {
+                val queueResult = bitwardenRepository?.queueCipherDelete(
+                    vaultId = vaultId!!,
+                    cipherId = cipherId!!,
+                    entryId = item.id,
+                    itemType = BitwardenPendingOperation.ITEM_TYPE_NOTE
+                )
+                if (queueResult?.isFailure == true) {
+                    Log.e(TAG, "Queue Bitwarden note delete failed: ${queueResult.exceptionOrNull()?.message}")
+                    return@launch
                 }
+            }
+
+            if (item.keepassDatabaseId != null) {
+                val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                if (deleteResult?.isFailure == true) {
+                    Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    return@launch
+                }
+            }
+
+            if (isBitwardenCipher) {
+                repository.updateItem(
+                    item.copy(
+                        isDeleted = true,
+                        deletedAt = Date(),
+                        updatedAt = Date(),
+                        bitwardenLocalModified = true
+                    )
+                )
+                OperationLogger.logDelete(
+                    itemType = OperationLogItemType.NOTE,
+                    itemId = item.id,
+                    itemTitle = item.title,
+                    detail = "移入回收站（待同步删除）"
+                )
+                return@launch
+            }
+
+            if (softDelete) {
                 // 软删除：移动到回收站
                 repository.softDeleteItem(item)
                 // 记录移入回收站操作
@@ -395,13 +432,50 @@ class NoteViewModel(
     fun deleteNotes(items: List<SecureItem>, softDelete: Boolean = true) {
         viewModelScope.launch {
             items.forEach { item ->
-                if (softDelete) {
-                    if (item.keepassDatabaseId != null) {
-                        val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                        if (deleteResult?.isFailure == true) {
-                            Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                        }
+                val vaultId = item.bitwardenVaultId
+                val cipherId = item.bitwardenCipherId
+                val isBitwardenCipher = vaultId != null && !cipherId.isNullOrBlank()
+
+                if (isBitwardenCipher) {
+                    val queueResult = bitwardenRepository?.queueCipherDelete(
+                        vaultId = vaultId!!,
+                        cipherId = cipherId!!,
+                        entryId = item.id,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_NOTE
+                    )
+                    if (queueResult?.isFailure == true) {
+                        Log.e(TAG, "Queue Bitwarden note delete failed: ${queueResult.exceptionOrNull()?.message}")
+                        return@forEach
                     }
+                }
+
+                if (item.keepassDatabaseId != null) {
+                    val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        return@forEach
+                    }
+                }
+
+                if (isBitwardenCipher) {
+                    repository.updateItem(
+                        item.copy(
+                            isDeleted = true,
+                            deletedAt = Date(),
+                            updatedAt = Date(),
+                            bitwardenLocalModified = true
+                        )
+                    )
+                    OperationLogger.logDelete(
+                        itemType = OperationLogItemType.NOTE,
+                        itemId = item.id,
+                        itemTitle = item.title,
+                        detail = "移入回收站（待同步删除）"
+                    )
+                    return@forEach
+                }
+
+                if (softDelete) {
                     // 软删除：移动到回收站
                     repository.softDeleteItem(item)
                     OperationLogger.logDelete(

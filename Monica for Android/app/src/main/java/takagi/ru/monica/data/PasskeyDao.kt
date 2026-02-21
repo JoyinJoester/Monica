@@ -232,4 +232,10 @@ interface PasskeyDao {
      */
     @Query("UPDATE passkeys SET sync_status = 'SYNCED', bitwarden_cipher_id = :cipherId WHERE credential_id = :credentialId")
     suspend fun markSynced(credentialId: String, cipherId: String)
+
+    /**
+     * 标记 Passkey 同步失败
+     */
+    @Query("UPDATE passkeys SET sync_status = 'FAILED' WHERE credential_id = :credentialId")
+    suspend fun markFailed(credentialId: String)
 }
