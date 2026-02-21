@@ -45,3 +45,5 @@ stratumauthapp/
 计划文档/
 task_plan*.md
 task_plan_bottom_sheet_nav.md
+# Local backups - never commit
+monica_backup_*/
