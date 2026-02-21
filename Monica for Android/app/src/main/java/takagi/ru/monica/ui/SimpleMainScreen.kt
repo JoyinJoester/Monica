@@ -13,8 +13,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
@@ -267,53 +272,44 @@ private fun ExpressiveShapeIndicator(
     progress: Float,
     modifier: Modifier = Modifier
 ) {
-    val ringScale = when (state) {
-        PullActionVisualState.IDLE -> 0.86f
-        PullActionVisualState.SEARCH_READY -> 0.94f + (progress * 0.1f)
-        PullActionVisualState.SYNC_READY -> 1f + (progress * 0.14f)
-        PullActionVisualState.SYNCING -> 1.18f
-        PullActionVisualState.SYNC_DONE -> 1.12f
-    }
-    val coreColor = if (state == PullActionVisualState.SYNC_DONE) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    }
-    val ringColor = MaterialTheme.colorScheme.primary.copy(
-        alpha = when (state) {
-            PullActionVisualState.IDLE -> 0.12f
-            PullActionVisualState.SEARCH_READY -> 0.18f
-            PullActionVisualState.SYNC_READY -> 0.24f
-            PullActionVisualState.SYNCING -> 0.28f
-            PullActionVisualState.SYNC_DONE -> 0.24f
-        }
+    val infiniteTransition = rememberInfiniteTransition(label = "pull_sync_icon_rotation")
+    val syncRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pull_sync_rotation"
     )
+    val icon = when (state) {
+        PullActionVisualState.SEARCH_READY, PullActionVisualState.IDLE -> Icons.Default.Search
+        PullActionVisualState.SYNC_READY, PullActionVisualState.SYNCING -> Icons.Default.Sync
+        PullActionVisualState.SYNC_DONE -> Icons.Default.Check
+    }
+    val iconBgColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    val iconTint = MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         modifier = modifier.size(40.dp),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size((34f * ringScale).dp)
-                .clip(CircleShape)
-                .background(ringColor)
-        )
-        Canvas(modifier = Modifier.size(22.dp)) {
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            val baseRadius = size.minDimension * 0.42f
-            val lobeAmplitude = size.minDimension * 0.08f
-            val lobes = 9
-            val path = Path()
-            for (i in 0..120) {
-                val t = (i.toFloat() / 120f) * (2f * PI.toFloat())
-                val radius = baseRadius + lobeAmplitude * sin(lobes * t)
-                val x = cx + radius * cos(t)
-                val y = cy + radius * sin(t)
-                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        Surface(
+            shape = CircleShape,
+            color = iconBgColor,
+            modifier = Modifier.size(36.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .graphicsLayer {
+                            rotationZ = if (state == PullActionVisualState.SYNCING) syncRotation else 0f
+                        }
+                )
             }
-            path.close()
-            drawPath(path = path, color = coreColor)
         }
     }
 }
@@ -339,13 +335,6 @@ private fun PullGestureIndicator(
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    val indicatorProgress = when (state) {
-        PullActionVisualState.SEARCH_READY -> searchProgress
-        PullActionVisualState.SYNC_READY -> syncProgress
-        PullActionVisualState.SYNCING -> 1f
-        PullActionVisualState.SYNC_DONE -> 1f
-        PullActionVisualState.IDLE -> 0f
-    }
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = containerColor,
@@ -363,7 +352,7 @@ private fun PullGestureIndicator(
             ) {
                 ExpressiveShapeIndicator(
                     state = state,
-                    progress = indicatorProgress
+                    progress = if (state == PullActionVisualState.SEARCH_READY) searchProgress else syncProgress
                 )
 
                 Text(
@@ -375,17 +364,6 @@ private fun PullGestureIndicator(
                 )
             }
 
-            LinearProgressIndicator(
-                progress = {
-                    if (state == PullActionVisualState.SYNCING) 1f else indicatorProgress.coerceIn(0f, 1f)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(50)),
-                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                color = MaterialTheme.colorScheme.primary
-            )
         }
     }
 }
@@ -3011,6 +2989,13 @@ private fun PasswordListContent(
     // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
     // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
     val isLocalOnlyView = currentFilter is CategoryFilter.LocalOnly
+    val isBitwardenDatabaseView = when (currentFilter) {
+        is CategoryFilter.BitwardenVault,
+        is CategoryFilter.BitwardenFolderFilter,
+        is CategoryFilter.BitwardenVaultStarred,
+        is CategoryFilter.BitwardenVaultUncategorized -> true
+        else -> false
+    }
     val effectiveGroupMode = if (isLocalOnlyView) "none" else groupMode
     val effectiveStackCardMode = if (isLocalOnlyView) StackCardMode.ALWAYS_EXPANDED else stackCardMode
     
@@ -3119,6 +3104,11 @@ private fun PasswordListContent(
             hasVibrated = false
         }
 
+        if (!isBitwardenDatabaseView) {
+            hasSyncStageVibrated = false
+            return
+        }
+
         if (oldOffset < syncTriggerDistance && newOffset >= syncTriggerDistance && !hasSyncStageVibrated) {
             hasSyncStageVibrated = true
             vibratePullThreshold(isSyncStage = true)
@@ -3134,14 +3124,17 @@ private fun PasswordListContent(
         }
         androidx.compose.animation.core.Animatable(currentOffset).animateTo(
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 220)
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessLow
+            )
         ) {
             currentOffset = value
         }
     }
 
     fun onPullRelease(): Boolean {
-        if (syncHintArmed && !isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && syncHintArmed && !isBitwardenSyncing) {
             syncHintArmed = false
             isBitwardenSyncing = true
             lockPullUntilSyncFinished = true
@@ -3214,19 +3207,23 @@ private fun PasswordListContent(
     }
 
     LaunchedEffect(Unit) {
-        resolveSyncableVaultId()
+        if (isBitwardenDatabaseView) {
+            resolveSyncableVaultId()
+        } else {
+            canRunBitwardenSync = false
+        }
     }
 
-    LaunchedEffect(currentOffset >= syncTriggerDistance, isBitwardenSyncing) {
-        if (currentOffset >= syncTriggerDistance && !isBitwardenSyncing) {
+    LaunchedEffect(currentOffset >= syncTriggerDistance, isBitwardenDatabaseView, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && !isBitwardenSyncing) {
             resolveSyncableVaultId()
         }
     }
 
-    LaunchedEffect(currentOffset, canRunBitwardenSync, isBitwardenSyncing) {
-        if (currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+    LaunchedEffect(currentOffset, isBitwardenDatabaseView, canRunBitwardenSync, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
             kotlinx.coroutines.delay(syncHoldMillis)
-            if (currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+            if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
                 syncHintArmed = true
             }
         } else {
@@ -3953,9 +3950,9 @@ private fun PasswordListContent(
             val syncProgress = ((currentOffset - triggerDistance) / (syncTriggerDistance - triggerDistance))
                 .coerceIn(0f, 1f)
             val pullVisualState = when {
-                isBitwardenSyncing -> PullActionVisualState.SYNCING
-                showSyncFeedback -> PullActionVisualState.SYNC_DONE
-                syncHintArmed -> PullActionVisualState.SYNC_READY
+                isBitwardenDatabaseView && isBitwardenSyncing -> PullActionVisualState.SYNCING
+                isBitwardenDatabaseView && showSyncFeedback -> PullActionVisualState.SYNC_DONE
+                isBitwardenDatabaseView && syncHintArmed -> PullActionVisualState.SYNC_READY
                 currentOffset >= triggerDistance -> PullActionVisualState.SEARCH_READY
                 else -> PullActionVisualState.IDLE
             }
@@ -3969,18 +3966,35 @@ private fun PasswordListContent(
                     }
                 }
                 PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-                PullActionVisualState.SEARCH_READY -> stringResource(R.string.pull_release_to_search)
+                PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
+                    stringResource(R.string.pull_release_to_search)
+                } else {
+                    null
+                }
                 PullActionVisualState.IDLE -> null
             }
+            val shouldPinIndicator = isBitwardenDatabaseView && (
+                syncHintArmed || isBitwardenSyncing || showSyncFeedback
+            )
             val revealHeightTarget = with(density) {
-                currentOffset.toDp().coerceIn(0.dp, 112.dp)
+                if (isBitwardenDatabaseView) {
+                    val pullHeight = currentOffset.toDp().coerceIn(0.dp, 112.dp)
+                    if (shouldPinIndicator) {
+                        maxOf(pullHeight, 92.dp)
+                    } else {
+                        pullHeight
+                    }
+                } else {
+                    0.dp
+                }
             }
             val revealHeight by animateDpAsState(
                 targetValue = revealHeightTarget,
-                animationSpec = tween(durationMillis = 90),
+                animationSpec = tween(durationMillis = 220),
                 label = "pull_reveal_height"
             )
             val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+            val contentPullOffset = if (isBitwardenDatabaseView) 0 else currentOffset.toInt()
 
             Column(modifier = Modifier.fillMaxSize()) {
                 Box(
@@ -4012,6 +4026,7 @@ private fun PasswordListContent(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
+                            .offset { androidx.compose.ui.unit.IntOffset(0, contentPullOffset) }
                             .pointerInput(Unit) {
                                 detectDragGesturesAfterLongPress(
                                     onDrag = { _, _ -> } // Consume long press to prevent issues
@@ -4068,6 +4083,7 @@ private fun PasswordListContent(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
+                            .offset { androidx.compose.ui.unit.IntOffset(0, contentPullOffset) }
                             .nestedScroll(nestedScrollConnection),
                         contentPadding = PaddingValues(horizontal = 16.dp)
                     ) {

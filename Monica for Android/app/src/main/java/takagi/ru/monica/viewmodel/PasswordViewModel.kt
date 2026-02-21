@@ -62,6 +62,8 @@ class PasswordViewModel(
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
+    private val decryptLock = Any()
+
     companion object {
         private const val SAVED_FILTER_ALL = "all"
         private const val SAVED_FILTER_LOCAL = "local"
@@ -548,7 +550,9 @@ class PasswordViewModel(
     private fun unwrapPasswordLayersForDisplay(value: String): String {
         var current = value
         repeat(3) {
-            val decrypted = securityManager.decryptData(current)
+            val decrypted = synchronized(decryptLock) {
+                securityManager.decryptData(current)
+            }
             if (decrypted == current) return current
             current = decrypted
         }
@@ -673,7 +677,11 @@ class PasswordViewModel(
         if (raw.isBlank()) return raw
         var current = raw
         repeat(3) {
-            val decrypted = runCatching { securityManager.decryptData(current) }.getOrNull() ?: return current
+            val decrypted = runCatching {
+                synchronized(decryptLock) {
+                    securityManager.decryptData(current)
+                }
+            }.getOrNull() ?: return current
             if (decrypted == current) return current
             current = decrypted
         }
