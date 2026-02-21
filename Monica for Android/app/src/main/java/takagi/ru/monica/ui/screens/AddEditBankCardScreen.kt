@@ -43,6 +43,14 @@ fun AddEditBankCardScreen(
     viewModel: BankCardViewModel,
     cardId: Long? = null,
     onNavigateBack: () -> Unit,
+    showTypeSwitcher: Boolean = false,
+    onSwitchToDocument: (() -> Unit)? = null,
+    showTopBar: Boolean = true,
+    showFab: Boolean = true,
+    onFavoriteStateChanged: ((Boolean) -> Unit)? = null,
+    onCanSaveChanged: ((Boolean) -> Unit)? = null,
+    onSaveActionChanged: (((() -> Unit)) -> Unit)? = null,
+    onToggleFavoriteActionChanged: (((() -> Unit)) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -217,57 +225,19 @@ fun AddEditBankCardScreen(
         }
         onNavigateBack()
     }
+    val toggleFavoriteAction: () -> Unit = {
+        val updated = !isFavorite
+        isFavorite = updated
+        onFavoriteStateChanged?.invoke(updated)
+    }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(if (cardId == null) R.string.add_bank_card_title else R.string.edit_bank_card_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { isFavorite = !isFavorite }) {
-                        Icon(
-                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = stringResource(R.string.favorite),
-                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = save,
-                containerColor = if (canSave) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                },
-                contentColor = if (canSave) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
-                }
-            }
-        }
-    ) { paddingValues ->
+    SideEffect {
+        onFavoriteStateChanged?.invoke(isFavorite)
+        onCanSaveChanged?.invoke(canSave)
+        onSaveActionChanged?.invoke(save)
+        onToggleFavoriteActionChanged?.invoke(toggleFavoriteAction)
+    }
+    val screenContent: @Composable (PaddingValues) -> Unit = { paddingValues ->
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -591,6 +561,102 @@ fun AddEditBankCardScreen(
                 )
             }
         }
+    }
+
+    if (showTopBar || showFab) {
+        Scaffold(
+            topBar = {
+                if (showTopBar) {
+                    Column {
+                        TopAppBar(
+                            title = { Text(stringResource(if (cardId == null) R.string.add_bank_card_title else R.string.edit_bank_card_title)) },
+                            navigationIcon = {
+                                IconButton(onClick = onNavigateBack) {
+                                    Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
+                                }
+                            },
+                            actions = {
+                                IconButton(onClick = toggleFavoriteAction) {
+                                    Icon(
+                                        if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = stringResource(R.string.favorite),
+                                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        )
+                        if (showTypeSwitcher && cardId == null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = true,
+                                    onClick = {},
+                                    label = { Text(stringResource(R.string.quick_action_add_card)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.CreditCard,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                FilterChip(
+                                    selected = false,
+                                    enabled = onSwitchToDocument != null,
+                                    onClick = { onSwitchToDocument?.invoke() },
+                                    label = { Text(stringResource(R.string.quick_action_add_document)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Badge,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+                }
+            },
+            floatingActionButton = {
+                if (showFab) {
+                    FloatingActionButton(
+                        onClick = save,
+                        containerColor = if (canSave) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        contentColor = if (canSave) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
+                        }
+                    }
+                }
+            }
+        ) { paddingValues ->
+            screenContent(paddingValues)
+        }
+    } else {
+        screenContent(PaddingValues(0.dp))
     }
 
     if (showBillingAddressDialog) {

@@ -64,6 +64,8 @@ fun SwipeableAddFab(
     fabContent: @Composable (expand: () -> Unit) -> Unit,
     expandedContent: @Composable (onCollapse: () -> Unit) -> Unit,
     fabBottomOffset: androidx.compose.ui.unit.Dp = 0.dp, // 新增参数：FAB 距离底部的额外偏移
+    fabContainerColor: Color = Color.Unspecified,
+    expandedContainerColor: Color = Color.Unspecified,
     onFabClickOverride: (() -> Unit)? = null,
     onExpandStateChanged: (Boolean) -> Unit = {}
 ) {
@@ -191,8 +193,16 @@ fun SwipeableAddFab(
         
         // 颜色插值：从 PrimaryContainer (FAB 默认色) -> Surface (页面背景色)
         // 假设 FAB 用 PrimaryContainer (Material3 默认)。页面用 Surface。
-        val fabColor = MaterialTheme.colorScheme.primaryContainer
-        val pageColor = MaterialTheme.colorScheme.surface
+        val fabColor = if (fabContainerColor == Color.Unspecified) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            fabContainerColor
+        }
+        val pageColor = if (expandedContainerColor == Color.Unspecified) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            expandedContainerColor
+        }
         
         // 手动插值计算当前背景色
         val currentColor = androidx.compose.ui.graphics.lerp(fabColor, pageColor, expandProgress.value)

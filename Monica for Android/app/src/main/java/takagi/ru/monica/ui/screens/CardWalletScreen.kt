@@ -1,58 +1,74 @@
 package takagi.ru.monica.ui.screens
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.BankCardCard
 import takagi.ru.monica.ui.components.DocumentCard
 import takagi.ru.monica.ui.components.EmptyState
+import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.LoadingIndicator
-import takagi.ru.monica.ui.haptic.rememberHapticFeedback
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.KeePassGroupInfo
+import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 
 enum class CardWalletTab {
+    ALL,
     BANK_CARDS,
     DOCUMENTS
 }
 
-/**
- * 卡包界面，整合了银行卡和证件
- * 使用 M3E 设计风格
- */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CardWalletScreen(
     bankCardViewModel: BankCardViewModel,
@@ -61,327 +77,444 @@ fun CardWalletScreen(
     onDocumentClick: (Long) -> Unit,
     currentTab: CardWalletTab,
     onTabSelected: (CardWalletTab) -> Unit,
-    onSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit) -> Unit,
-    // Special callback for bank cards which supports favorite
-    onBankCardSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit, 
+    onSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit,
+    onBankCardSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 2 })
-    val coroutineScope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) {
-        bankCardViewModel.syncAllKeePassCards()
-        documentViewModel.syncAllKeePassDocuments()
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val scope = rememberCoroutineScope()
+    val securityManager = remember { SecurityManager(context) }
+    val biometricHelper = remember { BiometricHelper(context) }
+    val settingsManager = remember { SettingsManager(context) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(
+        initial = AppSettings(biometricEnabled = false)
+    )
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList<Category>())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    val keePassService = remember {
+        KeePassKdbxService(
+            context,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
+    val keepassGroupFlows = remember {
+        mutableMapOf<Long, MutableStateFlow<List<KeePassGroupInfo>>>()
+    }
+    val getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>> = remember {
+        { databaseId ->
+            val flow = keepassGroupFlows.getOrPut(databaseId) {
+                MutableStateFlow(emptyList())
+            }
+            if (flow.value.isEmpty()) {
+                scope.launch {
+                    flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                }
+            }
+            flow
+        }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        // M3E 风格的顶部标题栏 (Header)
-        // 包含左侧的大标题和右侧的胶囊形切换器
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp), // 增加边距
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 左侧大标题
-            Text(
-                text = stringResource(R.string.nav_card_wallet),
-                style = MaterialTheme.typography.headlineLarge, // 使用大标题样式
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+    val cards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
+    val documents by documentViewModel.allDocuments.collectAsState(initial = emptyList())
+    val bankLoading by bankCardViewModel.isLoading.collectAsState()
+    val documentLoading by documentViewModel.isLoading.collectAsState()
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
 
-            // 右侧胶囊形切换器 (Pill Switcher) - 滑动动画版
-            val pillWidth = 48.dp // 单个 Tab 的宽度 (icon 24dp + padding 12dp*2)
-            val pillHeight = 48.dp
-            val indicatorWidth = 48.dp
-            
-            Box(
-                modifier = Modifier
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh, 
-                        shape = RoundedCornerShape(50)
-                    )
-                    .padding(4.dp) // 容器内边距
-                    .height(pillHeight)
-                    .width(pillWidth * 2) // 总宽度
-            ) {
-                // 1. 滑动的指示器 (背景)
-                // 计算偏移量: currentPage + offsetFraction
-                // 注意: offsetFraction 在 -0.5 到 0.5 之间，或者 0 到 1 取决于版本，PagerState 通常是当前页的偏移
-                // Absolute offset = (page + fraction) * width
-                val indicatorOffset by remember {
-                    derivedStateOf {
-                        val pageOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction
-                        (pillWidth * pageOffset)
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = indicatorOffset)
-                        .size(width = pillWidth, height = pillHeight)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-
-                // 2. 图标层 (在上层)
-                Row(modifier = Modifier.fillMaxSize()) {
-                    // Item 0: Bank Cards
-                    Box(
-                        modifier = Modifier
-                            .size(pillWidth)
-                            .clip(CircleShape)
-                            .clickable { 
-                                onTabSelected(CardWalletTab.BANK_CARDS) 
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                         // 颜色动画: 如果指示器覆盖了该项，则反白
-                         // 简单判断: currentPage 近似等于 index
-                         val isSelected = pagerState.currentPage == 0
-                         val targetColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                         // 这里可以用 lerp 实现更丝滑的颜色过渡，为了简单先用状态切换
-                         
-                        Icon(
-                            imageVector = Icons.Default.CreditCard,
-                            contentDescription = stringResource(R.string.nav_bank_cards_short),
-                            tint = targetColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    // Item 1: Documents
-                    Box(
-                        modifier = Modifier
-                            .size(pillWidth)
-                            .clip(CircleShape)
-                            .clickable { 
-                                onTabSelected(CardWalletTab.DOCUMENTS) 
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val isSelected = pagerState.currentPage == 1
-                        val targetColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        
-                        Icon(
-                            imageVector = Icons.Default.Description,
-                            contentDescription = stringResource(R.string.nav_documents_short),
-                            tint = targetColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Sync: External Tab -> Pager
-        LaunchedEffect(currentTab) {
-            val targetPage = when (currentTab) {
-                CardWalletTab.BANK_CARDS -> 0
-                CardWalletTab.DOCUMENTS -> 1
-            }
-            if (pagerState.currentPage != targetPage) {
-                pagerState.animateScrollToPage(targetPage)
-            }
-        }
-
-        // Sync: Pager -> External Tab
-        LaunchedEffect(pagerState.currentPage) {
-            val targetTab = when (pagerState.currentPage) {
-                0 -> CardWalletTab.BANK_CARDS
-                1 -> CardWalletTab.DOCUMENTS
-                else -> CardWalletTab.BANK_CARDS
-            }
-            if (currentTab != targetTab) {
-                onTabSelected(targetTab)
-            }
-        }
-
-        androidx.compose.foundation.pager.HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f),
-            userScrollEnabled = true
-        ) { page ->
-            when (page) {
-                0 -> {
-                    BankCardListContent(
-                        viewModel = bankCardViewModel,
-                        onCardClick = onCardClick,
-                        onSelectionModeChange = onBankCardSelectionModeChange
-                    )
-                }
-                1 -> {
-                    DocumentListContent(
-                        viewModel = documentViewModel,
-                        onDocumentClick = onDocumentClick,
-                        onSelectionModeChange = onSelectionModeChange
-                    )
-                }
-            }
-        }
-    }
-}
-
-// Reuse logic from BankCardListScreen but adapted for being a content part
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun BankCardListContent(
-    viewModel: BankCardViewModel,
-    onCardClick: (Long) -> Unit,
-    onSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit
-) {
-    val cards by viewModel.allCards.collectAsState(initial = emptyList())
-    val isLoading by viewModel.isLoading.collectAsState()
-    val haptic = rememberHapticFeedback()
-    
-    // Selection state
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    var showTypeMenu by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    var showVerifyDialog by remember { mutableStateOf(false) }
+    var verifyPassword by remember { mutableStateOf("") }
+    var verifyPasswordError by remember { mutableStateOf(false) }
+    var verifyDeleteIds by remember { mutableStateOf(setOf<Long>()) }
+    var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
 
-    // Update parent about selection mode changes
-    LaunchedEffect(isSelectionMode, selectedIds) {
-        onSelectionModeChange(
-            isSelectionMode,
-            selectedIds.size,
-            { // Exit selection
-                isSelectionMode = false
-                selectedIds = emptySet()
-            },
-            { // Select all
-                if (selectedIds.size == cards.size) {
-                    selectedIds = emptySet()
-                } else {
-                    selectedIds = cards.map { it.id }.toSet()
-                }
-            },
-            { // Delete selected
-                 if (selectedIds.isNotEmpty()) {
-                     showBatchDeleteDialog = true
-                 }
-            },
-            { // Favorite selected (Placeholder if needed)
-                // Implement favorite logic if ViewModel supports it
-            }
+    LaunchedEffect(Unit) {
+        bankCardViewModel.syncAllKeePassCards()
+        documentViewModel.syncAllKeePassDocuments()
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
+    val allItems = remember(cards, documents) {
+        (cards + documents).sortedWith(
+            compareByDescending<SecureItem> { it.isFavorite }
+                .thenByDescending { it.updatedAt.time }
+                .thenBy { it.sortOrder }
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            isLoading -> LoadingIndicator()
-            cards.isEmpty() -> {
-                EmptyState(
-                    icon = Icons.Default.CreditCard,
-                    title = stringResource(R.string.no_bank_cards_title),
-                    description = stringResource(R.string.no_bank_cards_description)
-                )
+    val performDelete: (Set<Long>) -> Unit = { ids ->
+        allItems.filter { it.id in ids }.forEach { item ->
+            when (item.itemType) {
+                ItemType.BANK_CARD -> bankCardViewModel.deleteCard(item.id)
+                ItemType.DOCUMENT -> documentViewModel.deleteDocument(item.id)
+                else -> Unit
             }
-            else -> {
-                // 用于拖动排序的本地列表状态
-                var localCards by remember(cards) { mutableStateOf(cards) }
-                
-                LaunchedEffect(cards) {
-                    localCards = cards
+        }
+        isSelectionMode = false
+        selectedIds = emptySet()
+    }
+
+    val requestDeleteVerification: (Set<Long>) -> Unit = requestDeleteVerification@{ ids ->
+        if (ids.isEmpty()) return@requestDeleteVerification
+        if (appSettings.disablePasswordVerification) {
+            performDelete(ids)
+            return@requestDeleteVerification
+        }
+        verifyDeleteIds = ids
+        verifyPassword = ""
+        verifyPasswordError = false
+        showVerifyDialog = true
+    }
+
+    fun performBatchMove(target: UnifiedMoveCategoryTarget) {
+        val targetCategoryId: Long? = when (target) {
+            UnifiedMoveCategoryTarget.Uncategorized -> null
+            is UnifiedMoveCategoryTarget.MonicaCategory -> target.categoryId
+            else -> null
+        }
+        val targetKeepassDatabaseId: Long? = when (target) {
+            is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
+            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
+            else -> null
+        }
+        val targetKeepassGroupPath: String? = when (target) {
+            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath
+            else -> null
+        }
+        val targetBitwardenVaultId: Long? = when (target) {
+            is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+            else -> null
+        }
+        val targetBitwardenFolderId: String? = when (target) {
+            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
+            else -> null
+        }
+
+        val selectedItems = allItems.filter { selectedIds.contains(it.id) }
+        selectedItems.forEach { item ->
+            when (item.itemType) {
+                ItemType.BANK_CARD -> {
+                    bankCardViewModel.moveCardToStorage(
+                        id = item.id,
+                        categoryId = targetCategoryId,
+                        keepassDatabaseId = targetKeepassDatabaseId,
+                        keepassGroupPath = targetKeepassGroupPath,
+                        bitwardenVaultId = targetBitwardenVaultId,
+                        bitwardenFolderId = targetBitwardenFolderId
+                    )
                 }
-                
-                val lazyListState = rememberLazyListState()
-                val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
-                    if (isSelectionMode) {
-                        localCards = localCards.toMutableList().apply {
-                            add(to.index, removeAt(from.index))
-                        }
-                    }
+                ItemType.DOCUMENT -> {
+                    documentViewModel.moveDocumentToStorage(
+                        id = item.id,
+                        categoryId = targetCategoryId,
+                        keepassDatabaseId = targetKeepassDatabaseId,
+                        keepassGroupPath = targetKeepassGroupPath,
+                        bitwardenVaultId = targetBitwardenVaultId,
+                        bitwardenFolderId = targetBitwardenFolderId
+                    )
                 }
-                
-                // 保存排序
-                LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
-                    if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
-                        val newOrders = localCards.mapIndexed { index, item ->
-                            item.id to index
-                        }
-                        if (newOrders.isNotEmpty()) {
-                            viewModel.updateSortOrders(newOrders)
-                        }
-                    }
+                else -> Unit
+            }
+        }
+
+        android.widget.Toast.makeText(
+            context,
+            context.getString(R.string.selected_items, selectedItems.size),
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
+        showBatchMoveCategoryDialog = false
+        isSelectionMode = false
+        selectedIds = emptySet()
+    }
+
+    val filteredItems = remember(allItems, currentTab, searchQuery) {
+        val query = searchQuery.trim()
+        allItems
+            .asSequence()
+            .filter { item ->
+                when (currentTab) {
+                    CardWalletTab.ALL -> item.itemType == ItemType.BANK_CARD || item.itemType == ItemType.DOCUMENT
+                    CardWalletTab.BANK_CARDS -> item.itemType == ItemType.BANK_CARD
+                    CardWalletTab.DOCUMENTS -> item.itemType == ItemType.DOCUMENT
                 }
-                
-                LazyColumn(
-                    state = lazyListState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(items = localCards, key = { it.id }) { card ->
-                        val isSelected = selectedIds.contains(card.id)
-                        
-                        ReorderableItem(reorderableLazyListState, key = card.id) { isDragging ->
-                            val elevation by animateDpAsState(
-                                if (isDragging) 8.dp else 0.dp,
-                                label = "drag_elevation"
-                            )
-                            
-                            // 在多选模式下使用拖动手柄
-                            val dragModifier = if (isSelectionMode) {
-                                Modifier.longPressDraggableHandle(
-                                    onDragStarted = { haptic.performLongPress() },
-                                    onDragStopped = { haptic.performSuccess() }
-                                )
-                            } else {
-                                Modifier
-                            }
-                            
-                            Box(
-                                modifier = Modifier
-                                    .graphicsLayer { shadowElevation = elevation.toPx() }
-                                    .then(dragModifier)
-                            ) {
-                                BankCardCard(
-                                    item = card,
-                                    isSelectionMode = isSelectionMode,
-                                    isSelected = isSelected,
-                                    onLongClick = {
-                                        if (!isSelectionMode) {
-                                            haptic.performLongPress()
-                                            isSelectionMode = true
-                                            selectedIds = setOf(card.id)
-                                        }
-                                    },
-                                    onClick = { 
-                                        if (isSelectionMode) {
-                                            selectedIds = if (isSelected) {
-                                                selectedIds - card.id
-                                            } else {
-                                                selectedIds + card.id
-                                            }
-                                            if (selectedIds.isEmpty()) {
-                                                isSelectionMode = false
-                                            }
-                                        } else {
-                                            onCardClick(card.id)
-                                        }
-                                    },
-                                    onDelete = { itemToDelete = card }
-                                )
-                            }
-                        }
-                    }
-                    item { Spacer(modifier = Modifier.height(80.dp)) }
+            }
+            .filter { item ->
+                if (query.isBlank()) {
+                    true
+                } else {
+                    itemMatchesSearch(
+                        item = item,
+                        query = query,
+                        bankCardViewModel = bankCardViewModel,
+                        documentViewModel = documentViewModel
+                    )
+                }
+            }
+            .toList()
+    }
+
+    LaunchedEffect(filteredItems) {
+        if (selectedIds.isEmpty()) return@LaunchedEffect
+        val validIds = filteredItems.map { it.id }.toSet()
+        selectedIds = selectedIds.intersect(validIds)
+        if (selectedIds.isEmpty()) {
+            isSelectionMode = false
+        }
+    }
+
+    val exitSelection = {
+        isSelectionMode = false
+        selectedIds = emptySet()
+    }
+    val selectAll = {
+        selectedIds = if (selectedIds.size == filteredItems.size) {
+            emptySet()
+        } else {
+            filteredItems.map { it.id }.toSet()
+        }
+    }
+    val deleteSelected = {
+        if (selectedIds.isNotEmpty()) {
+            showBatchDeleteDialog = true
+        }
+    }
+    val moveSelected = {
+        if (selectedIds.isNotEmpty()) {
+            showBatchMoveCategoryDialog = true
+        }
+    }
+    val favoriteSelected = {
+        val selectedItems = allItems.filter { it.id in selectedIds }
+        if (selectedItems.isNotEmpty()) {
+            val shouldFavorite = selectedItems.any { !it.isFavorite }
+            selectedItems.forEach { item ->
+                if (item.isFavorite == shouldFavorite) return@forEach
+                when (item.itemType) {
+                    ItemType.BANK_CARD -> bankCardViewModel.toggleFavorite(item.id)
+                    ItemType.DOCUMENT -> documentViewModel.toggleFavorite(item.id)
+                    else -> Unit
                 }
             }
         }
     }
-    
-    // Single delete dialog
+
+    LaunchedEffect(isSelectionMode, selectedIds, filteredItems) {
+        onBankCardSelectionModeChange(
+            isSelectionMode,
+            selectedIds.size,
+            exitSelection,
+            selectAll,
+            deleteSelected,
+            favoriteSelected,
+            moveSelected
+        )
+        onSelectionModeChange(
+            isSelectionMode,
+            selectedIds.size,
+            exitSelection,
+            selectAll,
+            moveSelected,
+            deleteSelected
+        )
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        ExpressiveTopBar(
+            title = stringResource(R.string.nav_card_wallet),
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
+            isSearchExpanded = isSearchExpanded,
+            onSearchExpandedChange = { expanded ->
+                isSearchExpanded = expanded
+                if (!expanded) {
+                    searchQuery = ""
+                }
+            },
+            searchHint = stringResource(R.string.topbar_search_hint),
+            actions = {
+                Box {
+                    IconButton(onClick = { showTypeMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = stringResource(R.string.category)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showTypeMenu,
+                        onDismissRequest = { showTypeMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.filter_all)) },
+                            onClick = {
+                                showTypeMenu = false
+                                onTabSelected(CardWalletTab.ALL)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.nav_bank_cards_short)) },
+                            onClick = {
+                                showTypeMenu = false
+                                onTabSelected(CardWalletTab.BANK_CARDS)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.nav_documents_short)) },
+                            onClick = {
+                                showTypeMenu = false
+                                onTabSelected(CardWalletTab.DOCUMENTS)
+                            }
+                        )
+                    }
+                }
+                IconButton(onClick = { isSearchExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = stringResource(R.string.search)
+                    )
+                }
+            }
+        )
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            when {
+                bankLoading || documentLoading -> LoadingIndicator()
+                filteredItems.isEmpty() -> {
+                    when (currentTab) {
+                        CardWalletTab.BANK_CARDS -> EmptyState(
+                            icon = Icons.Default.CreditCard,
+                            title = stringResource(R.string.no_bank_cards_title),
+                            description = stringResource(R.string.no_bank_cards_description)
+                        )
+
+                        CardWalletTab.DOCUMENTS -> EmptyState(
+                            icon = Icons.Default.Description,
+                            title = stringResource(R.string.no_documents_title),
+                            description = stringResource(R.string.no_documents_description)
+                        )
+
+                        CardWalletTab.ALL -> EmptyState(
+                            icon = Icons.Default.CreditCard,
+                            title = stringResource(R.string.nav_card_wallet),
+                            description = if (searchQuery.isBlank()) {
+                                stringResource(R.string.no_bank_cards_description)
+                            } else {
+                                stringResource(R.string.passkey_no_search_results_hint)
+                            }
+                        )
+                    }
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        items(filteredItems, key = { it.id }) { item ->
+                            val isSelected = selectedIds.contains(item.id)
+                            when (item.itemType) {
+                                ItemType.BANK_CARD -> BankCardCard(
+                                    item = item,
+                                    onClick = {
+                                        if (isSelectionMode) {
+                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                            if (selectedIds.isEmpty()) isSelectionMode = false
+                                        } else {
+                                            onCardClick(item.id)
+                                        }
+                                    },
+                                    onDelete = { itemToDelete = item },
+                                    onToggleFavorite = { id, _ -> bankCardViewModel.toggleFavorite(id) },
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            isSelectionMode = true
+                                            selectedIds = setOf(item.id)
+                                        } else {
+                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                            if (selectedIds.isEmpty()) isSelectionMode = false
+                                        }
+                                    },
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+
+                                ItemType.DOCUMENT -> DocumentCard(
+                                    item = item,
+                                    onClick = {
+                                        if (isSelectionMode) {
+                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                            if (selectedIds.isEmpty()) isSelectionMode = false
+                                        } else {
+                                            onDocumentClick(item.id)
+                                        }
+                                    },
+                                    onDelete = { itemToDelete = item },
+                                    onToggleFavorite = { id, _ -> documentViewModel.toggleFavorite(id) },
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            isSelectionMode = true
+                                            selectedIds = setOf(item.id)
+                                        } else {
+                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                            if (selectedIds.isEmpty()) isSelectionMode = false
+                                        }
+                                    },
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+
+                                else -> Unit
+                            }
+                        }
+                        item { Box(modifier = Modifier.height(80.dp)) }
+                    }
+                }
+            }
+        }
+    }
+
     itemToDelete?.let { item ->
         AlertDialog(
             onDismissRequest = { itemToDelete = null },
-            title = { Text(stringResource(R.string.delete_bank_card_title)) },
-            text = { Text(stringResource(R.string.delete_bank_card_message, item.title)) },
+            title = {
+                Text(
+                    stringResource(
+                        if (item.itemType == ItemType.BANK_CARD) {
+                            R.string.delete_bank_card_title
+                        } else {
+                            R.string.delete_document_title
+                        }
+                    )
+                )
+            },
+            text = {
+                Text(
+                    stringResource(
+                        if (item.itemType == ItemType.BANK_CARD) {
+                            R.string.delete_bank_card_message
+                        } else {
+                            R.string.delete_document_message
+                        },
+                        item.title
+                    )
+                )
+            },
             confirmButton = {
-                TextButton(onClick = { viewModel.deleteCard(item.id); itemToDelete = null }) {
+                TextButton(onClick = {
+                    requestDeleteVerification(setOf(item.id))
+                    itemToDelete = null
+                }) {
                     Text(stringResource(R.string.delete))
                 }
             },
@@ -393,7 +526,6 @@ fun BankCardListContent(
         )
     }
 
-    // Batch delete dialog
     if (showBatchDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showBatchDeleteDialog = false },
@@ -401,9 +533,7 @@ fun BankCardListContent(
             text = { Text(stringResource(R.string.batch_delete_message, selectedIds.size)) },
             confirmButton = {
                 TextButton(onClick = {
-                    selectedIds.forEach { viewModel.deleteCard(it) }
-                    isSelectionMode = false
-                    selectedIds = emptySet()
+                    requestDeleteVerification(selectedIds)
                     showBatchDeleteDialog = false
                 }) {
                     Text(stringResource(R.string.delete))
@@ -416,218 +546,114 @@ fun BankCardListContent(
             }
         )
     }
-}
 
-// Reuse logic from DocumentListScreen
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun DocumentListContent(
-    viewModel: DocumentViewModel,
-    onDocumentClick: (Long) -> Unit,
-    onSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit) -> Unit
-) {
-    val documents by viewModel.allDocuments.collectAsState(initial = emptyList())
-    val isLoading by viewModel.isLoading.collectAsState()
-    val haptic = rememberHapticFeedback()
-    
-    var selectedIds by remember { mutableStateOf(setOf<Long>()) }
-    var isSelectionMode by remember { mutableStateOf(false) }
-    var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
-    var showBatchDeleteDialog by remember { mutableStateOf(false) }
-
-     LaunchedEffect(isSelectionMode, selectedIds) {
-        onSelectionModeChange(
-            isSelectionMode,
-            selectedIds.size,
-            { // Exit
-                isSelectionMode = false
-                selectedIds = emptySet()
-            },
-            { // Select All
-                if (selectedIds.size == documents.size) {
-                    selectedIds = emptySet()
-                } else {
-                    selectedIds = documents.map { it.id }.toSet()
-                }
-            },
-            { // Delete
-                 if (selectedIds.isNotEmpty()) {
-                     showBatchDeleteDialog = true
-                 }
-            }
-        )
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            isLoading -> LoadingIndicator()
-            documents.isEmpty() -> {
-                EmptyState(
-                    icon = Icons.Default.Description,
-                    title = stringResource(R.string.no_documents_title),
-                    description = stringResource(R.string.no_documents_description)
+    if (showVerifyDialog) {
+        val biometricAction = if (
+            activity != null &&
+            appSettings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.verify_to_delete),
+                    onSuccess = {
+                        performDelete(verifyDeleteIds)
+                        verifyDeleteIds = emptySet()
+                        verifyPassword = ""
+                        verifyPasswordError = false
+                        showVerifyDialog = false
+                    },
+                    onError = { error ->
+                        android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onFailed = {}
                 )
             }
-            else -> {
-                // 用于拖动排序的本地列表状态
-                var localDocuments by remember(documents) { mutableStateOf(documents) }
-                
-                LaunchedEffect(documents) {
-                    localDocuments = documents
-                }
-                
-                val lazyListState = rememberLazyListState()
-                val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
-                    if (isSelectionMode) {
-                        localDocuments = localDocuments.toMutableList().apply {
-                            add(to.index, removeAt(from.index))
-                        }
-                    }
-                }
-                
-                // 保存排序
-                LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
-                    if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
-                        val newOrders = localDocuments.mapIndexed { index, item ->
-                            item.id to index
-                        }
-                        if (newOrders.isNotEmpty()) {
-                            viewModel.updateSortOrders(newOrders)
-                        }
-                    }
-                }
-                
-                LazyColumn(
-                    state = lazyListState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(items = localDocuments, key = { it.id }) { document ->
-                        val isSelected = selectedIds.contains(document.id)
-                        
-                        ReorderableItem(reorderableLazyListState, key = document.id) { isDragging ->
-                            val elevation by animateDpAsState(
-                                if (isDragging) 8.dp else 0.dp,
-                                label = "drag_elevation"
-                            )
-                            
-                            // 在多选模式下使用拖动手柄
-                            val dragModifier = if (isSelectionMode) {
-                                Modifier.longPressDraggableHandle(
-                                    onDragStarted = { haptic.performLongPress() },
-                                    onDragStopped = { haptic.performSuccess() }
-                                )
-                            } else {
-                                Modifier
-                            }
-                            
-                            Box(
-                                modifier = Modifier
-                                    .graphicsLayer { shadowElevation = elevation.toPx() }
-                                    .then(dragModifier)
-                            ) {
-                                DocumentCard(
-                                    item = document,
-                                    isSelectionMode = isSelectionMode,
-                                    isSelected = isSelected,
-                                    onLongClick = {
-                                        if (!isSelectionMode) {
-                                            haptic.performLongPress()
-                                            isSelectionMode = true
-                                            selectedIds = setOf(document.id)
-                                        }
-                                    },
-                                    onClick = { 
-                                        if (isSelectionMode) {
-                                            selectedIds = if (isSelected) {
-                                                selectedIds - document.id
-                                            } else {
-                                                selectedIds + document.id
-                                            }
-                                            if (selectedIds.isEmpty()) {
-                                                isSelectionMode = false
-                                            }
-                                        } else {
-                                            onDocumentClick(document.id)
-                                        }
-                                    },
-                                    onDelete = { itemToDelete = document }
-                                )
-                            }
-                        }
-                    }
-                    item { Spacer(modifier = Modifier.height(80.dp)) }
-                }
-            }
+        } else {
+            null
         }
-    }
-    
-    itemToDelete?.let { item ->
-         AlertDialog(
-            onDismissRequest = { itemToDelete = null },
-            title = { Text(stringResource(R.string.delete_document_title)) },
-            text = { Text(stringResource(R.string.delete_document_message, item.title)) },
-            confirmButton = {
-                TextButton(onClick = { viewModel.deleteDocument(item.id); itemToDelete = null }) {
-                    Text(stringResource(R.string.delete))
+
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = if (verifyDeleteIds.size > 1) {
+                stringResource(R.string.batch_delete_message, verifyDeleteIds.size)
+            } else {
+                stringResource(R.string.verify_identity_to_delete)
+            },
+            passwordValue = verifyPassword,
+            onPasswordChange = {
+                verifyPassword = it
+                verifyPasswordError = false
+            },
+            onDismiss = {
+                showVerifyDialog = false
+                verifyDeleteIds = emptySet()
+                verifyPassword = ""
+                verifyPasswordError = false
+            },
+            onConfirm = {
+                scope.launch {
+                    if (securityManager.verifyMasterPassword(verifyPassword)) {
+                        performDelete(verifyDeleteIds)
+                        verifyDeleteIds = emptySet()
+                        verifyPassword = ""
+                        verifyPasswordError = false
+                        showVerifyDialog = false
+                    } else {
+                        verifyPasswordError = true
+                    }
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { itemToDelete = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
+            confirmText = stringResource(R.string.delete),
+            destructiveConfirm = true,
+            isPasswordError = verifyPasswordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = biometricAction,
+            biometricHintText = if (biometricAction == null) {
+                context.getString(R.string.biometric_not_available)
+            } else {
+                null
             }
         )
     }
-    
-     if (showBatchDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showBatchDeleteDialog = false },
-            title = { Text(stringResource(R.string.batch_delete_title)) },
-            text = { Text(stringResource(R.string.batch_delete_message, selectedIds.size)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    selectedIds.forEach { viewModel.deleteDocument(it) }
-                    isSelectionMode = false
-                    selectedIds = emptySet()
-                    showBatchDeleteDialog = false
-                }) {
-                    Text(stringResource(R.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBatchDeleteDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
+
+    UnifiedMoveToCategoryBottomSheet(
+        visible = showBatchMoveCategoryDialog,
+        onDismiss = { showBatchMoveCategoryDialog = false },
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = getKeePassGroups,
+        onTargetSelected = ::performBatchMove
+    )
 }
 
-@Composable
-fun PillTabItem(
-    selected: Boolean,
-    onClick: () -> Unit,
-    icon: ImageVector,
-    contentDescription: String
-) {
-    val backgroundColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+private fun itemMatchesSearch(
+    item: SecureItem,
+    query: String,
+    bankCardViewModel: BankCardViewModel,
+    documentViewModel: DocumentViewModel
+): Boolean {
+    if (item.title.contains(query, ignoreCase = true) || item.notes.contains(query, ignoreCase = true)) {
+        return true
+    }
+    return when (item.itemType) {
+        ItemType.BANK_CARD -> bankCardViewModel.parseCardData(item.itemData)?.let { card ->
+            card.cardNumber.contains(query, ignoreCase = true) ||
+                card.bankName.contains(query, ignoreCase = true) ||
+                card.cardholderName.contains(query, ignoreCase = true)
+        } ?: false
 
-    Box(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(backgroundColor)
-            .clickable(onClick = onClick)
-            .padding(12.dp), // 增大点击区域和内边距
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = contentColor,
-            modifier = Modifier.size(24.dp)
-        )
+        ItemType.DOCUMENT -> documentViewModel.parseDocumentData(item.itemData)?.let { document ->
+            document.documentNumber.contains(query, ignoreCase = true) ||
+                document.fullName.contains(query, ignoreCase = true) ||
+                document.issuedBy.contains(query, ignoreCase = true) ||
+                document.nationality.contains(query, ignoreCase = true)
+        } ?: false
+
+        else -> false
     }
 }

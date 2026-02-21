@@ -117,6 +117,7 @@ class SettingsManager(private val context: Context) {
         const val NOTE = "note"
         const val TOTP = "totp"
         const val BANK_CARD = "bank_card"
+        const val DOCUMENT = "document"
         const val PASSKEY = "passkey"
     }
 

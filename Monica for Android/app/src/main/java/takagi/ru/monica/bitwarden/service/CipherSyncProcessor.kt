@@ -312,6 +312,11 @@ class CipherSyncProcessor(
         cipher: CipherApiResponse,
         symmetricKey: SymmetricCryptoKey
     ): CipherSyncResult {
+        val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
+        if (hasPendingDelete) {
+            return CipherSyncResult.Skipped("Pending local delete")
+        }
+
         val name = decryptString(cipher.name, symmetricKey) ?: "Note"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
         

@@ -6,10 +6,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.security.SecurityManager
@@ -34,11 +36,24 @@ class NoteViewModel(
     securityManager: SecurityManager? = null
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "NoteViewModel"
+    }
+
     private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
         KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
     } else {
         null
     }
+
+    private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
+
+    private data class BitwardenTransition(
+        val cipherId: String?,
+        val revisionDate: String?,
+        val localModified: Boolean,
+        val syncStatus: String
+    )
     
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -218,6 +233,17 @@ class NoteViewModel(
         viewModelScope.launch {
             // 获取旧笔记以检测变化
             val existingItem = repository.getItemById(id)
+            val transition = resolveBitwardenTransition(
+                existingItem = existingItem,
+                targetVaultId = bitwardenVaultId,
+                targetFolderId = bitwardenFolderId,
+                forcePendingWhenKeepingCipher = bitwardenVaultId != null &&
+                    !existingItem?.bitwardenCipherId.isNullOrBlank(),
+                abortOnQueueFailure = true
+            ) ?: run {
+                Log.e(TAG, "Skip note update $id: failed to queue Bitwarden delete")
+                return@launch
+            }
             
             val noteData = NoteData(
                 content = content,
@@ -248,15 +274,11 @@ class NoteViewModel(
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath ?: existingItem?.keepassGroupPath,
                 bitwardenVaultId = bitwardenVaultId,
-                bitwardenCipherId = existingItem?.bitwardenCipherId,
+                bitwardenCipherId = transition.cipherId,
                 bitwardenFolderId = bitwardenFolderId,
-                bitwardenRevisionDate = existingItem?.bitwardenRevisionDate,
-                bitwardenLocalModified = existingItem?.bitwardenCipherId != null && bitwardenVaultId != null,
-                syncStatus = if (bitwardenVaultId != null) {
-                    if (existingItem?.bitwardenCipherId != null) "PENDING" else "NONE"
-                } else {
-                    "NONE"
-                },
+                bitwardenRevisionDate = transition.revisionDate,
+                bitwardenLocalModified = transition.localModified,
+                syncStatus = transition.syncStatus,
                 createdAt = createdAt,
                 updatedAt = Date()
             )
@@ -297,6 +319,43 @@ class NoteViewModel(
                 changes = if (changes.isEmpty()) listOf(FieldChange("更新", "编辑于", java.text.SimpleDateFormat("HH:mm").format(Date()))) else changes
             )
         }
+    }
+
+    suspend fun moveNoteToStorage(
+        item: SecureItem,
+        categoryId: Long? = item.categoryId,
+        keepassDatabaseId: Long? = item.keepassDatabaseId,
+        keepassGroupPath: String? = item.keepassGroupPath,
+        bitwardenVaultId: Long? = item.bitwardenVaultId,
+        bitwardenFolderId: String? = item.bitwardenFolderId
+    ): Boolean {
+        if (item.itemType != ItemType.NOTE) return false
+
+        val transition = resolveBitwardenTransition(
+            existingItem = item,
+            targetVaultId = bitwardenVaultId,
+            targetFolderId = bitwardenFolderId,
+            forcePendingWhenKeepingCipher = item.bitwardenVaultId == bitwardenVaultId &&
+                item.bitwardenFolderId != bitwardenFolderId &&
+                bitwardenVaultId != null &&
+                !item.bitwardenCipherId.isNullOrBlank(),
+            abortOnQueueFailure = true
+        ) ?: return false
+
+        val updated = item.copy(
+            categoryId = categoryId,
+            keepassDatabaseId = keepassDatabaseId,
+            keepassGroupPath = keepassGroupPath,
+            bitwardenVaultId = bitwardenVaultId,
+            bitwardenFolderId = bitwardenFolderId,
+            bitwardenCipherId = transition.cipherId,
+            bitwardenRevisionDate = transition.revisionDate,
+            bitwardenLocalModified = transition.localModified,
+            syncStatus = transition.syncStatus,
+            updatedAt = Date()
+        )
+        repository.updateItem(updated)
+        return true
     }
     
     // 删除笔记
@@ -362,5 +421,60 @@ class NoteViewModel(
                 }
             }
         }
+    }
+
+    private suspend fun resolveBitwardenTransition(
+        existingItem: SecureItem?,
+        targetVaultId: Long?,
+        targetFolderId: String?,
+        forcePendingWhenKeepingCipher: Boolean,
+        abortOnQueueFailure: Boolean
+    ): BitwardenTransition? {
+        val previousVaultId = existingItem?.bitwardenVaultId
+        val previousCipherId = existingItem?.bitwardenCipherId
+        val hasExistingCipher = previousVaultId != null && !previousCipherId.isNullOrBlank()
+
+        val leavingExistingCipher = hasExistingCipher && previousVaultId != targetVaultId
+        if (leavingExistingCipher) {
+            val queueResult = bitwardenRepository?.queueCipherDelete(
+                vaultId = previousVaultId!!,
+                cipherId = previousCipherId!!,
+                entryId = existingItem?.id,
+                itemType = BitwardenPendingOperation.ITEM_TYPE_NOTE
+            )
+            if (queueResult?.isSuccess != true) {
+                val err = queueResult?.exceptionOrNull()?.message ?: "Bitwarden repository unavailable"
+                Log.e(TAG, "Queue Bitwarden note delete failed: $err")
+                if (abortOnQueueFailure) return null
+            }
+        }
+
+        val keepExistingCipher = hasExistingCipher && previousVaultId == targetVaultId
+        if (targetVaultId == null) {
+            return BitwardenTransition(
+                cipherId = null,
+                revisionDate = null,
+                localModified = false,
+                syncStatus = "NONE"
+            )
+        }
+
+        if (!keepExistingCipher) {
+            return BitwardenTransition(
+                cipherId = null,
+                revisionDate = null,
+                localModified = false,
+                syncStatus = "PENDING"
+            )
+        }
+
+        val folderChanged = existingItem?.bitwardenFolderId != targetFolderId
+        val localModified = forcePendingWhenKeepingCipher || folderChanged || (existingItem?.bitwardenLocalModified == true)
+        return BitwardenTransition(
+            cipherId = previousCipherId,
+            revisionDate = existingItem?.bitwardenRevisionDate,
+            localModified = localModified,
+            syncStatus = if (localModified) "PENDING" else "SYNCED"
+        )
     }
 }

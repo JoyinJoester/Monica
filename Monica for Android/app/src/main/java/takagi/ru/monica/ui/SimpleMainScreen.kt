@@ -63,6 +63,7 @@ import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -243,6 +244,151 @@ private fun ActionIcon(icon: ImageVector, contentDescription: String, onClick: (
             contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UnifiedWalletAddScreen(
+    selectedType: CardWalletTab,
+    onTypeSelected: (CardWalletTab) -> Unit,
+    onNavigateBack: () -> Unit,
+    bankCardViewModel: BankCardViewModel,
+    documentViewModel: DocumentViewModel,
+    stateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
+    modifier: Modifier = Modifier
+) {
+    var isFavorite by remember { mutableStateOf(false) }
+    var canSave by remember { mutableStateOf(false) }
+    var onSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onToggleFavoriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val titleRes = when (selectedType) {
+        CardWalletTab.DOCUMENTS -> R.string.add_document_title
+        else -> R.string.add_bank_card_title
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            Column {
+                TopAppBar(
+                    title = { Text(stringResource(titleRes)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = stringResource(R.string.back)
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                onToggleFavoriteAction?.invoke()
+                            },
+                            enabled = onToggleFavoriteAction != null
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = stringResource(R.string.favorite),
+                                tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedType != CardWalletTab.DOCUMENTS,
+                        onClick = { onTypeSelected(CardWalletTab.BANK_CARDS) },
+                        label = { Text(stringResource(R.string.quick_action_add_card)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.CreditCard,
+                                contentDescription = null
+                            )
+                        }
+                    )
+                    FilterChip(
+                        selected = selectedType == CardWalletTab.DOCUMENTS,
+                        onClick = { onTypeSelected(CardWalletTab.DOCUMENTS) },
+                        label = { Text(stringResource(R.string.quick_action_add_document)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Badge,
+                                contentDescription = null
+                            )
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { onSaveAction?.invoke() },
+                containerColor = if (canSave) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canSave) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
+                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
+            }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            if (selectedType == CardWalletTab.DOCUMENTS) {
+                stateHolder.SaveableStateProvider("wallet_add_document") {
+                    AddEditDocumentScreen(
+                        viewModel = documentViewModel,
+                        documentId = null,
+                        onNavigateBack = onNavigateBack,
+                        showTopBar = false,
+                        showFab = false,
+                        onFavoriteStateChanged = { isFavorite = it },
+                        onCanSaveChanged = { canSave = it },
+                        onSaveActionChanged = { onSaveAction = it },
+                        onToggleFavoriteActionChanged = { onToggleFavoriteAction = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            } else {
+                stateHolder.SaveableStateProvider("wallet_add_bank") {
+                    AddEditBankCardScreen(
+                        viewModel = bankCardViewModel,
+                        cardId = null,
+                        onNavigateBack = onNavigateBack,
+                        showTopBar = false,
+                        showFab = false,
+                        onFavoriteStateChanged = { isFavorite = it },
+                        onCanSaveChanged = { canSave = it },
+                        onSaveActionChanged = { onSaveAction = it },
+                        onToggleFavoriteActionChanged = { onToggleFavoriteAction = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -841,6 +987,7 @@ fun SimpleMainScreen(
     var selectedDocumentCount by remember { mutableIntStateOf(0) }
     var onExitDocumentSelection by remember { mutableStateOf({}) }
     var onSelectAllDocuments by remember { mutableStateOf({}) }
+    var onMoveToCategoryDocuments by remember { mutableStateOf({}) }
     var onDeleteSelectedDocuments by remember { mutableStateOf({}) }
     
     // 银行卡的选择模式状态
@@ -848,11 +995,14 @@ fun SimpleMainScreen(
     var selectedBankCardCount by remember { mutableIntStateOf(0) }
     var onExitBankCardSelection by remember { mutableStateOf({}) }
     var onSelectAllBankCards by remember { mutableStateOf({}) }
+    var onMoveToCategoryBankCards by remember { mutableStateOf({}) }
     var onDeleteSelectedBankCards by remember { mutableStateOf({}) }
     var onFavoriteBankCards by remember { mutableStateOf({}) }  // 添加收藏回调
 
     // CardWallet state
-    var cardWalletSubTab by rememberSaveable { mutableStateOf(CardWalletTab.BANK_CARDS) }
+    var cardWalletSubTab by rememberSaveable { mutableStateOf(CardWalletTab.ALL) }
+    var walletUnifiedAddType by rememberSaveable { mutableStateOf(CardWalletTab.BANK_CARDS) }
+    val walletAddSaveableStateHolder = rememberSaveableStateHolder()
 
     val bottomNavVisibility = appSettings.bottomNavVisibility
 
@@ -1137,6 +1287,9 @@ fun SimpleMainScreen(
             isAddingBankCardInline = true
             inlineBankCardEditorId = null
             selectedBankCardId = null
+            isAddingDocumentInline = false
+            inlineDocumentEditorId = null
+            selectedDocumentId = null
         }
     }
     val handleBankCardEditOpen: (Long) -> Unit = { cardId ->
@@ -1146,6 +1299,9 @@ fun SimpleMainScreen(
             isAddingBankCardInline = false
             inlineBankCardEditorId = cardId
             selectedBankCardId = null
+            isAddingDocumentInline = false
+            inlineDocumentEditorId = null
+            selectedDocumentId = null
         }
     }
     val handleInlineBankCardEditorBack: () -> Unit = {
@@ -1159,6 +1315,9 @@ fun SimpleMainScreen(
             isAddingDocumentInline = true
             inlineDocumentEditorId = null
             selectedDocumentId = null
+            isAddingBankCardInline = false
+            inlineBankCardEditorId = null
+            selectedBankCardId = null
         }
     }
     val handleDocumentEditOpen: (Long) -> Unit = { documentId ->
@@ -1168,11 +1327,21 @@ fun SimpleMainScreen(
             isAddingDocumentInline = false
             inlineDocumentEditorId = documentId
             selectedDocumentId = null
+            isAddingBankCardInline = false
+            inlineBankCardEditorId = null
+            selectedBankCardId = null
         }
     }
     val handleInlineDocumentEditorBack: () -> Unit = {
         isAddingDocumentInline = false
         inlineDocumentEditorId = null
+    }
+    val handleWalletAddOpen: () -> Unit = {
+        when (cardWalletSubTab) {
+            CardWalletTab.BANK_CARDS -> handleBankCardAddOpen()
+            CardWalletTab.DOCUMENTS -> handleDocumentAddOpen()
+            CardWalletTab.ALL -> Unit
+        }
     }
     val handleNoteOpen: (Long?) -> Unit = { noteId ->
         if (isCompactWidth) {
@@ -1216,6 +1385,9 @@ fun SimpleMainScreen(
             isAddingBankCardInline = false
             inlineBankCardEditorId = null
             selectedBankCardId = cardId
+            isAddingDocumentInline = false
+            inlineDocumentEditorId = null
+            selectedDocumentId = null
         }
     }
     val handleDocumentOpen: (Long) -> Unit = { documentId ->
@@ -1225,6 +1397,9 @@ fun SimpleMainScreen(
             isAddingDocumentInline = false
             inlineDocumentEditorId = null
             selectedDocumentId = documentId
+            isAddingBankCardInline = false
+            inlineBankCardEditorId = null
+            selectedBankCardId = null
         }
     }
     val handlePasskeyOpen: (PasskeyEntry) -> Unit = { passkey ->
@@ -1337,14 +1512,25 @@ fun SimpleMainScreen(
             isAddingBankCardInline = false
             inlineDocumentEditorId = null
             isAddingDocumentInline = false
-        } else if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-            selectedDocumentId = null
-            inlineDocumentEditorId = null
-            isAddingDocumentInline = false
         } else {
-            selectedBankCardId = null
-            inlineBankCardEditorId = null
-            isAddingBankCardInline = false
+            when (cardWalletSubTab) {
+                CardWalletTab.BANK_CARDS -> {
+                    selectedDocumentId = null
+                    inlineDocumentEditorId = null
+                    isAddingDocumentInline = false
+                }
+                CardWalletTab.DOCUMENTS -> {
+                    selectedBankCardId = null
+                    inlineBankCardEditorId = null
+                    isAddingBankCardInline = false
+                }
+                CardWalletTab.ALL -> Unit
+            }
+        }
+    }
+    LaunchedEffect(cardWalletSubTab) {
+        if (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.DOCUMENTS) {
+            walletUnifiedAddType = cardWalletSubTab
         }
     }
     LaunchedEffect(currentTab.key, isCompactWidth) {
@@ -1471,18 +1657,20 @@ fun SimpleMainScreen(
                                 onDocumentClick = { documentId ->
                                     handleDocumentOpen(documentId)
                                 },
-                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
                                     isDocumentSelectionMode = isSelectionMode
                                     selectedDocumentCount = count
                                     onExitDocumentSelection = onExit
                                     onSelectAllDocuments = onSelectAll
+                                    onMoveToCategoryDocuments = onMoveToCategory
                                     onDeleteSelectedDocuments = onDelete
                                 },
-                                onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
+                                onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite, onMoveToCategory ->
                                     isBankCardSelectionMode = isSelectionMode
                                     selectedBankCardCount = count
                                     onExitBankCardSelection = onExit
                                     onSelectAllBankCards = onSelectAll
+                                    onMoveToCategoryBankCards = onMoveToCategory
                                     onDeleteSelectedBankCards = onDelete
                                     onFavoriteBankCards = onFavorite
                                 }
@@ -1577,7 +1765,9 @@ fun SimpleMainScreen(
                                 onDelete = onDeleteSelectedTotp
                             )
                         }
-                        currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.BANK_CARDS && isBankCardSelectionMode -> {
+                        currentTab == BottomNavItem.CardWallet &&
+                            (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.ALL) &&
+                            isBankCardSelectionMode -> {
                             SelectionActionBar(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -1586,10 +1776,13 @@ fun SimpleMainScreen(
                                 onExit = onExitBankCardSelection,
                                 onSelectAll = onSelectAllBankCards,
                                 onFavorite = onFavoriteBankCards,
+                                onMoveToCategory = onMoveToCategoryBankCards,
                                 onDelete = onDeleteSelectedBankCards
                             )
                         }
-                        currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
+                        currentTab == BottomNavItem.CardWallet &&
+                            cardWalletSubTab == CardWalletTab.DOCUMENTS &&
+                            isDocumentSelectionMode -> {
                             SelectionActionBar(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -1597,6 +1790,7 @@ fun SimpleMainScreen(
                                 selectedCount = selectedDocumentCount,
                                 onExit = onExitDocumentSelection,
                                 onSelectAll = onSelectAllDocuments,
+                                onMoveToCategory = onMoveToCategoryDocuments,
                                 onDelete = onDeleteSelectedDocuments
                             )
                         }
@@ -1895,18 +2089,20 @@ fun SimpleMainScreen(
                             onDocumentClick = { documentId ->
                                 handleDocumentOpen(documentId)
                             },
-                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete ->
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
                                 isDocumentSelectionMode = isSelectionMode
                                 selectedDocumentCount = count
                                 onExitDocumentSelection = onExit
                                 onSelectAllDocuments = onSelectAll
+                                onMoveToCategoryDocuments = onMoveToCategory
                                 onDeleteSelectedDocuments = onDelete
                             },
-                            onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite ->
+                            onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite, onMoveToCategory ->
                                 isBankCardSelectionMode = isSelectionMode
                                 selectedBankCardCount = count
                                 onExitBankCardSelection = onExit
                                 onSelectAllBankCards = onSelectAll
+                                onMoveToCategoryBankCards = onMoveToCategory
                                 onDeleteSelectedBankCards = onDelete
                                 onFavoriteBankCards = onFavorite
                             }
@@ -1931,26 +2127,24 @@ fun SimpleMainScreen(
                                     .weight(1f)
                                     .fillMaxHeight()
                             ) {
-                                if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-                                    if (isAddingBankCardInline || inlineBankCardEditorId != null) {
+                                when {
+                                    isAddingBankCardInline || inlineBankCardEditorId != null -> {
                                         AddEditBankCardScreen(
                                             viewModel = bankCardViewModel,
                                             cardId = inlineBankCardEditorId,
                                             onNavigateBack = handleInlineBankCardEditorBack,
                                             modifier = Modifier.fillMaxSize()
                                         )
-                                    } else if (selectedBankCardId == null) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "Select a card to view details",
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    } else {
+                                    }
+                                    isAddingDocumentInline || inlineDocumentEditorId != null -> {
+                                        AddEditDocumentScreen(
+                                            viewModel = documentViewModel,
+                                            documentId = inlineDocumentEditorId,
+                                            onNavigateBack = handleInlineDocumentEditorBack,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    selectedBankCardId != null -> {
                                         BankCardDetailScreen(
                                             viewModel = bankCardViewModel,
                                             cardId = selectedBankCardId!!,
@@ -1959,26 +2153,7 @@ fun SimpleMainScreen(
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }
-                                } else {
-                                    if (isAddingDocumentInline || inlineDocumentEditorId != null) {
-                                        AddEditDocumentScreen(
-                                            viewModel = documentViewModel,
-                                            documentId = inlineDocumentEditorId,
-                                            onNavigateBack = handleInlineDocumentEditorBack,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    } else if (selectedDocumentId == null) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "Select a document to view details",
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    } else {
+                                    selectedDocumentId != null -> {
                                         DocumentDetailScreen(
                                             viewModel = documentViewModel,
                                             documentId = selectedDocumentId!!,
@@ -1986,6 +2161,18 @@ fun SimpleMainScreen(
                                             onEditDocument = handleDocumentEditOpen,
                                             modifier = Modifier.fillMaxSize()
                                         )
+                                    }
+                                    else -> {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Select an item to view details",
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2267,7 +2454,9 @@ fun SimpleMainScreen(
                     )
                 }
 
-                currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.BANK_CARDS && isBankCardSelectionMode -> {
+                currentTab == BottomNavItem.CardWallet &&
+                    (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.ALL) &&
+                    isBankCardSelectionMode -> {
                     SelectionActionBar(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -2276,11 +2465,14 @@ fun SimpleMainScreen(
                         onExit = onExitBankCardSelection,
                         onSelectAll = onSelectAllBankCards,
                         onFavorite = onFavoriteBankCards,
+                        onMoveToCategory = onMoveToCategoryBankCards,
                         onDelete = onDeleteSelectedBankCards
                     )
                 }
 
-                currentTab == BottomNavItem.CardWallet && cardWalletSubTab == CardWalletTab.DOCUMENTS && isDocumentSelectionMode -> {
+                currentTab == BottomNavItem.CardWallet &&
+                    cardWalletSubTab == CardWalletTab.DOCUMENTS &&
+                    isDocumentSelectionMode -> {
                     SelectionActionBar(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -2288,6 +2480,7 @@ fun SimpleMainScreen(
                         selectedCount = selectedDocumentCount,
                         onExit = onExitDocumentSelection,
                         onSelectAll = onSelectAllDocuments,
+                        onMoveToCategory = onMoveToCategoryDocuments,
                         onDelete = onDeleteSelectedDocuments
                     )
                 }
@@ -2361,12 +2554,12 @@ fun SimpleMainScreen(
     val hasWideDetailSelection = !isCompactWidth && when (currentTab) {
         BottomNavItem.Passwords -> isAddingPasswordInline || inlinePasswordEditorId != null
         BottomNavItem.Authenticator -> isAddingTotpInline || selectedTotpId != null
-        BottomNavItem.CardWallet -> {
-            (cardWalletSubTab == CardWalletTab.BANK_CARDS &&
-                (isAddingBankCardInline || inlineBankCardEditorId != null || selectedBankCardId != null)) ||
-                (cardWalletSubTab == CardWalletTab.DOCUMENTS &&
-                    (isAddingDocumentInline || inlineDocumentEditorId != null || selectedDocumentId != null))
-        }
+        BottomNavItem.CardWallet -> isAddingBankCardInline ||
+            inlineBankCardEditorId != null ||
+            selectedBankCardId != null ||
+            isAddingDocumentInline ||
+            inlineDocumentEditorId != null ||
+            selectedDocumentId != null
         BottomNavItem.Notes -> isAddingNoteInline || inlineNoteEditorId != null
         BottomNavItem.Send -> isAddingSendInline
         else -> false
@@ -2390,6 +2583,14 @@ fun SimpleMainScreen(
             .align(Alignment.TopStart)
             .zIndex(5f)
     }
+    val fabContainerColor = when (currentTab) {
+        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val fabIconTint = when (currentTab) {
+        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
     
     AnimatedVisibility(
         visible = showFab && isFabVisible,
@@ -2401,17 +2602,16 @@ fun SimpleMainScreen(
             // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
             // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
             fabBottomOffset = if (isCompactWidth) 116.dp else 24.dp,
+            fabContainerColor = fabContainerColor,
             modifier = Modifier,
             onFabClickOverride = when (currentTab) {
                 BottomNavItem.Passwords -> if (isCompactWidth) null else ({ handlePasswordAddOpen() })
                 BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ handleTotpAddOpen() })
-                BottomNavItem.CardWallet -> if (isCompactWidth) null else ({
-                    if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-                        handleBankCardAddOpen()
-                    } else {
-                        handleDocumentAddOpen()
-                    }
-                })
+                BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
+                    null
+                } else {
+                    ({ handleWalletAddOpen() })
+                }
                 BottomNavItem.Notes -> if (isCompactWidth) null else ({ handleNoteOpen(null) })
                 BottomNavItem.Send -> if (isCompactWidth) null else ({ handleSendAddOpen() })
                 BottomNavItem.Generator -> ({ generatorRefreshRequestKey++ })
@@ -2428,14 +2628,14 @@ fun SimpleMainScreen(
                      Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(R.string.add),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        tint = fabIconTint
                     )
                 }
                 BottomNavItem.Generator -> {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = stringResource(R.string.regenerate),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        tint = fabIconTint
                     )
                 }
                 else -> { /* 不显示 */ }
@@ -2493,19 +2693,14 @@ fun SimpleMainScreen(
                         )
                     }
                     BottomNavItem.CardWallet -> {
-                        if (cardWalletSubTab == CardWalletTab.BANK_CARDS) {
-                            AddEditBankCardScreen(
-                                viewModel = bankCardViewModel,
-                                cardId = null,
-                                onNavigateBack = collapse
-                            )
-                        } else {
-                            AddEditDocumentScreen(
-                                viewModel = documentViewModel,
-                                documentId = null,
-                                onNavigateBack = collapse
-                            )
-                        }
+                        UnifiedWalletAddScreen(
+                            selectedType = walletUnifiedAddType,
+                            onTypeSelected = { walletUnifiedAddType = it },
+                            onNavigateBack = collapse,
+                            bankCardViewModel = bankCardViewModel,
+                            documentViewModel = documentViewModel,
+                            stateHolder = walletAddSaveableStateHolder
+                        )
                     }
                     BottomNavItem.Notes -> {
                         AddEditNoteScreen(

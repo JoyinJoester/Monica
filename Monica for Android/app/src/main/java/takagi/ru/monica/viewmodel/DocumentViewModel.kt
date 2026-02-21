@@ -112,7 +112,10 @@ class DocumentViewModel(
         notes: String = "",
         isFavorite: Boolean = false,
         imagePaths: String = "",
-        keepassDatabaseId: Long? = null
+        categoryId: Long? = null,
+        keepassDatabaseId: Long? = null,
+        bitwardenVaultId: Long? = null,
+        bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
             val item = SecureItem(
@@ -122,7 +125,11 @@ class DocumentViewModel(
                 itemData = Json.encodeToString(documentData),
                 notes = notes,
                 isFavorite = isFavorite,
+                categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId,
+                syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                 createdAt = Date(),
                 updatedAt = Date(),
                 imagePaths = imagePaths
@@ -152,7 +159,10 @@ class DocumentViewModel(
         notes: String = "",
         isFavorite: Boolean = false,
         imagePaths: String = "",
-        keepassDatabaseId: Long? = null
+        categoryId: Long? = null,
+        keepassDatabaseId: Long? = null,
+        bitwardenVaultId: Long? = null,
+        bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { existingItem ->
@@ -181,7 +191,16 @@ class DocumentViewModel(
                     itemData = Json.encodeToString(documentData),
                     notes = notes,
                     isFavorite = isFavorite,
+                    categoryId = categoryId,
                     keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId,
+                    bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
+                    syncStatus = if (bitwardenVaultId != null) {
+                        if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
+                    } else {
+                        "NONE"
+                    },
                     updatedAt = Date(),
                     imagePaths = imagePaths
                 )
@@ -208,6 +227,50 @@ class DocumentViewModel(
                     itemTitle = title,
                     changes = if (changes.isEmpty()) listOf(FieldChange("更新", "编辑于", java.text.SimpleDateFormat("HH:mm").format(java.util.Date()))) else changes
                 )
+            }
+        }
+    }
+
+    fun moveDocumentToStorage(
+        id: Long,
+        categoryId: Long?,
+        keepassDatabaseId: Long?,
+        keepassGroupPath: String?,
+        bitwardenVaultId: Long?,
+        bitwardenFolderId: String?
+    ) {
+        viewModelScope.launch {
+            repository.getItemById(id)?.let { existingItem ->
+                val updatedItem = existingItem.copy(
+                    categoryId = categoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId,
+                    bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
+                    syncStatus = if (bitwardenVaultId != null) {
+                        if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
+                    } else {
+                        "NONE"
+                    },
+                    updatedAt = Date()
+                )
+                repository.updateItem(updatedItem)
+
+                val oldKeepassId = existingItem.keepassDatabaseId
+                val newKeepassId = updatedItem.keepassDatabaseId
+                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(existingItem))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("DocumentViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
+                if (newKeepassId != null) {
+                    val updateResult = keepassService?.updateSecureItem(newKeepassId, updatedItem)
+                    if (updateResult?.isFailure == true) {
+                        Log.e("DocumentViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                    }
+                }
             }
         }
     }

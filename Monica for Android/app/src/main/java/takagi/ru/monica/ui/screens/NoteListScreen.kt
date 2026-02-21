@@ -79,6 +79,8 @@ import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
+import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -107,6 +109,7 @@ fun NoteListScreen(
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var categoryNameInput by rememberSaveable { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
@@ -252,6 +255,62 @@ fun NoteListScreen(
         showPasswordDialog = false
         masterPassword = ""
         passwordError = false
+    }
+
+    fun performBatchMove(target: UnifiedMoveCategoryTarget) {
+        scope.launch {
+            val selectedItems = notes.filter { selectedNoteIds.contains(it.id) }
+            var movedCount = 0
+            var failedCount = 0
+
+            selectedItems.forEach { item ->
+                val targetCategoryId = when (target) {
+                    UnifiedMoveCategoryTarget.Uncategorized -> null
+                    is UnifiedMoveCategoryTarget.MonicaCategory -> target.categoryId
+                    else -> item.categoryId
+                }
+                val targetKeepassDatabaseId = when (target) {
+                    UnifiedMoveCategoryTarget.Uncategorized -> null
+                    is UnifiedMoveCategoryTarget.MonicaCategory -> null
+                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> null
+                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> null
+                    is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
+                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
+                }
+                val targetKeepassGroupPath = when (target) {
+                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath
+                    is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> null
+                    else -> null
+                }
+                val targetBitwardenVaultId = when (target) {
+                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+                    else -> null
+                }
+                val targetBitwardenFolderId = when (target) {
+                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
+                    else -> null
+                }
+
+                val moved = viewModel.moveNoteToStorage(
+                    item = item,
+                    categoryId = targetCategoryId,
+                    keepassDatabaseId = targetKeepassDatabaseId,
+                    keepassGroupPath = targetKeepassGroupPath,
+                    bitwardenVaultId = targetBitwardenVaultId,
+                    bitwardenFolderId = targetBitwardenFolderId
+                )
+                if (moved) movedCount++ else failedCount++
+            }
+
+            val baseMessage = context.getString(R.string.selected_items, movedCount)
+            val toastMessage = if (failedCount > 0) "$baseMessage，失败$failedCount" else baseMessage
+            android.widget.Toast.makeText(context, toastMessage, android.widget.Toast.LENGTH_SHORT).show()
+
+            showBatchMoveCategoryDialog = false
+            isSelectionMode = false
+            selectedNoteIds = emptySet()
+        }
     }
 
     Scaffold(
@@ -439,6 +498,7 @@ fun NoteListScreen(
                                 filteredNotes.map { it.id }.toSet()
                             }
                         },
+                        onMoveToCategory = { showBatchMoveCategoryDialog = true },
                         onDelete = { showDeleteDialog = true }
                     )
                 }
@@ -559,6 +619,17 @@ fun NoteListScreen(
                 }
             )
         }
+
+        UnifiedMoveToCategoryBottomSheet(
+            visible = showBatchMoveCategoryDialog,
+            onDismiss = { showBatchMoveCategoryDialog = false },
+            categories = categories,
+            keepassDatabases = keepassDatabases,
+            bitwardenVaults = bitwardenVaults,
+            getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+            getKeePassGroups = getKeePassGroups,
+            onTargetSelected = ::performBatchMove
+        )
 
         NoteListContent(
             notes = filteredNotes,
@@ -817,6 +888,7 @@ private fun NoteSelectionActionBar(
     selectedCount: Int,
     onExit: () -> Unit,
     onSelectAll: () -> Unit,
+    onMoveToCategory: () -> Unit,
     onDelete: () -> Unit
 ) {
     Surface(
@@ -850,6 +922,12 @@ private fun NoteSelectionActionBar(
                 icon = Icons.Outlined.CheckCircle,
                 contentDescription = stringResource(id = R.string.select_all),
                 onClick = onSelectAll
+            )
+
+            NoteActionIcon(
+                icon = Icons.Default.Folder,
+                contentDescription = stringResource(id = R.string.move_to_category),
+                onClick = onMoveToCategory
             )
 
             NoteActionIcon(

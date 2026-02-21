@@ -18,13 +18,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
-import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.ui.components.DualPhotoPicker
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
+import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.utils.RememberedStorageTarget
+import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.viewmodel.DocumentViewModel
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,9 +38,19 @@ fun AddEditDocumentScreen(
     viewModel: DocumentViewModel,
     documentId: Long? = null,
     onNavigateBack: () -> Unit,
+    showTypeSwitcher: Boolean = false,
+    onSwitchToBankCard: (() -> Unit)? = null,
+    showTopBar: Boolean = true,
+    showFab: Boolean = true,
+    onFavoriteStateChanged: ((Boolean) -> Unit)? = null,
+    onCanSaveChanged: ((Boolean) -> Unit)? = null,
+    onSaveActionChanged: (((() -> Unit)) -> Unit)? = null,
+    onToggleFavoriteActionChanged: (((() -> Unit)) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val settingsManager = remember { SettingsManager(context) }
     
     var title by rememberSaveable { mutableStateOf("") }
     var documentNumber by rememberSaveable { mutableStateOf("") }
@@ -55,6 +71,33 @@ fun AddEditDocumentScreen(
     // 图片路径管理
     var frontImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var backImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val rememberedStorageTarget by settingsManager
+        .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.DOCUMENT)
+        .collectAsState(initial = null as RememberedStorageTarget?)
+
+    LaunchedEffect(Unit) {
+        bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
+    LaunchedEffect(documentId, hasAppliedInitialStorage, rememberedStorageTarget) {
+        if (documentId != null || hasAppliedInitialStorage) return@LaunchedEffect
+        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
+        selectedCategoryId = remembered.categoryId
+        keepassDatabaseId = remembered.keepassDatabaseId
+        bitwardenVaultId = remembered.bitwardenVaultId
+        bitwardenFolderId = remembered.bitwardenFolderId
+        hasAppliedInitialStorage = true
+    }
     
     // 如果是编辑模式，加载现有数据
     LaunchedEffect(documentId) {
@@ -63,6 +106,10 @@ fun AddEditDocumentScreen(
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
+                selectedCategoryId = item.categoryId
+                keepassDatabaseId = item.keepassDatabaseId
+                bitwardenVaultId = item.bitwardenVaultId
+                bitwardenFolderId = item.bitwardenFolderId
                 
                 // 解析图片路径
                 try {
@@ -127,7 +174,11 @@ fun AddEditDocumentScreen(
                 documentData = documentData,
                 notes = notes,
                 isFavorite = isFavorite,
-                imagePaths = imagePathsJson
+                imagePaths = imagePathsJson,
+                categoryId = selectedCategoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
             )
         } else {
             viewModel.updateDocument(
@@ -144,62 +195,39 @@ fun AddEditDocumentScreen(
                 documentData = documentData,
                 notes = notes,
                 isFavorite = isFavorite,
-                imagePaths = imagePathsJson
+                imagePaths = imagePathsJson,
+                categoryId = selectedCategoryId,
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId,
+                bitwardenFolderId = bitwardenFolderId
+            )
+        }
+        coroutineScope.launch {
+            settingsManager.updateRememberedStorageTarget(
+                scope = SettingsManager.StorageTargetScope.DOCUMENT,
+                target = RememberedStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
             )
         }
         onNavigateBack()
     }
+    val toggleFavoriteAction: () -> Unit = {
+        val updated = !isFavorite
+        isFavorite = updated
+        onFavoriteStateChanged?.invoke(updated)
+    }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(if (documentId == null) R.string.add_document_title else R.string.edit_document_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { isFavorite = !isFavorite }) {
-                        Icon(
-                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = stringResource(R.string.favorite),
-                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = save,
-                containerColor = if (canSave) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                },
-                contentColor = if (canSave) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
-                }
-            }
-        }
-    ) { paddingValues ->
+    SideEffect {
+        onFavoriteStateChanged?.invoke(isFavorite)
+        onCanSaveChanged?.invoke(canSave)
+        onSaveActionChanged?.invoke(save)
+        onToggleFavoriteActionChanged?.invoke(toggleFavoriteAction)
+    }
+    val screenContent: @Composable (PaddingValues) -> Unit = { paddingValues ->
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -209,6 +237,32 @@ fun AddEditDocumentScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            StorageTargetSelectorCard(
+                keepassDatabases = keepassDatabases,
+                selectedKeePassDatabaseId = keepassDatabaseId,
+                onKeePassDatabaseSelected = {
+                    keepassDatabaseId = it
+                    if (it != null) {
+                        bitwardenVaultId = null
+                        bitwardenFolderId = null
+                    }
+                },
+                bitwardenVaults = bitwardenVaults,
+                selectedBitwardenVaultId = bitwardenVaultId,
+                onBitwardenVaultSelected = {
+                    bitwardenVaultId = it
+                    if (it != null) keepassDatabaseId = null
+                },
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = { selectedCategoryId = it },
+                selectedBitwardenFolderId = bitwardenFolderId,
+                onBitwardenFolderSelected = { folderId ->
+                    bitwardenFolderId = folderId
+                    if (bitwardenVaultId != null) keepassDatabaseId = null
+                }
+            )
+
             // Basic Info
             InfoCard(title = stringResource(R.string.section_basic_info)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -437,6 +491,102 @@ fun AddEditDocumentScreen(
                 )
             }
         }
+    }
+
+    if (showTopBar || showFab) {
+        Scaffold(
+            topBar = {
+                if (showTopBar) {
+                    Column {
+                        TopAppBar(
+                            title = { Text(stringResource(if (documentId == null) R.string.add_document_title else R.string.edit_document_title)) },
+                            navigationIcon = {
+                                IconButton(onClick = onNavigateBack) {
+                                    Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
+                                }
+                            },
+                            actions = {
+                                IconButton(onClick = toggleFavoriteAction) {
+                                    Icon(
+                                        if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = stringResource(R.string.favorite),
+                                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        )
+                        if (showTypeSwitcher && documentId == null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = false,
+                                    enabled = onSwitchToBankCard != null,
+                                    onClick = { onSwitchToBankCard?.invoke() },
+                                    label = { Text(stringResource(R.string.quick_action_add_card)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.CreditCard,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                FilterChip(
+                                    selected = true,
+                                    onClick = {},
+                                    label = { Text(stringResource(R.string.quick_action_add_document)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Badge,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+                }
+            },
+            floatingActionButton = {
+                if (showFab) {
+                    FloatingActionButton(
+                        onClick = save,
+                        containerColor = if (canSave) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        contentColor = if (canSave) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
+                        }
+                    }
+                }
+            }
+        ) { paddingValues ->
+            screenContent(paddingValues)
+        }
+    } else {
+        screenContent(PaddingValues(0.dp))
     }
 }
 

@@ -252,6 +252,50 @@ class BankCardViewModel(
             }
         }
     }
+
+    fun moveCardToStorage(
+        id: Long,
+        categoryId: Long?,
+        keepassDatabaseId: Long?,
+        keepassGroupPath: String?,
+        bitwardenVaultId: Long?,
+        bitwardenFolderId: String?
+    ) {
+        viewModelScope.launch {
+            repository.getItemById(id)?.let { existingItem ->
+                val updatedItem = existingItem.copy(
+                    categoryId = categoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId,
+                    bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
+                    syncStatus = if (bitwardenVaultId != null) {
+                        if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
+                    } else {
+                        "NONE"
+                    },
+                    updatedAt = Date()
+                )
+                repository.updateItem(updatedItem)
+
+                val oldKeepassId = existingItem.keepassDatabaseId
+                val newKeepassId = updatedItem.keepassDatabaseId
+                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
+                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(existingItem))
+                    if (deleteResult?.isFailure == true) {
+                        Log.e("BankCardViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    }
+                }
+                if (newKeepassId != null) {
+                    val updateResult = keepassService?.updateSecureItem(newKeepassId, updatedItem)
+                    if (updateResult?.isFailure == true) {
+                        Log.e("BankCardViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
+                    }
+                }
+            }
+        }
+    }
     
     // 删除银行卡
     // @param softDelete 是否软删除（移入回收站），默认为 true
