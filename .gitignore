@@ -47,3 +47,5 @@ task_plan*.md
 task_plan_bottom_sheet_nav.md
 # Local backups - never commit
 monica_backup_*/
+# Ignore external project
+def SteamTools-develop/
