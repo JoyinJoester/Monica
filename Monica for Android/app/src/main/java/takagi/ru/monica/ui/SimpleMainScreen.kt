@@ -3206,11 +3206,18 @@ private fun PasswordListContent(
         return false
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isBitwardenDatabaseView) {
         if (isBitwardenDatabaseView) {
             resolveSyncableVaultId()
         } else {
             canRunBitwardenSync = false
+            syncHintArmed = false
+            isBitwardenSyncing = false
+            lockPullUntilSyncFinished = false
+            showSyncFeedback = false
+            currentOffset = 0f
+            hasVibrated = false
+            hasSyncStageVibrated = false
         }
     }
 
@@ -3231,7 +3238,7 @@ private fun PasswordListContent(
         }
     }
 
-    val nestedScrollConnection = remember {
+    val nestedScrollConnection = remember(isBitwardenDatabaseView) {
         object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
             override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
                 if (lockPullUntilSyncFinished) {
@@ -4027,12 +4034,12 @@ private fun PasswordListContent(
                             .weight(1f)
                             .fillMaxWidth()
                             .offset { androidx.compose.ui.unit.IntOffset(0, contentPullOffset) }
-                            .pointerInput(Unit) {
+                            .pointerInput(isBitwardenDatabaseView) {
                                 detectDragGesturesAfterLongPress(
                                     onDrag = { _, _ -> } // Consume long press to prevent issues
                                 )
                             }
-                            .pointerInput(Unit) {
+                            .pointerInput(isBitwardenDatabaseView) {
                                  detectVerticalDragGestures(
                                     onVerticalDrag = { _, dragAmount ->
                                         if (lockPullUntilSyncFinished) {
