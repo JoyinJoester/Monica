@@ -1441,6 +1441,7 @@ fun SimpleMainScreen(
     var cardWalletSubTab by rememberSaveable { mutableStateOf(CardWalletTab.ALL) }
     var walletUnifiedAddType by rememberSaveable { mutableStateOf(CardWalletTab.BANK_CARDS) }
     val walletAddSaveableStateHolder = rememberSaveableStateHolder()
+    val cardWalletSaveableStateHolder = rememberSaveableStateHolder()
 
     val bottomNavVisibility = appSettings.bottomNavVisibility
 
@@ -2084,35 +2085,37 @@ fun SimpleMainScreen(
                             )
                         }
                         BottomNavItem.CardWallet -> {
-                            CardWalletScreen(
-                                bankCardViewModel = bankCardViewModel,
-                                documentViewModel = documentViewModel,
-                                currentTab = cardWalletSubTab,
-                                onTabSelected = { cardWalletSubTab = it },
-                                onCardClick = { cardId ->
-                                    handleBankCardOpen(cardId)
-                                },
-                                onDocumentClick = { documentId ->
-                                    handleDocumentOpen(documentId)
-                                },
-                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
-                                    isDocumentSelectionMode = isSelectionMode
-                                    selectedDocumentCount = count
-                                    onExitDocumentSelection = onExit
-                                    onSelectAllDocuments = onSelectAll
-                                    onMoveToCategoryDocuments = onMoveToCategory
-                                    onDeleteSelectedDocuments = onDelete
-                                },
-                                onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite, onMoveToCategory ->
-                                    isBankCardSelectionMode = isSelectionMode
-                                    selectedBankCardCount = count
-                                    onExitBankCardSelection = onExit
-                                    onSelectAllBankCards = onSelectAll
-                                    onMoveToCategoryBankCards = onMoveToCategory
-                                    onDeleteSelectedBankCards = onDelete
-                                    onFavoriteBankCards = onFavorite
-                                }
-                            )
+                            cardWalletSaveableStateHolder.SaveableStateProvider("card_wallet") {
+                                CardWalletScreen(
+                                    bankCardViewModel = bankCardViewModel,
+                                    documentViewModel = documentViewModel,
+                                    currentTab = cardWalletSubTab,
+                                    onTabSelected = { cardWalletSubTab = it },
+                                    onCardClick = { cardId ->
+                                        handleBankCardOpen(cardId)
+                                    },
+                                    onDocumentClick = { documentId ->
+                                        handleDocumentOpen(documentId)
+                                    },
+                                    onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
+                                        isDocumentSelectionMode = isSelectionMode
+                                        selectedDocumentCount = count
+                                        onExitDocumentSelection = onExit
+                                        onSelectAllDocuments = onSelectAll
+                                        onMoveToCategoryDocuments = onMoveToCategory
+                                        onDeleteSelectedDocuments = onDelete
+                                    },
+                                    onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite, onMoveToCategory ->
+                                        isBankCardSelectionMode = isSelectionMode
+                                        selectedBankCardCount = count
+                                        onExitBankCardSelection = onExit
+                                        onSelectAllBankCards = onSelectAll
+                                        onMoveToCategoryBankCards = onMoveToCategory
+                                        onDeleteSelectedBankCards = onDelete
+                                        onFavoriteBankCards = onFavorite
+                                    }
+                                )
+                            }
                         }
                         BottomNavItem.Generator -> {
                             GeneratorScreen(
@@ -2516,35 +2519,37 @@ fun SimpleMainScreen(
                 }
                 BottomNavItem.CardWallet -> {
                     val listPaneContent: @Composable ColumnScope.() -> Unit = {
-                        CardWalletScreen(
-                            bankCardViewModel = bankCardViewModel,
-                            documentViewModel = documentViewModel,
-                            currentTab = cardWalletSubTab,
-                            onTabSelected = { cardWalletSubTab = it },
-                            onCardClick = { cardId ->
-                                handleBankCardOpen(cardId)
-                            },
-                            onDocumentClick = { documentId ->
-                                handleDocumentOpen(documentId)
-                            },
-                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
-                                isDocumentSelectionMode = isSelectionMode
-                                selectedDocumentCount = count
-                                onExitDocumentSelection = onExit
-                                onSelectAllDocuments = onSelectAll
-                                onMoveToCategoryDocuments = onMoveToCategory
-                                onDeleteSelectedDocuments = onDelete
-                            },
-                            onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite, onMoveToCategory ->
-                                isBankCardSelectionMode = isSelectionMode
-                                selectedBankCardCount = count
-                                onExitBankCardSelection = onExit
-                                onSelectAllBankCards = onSelectAll
-                                onMoveToCategoryBankCards = onMoveToCategory
-                                onDeleteSelectedBankCards = onDelete
-                                onFavoriteBankCards = onFavorite
-                            }
-                        )
+                        cardWalletSaveableStateHolder.SaveableStateProvider("card_wallet") {
+                            CardWalletScreen(
+                                bankCardViewModel = bankCardViewModel,
+                                documentViewModel = documentViewModel,
+                                currentTab = cardWalletSubTab,
+                                onTabSelected = { cardWalletSubTab = it },
+                                onCardClick = { cardId ->
+                                    handleBankCardOpen(cardId)
+                                },
+                                onDocumentClick = { documentId ->
+                                    handleDocumentOpen(documentId)
+                                },
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
+                                    isDocumentSelectionMode = isSelectionMode
+                                    selectedDocumentCount = count
+                                    onExitDocumentSelection = onExit
+                                    onSelectAllDocuments = onSelectAll
+                                    onMoveToCategoryDocuments = onMoveToCategory
+                                    onDeleteSelectedDocuments = onDelete
+                                },
+                                onBankCardSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onDelete, onFavorite, onMoveToCategory ->
+                                    isBankCardSelectionMode = isSelectionMode
+                                    selectedBankCardCount = count
+                                    onExitBankCardSelection = onExit
+                                    onSelectAllBankCards = onSelectAll
+                                    onMoveToCategoryBankCards = onMoveToCategory
+                                    onDeleteSelectedBankCards = onDelete
+                                    onFavoriteBankCards = onFavorite
+                                }
+                            )
+                        }
                     }
 
                     if (isCompactWidth) {

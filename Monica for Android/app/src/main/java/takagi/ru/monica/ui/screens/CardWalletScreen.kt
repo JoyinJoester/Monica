@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -120,7 +121,7 @@ fun CardWalletScreen(
     )
     val savedCategoryFilterState by settingsManager
         .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
-        .collectAsState(initial = SavedCategoryFilterState())
+        .collectAsState(initial = null)
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList<Category>())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
@@ -159,8 +160,10 @@ fun CardWalletScreen(
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var showTypeMenu by remember { mutableStateOf(false) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
-    var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
-    var hasRestoredCategoryFilter by remember { mutableStateOf(false) }
+    var selectedCategoryFilter by rememberSaveable(stateSaver = cardWalletCategoryFilterSaver) {
+        mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All)
+    }
+    var hasRestoredCategoryFilter by rememberSaveable { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
@@ -211,7 +214,13 @@ fun CardWalletScreen(
 
     LaunchedEffect(savedCategoryFilterState, hasRestoredCategoryFilter) {
         if (hasRestoredCategoryFilter) return@LaunchedEffect
-        selectedCategoryFilter = decodeCardWalletCategoryFilter(savedCategoryFilterState)
+        // If state was already restored from SaveableStateRegistry, do not override it.
+        if (selectedCategoryFilter != UnifiedCategoryFilterSelection.All) {
+            hasRestoredCategoryFilter = true
+            return@LaunchedEffect
+        }
+        val persisted = savedCategoryFilterState ?: return@LaunchedEffect
+        selectedCategoryFilter = decodeCardWalletCategoryFilter(persisted)
         hasRestoredCategoryFilter = true
     }
 
@@ -1123,6 +1132,23 @@ private fun encodeCardWalletCategoryFilter(filter: UnifiedCategoryFilterSelectio
     is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
     is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
 }
+
+private val cardWalletCategoryFilterSaver = listSaver<UnifiedCategoryFilterSelection, Any?>(
+    save = { filter ->
+        val state = encodeCardWalletCategoryFilter(filter)
+        listOf(state.type, state.primaryId, state.secondaryId, state.text)
+    },
+    restore = { saved ->
+        decodeCardWalletCategoryFilter(
+            SavedCategoryFilterState(
+                type = saved.getOrNull(0) as? String ?: "all",
+                primaryId = saved.getOrNull(1) as? Long,
+                secondaryId = saved.getOrNull(2) as? Long,
+                text = saved.getOrNull(3) as? String
+            )
+        )
+    }
+)
 
 private fun decodeCardWalletCategoryFilter(state: SavedCategoryFilterState): UnifiedCategoryFilterSelection {
     return when (state.type) {
