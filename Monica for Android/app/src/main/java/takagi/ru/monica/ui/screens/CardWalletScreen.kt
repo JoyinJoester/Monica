@@ -5,10 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Description
@@ -22,6 +26,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,9 +41,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Velocity
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +74,8 @@ import takagi.ru.monica.ui.components.EmptyState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.LoadingIndicator
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.PullActionVisualState
+import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
@@ -61,6 +84,7 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
@@ -87,12 +111,16 @@ fun CardWalletScreen(
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     val securityManager = remember { SecurityManager(context) }
     val biometricHelper = remember { BiometricHelper(context) }
     val settingsManager = remember { SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = AppSettings(biometricEnabled = false)
     )
+    val savedCategoryFilterState by settingsManager
+        .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
+        .collectAsState(initial = SavedCategoryFilterState())
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList<Category>())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
@@ -132,6 +160,7 @@ fun CardWalletScreen(
     var showTypeMenu by remember { mutableStateOf(false) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
     var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
+    var hasRestoredCategoryFilter by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
@@ -141,11 +170,233 @@ fun CardWalletScreen(
     var verifyPasswordError by remember { mutableStateOf(false) }
     var verifyDeleteIds by remember { mutableStateOf(setOf<Long>()) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
-
+    val listState = rememberLazyListState()
+    val isBitwardenDatabaseView = when (selectedCategoryFilter) {
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter,
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter,
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter,
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> true
+        else -> false
+    }
+    var currentOffset by remember { mutableStateOf(0f) }
+    val searchTriggerDistance = remember(density, isBitwardenDatabaseView) {
+        with(density) { (if (isBitwardenDatabaseView) 40.dp else 72.dp).toPx() }
+    }
+    val syncTriggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
+    val syncHoldMillis = 500L
+    var hasVibrated by remember { mutableStateOf(false) }
+    var hasSyncStageVibrated by remember { mutableStateOf(false) }
+    var syncHintArmed by remember { mutableStateOf(false) }
+    var isBitwardenSyncing by remember { mutableStateOf(false) }
+    var lockPullUntilSyncFinished by remember { mutableStateOf(false) }
+    var canRunBitwardenSync by remember { mutableStateOf(false) }
+    var showSyncFeedback by remember { mutableStateOf(false) }
+    var syncFeedbackMessage by remember { mutableStateOf("") }
+    var syncFeedbackIsSuccess by remember { mutableStateOf(false) }
+    val vibrator = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        }
+    }
     LaunchedEffect(Unit) {
         bankCardViewModel.syncAllKeePassCards()
         documentViewModel.syncAllKeePassDocuments()
         bitwardenVaults = bitwardenRepository.getAllVaults()
+    }
+
+    LaunchedEffect(savedCategoryFilterState, hasRestoredCategoryFilter) {
+        if (hasRestoredCategoryFilter) return@LaunchedEffect
+        selectedCategoryFilter = decodeCardWalletCategoryFilter(savedCategoryFilterState)
+        hasRestoredCategoryFilter = true
+    }
+
+    LaunchedEffect(selectedCategoryFilter, hasRestoredCategoryFilter) {
+        if (!hasRestoredCategoryFilter) return@LaunchedEffect
+        settingsManager.updateCategoryFilterState(
+            scope = SettingsManager.CategoryFilterScope.CARD_WALLET,
+            state = encodeCardWalletCategoryFilter(selectedCategoryFilter)
+        )
+    }
+
+    suspend fun resolveSyncableVaultId(): Long? {
+        val activeVault = bitwardenRepository.getActiveVault() ?: run {
+            canRunBitwardenSync = false
+            return null
+        }
+        val unlocked = bitwardenRepository.isVaultUnlocked(activeVault.id)
+        canRunBitwardenSync = unlocked
+        return if (unlocked) activeVault.id else null
+    }
+
+    fun vibratePullThreshold(isSyncStage: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (isSyncStage && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                vibrator?.vibrate(
+                    android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_DOUBLE_CLICK)
+                )
+            } else {
+                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(if (isSyncStage) 36 else 20)
+        }
+    }
+
+    fun updatePullThresholdHaptics(oldOffset: Float, newOffset: Float) {
+        if (oldOffset < searchTriggerDistance && newOffset >= searchTriggerDistance && !hasVibrated) {
+            hasVibrated = true
+            vibratePullThreshold(isSyncStage = false)
+        } else if (newOffset < searchTriggerDistance) {
+            hasVibrated = false
+        }
+
+        if (!isBitwardenDatabaseView) {
+            hasSyncStageVibrated = false
+            return
+        }
+
+        if (oldOffset < syncTriggerDistance && newOffset >= syncTriggerDistance && !hasSyncStageVibrated) {
+            hasSyncStageVibrated = true
+            vibratePullThreshold(isSyncStage = true)
+        } else if (newOffset < syncTriggerDistance) {
+            hasSyncStageVibrated = false
+        }
+    }
+
+    suspend fun collapsePullOffsetSmoothly() {
+        if (currentOffset <= 0.5f) {
+            currentOffset = 0f
+            return
+        }
+        Animatable(currentOffset).animateTo(
+            targetValue = 0f,
+            animationSpec = tween(
+                durationMillis = 180,
+                easing = androidx.compose.animation.core.LinearOutSlowInEasing
+            )
+        ) {
+            currentOffset = value
+        }
+    }
+
+    fun onPullRelease(): Boolean {
+        if (isBitwardenDatabaseView && syncHintArmed && !isBitwardenSyncing) {
+            syncHintArmed = false
+            isBitwardenSyncing = true
+            lockPullUntilSyncFinished = true
+            currentOffset = syncTriggerDistance
+            scope.launch {
+                val vaultId = resolveSyncableVaultId()
+                if (vaultId == null) {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.pull_sync_requires_bitwarden_login),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    isBitwardenSyncing = false
+                    lockPullUntilSyncFinished = false
+                    hasVibrated = false
+                    hasSyncStageVibrated = false
+                    collapsePullOffsetSmoothly()
+                    return@launch
+                }
+
+                val syncResult = bitwardenRepository.sync(vaultId)
+                when (syncResult) {
+                    is BitwardenRepository.SyncResult.Success -> {
+                        syncFeedbackIsSuccess = true
+                        syncFeedbackMessage = context.getString(R.string.pull_sync_success)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.pull_sync_success),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is BitwardenRepository.SyncResult.Error -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.message,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.reason,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                isBitwardenSyncing = false
+                lockPullUntilSyncFinished = false
+                hasVibrated = false
+                hasSyncStageVibrated = false
+                collapsePullOffsetSmoothly()
+                kotlinx.coroutines.delay(1400)
+                showSyncFeedback = false
+            }
+            return true
+        }
+
+        if (currentOffset >= searchTriggerDistance) {
+            isSearchExpanded = true
+            hasVibrated = false
+        }
+        return false
+    }
+
+    LaunchedEffect(isBitwardenDatabaseView) {
+        if (isBitwardenDatabaseView) {
+            resolveSyncableVaultId()
+        } else {
+            canRunBitwardenSync = false
+            syncHintArmed = false
+            isBitwardenSyncing = false
+            lockPullUntilSyncFinished = false
+            showSyncFeedback = false
+            currentOffset = 0f
+            hasVibrated = false
+            hasSyncStageVibrated = false
+        }
+    }
+
+    LaunchedEffect(currentOffset >= syncTriggerDistance, isBitwardenDatabaseView, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && !isBitwardenSyncing) {
+            resolveSyncableVaultId()
+        }
+    }
+
+    LaunchedEffect(currentOffset, isBitwardenDatabaseView, canRunBitwardenSync, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+            kotlinx.coroutines.delay(syncHoldMillis)
+            if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+                syncHintArmed = true
+            }
+        } else {
+            syncHintArmed = false
+        }
+    }
+
+    LaunchedEffect(isSearchExpanded) {
+        if (isSearchExpanded) {
+            currentOffset = 0f
+            hasVibrated = false
+            hasSyncStageVibrated = false
+            syncHintArmed = false
+        }
     }
 
     val allItems = remember(cards, documents) {
@@ -154,6 +405,56 @@ fun CardWalletScreen(
                 .thenByDescending { it.updatedAt.time }
                 .thenBy { it.sortOrder }
         )
+    }
+
+    val nestedScrollConnection = remember(isBitwardenDatabaseView) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
+                if (currentOffset > 0 && available.y < 0) {
+                    val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
+                    val consumed = currentOffset - newOffset
+                    currentOffset = newOffset
+                    return Offset(0f, -consumed)
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
+                if (available.y > 0 && source == NestedScrollSource.UserInput) {
+                    val delta = available.y * 0.5f
+                    val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
+                    val oldOffset = currentOffset
+                    currentOffset = newOffset
+                    updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
+                    return available
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val syncStarted = onPullRelease()
+                if (!syncStarted && !lockPullUntilSyncFinished) {
+                    collapsePullOffsetSmoothly()
+                }
+                return Velocity.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                if (!lockPullUntilSyncFinished && currentOffset > 0f) {
+                    val syncStarted = onPullRelease()
+                    if (!syncStarted && !lockPullUntilSyncFinished) {
+                        collapsePullOffsetSmoothly()
+                    }
+                }
+                return Velocity.Zero
+            }
+        }
     }
 
     val performDelete: (Set<Long>) -> Unit = { ids ->
@@ -336,9 +637,44 @@ fun CardWalletScreen(
         )
     }
 
+    val topBarTitle = when (val filter = selectedCategoryFilter) {
+        UnifiedCategoryFilterSelection.All -> stringResource(R.string.nav_card_wallet)
+        UnifiedCategoryFilterSelection.Local -> stringResource(R.string.filter_monica)
+        UnifiedCategoryFilterSelection.Starred -> stringResource(R.string.filter_starred)
+        UnifiedCategoryFilterSelection.Uncategorized -> stringResource(R.string.filter_uncategorized)
+        UnifiedCategoryFilterSelection.LocalStarred ->
+            "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_starred)}"
+        UnifiedCategoryFilterSelection.LocalUncategorized ->
+            "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_uncategorized)}"
+        is UnifiedCategoryFilterSelection.Custom ->
+            categories.find { it.id == filter.categoryId }?.name ?: stringResource(R.string.unknown_category)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
+            keepassDatabases.find { it.id == filter.databaseId }?.name ?: stringResource(R.string.filter_keepass)
+        is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
+            filter.groupPath.substringAfterLast('/')
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> {
+            val name = keepassDatabases.find { it.id == filter.databaseId }?.name ?: stringResource(R.string.filter_keepass)
+            "$name · ${stringResource(R.string.filter_starred)}"
+        }
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> {
+            val name = keepassDatabases.find { it.id == filter.databaseId }?.name ?: stringResource(R.string.filter_keepass)
+            "$name · ${stringResource(R.string.filter_uncategorized)}"
+        }
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
+            stringResource(R.string.filter_bitwarden)
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
+            stringResource(R.string.filter_bitwarden)
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> {
+            "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
+        }
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
+            "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         ExpressiveTopBar(
-            title = stringResource(R.string.nav_card_wallet),
+            title = topBarTitle,
             searchQuery = searchQuery,
             onSearchQueryChange = { searchQuery = it },
             isSearchExpanded = isSearchExpanded,
@@ -399,99 +735,212 @@ fun CardWalletScreen(
             }
         )
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            when {
-                bankLoading || documentLoading -> LoadingIndicator()
-                filteredItems.isEmpty() -> {
-                    when (currentTab) {
-                        CardWalletTab.BANK_CARDS -> EmptyState(
-                            icon = Icons.Default.CreditCard,
-                            title = stringResource(R.string.no_bank_cards_title),
-                            description = stringResource(R.string.no_bank_cards_description)
-                        )
-
-                        CardWalletTab.DOCUMENTS -> EmptyState(
-                            icon = Icons.Default.Description,
-                            title = stringResource(R.string.no_documents_title),
-                            description = stringResource(R.string.no_documents_description)
-                        )
-
-                        CardWalletTab.ALL -> EmptyState(
-                            icon = Icons.Default.CreditCard,
-                            title = stringResource(R.string.nav_card_wallet),
-                            description = if (searchQuery.isBlank()) {
-                                stringResource(R.string.no_bank_cards_description)
-                            } else {
-                                stringResource(R.string.passkey_no_search_results_hint)
-                            }
-                        )
-                    }
+        val searchProgress = (currentOffset / searchTriggerDistance).coerceIn(0f, 1f)
+        val syncProgress = ((currentOffset - searchTriggerDistance) / (syncTriggerDistance - searchTriggerDistance))
+            .coerceIn(0f, 1f)
+        val pullVisualState = when {
+            isBitwardenDatabaseView && isBitwardenSyncing -> PullActionVisualState.SYNCING
+            isBitwardenDatabaseView && showSyncFeedback -> PullActionVisualState.SYNC_DONE
+            isBitwardenDatabaseView && syncHintArmed -> PullActionVisualState.SYNC_READY
+            currentOffset >= searchTriggerDistance -> PullActionVisualState.SEARCH_READY
+            else -> PullActionVisualState.IDLE
+        }
+        val pullHintText = when (pullVisualState) {
+            PullActionVisualState.SYNCING -> stringResource(R.string.pull_syncing_bitwarden)
+            PullActionVisualState.SYNC_DONE -> syncFeedbackMessage.ifBlank {
+                if (syncFeedbackIsSuccess) {
+                    stringResource(R.string.pull_sync_success)
+                } else {
+                    stringResource(R.string.sync_status_failed_full)
                 }
+            }
+            PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
+            PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
+                stringResource(R.string.pull_release_to_search)
+            } else {
+                null
+            }
+            PullActionVisualState.IDLE -> null
+        }
+        val shouldPinIndicator = isBitwardenDatabaseView && (
+            syncHintArmed || isBitwardenSyncing || showSyncFeedback
+        )
+        val revealHeightTarget = with(density) {
+            if (isBitwardenDatabaseView) {
+                val pullHeight = currentOffset.toDp().coerceIn(0.dp, 112.dp)
+                if (shouldPinIndicator) {
+                    maxOf(pullHeight, 92.dp)
+                } else {
+                    pullHeight
+                }
+            } else {
+                0.dp
+            }
+        }
+        val revealHeight by animateDpAsState(
+            targetValue = revealHeightTarget,
+            animationSpec = tween(durationMillis = 220),
+            label = "wallet_pull_reveal_height"
+        )
+        val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+        val contentPullOffset = if (isBitwardenDatabaseView) {
+            (currentOffset * 0.28f).toInt()
+        } else {
+            currentOffset.toInt()
+        }
 
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        items(filteredItems, key = { it.id }) { item ->
-                            val isSelected = selectedIds.contains(item.id)
-                            when (item.itemType) {
-                                ItemType.BANK_CARD -> BankCardCard(
-                                    item = item,
-                                    onClick = {
-                                        if (isSelectionMode) {
-                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                            if (selectedIds.isEmpty()) isSelectionMode = false
-                                        } else {
-                                            onCardClick(item.id)
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(revealHeight),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                if (showPullIndicator) {
+                    PullGestureIndicator(
+                        state = pullVisualState,
+                        searchProgress = searchProgress,
+                        syncProgress = syncProgress,
+                        text = pullHintText ?: "",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .padding(bottom = 8.dp)
+                    )
+                }
+            }
+            if (showPullIndicator) {
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                when {
+                    bankLoading || documentLoading -> LoadingIndicator()
+                    filteredItems.isEmpty() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(0, contentPullOffset) }
+                                .pointerInput(isSearchExpanded) {
+                                    detectVerticalDragGestures(
+                                        onVerticalDrag = { _, dragAmount ->
+                                            if (dragAmount > 0f) {
+                                                val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
+                                                val oldOffset = currentOffset
+                                                currentOffset = newOffset
+                                                updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val syncStarted = onPullRelease()
+                                            if (!syncStarted && !lockPullUntilSyncFinished) {
+                                                scope.launch { collapsePullOffsetSmoothly() }
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            if (!lockPullUntilSyncFinished) {
+                                                scope.launch { collapsePullOffsetSmoothly() }
+                                            }
                                         }
-                                    },
-                                    onDelete = { itemToDelete = item },
-                                    onToggleFavorite = { id, _ -> bankCardViewModel.toggleFavorite(id) },
-                                    isSelectionMode = isSelectionMode,
-                                    isSelected = isSelected,
-                                    onLongClick = {
-                                        if (!isSelectionMode) {
-                                            isSelectionMode = true
-                                            selectedIds = setOf(item.id)
-                                        } else {
-                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                            if (selectedIds.isEmpty()) isSelectionMode = false
-                                        }
-                                    },
-                                    modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when (currentTab) {
+                                CardWalletTab.BANK_CARDS -> EmptyState(
+                                    icon = Icons.Default.CreditCard,
+                                    title = stringResource(R.string.no_bank_cards_title),
+                                    description = stringResource(R.string.no_bank_cards_description)
                                 )
 
-                                ItemType.DOCUMENT -> DocumentCard(
-                                    item = item,
-                                    onClick = {
-                                        if (isSelectionMode) {
-                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                            if (selectedIds.isEmpty()) isSelectionMode = false
-                                        } else {
-                                            onDocumentClick(item.id)
-                                        }
-                                    },
-                                    onDelete = { itemToDelete = item },
-                                    onToggleFavorite = { id, _ -> documentViewModel.toggleFavorite(id) },
-                                    isSelectionMode = isSelectionMode,
-                                    isSelected = isSelected,
-                                    onLongClick = {
-                                        if (!isSelectionMode) {
-                                            isSelectionMode = true
-                                            selectedIds = setOf(item.id)
-                                        } else {
-                                            selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                            if (selectedIds.isEmpty()) isSelectionMode = false
-                                        }
-                                    },
-                                    modifier = Modifier.padding(bottom = 8.dp)
+                                CardWalletTab.DOCUMENTS -> EmptyState(
+                                    icon = Icons.Default.Description,
+                                    title = stringResource(R.string.no_documents_title),
+                                    description = stringResource(R.string.no_documents_description)
                                 )
 
-                                else -> Unit
+                                CardWalletTab.ALL -> EmptyState(
+                                    icon = Icons.Default.CreditCard,
+                                    title = stringResource(R.string.nav_card_wallet),
+                                    description = if (searchQuery.isBlank()) {
+                                        stringResource(R.string.no_bank_cards_description)
+                                    } else {
+                                        stringResource(R.string.passkey_no_search_results_hint)
+                                    }
+                                )
                             }
                         }
-                        item { Box(modifier = Modifier.height(80.dp)) }
+                    }
+
+                    else -> {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(0, contentPullOffset) }
+                                .nestedScroll(nestedScrollConnection),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            items(filteredItems, key = { it.id }) { item ->
+                                val isSelected = selectedIds.contains(item.id)
+                                when (item.itemType) {
+                                    ItemType.BANK_CARD -> BankCardCard(
+                                        item = item,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                if (selectedIds.isEmpty()) isSelectionMode = false
+                                            } else {
+                                                onCardClick(item.id)
+                                            }
+                                        },
+                                        onDelete = { itemToDelete = item },
+                                        onToggleFavorite = { id, _ -> bankCardViewModel.toggleFavorite(id) },
+                                        isSelectionMode = isSelectionMode,
+                                        isSelected = isSelected,
+                                        onLongClick = {
+                                            if (!isSelectionMode) {
+                                                isSelectionMode = true
+                                                selectedIds = setOf(item.id)
+                                            } else {
+                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                if (selectedIds.isEmpty()) isSelectionMode = false
+                                            }
+                                        },
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+
+                                    ItemType.DOCUMENT -> DocumentCard(
+                                        item = item,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                if (selectedIds.isEmpty()) isSelectionMode = false
+                                            } else {
+                                                onDocumentClick(item.id)
+                                            }
+                                        },
+                                        onDelete = { itemToDelete = item },
+                                        onToggleFavorite = { id, _ -> documentViewModel.toggleFavorite(id) },
+                                        isSelectionMode = isSelectionMode,
+                                        isSelected = isSelected,
+                                        onLongClick = {
+                                            if (!isSelectionMode) {
+                                                isSelectionMode = true
+                                                selectedIds = setOf(item.id)
+                                            } else {
+                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                if (selectedIds.isEmpty()) isSelectionMode = false
+                                            }
+                                        },
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+
+                                    else -> Unit
+                                }
+                            }
+                            item { Box(modifier = Modifier.height(80.dp)) }
+                        }
                     }
                 }
             }
@@ -655,6 +1104,60 @@ fun CardWalletScreen(
         getKeePassGroups = getKeePassGroups,
         onTargetSelected = ::performBatchMove
     )
+}
+
+private fun encodeCardWalletCategoryFilter(filter: UnifiedCategoryFilterSelection): SavedCategoryFilterState = when (filter) {
+    UnifiedCategoryFilterSelection.All -> SavedCategoryFilterState(type = "all")
+    UnifiedCategoryFilterSelection.Local -> SavedCategoryFilterState(type = "local")
+    UnifiedCategoryFilterSelection.Starred -> SavedCategoryFilterState(type = "starred")
+    UnifiedCategoryFilterSelection.Uncategorized -> SavedCategoryFilterState(type = "uncategorized")
+    UnifiedCategoryFilterSelection.LocalStarred -> SavedCategoryFilterState(type = "local_starred")
+    UnifiedCategoryFilterSelection.LocalUncategorized -> SavedCategoryFilterState(type = "local_uncategorized")
+    is UnifiedCategoryFilterSelection.Custom -> SavedCategoryFilterState(type = "custom", primaryId = filter.categoryId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> SavedCategoryFilterState(type = "bitwarden_vault", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> SavedCategoryFilterState(type = "bitwarden_folder", primaryId = filter.vaultId, text = filter.folderId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> SavedCategoryFilterState(type = "bitwarden_vault_starred", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> SavedCategoryFilterState(type = "bitwarden_vault_uncategorized", primaryId = filter.vaultId)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> SavedCategoryFilterState(type = "keepass_database", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+}
+
+private fun decodeCardWalletCategoryFilter(state: SavedCategoryFilterState): UnifiedCategoryFilterSelection {
+    return when (state.type) {
+        "local" -> UnifiedCategoryFilterSelection.Local
+        "starred" -> UnifiedCategoryFilterSelection.Starred
+        "uncategorized" -> UnifiedCategoryFilterSelection.Uncategorized
+        "local_starred" -> UnifiedCategoryFilterSelection.LocalStarred
+        "local_uncategorized" -> UnifiedCategoryFilterSelection.LocalUncategorized
+        "custom" -> state.primaryId?.let { UnifiedCategoryFilterSelection.Custom(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_vault" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_folder" -> {
+            val vaultId = state.primaryId
+            val folderId = state.text
+            if (vaultId != null && !folderId.isNullOrBlank()) {
+                UnifiedCategoryFilterSelection.BitwardenFolderFilter(vaultId, folderId)
+            } else {
+                UnifiedCategoryFilterSelection.All
+            }
+        }
+        "bitwarden_vault_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "bitwarden_vault_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_database" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_group" -> {
+            val databaseId = state.primaryId
+            val groupPath = state.text
+            if (databaseId != null && !groupPath.isNullOrBlank()) {
+                UnifiedCategoryFilterSelection.KeePassGroupFilter(databaseId, groupPath)
+            } else {
+                UnifiedCategoryFilterSelection.All
+            }
+        }
+        "keepass_database_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "keepass_database_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        else -> UnifiedCategoryFilterSelection.All
+    }
 }
 
 private fun itemMatchesSearch(

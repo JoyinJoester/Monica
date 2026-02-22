@@ -1,6 +1,10 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -81,6 +85,8 @@ import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.components.PullActionVisualState
+import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -204,6 +210,13 @@ fun NoteListScreen(
         is NoteCategoryFilter.KeePassGroupFilter -> filter.groupPath.substringAfterLast('/')
         is NoteCategoryFilter.KeePassDatabaseStarred -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_starred)}"
         is NoteCategoryFilter.KeePassDatabaseUncategorized -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_uncategorized)}"
+    }
+    val isBitwardenDatabaseView = when (selectedCategoryFilter) {
+        is NoteCategoryFilter.BitwardenVault,
+        is NoteCategoryFilter.BitwardenFolderFilter,
+        is NoteCategoryFilter.BitwardenVaultStarred,
+        is NoteCategoryFilter.BitwardenVaultUncategorized -> true
+        else -> false
     }
     
     // 过滤笔记
@@ -636,6 +649,8 @@ fun NoteListScreen(
             isGridLayout = isGridLayout,
             isSearchExpanded = isSearchExpanded,
             onRequestExpandSearch = { isSearchExpanded = true },
+            isBitwardenDatabaseView = isBitwardenDatabaseView,
+            bitwardenRepository = bitwardenRepository,
             isSelectionMode = isSelectionMode,
             selectedNoteIds = selectedNoteIds,
             onNoteClick = { noteId ->
@@ -670,6 +685,8 @@ fun NoteListContent(
     isGridLayout: Boolean,
     isSearchExpanded: Boolean,
     onRequestExpandSearch: () -> Unit,
+    isBitwardenDatabaseView: Boolean,
+    bitwardenRepository: BitwardenRepository,
     isSelectionMode: Boolean,
     selectedNoteIds: Set<Long>,
     onNoteClick: (Long) -> Unit,
@@ -682,8 +699,21 @@ fun NoteListContent(
     val listState = rememberLazyListState()
     val gridState = rememberLazyStaggeredGridState()
     var currentOffset by remember { mutableFloatStateOf(0f) }
-    val triggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    val searchTriggerDistance = remember(density, isBitwardenDatabaseView) {
+        with(density) { (if (isBitwardenDatabaseView) 40.dp else 72.dp).toPx() }
+    }
+    val syncTriggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
+    val syncHoldMillis = 500L
     var hasVibrated by remember { mutableStateOf(false) }
+    var hasSyncStageVibrated by remember { mutableStateOf(false) }
+    var syncHintArmed by remember { mutableStateOf(false) }
+    var isBitwardenSyncing by remember { mutableStateOf(false) }
+    var lockPullUntilSyncFinished by remember { mutableStateOf(false) }
+    var canRunBitwardenSync by remember { mutableStateOf(false) }
+    var showSyncFeedback by remember { mutableStateOf(false) }
+    var syncFeedbackMessage by remember { mutableStateOf("") }
+    var syncFeedbackIsSuccess by remember { mutableStateOf(false) }
     var canTriggerPullToSearch by remember { mutableStateOf(false) }
     val vibrator = remember {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -695,11 +725,181 @@ fun NoteListContent(
         }
     }
 
+    suspend fun resolveSyncableVaultId(): Long? {
+        val activeVault = bitwardenRepository.getActiveVault() ?: run {
+            canRunBitwardenSync = false
+            return null
+        }
+        val unlocked = bitwardenRepository.isVaultUnlocked(activeVault.id)
+        canRunBitwardenSync = unlocked
+        return if (unlocked) activeVault.id else null
+    }
+
+    fun vibratePullThreshold(isSyncStage: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (isSyncStage && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                vibrator?.vibrate(
+                    android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_DOUBLE_CLICK)
+                )
+            } else {
+                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(if (isSyncStage) 36 else 20)
+        }
+    }
+
+    fun updatePullThresholdHaptics(oldOffset: Float, newOffset: Float) {
+        if (oldOffset < searchTriggerDistance && newOffset >= searchTriggerDistance && !hasVibrated) {
+            hasVibrated = true
+            vibratePullThreshold(isSyncStage = false)
+        } else if (newOffset < searchTriggerDistance) {
+            hasVibrated = false
+        }
+
+        if (!isBitwardenDatabaseView) {
+            hasSyncStageVibrated = false
+            return
+        }
+
+        if (oldOffset < syncTriggerDistance && newOffset >= syncTriggerDistance && !hasSyncStageVibrated) {
+            hasSyncStageVibrated = true
+            vibratePullThreshold(isSyncStage = true)
+        } else if (newOffset < syncTriggerDistance) {
+            hasSyncStageVibrated = false
+        }
+    }
+
+    suspend fun collapsePullOffsetSmoothly() {
+        if (currentOffset <= 0.5f) {
+            currentOffset = 0f
+            return
+        }
+        Animatable(currentOffset).animateTo(
+            targetValue = 0f,
+            animationSpec = tween(
+                durationMillis = 180,
+                easing = androidx.compose.animation.core.LinearOutSlowInEasing
+            )
+        ) {
+            currentOffset = value
+        }
+    }
+
+    fun onPullRelease(): Boolean {
+        if (isBitwardenDatabaseView && syncHintArmed && !isBitwardenSyncing) {
+            syncHintArmed = false
+            isBitwardenSyncing = true
+            lockPullUntilSyncFinished = true
+            currentOffset = syncTriggerDistance
+            scope.launch {
+                val vaultId = resolveSyncableVaultId()
+                if (vaultId == null) {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.pull_sync_requires_bitwarden_login),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    isBitwardenSyncing = false
+                    lockPullUntilSyncFinished = false
+                    hasVibrated = false
+                    hasSyncStageVibrated = false
+                    collapsePullOffsetSmoothly()
+                    return@launch
+                }
+
+                val syncResult = bitwardenRepository.sync(vaultId)
+                when (syncResult) {
+                    is BitwardenRepository.SyncResult.Success -> {
+                        syncFeedbackIsSuccess = true
+                        syncFeedbackMessage = context.getString(R.string.pull_sync_success)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.pull_sync_success),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is BitwardenRepository.SyncResult.Error -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.message,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.reason,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                isBitwardenSyncing = false
+                lockPullUntilSyncFinished = false
+                hasVibrated = false
+                hasSyncStageVibrated = false
+                collapsePullOffsetSmoothly()
+                kotlinx.coroutines.delay(1400)
+                showSyncFeedback = false
+            }
+            return true
+        }
+
+        if (currentOffset >= searchTriggerDistance) {
+            onRequestExpandSearch()
+            hasVibrated = false
+        }
+        return false
+    }
+
+    LaunchedEffect(isBitwardenDatabaseView) {
+        if (isBitwardenDatabaseView) {
+            resolveSyncableVaultId()
+        } else {
+            canRunBitwardenSync = false
+            syncHintArmed = false
+            isBitwardenSyncing = false
+            lockPullUntilSyncFinished = false
+            showSyncFeedback = false
+            currentOffset = 0f
+            hasVibrated = false
+            hasSyncStageVibrated = false
+        }
+    }
+
+    LaunchedEffect(currentOffset >= syncTriggerDistance, isBitwardenDatabaseView, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && !isBitwardenSyncing) {
+            resolveSyncableVaultId()
+        }
+    }
+
+    LaunchedEffect(currentOffset, isBitwardenDatabaseView, canRunBitwardenSync, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+            kotlinx.coroutines.delay(syncHoldMillis)
+            if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+                syncHintArmed = true
+            }
+        } else {
+            syncHintArmed = false
+        }
+    }
+
     // NestedScrollConnection 处理下拉搜索手势
-    val nestedScrollConnection = remember {
+    val nestedScrollConnection = remember(isBitwardenDatabaseView) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 // 如果正在向上滑动且有偏移量，先消耗偏移量
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
                 if (currentOffset > 0 && available.y < 0) {
                     val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
                     val consumed = currentOffset - newOffset
@@ -710,24 +910,16 @@ fun NoteListContent(
             }
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
                 if (!isSearchExpanded && available.y > 0 && canTriggerPullToSearch) {
                     if (source == NestedScrollSource.UserInput) {
                         val delta = available.y * 0.5f
-                        val newOffset = currentOffset + delta
+                        val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
                         val oldOffset = currentOffset
                         currentOffset = newOffset
-
-                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                            hasVibrated = true
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
-                            } else {
-                                @Suppress("DEPRECATION")
-                                vibrator?.vibrate(20)
-                            }
-                        } else if (newOffset < triggerDistance) {
-                            hasVibrated = false
-                        }
+                        updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
                         return available
                     }
                 }
@@ -735,14 +927,11 @@ fun NoteListContent(
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (currentOffset >= triggerDistance) {
-                    onRequestExpandSearch()
-                    hasVibrated = false
+                val syncStarted = onPullRelease()
+                if (!syncStarted && !lockPullUntilSyncFinished) {
+                    collapsePullOffsetSmoothly()
                 }
-                Animatable(currentOffset).animateTo(0f) {
-                    currentOffset = value
-                }
-                return super.onPreFling(available)
+                return Velocity.Zero
             }
         }
     }
@@ -754,129 +943,192 @@ fun NoteListContent(
             detectVerticalDragGestures(
                 onVerticalDrag = { _, dragAmount ->
                     if (!isSearchExpanded && dragAmount > 0f) {
-                        val newOffset = currentOffset + dragAmount * 0.5f
+                        val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
                         val oldOffset = currentOffset
                         currentOffset = newOffset
-                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                            hasVibrated = true
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(VibrationPatterns.TICK, -1))
-                            } else {
-                                @Suppress("DEPRECATION")
-                                vibrator?.vibrate(20)
-                            }
-                        } else if (newOffset < triggerDistance) {
-                            hasVibrated = false
-                        }
+                        updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
                     }
                 },
                 onDragEnd = {
-                    if (currentOffset >= triggerDistance) {
-                        onRequestExpandSearch()
-                    }
-                    hasVibrated = false
-                    scope.launch {
-                        Animatable(currentOffset).animateTo(0f) {
-                            currentOffset = value
-                        }
+                    val syncStarted = onPullRelease()
+                    if (!syncStarted && !lockPullUntilSyncFinished) {
+                        scope.launch { collapsePullOffsetSmoothly() }
                     }
                 },
                 onDragCancel = {
-                    hasVibrated = false
-                    scope.launch {
-                        Animatable(currentOffset).animateTo(0f) {
-                            currentOffset = value
-                        }
+                    if (!lockPullUntilSyncFinished) {
+                        scope.launch { collapsePullOffsetSmoothly() }
                     }
                 }
             )
         }
 
-    if (notes.isEmpty()) {
+    val searchProgress = (currentOffset / searchTriggerDistance).coerceIn(0f, 1f)
+    val syncProgress = ((currentOffset - searchTriggerDistance) / (syncTriggerDistance - searchTriggerDistance))
+        .coerceIn(0f, 1f)
+    val pullVisualState = when {
+        isBitwardenDatabaseView && isBitwardenSyncing -> PullActionVisualState.SYNCING
+        isBitwardenDatabaseView && showSyncFeedback -> PullActionVisualState.SYNC_DONE
+        isBitwardenDatabaseView && syncHintArmed -> PullActionVisualState.SYNC_READY
+        currentOffset >= searchTriggerDistance -> PullActionVisualState.SEARCH_READY
+        else -> PullActionVisualState.IDLE
+    }
+    val pullHintText = when (pullVisualState) {
+        PullActionVisualState.SYNCING -> stringResource(R.string.pull_syncing_bitwarden)
+        PullActionVisualState.SYNC_DONE -> syncFeedbackMessage.ifBlank {
+            if (syncFeedbackIsSuccess) {
+                stringResource(R.string.pull_sync_success)
+            } else {
+                stringResource(R.string.sync_status_failed_full)
+            }
+        }
+        PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
+        PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
+            stringResource(R.string.pull_release_to_search)
+        } else {
+            null
+        }
+        PullActionVisualState.IDLE -> null
+    }
+    val shouldPinIndicator = isBitwardenDatabaseView && (
+        syncHintArmed || isBitwardenSyncing || showSyncFeedback
+    )
+    val revealHeightTarget = with(density) {
+        if (isBitwardenDatabaseView) {
+            val pullHeight = currentOffset.toDp().coerceIn(0.dp, 112.dp)
+            if (shouldPinIndicator) {
+                maxOf(pullHeight, 92.dp)
+            } else {
+                pullHeight
+            }
+        } else {
+            0.dp
+        }
+    }
+    val revealHeight by animateDpAsState(
+        targetValue = revealHeightTarget,
+        animationSpec = tween(durationMillis = 220),
+        label = "note_pull_reveal_height"
+    )
+    val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+    val contentPullOffset = if (isBitwardenDatabaseView) {
+        (currentOffset * 0.28f).toInt()
+    } else {
+        currentOffset.toInt()
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
         Box(
-            modifier = modifier
-                .fillMaxSize()
-                .then(emptyStateGestureModifier),
-            contentAlignment = Alignment.Center
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(revealHeight),
+            contentAlignment = Alignment.BottomCenter
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Note,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.no_results),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (showPullIndicator) {
+                PullGestureIndicator(
+                    state = pullVisualState,
+                    searchProgress = searchProgress,
+                    syncProgress = syncProgress,
+                    text = pullHintText ?: "",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 8.dp)
                 )
             }
         }
-    } else {
-        if (isGridLayout) {
-            // 瀑布流网格布局
-            LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Fixed(2),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalItemSpacing = 12.dp,
-                modifier = modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, currentOffset.toInt()) }
-                    .nestedScroll(nestedScrollConnection)
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            val isAtTop = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
-                            canTriggerPullToSearch = isAtTop
-                        }
-                    },
-                state = gridState
+        if (showPullIndicator) {
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+
+        if (notes.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, contentPullOffset) }
+                    .then(emptyStateGestureModifier),
+                contentAlignment = Alignment.Center
             ) {
-                items(notes, key = { it.id }) { note ->
-                    ExpressiveNoteCard(
-                        note = note,
-                        isSelected = selectedNoteIds.contains(note.id),
-                        isGridMode = true,
-                        onClick = { onNoteClick(note.id) },
-                        onLongClick = { onNoteLongClick(note.id) }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Note,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(R.string.no_results),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         } else {
-            // 单列列表布局
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, currentOffset.toInt()) }
-                    .nestedScroll(nestedScrollConnection)
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-                            canTriggerPullToSearch = isAtTop
-                        }
-                    },
-                state = listState
-            ) {
-                items(notes, key = { it.id }) { note ->
-                    ExpressiveNoteCard(
-                        note = note,
-                        isSelected = selectedNoteIds.contains(note.id),
-                        isGridMode = false,
-                        onClick = { onNoteClick(note.id) },
-                        onLongClick = { onNoteLongClick(note.id) }
-                    )
+            if (isGridLayout) {
+                // 瀑布流网格布局
+                LazyVerticalStaggeredGrid(
+                    columns = StaggeredGridCells.Fixed(2),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalItemSpacing = 12.dp,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, contentPullOffset) }
+                        .nestedScroll(nestedScrollConnection)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                val isAtTop = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+                                canTriggerPullToSearch = isAtTop
+                            }
+                        },
+                    state = gridState
+                ) {
+                    items(notes, key = { it.id }) { note ->
+                        ExpressiveNoteCard(
+                            note = note,
+                            isSelected = selectedNoteIds.contains(note.id),
+                            isGridMode = true,
+                            onClick = { onNoteClick(note.id) },
+                            onLongClick = { onNoteLongClick(note.id) }
+                        )
+                    }
                 }
-                // 底部留白，防止被FAB遮挡
-                item { Spacer(modifier = Modifier.height(80.dp)) }
+            } else {
+                // 单列列表布局
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, contentPullOffset) }
+                        .nestedScroll(nestedScrollConnection)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                                canTriggerPullToSearch = isAtTop
+                            }
+                        },
+                    state = listState
+                ) {
+                    items(notes, key = { it.id }) { note ->
+                        ExpressiveNoteCard(
+                            note = note,
+                            isSelected = selectedNoteIds.contains(note.id),
+                            isGridMode = false,
+                            onClick = { onNoteClick(note.id) },
+                            onLongClick = { onNoteLongClick(note.id) }
+                        )
+                    }
+                    // 底部留白，防止被FAB遮挡
+                    item { Spacer(modifier = Modifier.height(80.dp)) }
+                }
             }
         }
     }

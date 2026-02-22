@@ -125,6 +125,7 @@ class SettingsManager(private val context: Context) {
         const val NOTE = "note"
         const val TOTP = "totp"
         const val PASSKEY = "passkey"
+        const val CARD_WALLET = "card_wallet"
     }
 
     private fun storageCategoryKey(scope: String) = longPreferencesKey("last_storage_${scope}_category_id")

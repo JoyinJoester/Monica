@@ -4,6 +4,10 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -59,6 +63,8 @@ import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.PullActionVisualState
+import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.ui.components.SyncStatusBadge
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
@@ -315,11 +321,31 @@ fun PasskeyListScreen(
         lastShownFailedPasskeyCount = failedPasskeyCount
     }
     
+    val isBitwardenDatabaseView = when (selectedCategoryFilter) {
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter,
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter,
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter,
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> true
+        else -> false
+    }
+
     // 下拉搜索相关
     var currentOffset by remember { mutableFloatStateOf(0f) }
-    val triggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    val searchTriggerDistance = remember(density, isBitwardenDatabaseView) {
+        with(density) { (if (isBitwardenDatabaseView) 40.dp else 72.dp).toPx() }
+    }
+    val syncTriggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
+    val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
+    val syncHoldMillis = 500L
     var hasVibrated by remember { mutableStateOf(false) }
-    var canTriggerPullToSearch by remember { mutableStateOf(false) }
+    var hasSyncStageVibrated by remember { mutableStateOf(false) }
+    var syncHintArmed by remember { mutableStateOf(false) }
+    var isBitwardenSyncing by remember { mutableStateOf(false) }
+    var lockPullUntilSyncFinished by remember { mutableStateOf(false) }
+    var canRunBitwardenSync by remember { mutableStateOf(false) }
+    var showSyncFeedback by remember { mutableStateOf(false) }
+    var syncFeedbackMessage by remember { mutableStateOf("") }
+    var syncFeedbackIsSuccess by remember { mutableStateOf(false) }
     
     // 震动服务
     val vibrator = remember {
@@ -331,11 +357,190 @@ fun PasskeyListScreen(
             context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
         }
     }
+
+    suspend fun resolveSyncableVaultId(): Long? {
+        val activeVault = bitwardenRepository.getActiveVault() ?: run {
+            canRunBitwardenSync = false
+            return null
+        }
+        val unlocked = bitwardenRepository.isVaultUnlocked(activeVault.id)
+        canRunBitwardenSync = unlocked
+        return if (unlocked) activeVault.id else null
+    }
+
+    fun vibratePullThreshold(isSyncStage: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (isSyncStage && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrator?.vibrate(
+                    android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_DOUBLE_CLICK)
+                )
+            } else {
+                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(if (isSyncStage) 36 else 20)
+        }
+    }
+
+    fun updatePullThresholdHaptics(oldOffset: Float, newOffset: Float) {
+        if (oldOffset < searchTriggerDistance && newOffset >= searchTriggerDistance && !hasVibrated) {
+            hasVibrated = true
+            vibratePullThreshold(isSyncStage = false)
+        } else if (newOffset < searchTriggerDistance) {
+            hasVibrated = false
+        }
+
+        if (!isBitwardenDatabaseView) {
+            hasSyncStageVibrated = false
+            return
+        }
+
+        if (oldOffset < syncTriggerDistance && newOffset >= syncTriggerDistance && !hasSyncStageVibrated) {
+            hasSyncStageVibrated = true
+            vibratePullThreshold(isSyncStage = true)
+        } else if (newOffset < syncTriggerDistance) {
+            hasSyncStageVibrated = false
+        }
+    }
+
+    suspend fun collapsePullOffsetSmoothly() {
+        if (currentOffset <= 0.5f) {
+            currentOffset = 0f
+            return
+        }
+        androidx.compose.animation.core.Animatable(currentOffset).animateTo(
+            targetValue = 0f,
+            animationSpec = tween(
+                durationMillis = 180,
+                easing = androidx.compose.animation.core.LinearOutSlowInEasing
+            )
+        ) {
+            currentOffset = value
+        }
+    }
+
+    fun onPullRelease(): Boolean {
+        if (isBitwardenDatabaseView && syncHintArmed && !isBitwardenSyncing) {
+            syncHintArmed = false
+            isBitwardenSyncing = true
+            lockPullUntilSyncFinished = true
+            currentOffset = syncTriggerDistance
+            scope.launch {
+                val vaultId = resolveSyncableVaultId()
+                if (vaultId == null) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.pull_sync_requires_bitwarden_login),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    isBitwardenSyncing = false
+                    lockPullUntilSyncFinished = false
+                    hasVibrated = false
+                    hasSyncStageVibrated = false
+                    collapsePullOffsetSmoothly()
+                    return@launch
+                }
+
+                val syncResult = bitwardenRepository.sync(vaultId)
+                when (syncResult) {
+                    is BitwardenRepository.SyncResult.Success -> {
+                        syncFeedbackIsSuccess = true
+                        syncFeedbackMessage = context.getString(R.string.pull_sync_success)
+                        showSyncFeedback = true
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.pull_sync_success),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is BitwardenRepository.SyncResult.Error -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.message,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                        syncFeedbackIsSuccess = false
+                        syncFeedbackMessage = context.getString(R.string.sync_status_failed_full)
+                        showSyncFeedback = true
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.sync_status_failed_full) + ": " + syncResult.reason,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                isBitwardenSyncing = false
+                lockPullUntilSyncFinished = false
+                hasVibrated = false
+                hasSyncStageVibrated = false
+                collapsePullOffsetSmoothly()
+                kotlinx.coroutines.delay(1400)
+                showSyncFeedback = false
+            }
+            return true
+        }
+
+        if (currentOffset >= searchTriggerDistance) {
+            isSearchExpanded = true
+            hasVibrated = false
+        }
+        return false
+    }
+
+    LaunchedEffect(isBitwardenDatabaseView) {
+        if (isBitwardenDatabaseView) {
+            resolveSyncableVaultId()
+        } else {
+            canRunBitwardenSync = false
+            syncHintArmed = false
+            isBitwardenSyncing = false
+            lockPullUntilSyncFinished = false
+            showSyncFeedback = false
+            currentOffset = 0f
+            hasVibrated = false
+            hasSyncStageVibrated = false
+        }
+    }
+
+    LaunchedEffect(currentOffset >= syncTriggerDistance, isBitwardenDatabaseView, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && !isBitwardenSyncing) {
+            resolveSyncableVaultId()
+        }
+    }
+
+    LaunchedEffect(currentOffset, isBitwardenDatabaseView, canRunBitwardenSync, isBitwardenSyncing) {
+        if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+            kotlinx.coroutines.delay(syncHoldMillis)
+            if (isBitwardenDatabaseView && currentOffset >= syncTriggerDistance && canRunBitwardenSync && !isBitwardenSyncing) {
+                syncHintArmed = true
+            }
+        } else {
+            syncHintArmed = false
+        }
+    }
+
+    LaunchedEffect(isSearchExpanded) {
+        if (isSearchExpanded) {
+            currentOffset = 0f
+            hasVibrated = false
+            hasSyncStageVibrated = false
+            syncHintArmed = false
+        }
+    }
     
     // 嵌套滚动连接（下拉触发搜索）
-    val nestedScrollConnection = remember {
+    val nestedScrollConnection = remember(isBitwardenDatabaseView) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
                 if (currentOffset > 0 && available.y < 0) {
                     val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
                     val consumed = currentOffset - newOffset
@@ -346,40 +551,36 @@ fun PasskeyListScreen(
             }
             
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (!isSearchExpanded && available.y > 0 && canTriggerPullToSearch) {
-                    if (source == NestedScrollSource.UserInput) {
-                        val delta = available.y * 0.5f
-                        val newOffset = currentOffset + delta
-                        val oldOffset = currentOffset
-                        currentOffset = newOffset
-                        
-                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                            hasVibrated = true
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
-                            } else {
-                                @Suppress("DEPRECATION")
-                                vibrator?.vibrate(20)
-                            }
-                        } else if (newOffset < triggerDistance) {
-                            hasVibrated = false
-                        }
-                        
-                        return available
-                    }
+                if (lockPullUntilSyncFinished) {
+                    return available
+                }
+                if (available.y > 0 && source == NestedScrollSource.UserInput) {
+                    val delta = available.y * 0.5f
+                    val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
+                    val oldOffset = currentOffset
+                    currentOffset = newOffset
+                    updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
+                    return available
                 }
                 return Offset.Zero
             }
             
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (currentOffset >= triggerDistance) {
-                    isSearchExpanded = true
-                    hasVibrated = false
+                val syncStarted = onPullRelease()
+                if (!syncStarted && !lockPullUntilSyncFinished) {
+                    collapsePullOffsetSmoothly()
                 }
-                androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
-                    currentOffset = value
+                return Velocity.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                if (!lockPullUntilSyncFinished && currentOffset > 0f) {
+                    val syncStarted = onPullRelease()
+                    if (!syncStarted && !lockPullUntilSyncFinished) {
+                        collapsePullOffsetSmoothly()
+                    }
                 }
-                return super.onPreFling(available)
+                return Velocity.Zero
             }
         }
     }
@@ -604,191 +805,247 @@ fun PasskeyListScreen(
         
         // 主内容 + 左下角胶囊多选栏
         Box(modifier = Modifier.fillMaxSize()) {
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (visiblePasskeys.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(isSearchExpanded) {
-                            detectVerticalDragGestures(
-                                onVerticalDrag = { _, dragAmount ->
-                                    if (!isSearchExpanded && dragAmount > 0f) {
-                                        val newOffset = currentOffset + dragAmount * 0.5f
-                                        val oldOffset = currentOffset
-                                        currentOffset = newOffset
-
-                                        if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
-                                            hasVibrated = true
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
-                                            } else {
-                                                @Suppress("DEPRECATION")
-                                                vibrator?.vibrate(20)
-                                            }
-                                        } else if (newOffset < triggerDistance) {
-                                            hasVibrated = false
-                                        }
-                                    }
-                                },
-                                onDragEnd = {
-                                    if (currentOffset >= triggerDistance) {
-                                        isSearchExpanded = true
-                                        hasVibrated = false
-                                    }
-                                    scope.launch {
-                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
-                                            currentOffset = value
-                                        }
-                                    }
-                                },
-                                onDragCancel = {
-                                    scope.launch {
-                                        androidx.compose.animation.core.Animatable(currentOffset).animateTo(0f) {
-                                            currentOffset = value
-                                        }
-                                    }
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.offset { IntOffset(0, currentOffset.toInt()) }
-                    ) {
-                        Icon(
-                            Icons.Default.Key,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = if (searchQuery.isEmpty())
-                                stringResource(R.string.passkey_empty_title)
-                            else
-                                stringResource(R.string.passkey_no_search_results),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 16.dp)
-                        )
-                        if (searchQuery.isEmpty() && isFullySupported) {
-                            Text(
-                                text = stringResource(R.string.passkey_empty_message),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp)
-                            )
-                        }
+            val searchProgress = (currentOffset / searchTriggerDistance).coerceIn(0f, 1f)
+            val syncProgress = ((currentOffset - searchTriggerDistance) / (syncTriggerDistance - searchTriggerDistance))
+                .coerceIn(0f, 1f)
+            val pullVisualState = when {
+                isBitwardenDatabaseView && isBitwardenSyncing -> PullActionVisualState.SYNCING
+                isBitwardenDatabaseView && showSyncFeedback -> PullActionVisualState.SYNC_DONE
+                isBitwardenDatabaseView && syncHintArmed -> PullActionVisualState.SYNC_READY
+                currentOffset >= searchTriggerDistance -> PullActionVisualState.SEARCH_READY
+                else -> PullActionVisualState.IDLE
+            }
+            val pullHintText = when (pullVisualState) {
+                PullActionVisualState.SYNCING -> stringResource(R.string.pull_syncing_bitwarden)
+                PullActionVisualState.SYNC_DONE -> syncFeedbackMessage.ifBlank {
+                    if (syncFeedbackIsSuccess) {
+                        stringResource(R.string.pull_sync_success)
+                    } else {
+                        stringResource(R.string.sync_status_failed_full)
                     }
                 }
+                PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
+                PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
+                    stringResource(R.string.pull_release_to_search)
+                } else {
+                    null
+                }
+                PullActionVisualState.IDLE -> null
+            }
+            val shouldPinIndicator = isBitwardenDatabaseView && (
+                syncHintArmed || isBitwardenSyncing || showSyncFeedback
+            )
+            val revealHeightTarget = with(density) {
+                if (isBitwardenDatabaseView) {
+                    val pullHeight = currentOffset.toDp().coerceIn(0.dp, 112.dp)
+                    if (shouldPinIndicator) {
+                        maxOf(pullHeight, 92.dp)
+                    } else {
+                        pullHeight
+                    }
+                } else {
+                    0.dp
+                }
+            }
+            val revealHeight by animateDpAsState(
+                targetValue = revealHeightTarget,
+                animationSpec = tween(durationMillis = 220),
+                label = "passkey_pull_reveal_height"
+            )
+            val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+            val contentPullOffset = if (isBitwardenDatabaseView) {
+                (currentOffset * 0.28f).toInt()
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .offset { IntOffset(0, currentOffset.toInt()) }
-                        .nestedScroll(nestedScrollConnection)
-                        .pointerInput(Unit) {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-                                canTriggerPullToSearch = isAtTop
-                            }
-                        },
-                    state = listState,
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 8.dp,
-                        bottom = if (selectionMode) 140.dp else 100.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        items = visiblePasskeys,
-                        key = { it.credentialId }
-                    ) { passkey ->
-                        val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
-                        val currentCategoryId = effectiveCategoryId(passkey)
-                        val categoryName = currentCategoryId
-                            ?.let { categoryMap[it]?.name }
-                            ?: context.getString(R.string.category_none)
-                        val isSelected = selectedPasskeys.contains(passkey.credentialId)
-                        val isPendingDelete = pendingDeletePasskey?.credentialId == passkey.credentialId
+                currentOffset.toInt()
+            }
 
-                        key(passkey.credentialId, isSelected, isPendingDelete, selectionMode) {
-                            SwipeActions(
-                                onSwipeLeft = {
-                                    haptic.performWarning()
-                                    pendingDeletePasskey = passkey
-                                    showDeleteConfirmDialog = true
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(revealHeight),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    if (showPullIndicator) {
+                        PullGestureIndicator(
+                            state = pullVisualState,
+                            searchProgress = searchProgress,
+                            syncProgress = syncProgress,
+                            text = pullHintText ?: "",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                                .padding(bottom = 8.dp)
+                        )
+                    }
+                }
+                if (showPullIndicator) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else if (visiblePasskeys.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(isSearchExpanded) {
+                                    detectVerticalDragGestures(
+                                        onVerticalDrag = { _, dragAmount ->
+                                            if (dragAmount > 0f) {
+                                                val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
+                                                val oldOffset = currentOffset
+                                                currentOffset = newOffset
+                                                updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val syncStarted = onPullRelease()
+                                            if (!syncStarted && !lockPullUntilSyncFinished) {
+                                                scope.launch { collapsePullOffsetSmoothly() }
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            if (!lockPullUntilSyncFinished) {
+                                                scope.launch { collapsePullOffsetSmoothly() }
+                                            }
+                                        }
+                                    )
                                 },
-                                onSwipeRight = {
-                                    haptic.performSuccess()
-                                    val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
-                                        selectedPasskeys - passkey.credentialId
-                                    } else {
-                                        selectedPasskeys + passkey.credentialId
-                                    }
-                                    selectedPasskeys = updatedSelection
-                                    selectionMode = updatedSelection.isNotEmpty()
-                                },
-                                isSwiped = isPendingDelete,
-                                enabled = true,
-                                modifier = Modifier
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.offset { IntOffset(0, contentPullOffset) }
                             ) {
-                                PasskeyListItem(
-                                    passkey = passkey,
-                                    boundPassword = boundPassword,
-                                    currentCategoryName = categoryName,
-                                    isCategoryLocked = boundPassword != null || passkey.syncStatus == "REFERENCE",
-                                    iconCardsEnabled = appSettings.iconCardsEnabled,
-                                    isSelected = isSelected,
-                                    selectionMode = selectionMode,
-                                    onClick = { onPasskeyClick(passkey) },
-                                    onToggleSelect = {
-                                        val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
-                                            selectedPasskeys - passkey.credentialId
-                                        } else {
-                                            selectedPasskeys + passkey.credentialId
-                                        }
-                                        selectedPasskeys = updatedSelection
-                                        selectionMode = updatedSelection.isNotEmpty()
-                                    },
-                                    onLongPress = {
-                                        haptic.performLongPress()
-                                        if (!selectionMode) {
-                                            selectionMode = true
-                                            selectedPasskeys = setOf(passkey.credentialId)
-                                        }
-                                    },
-                                    onDeleteRequest = {
-                                        pendingDeletePasskey = passkey
-                                        showDeleteConfirmDialog = true
-                                    },
-                                    onBindPassword = { passkeyToBind = passkey },
-                                    onUnbindPassword = {
-                                        if (boundPassword != null && passwordViewModel != null) {
-                                            val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
-                                            passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
-                                        }
-                                        if (passkey.syncStatus != "REFERENCE") {
-                                            viewModel.updateBoundPassword(passkey.credentialId, null)
-                                        }
-                                    },
-                                    onOpenBoundPassword = { passwordId -> onNavigateToPasswordDetail(passwordId) },
-                                    onChangeCategory = if (boundPassword != null || passkey.syncStatus == "REFERENCE") {
-                                        null
-                                    } else {
-                                        { passkeyToMoveCategory = passkey }
-                                    }
+                                Icon(
+                                    Icons.Default.Key,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Text(
+                                    text = if (searchQuery.isEmpty())
+                                        stringResource(R.string.passkey_empty_title)
+                                    else
+                                        stringResource(R.string.passkey_no_search_results),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 16.dp)
+                                )
+                                if (searchQuery.isEmpty() && isFullySupported) {
+                                    Text(
+                                        text = stringResource(R.string.passkey_empty_message),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(0, contentPullOffset) }
+                                .nestedScroll(nestedScrollConnection),
+                            state = listState,
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 8.dp,
+                                bottom = if (selectionMode) 140.dp else 100.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(
+                                items = visiblePasskeys,
+                                key = { it.credentialId }
+                            ) { passkey ->
+                                val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
+                                val currentCategoryId = effectiveCategoryId(passkey)
+                                val categoryName = currentCategoryId
+                                    ?.let { categoryMap[it]?.name }
+                                    ?: context.getString(R.string.category_none)
+                                val isSelected = selectedPasskeys.contains(passkey.credentialId)
+                                val isPendingDelete = pendingDeletePasskey?.credentialId == passkey.credentialId
+
+                                key(passkey.credentialId, isSelected, isPendingDelete, selectionMode) {
+                                    SwipeActions(
+                                        onSwipeLeft = {
+                                            haptic.performWarning()
+                                            pendingDeletePasskey = passkey
+                                            showDeleteConfirmDialog = true
+                                        },
+                                        onSwipeRight = {
+                                            haptic.performSuccess()
+                                            val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
+                                                selectedPasskeys - passkey.credentialId
+                                            } else {
+                                                selectedPasskeys + passkey.credentialId
+                                            }
+                                            selectedPasskeys = updatedSelection
+                                            selectionMode = updatedSelection.isNotEmpty()
+                                        },
+                                        isSwiped = isPendingDelete,
+                                        enabled = true,
+                                        modifier = Modifier
+                                    ) {
+                                        PasskeyListItem(
+                                            passkey = passkey,
+                                            boundPassword = boundPassword,
+                                            currentCategoryName = categoryName,
+                                            isCategoryLocked = boundPassword != null || passkey.syncStatus == "REFERENCE",
+                                            iconCardsEnabled = appSettings.iconCardsEnabled,
+                                            isSelected = isSelected,
+                                            selectionMode = selectionMode,
+                                            onClick = { onPasskeyClick(passkey) },
+                                            onToggleSelect = {
+                                                val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
+                                                    selectedPasskeys - passkey.credentialId
+                                                } else {
+                                                    selectedPasskeys + passkey.credentialId
+                                                }
+                                                selectedPasskeys = updatedSelection
+                                                selectionMode = updatedSelection.isNotEmpty()
+                                            },
+                                            onLongPress = {
+                                                haptic.performLongPress()
+                                                if (!selectionMode) {
+                                                    selectionMode = true
+                                                    selectedPasskeys = setOf(passkey.credentialId)
+                                                }
+                                            },
+                                            onDeleteRequest = {
+                                                pendingDeletePasskey = passkey
+                                                showDeleteConfirmDialog = true
+                                            },
+                                            onBindPassword = { passkeyToBind = passkey },
+                                            onUnbindPassword = {
+                                                if (boundPassword != null && passwordViewModel != null) {
+                                                    val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
+                                                    passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
+                                                }
+                                                if (passkey.syncStatus != "REFERENCE") {
+                                                    viewModel.updateBoundPassword(passkey.credentialId, null)
+                                                }
+                                            },
+                                            onOpenBoundPassword = { passwordId -> onNavigateToPasswordDetail(passwordId) },
+                                            onChangeCategory = if (boundPassword != null || passkey.syncStatus == "REFERENCE") {
+                                                null
+                                            } else {
+                                                { passkeyToMoveCategory = passkey }
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
