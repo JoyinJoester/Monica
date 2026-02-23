@@ -797,10 +797,15 @@ class BitwardenSyncService(
             }
         }
 
-        // 同步上传已修改的 SecureItems（Passkey 暂不支持修改上传）
+        // 同步上传已修改的 SecureItems
         val secureResult = cipherUploadProcessor.uploadModifiedSecureItems(vault, accessToken, symmetricKey)
         uploaded += secureResult.uploaded
         failed += secureResult.failed
+
+        // 同步更新已存在的 Passkeys（修复历史 counter / userHandle 兼容）
+        val passkeyResult = cipherUploadProcessor.uploadModifiedPasskeys(vault, accessToken, symmetricKey)
+        uploaded += passkeyResult.uploaded
+        failed += passkeyResult.failed
 
         android.util.Log.i(TAG, "Modified upload complete: $uploaded uploaded, $failed failed")
         UploadResult.Success(

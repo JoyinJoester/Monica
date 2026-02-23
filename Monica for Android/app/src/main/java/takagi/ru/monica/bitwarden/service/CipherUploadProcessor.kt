@@ -34,6 +34,8 @@ class CipherUploadProcessor(
     companion object {
         private const val TAG = "CipherUploadProcessor"
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
+        private val CIPHER_STRING_PATTERN =
+            Regex("^[0-9]+\\.[A-Za-z0-9+/_=-]+\\|[A-Za-z0-9+/_=-]+(?:\\|[A-Za-z0-9+/_=-]+)?$")
     }
     
     private val database = PasswordDatabase.getDatabase(context)
@@ -155,6 +157,10 @@ class CipherUploadProcessor(
                 return UploadItemResult.Error(message)
             }
 
+            if (!canSyncPasskeyToBitwarden(passkey)) {
+                return fail("Legacy passkey cannot be synced to Bitwarden")
+            }
+
             val normalizedPasskey = normalizePasskeyForUpload(passkey)
             val mapper = PasskeyMapper()
             val request = mapper.toCreateRequest(normalizedPasskey, null)
@@ -194,6 +200,63 @@ class CipherUploadProcessor(
         }
     }
 
+    /**
+     * 更新已存在的 Passkey Cipher（用于修复历史兼容字段）
+     */
+    suspend fun updatePasskey(
+        vault: BitwardenVault,
+        passkey: PasskeyEntry,
+        cipherId: String,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): UploadItemResult {
+        return try {
+            suspend fun fail(message: String): UploadItemResult {
+                passkeyDao.markFailed(passkey.credentialId)
+                return UploadItemResult.Error(message)
+            }
+
+            if (!canSyncPasskeyToBitwarden(passkey)) {
+                return fail("Legacy passkey cannot be synced to Bitwarden")
+            }
+
+            val normalizedPasskey = normalizePasskeyForUpload(passkey)
+            val mapper = PasskeyMapper()
+            val createRequest = mapper.toCreateRequest(normalizedPasskey, null)
+            if (createRequest.login?.fido2Credentials.isNullOrEmpty()) {
+                return fail(
+                    "Passkey key material is missing or invalid; cannot sync as FIDO2 credential"
+                )
+            }
+
+            val encryptedCreate = encryptCipherRequest(createRequest, symmetricKey)
+            val updateRequest = encryptedCreate.toUpdateRequest()
+
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val response = vaultApi.updateCipher(
+                authorization = "Bearer $accessToken",
+                cipherId = cipherId,
+                cipher = updateRequest
+            )
+
+            if (!response.isSuccessful) {
+                return fail("Update cipher failed: ${response.code()}")
+            }
+
+            val updatedCipher = response.body() ?: return fail("Empty response")
+            if (updatedCipher.login?.fido2Credentials.isNullOrEmpty()) {
+                return fail("Server updated cipher without FIDO2 credential")
+            }
+
+            passkeyDao.markSynced(passkey.credentialId, updatedCipher.id)
+            UploadItemResult.Success(updatedCipher.id)
+        } catch (e: Exception) {
+            runCatching { passkeyDao.markFailed(passkey.credentialId) }
+            android.util.Log.e(TAG, "Update Passkey failed: ${e.message}", e)
+            UploadItemResult.Error(e.message ?: "Unknown error")
+        }
+    }
+
     private fun normalizePasskeyForUpload(passkey: PasskeyEntry): PasskeyEntry {
         if (isPkcs8PrivateKeyBase64(passkey.privateKeyAlias)) return passkey
 
@@ -217,7 +280,11 @@ class CipherUploadProcessor(
 
     private fun isPkcs8PrivateKeyBase64(value: String): Boolean {
         if (value.isBlank()) return false
-        val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull() ?: return false
+        val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull()
+            ?: runCatching {
+                Base64.decode(value, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            }.getOrNull()
+            ?: return false
         val keySpec = PKCS8EncodedKeySpec(decoded)
         val ecValid = runCatching {
             KeyFactory.getInstance("EC").generatePrivate(keySpec)
@@ -301,23 +368,88 @@ class CipherUploadProcessor(
         symmetricKey: SymmetricCryptoKey
     ): BatchUploadResult {
         val pending = passkeyDao.getLocalEntriesPendingUpload(vault.id)
-        
-        if (pending.isEmpty()) {
+            .filter(::canSyncPasskeyToBitwarden)
+            .toMutableList()
+        val vaultPasswordIds = passwordEntryDao.getEntriesByVaultId(vault.id).map { it.id }
+        if (vaultPasswordIds.isNotEmpty()) {
+            val boundCandidates = passkeyDao.getByBoundPasswordIds(vaultPasswordIds)
+                .filter { passkey ->
+                    canSyncPasskeyToBitwarden(passkey) &&
+                    passkey.syncStatus != "REFERENCE" &&
+                        passkey.bitwardenCipherId.isNullOrBlank() &&
+                        passkey.bitwardenVaultId != vault.id
+                }
+
+            boundCandidates.forEach { candidate ->
+                val reassigned = candidate.copy(
+                    bitwardenVaultId = vault.id,
+                    syncStatus = "PENDING"
+                )
+                passkeyDao.update(reassigned)
+                pending.add(reassigned)
+            }
+        }
+
+        val uniquePending = pending.distinctBy { it.credentialId }
+        if (uniquePending.isEmpty()) {
             return BatchUploadResult(uploaded = 0, failed = 0, total = 0)
         }
         
         var uploaded = 0
         var failed = 0
         
-        for (passkey in pending) {
+        for (passkey in uniquePending) {
             val result = uploadPasskey(vault, passkey, accessToken, symmetricKey)
             when (result) {
                 is UploadItemResult.Success -> uploaded++
                 is UploadItemResult.Error -> failed++
             }
         }
-        
-        return BatchUploadResult(uploaded = uploaded, failed = failed, total = pending.size)
+
+        return BatchUploadResult(uploaded = uploaded, failed = failed, total = uniquePending.size)
+    }
+
+    /**
+     * 批量更新已同步的 Passkeys（修复 counter / userHandle 等字段）
+     */
+    suspend fun uploadModifiedPasskeys(
+        vault: BitwardenVault,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey
+    ): BatchUploadResult {
+        val candidates = passkeyDao.getByBitwardenVaultId(vault.id)
+            .filter { passkey ->
+                canSyncPasskeyToBitwarden(passkey) &&
+                passkey.syncStatus != "REFERENCE" &&
+                    !passkey.bitwardenCipherId.isNullOrBlank() &&
+                    passkey.privateKeyAlias.isNotBlank()
+            }
+
+        if (candidates.isEmpty()) {
+            return BatchUploadResult(uploaded = 0, failed = 0, total = 0)
+        }
+
+        var uploaded = 0
+        var failed = 0
+
+        for (passkey in candidates) {
+            val cipherId = passkey.bitwardenCipherId
+            if (cipherId.isNullOrBlank()) {
+                failed++
+                continue
+            }
+            val result = updatePasskey(vault, passkey, cipherId, accessToken, symmetricKey)
+            when (result) {
+                is UploadItemResult.Success -> uploaded++
+                is UploadItemResult.Error -> failed++
+            }
+        }
+
+        return BatchUploadResult(uploaded = uploaded, failed = failed, total = candidates.size)
+    }
+
+    private fun canSyncPasskeyToBitwarden(passkey: PasskeyEntry): Boolean {
+        return passkey.passkeyMode == PasskeyEntry.MODE_BW_COMPAT
     }
     
     // ========== 创建各类型 Cipher 请求 ==========
@@ -601,8 +733,12 @@ class CipherUploadProcessor(
     ): CipherCreateRequest {
         val crypto = BitwardenCrypto
         
-        // 检查是否已加密（Bitwarden 加密字符串包含 "." 分隔符）
-        fun isEncrypted(s: String?) = s?.contains(".") == true
+        fun isEncrypted(value: String?): Boolean {
+            if (value.isNullOrBlank()) return false
+            if (!CIPHER_STRING_PATTERN.matches(value)) return false
+            return runCatching { crypto.parseCipherString(value) }.isSuccess
+        }
+
         fun encryptIfNeeded(value: String?): String? {
             if (value.isNullOrBlank()) return value
             return if (isEncrypted(value)) value else crypto.encryptString(value, symmetricKey)
@@ -635,7 +771,8 @@ class CipherUploadProcessor(
                             userName = encryptIfNeeded(fido.userName),
                             userDisplayName = encryptIfNeeded(fido.userDisplayName),
                             discoverable = encryptIfNeeded(fido.discoverable),
-                            creationDate = encryptIfNeeded(fido.creationDate)
+                            // Bitwarden expects a parseable DateTime here, not a cipher string.
+                            creationDate = fido.creationDate
                         )
                     },
                 )

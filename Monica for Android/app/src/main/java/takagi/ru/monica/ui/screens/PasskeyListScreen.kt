@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui.screens
 
 import android.os.Build
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -51,6 +52,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.AppSettings
@@ -66,10 +69,12 @@ import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
+import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.SyncStatusBadge
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
+import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.gestures.SwipeActions
@@ -85,6 +90,9 @@ import takagi.ru.monica.autofill.ui.rememberAppIcon
 import takagi.ru.monica.autofill.ui.rememberFavicon
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import java.security.KeyFactory
+import java.security.KeyStore
+import java.security.spec.PKCS8EncodedKeySpec
 
 /**
  * Passkey 列表屏幕
@@ -180,7 +188,8 @@ fun PasskeyListScreen(
                     categoryId = password.categoryId,
                     bitwardenVaultId = null,
                     bitwardenCipherId = null,
-                    syncStatus = "REFERENCE"
+                    syncStatus = "REFERENCE",
+                    passkeyMode = PasskeyEntry.MODE_LEGACY
                 )
             }
         }
@@ -201,6 +210,14 @@ fun PasskeyListScreen(
         if (bindingPasskeys.isEmpty()) return@remember passkeys
         val existingIds = passkeys.map { it.credentialId }.toSet()
         passkeys + bindingPasskeys.filterNot { it.credentialId in existingIds }
+    }
+    var passkeyMigratableById by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    LaunchedEffect(combinedPasskeys) {
+        passkeyMigratableById = withContext(Dispatchers.IO) {
+            combinedPasskeys.associate { passkey ->
+                passkey.credentialId to isPasskeyMigratableToBitwarden(passkey)
+            }
+        }
     }
     // 是否完全支持 Passkey
     val isFullySupported = viewModel.isPasskeyFullySupported
@@ -244,10 +261,28 @@ fun PasskeyListScreen(
         { passkey -> boundPasswordForPasskey(passkey)?.categoryId ?: passkey.categoryId }
     }
     val effectiveBitwardenVaultId: (PasskeyEntry) -> Long? = remember(passwordMap) {
-        { passkey -> boundPasswordForPasskey(passkey)?.bitwardenVaultId ?: passkey.bitwardenVaultId }
+        { passkey ->
+            val boundPassword = boundPasswordForPasskey(passkey)
+            val boundVaultId = boundPassword?.bitwardenVaultId
+            val canSyncToBitwarden = passkeyMigratableById[passkey.credentialId] ?: false
+            if (boundVaultId != null && !canSyncToBitwarden) {
+                passkey.bitwardenVaultId
+            } else {
+                boundVaultId ?: passkey.bitwardenVaultId
+            }
+        }
     }
     val effectiveBitwardenFolderId: (PasskeyEntry) -> String? = remember(passwordMap) {
-        { passkey -> boundPasswordForPasskey(passkey)?.bitwardenFolderId }
+        { passkey ->
+            val boundPassword = boundPasswordForPasskey(passkey)
+            val boundVaultId = boundPassword?.bitwardenVaultId
+            val canSyncToBitwarden = passkeyMigratableById[passkey.credentialId] ?: false
+            if (boundVaultId != null && !canSyncToBitwarden) {
+                null
+            } else {
+                boundPassword?.bitwardenFolderId
+            }
+        }
     }
     val effectiveKeePassDatabaseId: (PasskeyEntry) -> Long? = remember(passwordMap) {
         { passkey -> boundPasswordForPasskey(passkey)?.keepassDatabaseId ?: passkey.keepassDatabaseId }
@@ -626,6 +661,15 @@ fun PasskeyListScreen(
             is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
             is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
             else -> null
+        }
+
+        if (targetVaultId != null) {
+            val canMoveToBitwarden = withContext(Dispatchers.IO) {
+                isPasskeyMigratableToBitwarden(passkey)
+            }
+            if (!canMoveToBitwarden) {
+                return Result.failure(PasskeyBitwardenMoveBlockedException())
+            }
         }
 
         val isLeavingCurrentCipher =
@@ -1221,67 +1265,97 @@ fun PasskeyListScreen(
         )
     }
 
-    if (passkeyToBind != null) {
-        PasswordPickerDialog(
-            passwords = passwords,
-            onDismiss = { passkeyToBind = null },
-            onPasswordSelected = { password ->
-                val passkey = passkeyToBind!!
-                val previousPasswordId = passkey.boundPasswordId
-                scope.launch {
-                    if (passwordViewModel != null) {
-                        val newBinding = PasskeyBinding(
-                            credentialId = passkey.credentialId,
-                            rpId = passkey.rpId,
-                            rpName = passkey.rpName,
-                            userName = passkey.userName,
-                            userDisplayName = passkey.userDisplayName
-                        )
+    PasswordEntryPickerBottomSheet(
+        visible = passkeyToBind != null,
+        title = stringResource(R.string.select_password_to_bind),
+        passwords = passwords.filter { !it.isDeleted },
+        selectedEntryId = passkeyToBind?.boundPasswordId,
+        onDismiss = { passkeyToBind = null },
+        onSelect = { password ->
+            val passkey = passkeyToBind ?: return@PasswordEntryPickerBottomSheet
+            val previousPasswordId = passkey.boundPasswordId
+            scope.launch {
+                val nonMigratableForBitwarden = password.bitwardenVaultId != null &&
+                    !withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(passkey) }
 
-                        val targetEntry = passwordMap[password.id]
-                        if (targetEntry != null) {
-                            val updatedBindings = PasskeyBindingCodec.addBinding(targetEntry.passkeyBindings, newBinding)
-                            passwordViewModel.updatePasskeyBindings(password.id, updatedBindings)
-                        }
+                if (passwordViewModel != null) {
+                    val newBinding = PasskeyBinding(
+                        credentialId = passkey.credentialId,
+                        rpId = passkey.rpId,
+                        rpName = passkey.rpName,
+                        userName = passkey.userName,
+                        userDisplayName = passkey.userDisplayName
+                    )
 
-                        if (previousPasswordId != null && previousPasswordId != password.id) {
-                            val previousEntry = passwordMap[previousPasswordId]
-                            if (previousEntry != null) {
-                                val updatedBindings = PasskeyBindingCodec.removeBinding(previousEntry.passkeyBindings, passkey.credentialId)
-                                passwordViewModel.updatePasskeyBindings(previousPasswordId, updatedBindings)
-                            }
-                        }
+                    val targetEntry = passwordMap[password.id]
+                    if (targetEntry != null) {
+                        val updatedBindings = PasskeyBindingCodec.addBinding(targetEntry.passkeyBindings, newBinding)
+                        passwordViewModel.updatePasskeyBindings(password.id, updatedBindings)
                     }
 
-                    if (passkey.syncStatus != "REFERENCE") {
-                        val vaultId = passkey.bitwardenVaultId
-                        val cipherId = passkey.bitwardenCipherId
-                        if (vaultId != null && !cipherId.isNullOrBlank()) {
-                            val queueResult = bitwardenRepository.queueCipherDelete(
-                                vaultId = vaultId,
-                                cipherId = cipherId,
-                                itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
-                            )
-                            if (queueResult.isFailure) {
-                                Toast.makeText(context, "操作失败", Toast.LENGTH_SHORT).show()
-                                return@launch
-                            }
+                    if (previousPasswordId != null && previousPasswordId != password.id) {
+                        val previousEntry = passwordMap[previousPasswordId]
+                        if (previousEntry != null) {
+                            val updatedBindings = PasskeyBindingCodec.removeBinding(previousEntry.passkeyBindings, passkey.credentialId)
+                            passwordViewModel.updatePasskeyBindings(previousPasswordId, updatedBindings)
                         }
-                        viewModel.updatePasskey(
-                            passkey.copy(
-                                boundPasswordId = password.id,
-                                categoryId = password.categoryId,
-                                bitwardenVaultId = null,
-                                bitwardenCipherId = null,
-                                syncStatus = "NONE"
-                            )
-                        )
                     }
-                    passkeyToBind = null
                 }
+
+                if (passkey.syncStatus != "REFERENCE") {
+                    val targetVaultId = when {
+                        password.bitwardenVaultId != null && !nonMigratableForBitwarden -> password.bitwardenVaultId
+                        password.bitwardenVaultId != null && nonMigratableForBitwarden -> passkey.bitwardenVaultId
+                        else -> null
+                    }
+                    val currentVaultId = passkey.bitwardenVaultId
+                    val currentCipherId = passkey.bitwardenCipherId
+                    val isLeavingCurrentCipher =
+                        currentVaultId != null &&
+                            !currentCipherId.isNullOrBlank() &&
+                            currentVaultId != targetVaultId
+
+                    if (isLeavingCurrentCipher) {
+                        val queueResult = bitwardenRepository.queueCipherDelete(
+                            vaultId = currentVaultId!!,
+                            cipherId = currentCipherId!!,
+                            itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
+                        )
+                        if (queueResult.isFailure) {
+                            Toast.makeText(context, "操作失败", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                    }
+
+                    val keepExistingCipher =
+                        currentVaultId != null &&
+                            !currentCipherId.isNullOrBlank() &&
+                            currentVaultId == targetVaultId
+
+                    val resolvedSyncStatus = when {
+                        targetVaultId == null -> "NONE"
+                        keepExistingCipher -> if (passkey.syncStatus == "SYNCED") "SYNCED" else "PENDING"
+                        else -> "PENDING"
+                    }
+
+                    viewModel.updatePasskey(
+                        passkey.copy(
+                            boundPasswordId = password.id,
+                            categoryId = password.categoryId,
+                            keepassDatabaseId = password.keepassDatabaseId,
+                            bitwardenVaultId = targetVaultId,
+                            bitwardenCipherId = if (keepExistingCipher) currentCipherId else null,
+                            syncStatus = resolvedSyncStatus
+                        )
+                    )
+                }
+                if (nonMigratableForBitwarden) {
+                    Toast.makeText(context, context.getString(R.string.passkey_bitwarden_legacy_hint), Toast.LENGTH_SHORT).show()
+                }
+                passkeyToBind = null
             }
-        )
-    }
+        }
+    )
 
     UnifiedMoveToCategoryBottomSheet(
         visible = passkeyToMoveCategory != null,
@@ -1291,12 +1365,25 @@ fun PasskeyListScreen(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
-        onTargetSelected = { target, _ ->
+        allowCopy = true,
+        onTargetSelected = { target, action ->
             val passkey = passkeyToMoveCategory ?: return@UnifiedMoveToCategoryBottomSheet
             scope.launch {
+                if (action == UnifiedMoveAction.COPY) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.passkey_copy_uses_move_hint),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
                 val updateResult = applyStorageTarget(passkey, target)
                 if (updateResult.isFailure) {
-                    Toast.makeText(context, "Bitwarden 操作失败，未移动", Toast.LENGTH_SHORT).show()
+                    val messageRes = if (updateResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
+                        R.string.passkey_bitwarden_move_blocked
+                    } else {
+                        R.string.passkey_bitwarden_move_failed
+                    }
+                    Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
                     return@launch
                 }
 
@@ -1323,13 +1410,23 @@ fun PasskeyListScreen(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
-        onTargetSelected = { target, _ ->
+        allowCopy = true,
+        onTargetSelected = { target, action ->
             scope.launch {
                 val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
                 val movable = selectedItems.filter { it.boundPasswordId == null && it.syncStatus != "REFERENCE" }
                 val lockedCount = selectedItems.size - movable.size
                 var movedCount = 0
                 var failedCount = 0
+                var blockedCount = 0
+
+                if (action == UnifiedMoveAction.COPY) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.passkey_copy_uses_move_hint),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
 
                 movable.forEach { passkey ->
                     val updateResult = applyStorageTarget(passkey, target)
@@ -1337,14 +1434,25 @@ fun PasskeyListScreen(
                         viewModel.updatePasskey(updateResult.getOrThrow())
                         movedCount++
                     } else {
-                        failedCount++
+                        if (updateResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
+                            blockedCount++
+                        } else {
+                            failedCount++
+                        }
                     }
                 }
 
                 val baseMessage = context.getString(R.string.selected_items, movedCount)
-                val skippedTotal = lockedCount + failedCount
+                val skippedTotal = lockedCount + failedCount + blockedCount
                 val toastMessage = if (skippedTotal > 0) "$baseMessage，跳过$skippedTotal" else baseMessage
                 Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+                if (blockedCount > 0) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.passkey_bitwarden_move_blocked_count, blockedCount),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
 
                 showBatchMoveCategoryDialog = false
                 selectionMode = false
@@ -1412,109 +1520,6 @@ private fun decodePasskeyCategoryFilter(state: SavedCategoryFilterState): Unifie
 private fun formatPasswordSummary(entry: PasswordEntry): String {
     val parts = listOf(entry.title, entry.username, entry.website).filter { it.isNotBlank() }
     return if (parts.isEmpty()) entry.title else parts.joinToString(" · ")
-}
-
-@Composable
-private fun PasswordPickerDialog(
-    passwords: List<PasswordEntry>,
-    onDismiss: () -> Unit,
-    onPasswordSelected: (PasswordEntry) -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
-
-    val filteredPasswords = remember(passwords, searchQuery) {
-        if (searchQuery.isBlank()) {
-            passwords
-        } else {
-            passwords.filter { entry ->
-                entry.title.contains(searchQuery, ignoreCase = true) ||
-                    entry.username.contains(searchQuery, ignoreCase = true) ||
-                    entry.website.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 600.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            tonalElevation = 6.dp,
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = stringResource(R.string.select_password_to_bind),
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text(stringResource(R.string.search)) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = if (searchQuery.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = null)
-                            }
-                        }
-                    } else null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.large
-                )
-
-                LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    items(filteredPasswords) { password ->
-                        ListItem(
-                            headlineContent = { Text(password.title) },
-                            supportingContent = {
-                                val parts = listOf(password.username, password.website).filter { it.isNotBlank() }
-                                if (parts.isNotEmpty()) {
-                                    Text(parts.joinToString(" · "))
-                                }
-                            },
-                            leadingContent = {
-                                Surface(
-                                    shape = MaterialTheme.shapes.medium,
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = password.title.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .clickable { onPasswordSelected(password) }
-                                .fillMaxWidth()
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        }
-    }
 }
 
 /**
@@ -1666,6 +1671,16 @@ private fun PasskeyListItem(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val syncStatus = remember(passkey.syncStatus) { SyncStatus.fromDbValue(passkey.syncStatus) }
+    var canMoveToBitwarden by remember(passkey.credentialId, passkey.privateKeyAlias, passkey.syncStatus) {
+        mutableStateOf<Boolean?>(null)
+    }
+    LaunchedEffect(expanded, passkey.credentialId, passkey.privateKeyAlias, passkey.syncStatus) {
+        if (expanded) {
+            canMoveToBitwarden = withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(passkey) }
+        } else {
+            canMoveToBitwarden = null
+        }
+    }
     LaunchedEffect(selectionMode) {
         if (selectionMode && expanded) {
             expanded = false
@@ -1919,6 +1934,15 @@ private fun PasskeyListItem(
                         )
                     }
 
+                    if (expanded && passkey.syncStatus != "REFERENCE" && canMoveToBitwarden == false) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.passkey_bitwarden_legacy_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
                     if (onChangeCategory != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
@@ -2120,4 +2144,41 @@ private fun DetailRow(
             )
         }
     }
+}
+
+private class PasskeyBitwardenMoveBlockedException :
+    IllegalStateException("Passkey cannot be migrated to Bitwarden")
+
+private fun isPasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {
+    if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false
+    if (passkey.syncStatus == "REFERENCE") return false
+    val keyMaterial = passkey.privateKeyAlias
+    if (keyMaterial.isBlank()) return false
+    if (isPkcs8PrivateKeyBase64(keyMaterial)) return true
+
+    return try {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        keyStore.load(null)
+        val entry = keyStore.getEntry(keyMaterial, null) as? KeyStore.PrivateKeyEntry
+        val encoded = entry?.privateKey?.encoded
+        encoded != null && encoded.isNotEmpty()
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private fun isPkcs8PrivateKeyBase64(value: String): Boolean {
+    if (value.isBlank()) return false
+    val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull() ?: return false
+    val keySpec = PKCS8EncodedKeySpec(decoded)
+    val ecValid = runCatching {
+        KeyFactory.getInstance("EC").generatePrivate(keySpec)
+        true
+    }.getOrDefault(false)
+    if (ecValid) return true
+
+    return runCatching {
+        KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+        true
+    }.getOrDefault(false)
 }

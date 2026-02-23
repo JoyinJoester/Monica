@@ -328,8 +328,11 @@ class PasskeyAuthActivity : FragmentActivity() {
             }
             
             val responseJson = JSONObject().apply {
-                put("id", passkey.credentialId)
-                put("rawId", passkey.credentialId)
+                val responseCredentialId = PasskeyCredentialIdCodec
+                    .toWebAuthnId(passkey.credentialId)
+                    ?: passkey.credentialId
+                put("id", responseCredentialId)
+                put("rawId", responseCredentialId)
                 put("type", "public-key")
                 put("authenticatorAttachment", "platform")
                 put("response", JSONObject().apply {
@@ -399,26 +402,7 @@ class PasskeyAuthActivity : FragmentActivity() {
     }
 
     private fun normalizeCredentialId(credentialId: String): String? {
-        return try {
-            val decoded = Base64.decode(
-                credentialId,
-                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-            )
-            Base64.encodeToString(
-                decoded,
-                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-            )
-        } catch (e: Exception) {
-            try {
-                val decoded = Base64.decode(credentialId, Base64.DEFAULT)
-                Base64.encodeToString(
-                    decoded,
-                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-                )
-            } catch (ignored: Exception) {
-                null
-            }
-        }
+        return PasskeyCredentialIdCodec.normalize(credentialId)
     }
     
     /**

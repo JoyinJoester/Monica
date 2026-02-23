@@ -11,7 +11,7 @@ import androidx.room.PrimaryKey
  * 存储基于 FIDO2/WebAuthn 标准的 Passkey 凭据信息。
  * 私钥存储在 Android Keystore 中，此表仅存储元数据和公钥。
  * 
- * @property credentialId Base64 编码的凭据 ID（由认证器生成）
+ * @property credentialId 凭据 ID（支持 Base64URL 或 UUID 文本格式）
  * @property rpId 依赖方 ID（通常是域名，如 google.com）
  * @property rpName 依赖方显示名称
  * @property userId 用户 ID（由依赖方提供，Base64 编码）
@@ -121,7 +121,13 @@ data class PasskeyEntry(
     val bitwardenCipherId: String? = null,        // Bitwarden Cipher UUID
     
     @ColumnInfo(name = "sync_status", defaultValue = "NONE")
-    val syncStatus: String = "NONE"               // 同步状态: NONE, PENDING, SYNCING, SYNCED, FAILED
+    val syncStatus: String = "NONE",              // 同步状态: NONE, PENDING, SYNCING, SYNCED, FAILED
+
+    // Passkey 模式:
+    // LEGACY    -> 旧 Monica 通行密钥（保留本地兼容，不参与 Bitwarden 可用同步）
+    // BW_COMPAT -> Bitwarden 兼容模式（可参与 Bitwarden/Keyguard 同步）
+    @ColumnInfo(name = "passkey_mode", defaultValue = "'LEGACY'")
+    val passkeyMode: String = MODE_LEGACY
 ) {
     /**
      * 获取传输方式列表
@@ -155,6 +161,10 @@ data class PasskeyEntry(
     }
     
     companion object {
+        // Passkey 模式
+        const val MODE_LEGACY = "LEGACY"
+        const val MODE_BW_COMPAT = "BW_COMPAT"
+
         // COSE 算法常量
         const val ALGORITHM_ES256 = -7
         const val ALGORITHM_RS256 = -257

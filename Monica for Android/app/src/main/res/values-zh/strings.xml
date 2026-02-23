@@ -609,6 +609,13 @@
     <string name="ledger_select_category">选择分类</string>
     <string name="filter_keepass">KeePass</string>
     <string name="filter_all">全部</string>
+    <string name="password_picker_filter_database">数据库</string>
+    <string name="password_picker_filter_vault">保管库</string>
+    <string name="password_picker_filter_folder">文件夹</string>
+    <string name="password_picker_all_databases">全部数据库</string>
+    <string name="password_picker_all_vaults">全部保管库</string>
+    <string name="password_picker_all_folders">全部文件夹</string>
+    <string name="password_picker_results_count">%1$d 条结果</string>
     
     <!-- Passkey Screen -->
     <string name="passkey_title">通行密钥</string>
@@ -656,6 +663,11 @@
     <string name="passkey_created_at">创建时间</string>
     <string name="passkey_last_used">最近使用</string>
     <string name="passkey_use_count">使用次数</string>
+    <string name="passkey_bitwarden_legacy_hint">此通行密钥为旧格式，无法迁移到 Bitwarden 数据库。</string>
+    <string name="passkey_bitwarden_move_blocked">此通行密钥无法迁移到 Bitwarden。</string>
+    <string name="passkey_bitwarden_move_failed">Bitwarden 操作失败，未移动。</string>
+    <string name="passkey_bitwarden_move_blocked_count">%1$d 个通行密钥无法迁移到 Bitwarden。</string>
+    <string name="passkey_copy_uses_move_hint">通行密钥是唯一凭据，复制将按安全移动处理。</string>
     
     <string name="dismiss">关闭</string>
     

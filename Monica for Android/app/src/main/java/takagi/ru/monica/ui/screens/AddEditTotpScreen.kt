@@ -51,6 +51,7 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
 import takagi.ru.monica.ui.components.CustomIconActionDialog
+import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.icons.MonicaIcons
@@ -873,105 +874,20 @@ fun AddEditTotpScreen(
 
     if (showPasswordSelectionDialog && passwordViewModel != null) {
         val passwords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())
-        var searchQuery by remember { mutableStateOf("") }
-        
-        val filteredPasswords = remember(passwords, searchQuery) {
-            if (searchQuery.isBlank()) {
-                passwords
-            } else {
-                passwords.filter { 
-                    it.title.contains(searchQuery, ignoreCase = true) || 
-                    it.username.contains(searchQuery, ignoreCase = true)
-                }
+        PasswordEntryPickerBottomSheet(
+            visible = true,
+            title = stringResource(R.string.select_password_to_bind),
+            passwords = passwords.filter { !it.isDeleted },
+            selectedEntryId = boundPasswordId,
+            onDismiss = { showPasswordSelectionDialog = false },
+            onSelect = { password ->
+                boundPasswordId = password.id
+                link = password.website
+                associatedApp = password.appPackageName
+                associatedAppName = password.appName
+                showPasswordSelectionDialog = false
             }
-        }
-        
-        Dialog(onDismissRequest = { showPasswordSelectionDialog = false }) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 600.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                tonalElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        text = stringResource(R.string.select_password_to_bind),
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text(stringResource(R.string.search)) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        trailingIcon = if (searchQuery.isNotEmpty()) {
-                            {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = null)
-                                }
-                            }
-                        } else null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        singleLine = true,
-                        shape = MaterialTheme.shapes.large
-                    )
-                    
-                    LazyColumn(
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        items(filteredPasswords) { password ->
-                            ListItem(
-                                headlineContent = { Text(password.title) },
-                                supportingContent = { 
-                                    if (password.username.isNotBlank()) {
-                                        Text(password.username)
-                                    }
-                                },
-                                leadingContent = {
-                                    Surface(
-                                        shape = MaterialTheme.shapes.medium,
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                        modifier = Modifier.size(40.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = password.title.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .clickable {
-                                        boundPasswordId = password.id
-                                        link = password.website
-                                        associatedApp = password.appPackageName
-                                        associatedAppName = password.appName
-                                        showPasswordSelectionDialog = false
-                                    }
-                                    .fillMaxWidth()
-                            )
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    TextButton(
-                        onClick = { showPasswordSelectionDialog = false },
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                }
-            }
-        }
+        )
     }
 }
 

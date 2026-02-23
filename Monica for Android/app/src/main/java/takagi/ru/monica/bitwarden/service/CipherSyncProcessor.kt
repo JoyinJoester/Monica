@@ -1,7 +1,6 @@
 package takagi.ru.monica.bitwarden.service
 
 import android.content.Context
-import android.util.Base64
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
@@ -17,6 +16,7 @@ import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.security.SecurityManager
 import java.util.Date
 
@@ -625,7 +625,7 @@ class CipherSyncProcessor(
 
         val login = cipher.login
         val name = decryptString(cipher.name, symmetricKey) ?: "Passkey"
-        val notes = decryptString(cipher.notes, symmetricKey) ?: ""
+        val notes = extractPasskeyUserNotes(decryptString(cipher.notes, symmetricKey))
         val fallbackUserName = decryptString(login?.username, symmetricKey) ?: ""
 
         val fallbackRpId = login?.uris
@@ -675,7 +675,8 @@ class CipherSyncProcessor(
                         notes = notes,
                         bitwardenVaultId = vault.id,
                         bitwardenCipherId = cipher.id,
-                        syncStatus = "REFERENCE"
+                        syncStatus = "REFERENCE",
+                        passkeyMode = PasskeyEntry.MODE_BW_COMPAT
                     )
                 )
                 android.util.Log.i(TAG, "Created reference-only passkey for cipher ${cipher.id}")
@@ -691,7 +692,8 @@ class CipherSyncProcessor(
                     notes = notes.ifBlank { existing.notes },
                     bitwardenVaultId = vault.id,
                     bitwardenCipherId = cipher.id,
-                    syncStatus = "REFERENCE"
+                    syncStatus = "REFERENCE",
+                    passkeyMode = PasskeyEntry.MODE_BW_COMPAT
                 )
             )
             return CipherSyncResult.Updated
@@ -741,7 +743,8 @@ class CipherSyncProcessor(
                         notes = notes,
                         bitwardenVaultId = vault.id,
                         bitwardenCipherId = cipher.id,
-                        syncStatus = syncStatus
+                        syncStatus = syncStatus,
+                        passkeyMode = PasskeyEntry.MODE_BW_COMPAT
                     )
                 )
                 added++
@@ -763,7 +766,8 @@ class CipherSyncProcessor(
                         notes = notes.ifBlank { existing.notes },
                         bitwardenVaultId = vault.id,
                         bitwardenCipherId = cipher.id,
-                        syncStatus = syncStatus
+                        syncStatus = syncStatus,
+                        passkeyMode = PasskeyEntry.MODE_BW_COMPAT
                     )
                 )
                 updated++
@@ -855,18 +859,12 @@ class CipherSyncProcessor(
 
     private fun normalizeCredentialId(credentialId: String): String? {
         if (credentialId.isBlank()) return null
-        val urlSafeFlags = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-        return try {
-            val decoded = Base64.decode(credentialId, urlSafeFlags)
-            Base64.encodeToString(decoded, urlSafeFlags)
-        } catch (_: Exception) {
-            try {
-                val decoded = Base64.decode(credentialId, Base64.DEFAULT)
-                Base64.encodeToString(decoded, urlSafeFlags)
-            } catch (_: Exception) {
-                credentialId
-            }
-        }
+        return PasskeyCredentialIdCodec.normalize(credentialId)
+    }
+
+    private fun extractPasskeyUserNotes(notes: String?): String {
+        if (notes.isNullOrBlank()) return ""
+        return notes.substringBefore("---").trim()
     }
 
     private fun parseBooleanText(value: String?): Boolean {

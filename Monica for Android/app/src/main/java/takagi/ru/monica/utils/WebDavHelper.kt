@@ -122,6 +122,7 @@ private data class PasskeyBackupEntry(
     val signCount: Long = 0,
     val notes: String = "",
     val boundPasswordId: Long? = null,
+    val passkeyMode: String = PasskeyEntry.MODE_LEGACY,
     val categoryName: String? = null
 )
 
@@ -997,6 +998,7 @@ class WebDavHelper(
                                     signCount = passkey.signCount,
                                     notes = passkey.notes,
                                     boundPasswordId = passkey.boundPasswordId,
+                                    passkeyMode = normalizePasskeyMode(passkey.passkeyMode),
                                     categoryName = categoryName
                                 )
                                 val folderKey = toFolderKey(categoryName)
@@ -2781,13 +2783,21 @@ class WebDavHelper(
                 signCount = backup.signCount,
                 isBackedUp = true,
                 notes = backup.notes,
-                boundPasswordId = backup.boundPasswordId
+                boundPasswordId = backup.boundPasswordId,
+                passkeyMode = normalizePasskeyMode(backup.passkeyMode)
                 ),
                 backup.categoryName
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore passkey from ${file.name}: ${e.message}")
             null
+        }
+    }
+
+    private fun normalizePasskeyMode(value: String?): String {
+        return when (value) {
+            PasskeyEntry.MODE_BW_COMPAT -> PasskeyEntry.MODE_BW_COMPAT
+            else -> PasskeyEntry.MODE_LEGACY
         }
     }
 

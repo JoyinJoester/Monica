@@ -150,6 +150,13 @@
     <string name="filter_bitwarden">Bitwarden</string>
     <string name="filter_keepass">KeePass</string>
     <string name="filter_all">All</string>
+    <string name="password_picker_filter_database">Database</string>
+    <string name="password_picker_filter_vault">Vault</string>
+    <string name="password_picker_filter_folder">Folder</string>
+    <string name="password_picker_all_databases">All databases</string>
+    <string name="password_picker_all_vaults">All vaults</string>
+    <string name="password_picker_all_folders">All folders</string>
+    <string name="password_picker_results_count">%1$d results</string>
     <string name="group_mode_smart_desc">Prefer notes, then website, app, title</string>
     <string name="group_mode_note">Stack by notes</string>
     <string name="group_mode_note_desc">First non-empty note line</string>
@@ -690,6 +697,11 @@
     <string name="passkey_category_updated">Category updated: %1$s</string>
     <string name="passkey_category_follow_binding">Category is inherited from the bound password.</string>
     <string name="passkey_category_empty">No categories yet. You can create one in folder management.</string>
+    <string name="passkey_bitwarden_legacy_hint">This legacy passkey cannot be migrated to Bitwarden.</string>
+    <string name="passkey_bitwarden_move_blocked">This passkey cannot be moved to Bitwarden.</string>
+    <string name="passkey_bitwarden_move_failed">Bitwarden action failed, item was not moved.</string>
+    <string name="passkey_bitwarden_move_blocked_count">%1$d passkeys cannot be migrated to Bitwarden.</string>
+    <string name="passkey_copy_uses_move_hint">Passkeys are unique credentials. Copy uses safe move behavior.</string>
     <string name="note_has_image">Has image attachment</string>
     
     <string name="dismiss">Dismiss</string>

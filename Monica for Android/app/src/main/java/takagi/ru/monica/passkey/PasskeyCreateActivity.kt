@@ -55,6 +55,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.repository.PasskeyRepository
+import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
@@ -256,30 +257,31 @@ class PasskeyCreateActivity : FragmentActivity() {
                     }
                 )
 
-                if (showPasswordPicker) {
-                    PasswordPickerDialog(
-                        passwords = passwords,
-                        onDismiss = {
-                            pendingBoundPasswordId = null
-                            showPasswordPicker = false
-                        },
-                        onPasswordSelected = { password ->
-                            pendingBoundPasswordId = password.id
-                            selectedCategoryId = password.categoryId
-                            selectedKeePassDatabaseId = password.keepassDatabaseId
-                            selectedBitwardenVaultId = if (password.keepassDatabaseId != null) {
-                                null
-                            } else {
-                                password.bitwardenVaultId
-                            }
-                            pendingCategoryId = selectedCategoryId
-                            pendingKeepassDatabaseId = selectedKeePassDatabaseId
-                            pendingBitwardenVaultId = selectedBitwardenVaultId
-                            showPasswordPicker = false
-                            requestBiometricAuth()
+                PasswordEntryPickerBottomSheet(
+                    visible = showPasswordPicker,
+                    title = stringResource(R.string.select_password_to_bind),
+                    passwords = passwords.filter { !it.isDeleted },
+                    selectedEntryId = pendingBoundPasswordId,
+                    onDismiss = {
+                        pendingBoundPasswordId = null
+                        showPasswordPicker = false
+                    },
+                    onSelect = { password ->
+                        pendingBoundPasswordId = password.id
+                        selectedCategoryId = password.categoryId
+                        selectedKeePassDatabaseId = password.keepassDatabaseId
+                        selectedBitwardenVaultId = if (password.keepassDatabaseId != null) {
+                            null
+                        } else {
+                            password.bitwardenVaultId
                         }
-                    )
-                }
+                        pendingCategoryId = selectedCategoryId
+                        pendingKeepassDatabaseId = selectedKeePassDatabaseId
+                        pendingBitwardenVaultId = selectedBitwardenVaultId
+                        showPasswordPicker = false
+                        requestBiometricAuth()
+                    }
+                )
 
                 if (showCategoryPicker) {
                     CategoryPickerDialog(
@@ -423,7 +425,7 @@ class PasskeyCreateActivity : FragmentActivity() {
             val publicKeyB64 = Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP)
 
             val discoverable = parseDiscoverable(requestJson)
-            val initialBitwardenVaultId = if (pendingBoundPasswordId != null) null else pendingBitwardenVaultId
+            val initialBitwardenVaultId = pendingBitwardenVaultId
              
             // 保存到数据库
             val passkeyEntry = PasskeyEntry(
@@ -445,7 +447,8 @@ class PasskeyCreateActivity : FragmentActivity() {
                 categoryId = pendingCategoryId,
                 keepassDatabaseId = pendingKeepassDatabaseId,
                 bitwardenVaultId = initialBitwardenVaultId,
-                syncStatus = if (initialBitwardenVaultId != null) "PENDING" else "NONE"
+                syncStatus = if (initialBitwardenVaultId != null) "PENDING" else "NONE",
+                passkeyMode = PasskeyEntry.MODE_BW_COMPAT
             )
             
             // 在协程中保存
@@ -1082,105 +1085,3 @@ private fun CategoryPickerDialog(
     }
 }
 
-@Composable
-private fun PasswordPickerDialog(
-    passwords: List<PasswordEntry>,
-    onDismiss: () -> Unit,
-    onPasswordSelected: (PasswordEntry) -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
-
-    val filteredPasswords = remember(passwords, searchQuery) {
-        if (searchQuery.isBlank()) {
-            passwords
-        } else {
-            passwords.filter { entry ->
-                entry.title.contains(searchQuery, ignoreCase = true) ||
-                    entry.username.contains(searchQuery, ignoreCase = true) ||
-                    entry.website.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 600.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            tonalElevation = 6.dp,
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = stringResource(R.string.select_password_to_bind),
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text(stringResource(R.string.search)) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = if (searchQuery.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = null)
-                            }
-                        }
-                    } else null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.large
-                )
-
-                LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    items(filteredPasswords) { password ->
-                        ListItem(
-                            headlineContent = { Text(password.title) },
-                            supportingContent = {
-                                val parts = listOf(password.username, password.website).filter { it.isNotBlank() }
-                                if (parts.isNotEmpty()) {
-                                    Text(parts.joinToString(" · "))
-                                }
-                            },
-                            leadingContent = {
-                                Surface(
-                                    shape = MaterialTheme.shapes.medium,
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = password.title.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .clickable { onPasswordSelected(password) }
-                                .fillMaxWidth()
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        }
-    }
-}

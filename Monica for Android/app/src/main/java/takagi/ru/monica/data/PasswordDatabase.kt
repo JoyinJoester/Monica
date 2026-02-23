@@ -27,7 +27,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 39,
+    version = 40,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1006,6 +1006,25 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 39 -> 40:
+         * 为 passkeys 添加 passkey_mode 字段。
+         * 旧数据全部标记为 LEGACY，后续新建条目显式写入 BW_COMPAT。
+         */
+        private val MIGRATION_39_40 = object : androidx.room.migration.Migration(39, 40) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 39→40: passkey mode")
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN passkey_mode TEXT NOT NULL DEFAULT 'LEGACY'"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 39→40 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 39→40 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1051,7 +1070,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_35_36,  // Passkey 分类字段（统一文件夹）
                         MIGRATION_36_37,  // secure_items/passkeys KeePass 归属字段
                         MIGRATION_37_38,  // keepass 分组路径字段
-                        MIGRATION_38_39   // 自定义密码图标字段
+                        MIGRATION_38_39,  // 自定义密码图标字段
+                        MIGRATION_39_40   // Passkey 模式字段
                     )
                     .build()
                 INSTANCE = instance

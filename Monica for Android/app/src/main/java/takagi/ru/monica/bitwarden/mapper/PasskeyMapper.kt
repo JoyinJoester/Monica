@@ -2,6 +2,7 @@ package takagi.ru.monica.bitwarden.mapper
 
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import java.security.KeyFactory
 import java.security.spec.PKCS8EncodedKeySpec
 import android.util.Base64
@@ -18,18 +19,33 @@ import android.util.Base64
 class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
 
     override fun toCreateRequest(item: PasskeyEntry, folderId: String?): CipherCreateRequest {
+        val bitwardenCredentialId = PasskeyCredentialIdCodec
+            .toBitwardenCredentialId(item.credentialId)
+            ?.takeIf { it.isNotBlank() }
+        val userHandle = item.userId
+            .takeIf { it.isNotBlank() }
+            ?: item.userName
+                .takeIf { it.isNotBlank() }
+            ?: item.userDisplayName
+                .takeIf { it.isNotBlank() }
+            ?: bitwardenCredentialId
+            ?: item.credentialId
+        val counter = item.signCount
+            .coerceIn(0L, Int.MAX_VALUE.toLong())
+            .toString()
+
         val fido2Credentials = if (canUseAsBitwardenKeyValue(item.privateKeyAlias) && item.rpId.isNotBlank()) {
             listOf(
                 CipherLoginFido2CredentialApiData(
-                    credentialId = item.credentialId.takeIf { it.isNotBlank() },
+                    credentialId = bitwardenCredentialId,
                     keyType = "public-key",
                     keyAlgorithm = algorithmToBitwarden(item.publicKeyAlgorithm),
                     keyCurve = "P-256",
                     keyValue = item.privateKeyAlias,
                     rpId = item.rpId,
                     rpName = item.rpName.takeIf { it.isNotBlank() },
-                    counter = item.signCount.toString(),
-                    userHandle = item.userId.takeIf { it.isNotBlank() },
+                    counter = counter,
+                    userHandle = userHandle,
                     userName = item.userName.takeIf { it.isNotBlank() },
                     userDisplayName = item.userDisplayName.takeIf { it.isNotBlank() },
                     discoverable = item.isDiscoverable.toString(),
@@ -110,7 +126,8 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
             boundPasswordId = null,
             bitwardenVaultId = vaultId,
             bitwardenCipherId = cipher.id,
-            syncStatus = if (keyValue.isBlank()) "REFERENCE" else "SYNCED"
+            syncStatus = if (keyValue.isBlank()) "REFERENCE" else "SYNCED",
+            passkeyMode = PasskeyEntry.MODE_BW_COMPAT
         )
     }
     
@@ -152,9 +169,13 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
      * 构建 Passkey 笔记（包含可恢复的元数据）
      */
     private fun buildPasskeyNotes(item: PasskeyEntry): String {
+        val userNotes = item.notes
+            .substringBefore("---")
+            .trim()
+
         return buildString {
-            if (item.notes.isNotBlank()) {
-                appendLine(item.notes)
+            if (userNotes.isNotBlank()) {
+                appendLine(userNotes)
             }
             appendLine()
             appendLine("🔐 This is a Passkey entry synced from Monica")

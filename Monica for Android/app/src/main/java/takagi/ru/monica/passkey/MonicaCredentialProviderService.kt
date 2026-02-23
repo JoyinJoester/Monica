@@ -6,7 +6,6 @@ import android.os.Build
 import android.os.CancellationSignal
 import android.os.OutcomeReceiver
 import android.os.SystemClock
-import android.util.Base64
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.credentials.exceptions.ClearCredentialException
@@ -321,25 +320,6 @@ class MonicaCredentialProviderService : CredentialProviderService() {
     }
 
     private fun normalizeCredentialId(credentialId: String): String? {
-        return try {
-            val decoded = Base64.decode(
-                credentialId,
-                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-            )
-            Base64.encodeToString(
-                decoded,
-                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-            )
-        } catch (e: Exception) {
-            try {
-                val decoded = Base64.decode(credentialId, Base64.DEFAULT)
-                Base64.encodeToString(
-                    decoded,
-                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-                )
-            } catch (ignored: Exception) {
-                null
-            }
-        }
+        return PasskeyCredentialIdCodec.normalize(credentialId)
     }
 }

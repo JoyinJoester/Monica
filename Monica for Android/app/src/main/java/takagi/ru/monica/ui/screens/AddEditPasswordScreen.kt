@@ -66,6 +66,7 @@ import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.CustomFieldEditCard
 import takagi.ru.monica.ui.components.CustomFieldSectionHeader
+import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.icons.MonicaIcons
@@ -1940,17 +1941,17 @@ private fun LoginTypeSelector(
     }
     
     // 关联账号选择对话框
-    if (showRefEntryPicker) {
-        SsoRefEntryPickerDialog(
-            allPasswords = allPasswords.filter { it.loginType == "PASSWORD" && it.id != ssoRefEntryId },
-            currentRefEntryId = ssoRefEntryId,
-            onSelect = { entry ->
-                onSsoRefEntryIdChange(entry.id)
-                showRefEntryPicker = false
-            },
-            onDismiss = { showRefEntryPicker = false }
-        )
-    }
+    PasswordEntryPickerBottomSheet(
+        visible = showRefEntryPicker,
+        title = stringResource(R.string.sso_ref_entry_picker_title),
+        passwords = allPasswords.filter { it.loginType == "PASSWORD" && it.id != ssoRefEntryId && !it.isDeleted },
+        selectedEntryId = ssoRefEntryId,
+        onSelect = { entry ->
+            onSsoRefEntryIdChange(entry.id)
+            showRefEntryPicker = false
+        },
+        onDismiss = { showRefEntryPicker = false }
+    )
 }
 
 /**
@@ -1970,123 +1971,6 @@ private fun getSsoProviderIcon(providerName: String): ImageVector {
         "WEIBO" -> Icons.Default.Public
         else -> Icons.Default.Login
     }
-}
-
-/**
- * SSO关联账号选择对话框
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SsoRefEntryPickerDialog(
-    allPasswords: List<PasswordEntry>,
-    currentRefEntryId: Long?,
-    onSelect: (PasswordEntry) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    var searchQuery by remember { mutableStateOf("") }
-    
-    val filteredPasswords = remember(searchQuery, allPasswords) {
-        if (searchQuery.isBlank()) {
-            allPasswords
-        } else {
-            allPasswords.filter {
-                it.title.contains(searchQuery, ignoreCase = true) ||
-                it.username.contains(searchQuery, ignoreCase = true) ||
-                it.website.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(context.getString(R.string.sso_ref_entry_picker_title)) },
-        text = {
-            Column {
-                // 搜索框
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text(context.getString(R.string.search)) },
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // 密码列表
-                if (filteredPasswords.isEmpty()) {
-                    Text(
-                        text = context.getString(R.string.no_results),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(filteredPasswords) { entry ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSelect(entry) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (entry.id == currentRefEntryId)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = entry.title,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Text(
-                                            text = entry.username,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        if (entry.website.isNotEmpty()) {
-                                            Text(
-                                                text = entry.website,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                        }
-                                    }
-                                    if (entry.id == currentRefEntryId) {
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(context.getString(R.string.cancel))
-            }
-        }
-    )
 }
 
 /**
