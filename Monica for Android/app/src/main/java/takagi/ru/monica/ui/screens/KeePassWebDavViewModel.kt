@@ -404,7 +404,9 @@ class KeePassWebDavViewModel {
             // 1) 读取远端数据库并校验密码
             val dbBytes = currentSardine.get(remotePath).use { it.readBytes() }
             val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
-            val keepassDb = KeePassDatabase.decode(dbBytes.inputStream(), credentials)
+            val keepassDb = KeePassKdbxService.withGlobalDecodeLock {
+                KeePassDatabase.decode(dbBytes.inputStream(), credentials)
+            }
             val entries = mutableListOf<Entry>()
             collectEntries(keepassDb.content.group, entries)
             val entryCount = entries.count { isCredentialLikeEntry(it) }
@@ -827,7 +829,9 @@ class KeePassWebDavViewModel {
             val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
             
             // 2. 解码 KDBX 文件
-            val keePassDatabase = KeePassDatabase.decode(inputStream, credentials)
+            val keePassDatabase = KeePassKdbxService.withGlobalDecodeLock {
+                KeePassDatabase.decode(inputStream, credentials)
+            }
             
             // 3. 获取所有条目
             val allEntries = mutableListOf<Entry>()

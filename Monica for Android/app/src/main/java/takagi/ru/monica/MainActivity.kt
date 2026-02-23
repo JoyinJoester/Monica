@@ -1145,6 +1145,20 @@ fun MonicaContent(
                 onImportSteamMaFile = { uri ->
                     dataExportImportViewModel.importSteamMaFile(uri)
                 },
+                onBeginSteamLoginImport = { userName, password, customName ->
+                    dataExportImportViewModel.beginSteamLoginImport(userName, password, customName)
+                },
+                onSubmitSteamLoginImportCode = { pendingSessionId, code, confirmationType, customName ->
+                    dataExportImportViewModel.submitSteamLoginImportCode(
+                        pendingSessionId = pendingSessionId,
+                        code = code,
+                        confirmationType = confirmationType,
+                        customName = customName
+                    )
+                },
+                onClearSteamLoginImportSession = { sessionId ->
+                    dataExportImportViewModel.clearSteamLoginImportSession(sessionId)
+                },
                 onImportZip = { uri, password ->
                     dataExportImportViewModel.importZipBackup(uri, password)
                 },

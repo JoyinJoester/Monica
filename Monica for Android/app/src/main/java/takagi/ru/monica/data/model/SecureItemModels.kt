@@ -36,7 +36,16 @@ data class TotpData(
     val customIconUpdatedAt: Long = 0L,    // 图标更新时间（毫秒）
     val boundPasswordId: Long? = null,     // 绑定的密码ID
     val categoryId: Long? = null,          // 分类ID（用于验证器分类筛选）
-    val keepassDatabaseId: Long? = null    // 归属的 KeePass 数据库ID
+    val keepassDatabaseId: Long? = null,   // 归属的 KeePass 数据库ID
+    // Steam 令牌元数据（用于共存导入和精确去重）
+    val steamFingerprint: String = "",
+    val steamDeviceId: String = "",
+    val steamSerialNumber: String = "",
+    val steamSharedSecretBase64: String = "",
+    val steamRevocationCode: String = "",
+    val steamIdentitySecret: String = "",
+    val steamTokenGid: String = "",
+    val steamRawJson: String = ""
 )
 
 /**

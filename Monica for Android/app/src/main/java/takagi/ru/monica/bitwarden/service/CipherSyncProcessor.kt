@@ -897,6 +897,7 @@ class CipherSyncProcessor(
     
     private fun decryptString(encrypted: String?, key: SymmetricCryptoKey): String? {
         if (encrypted.isNullOrBlank()) return null
+        if (!looksLikeCipherString(encrypted)) return null
         return try {
             BitwardenCrypto.decryptToString(encrypted, key)
         } catch (e: Throwable) {

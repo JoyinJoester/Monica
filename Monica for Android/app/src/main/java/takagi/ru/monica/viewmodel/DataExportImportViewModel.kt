@@ -15,6 +15,7 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import takagi.ru.monica.steam.service.SteamLoginImportService
 import java.util.Date
 
 /**
@@ -27,6 +28,24 @@ class DataExportImportViewModel(
 ) : ViewModel() {
 
     private val exportManager = DataExportImportManager(context)
+    private val steamLoginImportService = SteamLoginImportService()
+
+    sealed class SteamLoginImportState {
+        data class ChallengeRequired(
+            val pendingSessionId: String,
+            val steamId: String,
+            val challenges: List<SteamLoginImportService.SteamGuardChallenge>,
+            val message: String? = null
+        ) : SteamLoginImportState()
+
+        data class Imported(
+            val count: Int
+        ) : SteamLoginImportState()
+
+        data class Failure(
+            val message: String
+        ) : SteamLoginImportState()
+    }
 
     /**
      * 导出所有数据
@@ -574,57 +593,9 @@ class DataExportImportViewModel(
      */
     suspend fun importSteamMaFile(inputUri: Uri): Result<Int> {
         return try {
-            exportManager.importSteamMaFile(inputUri).fold(
-                onSuccess = { aegisEntry ->
-                    // 检查是否已存在相同的条目
-                    val existingItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
-                    val isDuplicate = existingItems.any { item ->
-                        try {
-                            val totpData = Json.decodeFromString<TotpData>(item.itemData)
-                            totpData.issuer == aegisEntry.issuer && totpData.accountName == aegisEntry.name
-                        } catch (e: Exception) {
-                            false
-                        }
-                    }
-                    
-                    if (isDuplicate) {
-                        android.util.Log.d("SteamImport", "跳过重复条目: ${aegisEntry.name}")
-                        return Result.failure(Exception("该Steam Guard验证器已存在"))
-                    }
-                    
-                    // 创建新的TOTP条目（Steam类型）
-                    val totpData = TotpData(
-                        secret = aegisEntry.secret,
-                        issuer = aegisEntry.issuer,
-                        accountName = aegisEntry.name,
-                        period = 30,  // Steam固定30秒
-                        digits = 5,   // Steam固定5位
-                        algorithm = "SHA1",
-                        otpType = takagi.ru.monica.data.model.OtpType.STEAM  // 指定为Steam类型
-                    )
-                    
-                    val itemData = Json.encodeToString(totpData)
-                    val title = if (aegisEntry.name.isNotBlank()) {
-                        "Steam: ${aegisEntry.name}"
-                    } else {
-                        "Steam Guard"
-                    }
-                    
-                    val secureItem = takagi.ru.monica.data.SecureItem(
-                        id = 0,
-                        itemType = ItemType.TOTP,
-                        title = title,
-                        itemData = itemData,
-                        notes = aegisEntry.note,
-                        isFavorite = false,
-                        imagePaths = "",
-                        createdAt = Date(),
-                        updatedAt = Date()
-                    )
-                    
-                    secureItemRepository.insertItem(secureItem)
-                    android.util.Log.d("SteamImport", "成功插入Steam Guard: $title")
-                    Result.success(1)
+            exportManager.importSteamMaFileWithMetadata(inputUri).fold(
+                onSuccess = { steamEntry ->
+                    insertSteamGuardEntry(steamEntry)
                 },
                 onFailure = { error ->
                     android.util.Log.e("SteamImport", "导入失败: ${error.message}", error)
@@ -635,6 +606,172 @@ class DataExportImportViewModel(
             android.util.Log.e("SteamImport", "导入异常: ${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    /**
+     * 导入 Steam App 共存令牌（设备ID + SteamGuard JSON）
+     */
+    suspend fun importSteamAppCoexist(
+        deviceIdInput: String,
+        steamGuardJson: String,
+        customName: String?
+    ): Result<Int> {
+        return try {
+            exportManager.importSteamAppCoexist(deviceIdInput, steamGuardJson, customName).fold(
+                onSuccess = { steamEntry ->
+                    insertSteamGuardEntry(steamEntry)
+                },
+                onFailure = { error ->
+                    android.util.Log.e("SteamImport", "共存导入失败: ${error.message}", error)
+                    Result.failure(error)
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("SteamImport", "共存导入异常: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Steam 登录导入（第一阶段）：账号密码登录并返回挑战状态或 token
+     */
+    suspend fun beginSteamLoginImport(
+        userName: String,
+        password: String,
+        customName: String? = null
+    ): SteamLoginImportState {
+        val result = steamLoginImportService.beginLogin(userName, password)
+        return consumeSteamLoginResult(result, customName)
+    }
+
+    /**
+     * Steam 登录导入（第一阶段）：提交挑战验证码
+     */
+    suspend fun submitSteamLoginImportCode(
+        pendingSessionId: String,
+        code: String,
+        confirmationType: Int,
+        customName: String? = null
+    ): SteamLoginImportState {
+        val result = steamLoginImportService.submitSteamGuardCode(
+            pendingSessionId = pendingSessionId,
+            code = code,
+            confirmationType = confirmationType
+        )
+        return consumeSteamLoginResult(result, customName)
+    }
+
+    fun clearSteamLoginImportSession(sessionId: String) {
+        steamLoginImportService.clearPendingSession(sessionId)
+    }
+
+    private suspend fun consumeSteamLoginResult(
+        result: SteamLoginImportService.LoginResult,
+        customName: String?
+    ): SteamLoginImportState {
+        return when (result) {
+            is SteamLoginImportService.LoginResult.ChallengeRequired -> {
+                SteamLoginImportState.ChallengeRequired(
+                    pendingSessionId = result.pendingSessionId,
+                    steamId = result.steamId,
+                    challenges = result.challenges,
+                    message = result.message
+                )
+            }
+
+            is SteamLoginImportService.LoginResult.ReadyForImport -> {
+                val importResult = importSteamAppCoexist(
+                    deviceIdInput = result.payload.deviceId,
+                    steamGuardJson = result.payload.steamGuardJson,
+                    customName = customName
+                )
+                importResult.fold(
+                    onSuccess = { count ->
+                        SteamLoginImportState.Imported(count = count)
+                    },
+                    onFailure = { error ->
+                        SteamLoginImportState.Failure(error.message ?: "导入失败")
+                    }
+                )
+            }
+
+            is SteamLoginImportService.LoginResult.Failure -> {
+                SteamLoginImportState.Failure(result.message)
+            }
+        }
+    }
+
+    private suspend fun insertSteamGuardEntry(
+        steamEntry: DataExportImportManager.SteamGuardImportEntry
+    ): Result<Int> {
+        val existingItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
+        val normalizedName = steamEntry.name.trim()
+        val isDuplicate = existingItems.any { item ->
+            try {
+                val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                if (totpData.otpType != takagi.ru.monica.data.model.OtpType.STEAM) {
+                    return@any false
+                }
+
+                if (totpData.steamFingerprint.isNotBlank() &&
+                    totpData.steamFingerprint == steamEntry.fingerprint
+                ) {
+                    return@any true
+                }
+
+                totpData.secret == steamEntry.secretBase32 &&
+                    totpData.issuer.equals(steamEntry.issuer, ignoreCase = true) &&
+                    totpData.accountName.trim().equals(normalizedName, ignoreCase = true)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        if (isDuplicate) {
+            android.util.Log.d("SteamImport", "跳过重复条目: ${steamEntry.name}")
+            return Result.failure(Exception("该Steam Guard验证器已存在"))
+        }
+
+        val totpData = TotpData(
+            secret = steamEntry.secretBase32,
+            issuer = steamEntry.issuer,
+            accountName = steamEntry.name,
+            period = 30,
+            digits = 5,
+            algorithm = "SHA1",
+            otpType = takagi.ru.monica.data.model.OtpType.STEAM,
+            steamFingerprint = steamEntry.fingerprint,
+            steamDeviceId = steamEntry.deviceId,
+            steamSerialNumber = steamEntry.serialNumber,
+            steamSharedSecretBase64 = steamEntry.sharedSecretBase64,
+            steamRevocationCode = steamEntry.revocationCode,
+            steamIdentitySecret = steamEntry.identitySecret,
+            steamTokenGid = steamEntry.tokenGid,
+            steamRawJson = steamEntry.rawSteamGuardJson
+        )
+
+        val itemData = Json.encodeToString(totpData)
+        val title = if (steamEntry.name.isNotBlank()) {
+            "Steam: ${steamEntry.name}"
+        } else {
+            "Steam Guard"
+        }
+
+        val secureItem = SecureItem(
+            id = 0,
+            itemType = ItemType.TOTP,
+            title = title,
+            itemData = itemData,
+            notes = "",
+            isFavorite = false,
+            imagePaths = "",
+            createdAt = Date(),
+            updatedAt = Date()
+        )
+
+        secureItemRepository.insertItem(secureItem)
+        android.util.Log.d("SteamImport", "成功插入Steam Guard: $title")
+        return Result.success(1)
     }
 
     /**

@@ -19,12 +19,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.util.FileOperationHelper
+import takagi.ru.monica.viewmodel.DataExportImportViewModel
 
 /**
  * 导入类型数据类
@@ -141,6 +144,13 @@ fun ImportDataScreen(
     onImportEncryptedAegis: suspend (Uri, String) -> Result<Int>,  // 加密的Aegis JSON导入
     onImportStratum: suspend (Uri, String?) -> Result<Int> = { _, _ -> Result.failure(Exception("Not implemented")) }, // Stratum 导入
     onImportSteamMaFile: suspend (Uri) -> Result<Int>,  // Steam maFile导入
+    onBeginSteamLoginImport: suspend (String, String, String?) -> DataExportImportViewModel.SteamLoginImportState = { _, _, _ ->
+        DataExportImportViewModel.SteamLoginImportState.Failure("Not implemented")
+    }, // Steam 登录导入（开始）
+    onSubmitSteamLoginImportCode: suspend (String, String, Int, String?) -> DataExportImportViewModel.SteamLoginImportState = { _, _, _, _ ->
+        DataExportImportViewModel.SteamLoginImportState.Failure("Not implemented")
+    }, // Steam 登录导入（提交验证码）
+    onClearSteamLoginImportSession: (String) -> Unit = {}, // 清理 Steam 登录会话
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
     onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
     onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // KeePass CSV导入
@@ -165,6 +175,18 @@ fun ImportDataScreen(
     var showKdbxPasswordDialog by remember { mutableStateOf(false) }
     var kdbxPassword by remember { mutableStateOf("") }
     var kdbxPasswordVisible by remember { mutableStateOf(false) }
+
+    var steamImportMode by remember { mutableStateOf("mafile") } // mafile / login
+    var steamDeviceIdInput by remember { mutableStateOf("") }
+    var steamGuardJsonInput by remember { mutableStateOf("") }
+    var steamCustomNameInput by remember { mutableStateOf("") }
+    var steamLoginUserNameInput by remember { mutableStateOf("") }
+    var steamLoginPasswordInput by remember { mutableStateOf("") }
+    var steamLoginPasswordVisible by remember { mutableStateOf(false) }
+    var steamLoginChallengeCodeInput by remember { mutableStateOf("") }
+    var steamLoginPendingSessionId by remember { mutableStateOf<String?>(null) }
+    var steamLoginChallengeType by remember { mutableStateOf(0) }
+    var steamLoginChallengeHint by remember { mutableStateOf("") }
     
     // 导入类型信息列表
     val importTypes = listOf(
@@ -237,6 +259,7 @@ fun ImportDataScreen(
     )
 
     val effectiveImportType = if (importType == "csv_group") csvImportType else importType
+    val isSteamLoginMode = effectiveImportType == "steam" && steamImportMode == "login"
     
     val currentTypeInfo = if (importType == "csv_group") {
         csvImportTypes.find { it.key == csvImportType } ?: csvImportTypes[0]
@@ -317,82 +340,55 @@ fun ImportDataScreen(
                     // 导入按钮
                     Button(
                         onClick = {
-                            selectedFileUri?.let { uri ->
+                            if (isSteamLoginMode) {
                                 scope.launch {
                                     isImporting = true
                                     try {
-                                        when (effectiveImportType) {
-                                            "monica_zip" -> {
-                                                val result = onImportZip(uri, null)
-                                                result.onSuccess { count ->
-                                                    handleImportResult(Result.success(count), context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                                }.onFailure { error ->
-                                                    if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
-                                                        isImporting = false
-                                                        showPasswordDialog = true
-                                                        passwordError = null
-                                                        aegisPassword = ""
-                                                    } else {
-                                                        handleImportResult(Result.failure(error), context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                                    }
-                                                }
+                                        val customName = steamCustomNameInput.trim().takeIf { it.isNotBlank() }
+                                        val loginState = if (steamLoginPendingSessionId.isNullOrBlank()) {
+                                            onBeginSteamLoginImport(
+                                                steamLoginUserNameInput.trim(),
+                                                steamLoginPasswordInput,
+                                                customName
+                                            )
+                                        } else {
+                                            onSubmitSteamLoginImportCode(
+                                                steamLoginPendingSessionId.orEmpty(),
+                                                steamLoginChallengeCodeInput.trim(),
+                                                steamLoginChallengeType,
+                                                customName
+                                            )
+                                        }
+
+                                        when (loginState) {
+                                            is DataExportImportViewModel.SteamLoginImportState.ChallengeRequired -> {
+                                                steamLoginPendingSessionId = loginState.pendingSessionId
+                                                steamLoginChallengeType = loginState.challenges.firstOrNull()?.confirmationType ?: 0
+                                                steamLoginChallengeHint = loginState.challenges.firstOrNull()?.associatedMessage.orEmpty()
+                                                // 每次进入挑战阶段都清空输入框，避免二次提交用到旧验证码
+                                                steamLoginChallengeCodeInput = ""
+                                                snackbarHostState.showSnackbar(
+                                                    loginState.message
+                                                        ?: context.getString(R.string.import_type_steam_login_challenge_required)
+                                                )
                                             }
-                                            "aegis" -> {
-                                                // Aegis导入类型，先检查是否为加密文件
-                                                val isEncryptedResult = DataExportImportManager(context).isEncryptedAegisFile(uri)
-                                                val isEncrypted = isEncryptedResult.getOrDefault(false)
-                                                if (isEncrypted) {
-                                                    // 是加密文件，显示密码输入对话框
-                                                    isImporting = false
-                                                    showPasswordDialog = true
-                                                    passwordError = null
-                                                    aegisPassword = ""
-                                                    return@launch
-                                                } else {
-                                                    // 不是加密文件，直接导入
-                                                    val result = onImportAegis(uri)
-                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                                }
+
+                                            is DataExportImportViewModel.SteamLoginImportState.Imported -> {
+                                                steamLoginPendingSessionId = null
+                                                steamLoginChallengeType = 0
+                                                steamLoginChallengeCodeInput = ""
+                                                steamLoginChallengeHint = ""
+                                                handleImportResult(
+                                                    Result.success(loginState.count),
+                                                    context,
+                                                    snackbarHostState,
+                                                    effectiveImportType,
+                                                    onNavigateBack
+                                                )
                                             }
-                                            "stratum" -> {
-                                                val result = onImportStratum(uri, null)
-                                                result.onSuccess { count ->
-                                                    handleImportResult(Result.success(count), context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                                }.onFailure { error ->
-                                                    val errorMsg = error.message ?: ""
-                                                    if (isPasswordRequiredError(errorMsg)) {
-                                                        isImporting = false
-                                                        showPasswordDialog = true
-                                                        passwordError = null
-                                                        aegisPassword = ""
-                                                    } else {
-                                                        handleImportResult(Result.failure(error), context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                                    }
-                                                }
-                                            }
-                                            "steam" -> {
-                                                // Steam maFile导入
-                                                val result = onImportSteamMaFile(uri)
-                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                            }
-                                            "kdbx" -> {
-                                                // KDBX 导入需要密码
-                                                isImporting = false
-                                                showKdbxPasswordDialog = true
-                                                kdbxPassword = ""
-                                            }
-                                            "keepass_csv" -> {
-                                                val result = onImportKeePassCsv(uri)
-                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                            }
-                                            "bitwarden_csv" -> {
-                                                val result = onImportBitwardenCsv(uri)
-                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                            }
-                                            else -> {
-                                                // 普通CSV导入
-                                                val result = onImport(uri)
-                                                handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+
+                                            is DataExportImportViewModel.SteamLoginImportState.Failure -> {
+                                                snackbarHostState.showSnackbar(loginState.message)
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -407,12 +403,114 @@ fun ImportDataScreen(
                                         isImporting = false
                                     }
                                 }
+                            } else {
+                                selectedFileUri?.let { uri ->
+                                    scope.launch {
+                                        isImporting = true
+                                        try {
+                                            when (effectiveImportType) {
+                                                "monica_zip" -> {
+                                                    val result = onImportZip(uri, null)
+                                                    result.onSuccess { count ->
+                                                        handleImportResult(Result.success(count), context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                    }.onFailure { error ->
+                                                        if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
+                                                            isImporting = false
+                                                            showPasswordDialog = true
+                                                            passwordError = null
+                                                            aegisPassword = ""
+                                                        } else {
+                                                            handleImportResult(Result.failure(error), context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                        }
+                                                    }
+                                                }
+                                                "aegis" -> {
+                                                    // Aegis导入类型，先检查是否为加密文件
+                                                    val isEncryptedResult = DataExportImportManager(context).isEncryptedAegisFile(uri)
+                                                    val isEncrypted = isEncryptedResult.getOrDefault(false)
+                                                    if (isEncrypted) {
+                                                        // 是加密文件，显示密码输入对话框
+                                                        isImporting = false
+                                                        showPasswordDialog = true
+                                                        passwordError = null
+                                                        aegisPassword = ""
+                                                        return@launch
+                                                    } else {
+                                                        // 不是加密文件，直接导入
+                                                        val result = onImportAegis(uri)
+                                                        handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                    }
+                                                }
+                                                "stratum" -> {
+                                                    val result = onImportStratum(uri, null)
+                                                    result.onSuccess { count ->
+                                                        handleImportResult(Result.success(count), context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                    }.onFailure { error ->
+                                                        val errorMsg = error.message ?: ""
+                                                        if (isPasswordRequiredError(errorMsg)) {
+                                                            isImporting = false
+                                                            showPasswordDialog = true
+                                                            passwordError = null
+                                                            aegisPassword = ""
+                                                        } else {
+                                                            handleImportResult(Result.failure(error), context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                        }
+                                                    }
+                                                }
+                                                "steam" -> {
+                                                    // Steam maFile导入
+                                                    val result = onImportSteamMaFile(uri)
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                                "kdbx" -> {
+                                                    // KDBX 导入需要密码
+                                                    isImporting = false
+                                                    showKdbxPasswordDialog = true
+                                                    kdbxPassword = ""
+                                                }
+                                                "keepass_csv" -> {
+                                                    val result = onImportKeePassCsv(uri)
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                                "bitwarden_csv" -> {
+                                                    val result = onImportBitwardenCsv(uri)
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                                else -> {
+                                                    // 普通CSV导入
+                                                    val result = onImport(uri)
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("ImportDataScreen", "导入异常", e)
+                                            snackbarHostState.showSnackbar(
+                                                context.getString(
+                                                    R.string.import_data_error_exception,
+                                                    e.message ?: context.getString(R.string.import_data_unknown_error)
+                                                )
+                                            )
+                                        } finally {
+                                            isImporting = false
+                                        }
+                                    }
+                                }
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
-                        enabled = selectedFileUri != null && !isImporting,
+                        enabled = if (isSteamLoginMode) {
+                            if (steamLoginPendingSessionId.isNullOrBlank()) {
+                                steamLoginUserNameInput.isNotBlank() &&
+                                    steamLoginPasswordInput.isNotBlank() &&
+                                    !isImporting
+                            } else {
+                                steamLoginChallengeCodeInput.isNotBlank() && !isImporting
+                            }
+                        } else {
+                            selectedFileUri != null && !isImporting
+                        },
                         shape = MaterialTheme.shapes.large
                     ) {
                         if (isImporting) {
@@ -426,7 +524,13 @@ fun ImportDataScreen(
                         } else {
                             Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.start_import), style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (isSteamLoginMode && !steamLoginPendingSessionId.isNullOrBlank())
+                                    stringResource(R.string.import_type_steam_login_submit_code)
+                                else
+                                    stringResource(R.string.start_import),
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
                     }
                     
@@ -477,10 +581,17 @@ fun ImportDataScreen(
                         info = typeInfo,
                         selected = importType == typeInfo.key,
                         onClick = { 
+                            if (steamLoginPendingSessionId != null) {
+                                onClearSteamLoginImportSession(steamLoginPendingSessionId.orEmpty())
+                            }
                             importType = typeInfo.key
                             // 切换类型时清除已选文件
                             selectedFileUri = null
                             selectedFileName = null
+                            steamLoginPendingSessionId = null
+                            steamLoginChallengeType = 0
+                            steamLoginChallengeCodeInput = ""
+                            steamLoginChallengeHint = ""
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -518,114 +629,240 @@ fun ImportDataScreen(
                     }
                 }
             }
+
+            if (effectiveImportType == "steam") {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.import_type_steam_mode_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = steamImportMode == "mafile",
+                                onClick = {
+                                    if (steamLoginPendingSessionId != null) {
+                                        onClearSteamLoginImportSession(steamLoginPendingSessionId.orEmpty())
+                                    }
+                                    steamImportMode = "mafile"
+                                    steamDeviceIdInput = ""
+                                    steamGuardJsonInput = ""
+                                    steamCustomNameInput = ""
+                                    steamLoginPendingSessionId = null
+                                    steamLoginChallengeType = 0
+                                    steamLoginChallengeCodeInput = ""
+                                    steamLoginChallengeHint = ""
+                                },
+                                label = { Text(stringResource(R.string.import_type_steam_mode_mafile)) }
+                            )
+                            FilterChip(
+                                selected = steamImportMode == "login",
+                                onClick = {
+                                    steamImportMode = "login"
+                                    selectedFileUri = null
+                                    selectedFileName = null
+                                    steamDeviceIdInput = ""
+                                    steamGuardJsonInput = ""
+                                    steamLoginChallengeCodeInput = ""
+                                    steamLoginChallengeHint = ""
+                                },
+                                label = { Text(stringResource(R.string.import_type_steam_mode_login)) }
+                            )
+                        }
+
+                        if (steamImportMode == "login") {
+                            Text(
+                                stringResource(R.string.import_type_steam_login_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = steamLoginUserNameInput,
+                                onValueChange = { steamLoginUserNameInput = it },
+                                label = { Text(stringResource(R.string.import_type_steam_login_username_label)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = steamLoginPendingSessionId.isNullOrBlank()
+                            )
+                            OutlinedTextField(
+                                value = steamLoginPasswordInput,
+                                onValueChange = { steamLoginPasswordInput = it },
+                                label = { Text(stringResource(R.string.import_type_steam_login_password_label)) },
+                                visualTransformation = if (steamLoginPasswordVisible) {
+                                    VisualTransformation.None
+                                } else {
+                                    PasswordVisualTransformation()
+                                },
+                                trailingIcon = {
+                                    IconButton(onClick = { steamLoginPasswordVisible = !steamLoginPasswordVisible }) {
+                                        Icon(
+                                            imageVector = if (steamLoginPasswordVisible) {
+                                                Icons.Default.VisibilityOff
+                                            } else {
+                                                Icons.Default.Visibility
+                                            },
+                                            contentDescription = if (steamLoginPasswordVisible) {
+                                                stringResource(R.string.hide_password)
+                                            } else {
+                                                stringResource(R.string.show_password)
+                                            }
+                                        )
+                                    }
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = steamLoginPendingSessionId.isNullOrBlank()
+                            )
+                            if (!steamLoginPendingSessionId.isNullOrBlank()) {
+                                if (steamLoginChallengeHint.isNotBlank()) {
+                                    Text(
+                                        steamLoginChallengeHint,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                OutlinedTextField(
+                                    value = steamLoginChallengeCodeInput,
+                                    onValueChange = { steamLoginChallengeCodeInput = it },
+                                    label = { Text(stringResource(R.string.import_type_steam_login_code_label)) },
+                                    placeholder = { Text(stringResource(R.string.import_type_steam_login_code_hint)) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            OutlinedTextField(
+                                value = steamCustomNameInput,
+                                onValueChange = { steamCustomNameInput = it },
+                                label = { Text(stringResource(R.string.import_type_steam_custom_name_label)) },
+                                placeholder = { Text(stringResource(R.string.import_type_steam_custom_name_hint)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // 文件选择区域
-            Text(
-                stringResource(R.string.import_data_select_file),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            
-            // 选择文件卡片
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { 
-                    activity?.let { act ->
-                        // 根据导入类型选择不同的文件过滤器
-                        when (effectiveImportType) {
-                            "monica_zip" -> FileOperationHelper.importFromZip(act)
-                            "kdbx" -> FileOperationHelper.importFromKdbx(act)
-                            "keepass_csv" -> FileOperationHelper.importFromCsv(act)
-                            "bitwarden_csv" -> FileOperationHelper.importFromCsv(act)
-                            "aegis" -> FileOperationHelper.importFromJson(act)
-                            "stratum" -> FileOperationHelper.importFromStratum(act)
-                            "steam" -> FileOperationHelper.importFromMaFile(act)
-                            else -> FileOperationHelper.importFromCsv(act)
-                        }
-                    } ?: run {
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                context.getString(
-                                    R.string.error_launch_export,
-                                    context.getString(R.string.import_data_operation_unavailable)
-                                )
-                            )
-                        }
-                    }
-                },
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = if (selectedFileUri != null) 
-                        MaterialTheme.colorScheme.secondaryContainer
-                    else 
-                        MaterialTheme.colorScheme.surfaceContainerHigh
+            if (!isSteamLoginMode) {
+                // 文件选择区域
+                Text(
+                    stringResource(R.string.import_data_select_file),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
                 )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 文件图标
-                    Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = if (selectedFileUri != null)
-                            MaterialTheme.colorScheme.secondary
+
+                // 选择文件卡片
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        activity?.let { act ->
+                            // 根据导入类型选择不同的文件过滤器
+                            when (effectiveImportType) {
+                                "monica_zip" -> FileOperationHelper.importFromZip(act)
+                                "kdbx" -> FileOperationHelper.importFromKdbx(act)
+                                "keepass_csv" -> FileOperationHelper.importFromCsv(act)
+                                "bitwarden_csv" -> FileOperationHelper.importFromCsv(act)
+                                "aegis" -> FileOperationHelper.importFromJson(act)
+                                "stratum" -> FileOperationHelper.importFromStratum(act)
+                                "steam" -> FileOperationHelper.importFromMaFile(act)
+                                else -> FileOperationHelper.importFromCsv(act)
+                            }
+                        } ?: run {
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    context.getString(
+                                        R.string.error_launch_export,
+                                        context.getString(R.string.import_data_operation_unavailable)
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = if (selectedFileUri != null)
+                            MaterialTheme.colorScheme.secondaryContainer
                         else
-                            MaterialTheme.colorScheme.surfaceContainerHighest,
-                        modifier = Modifier.size(48.dp)
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                if (selectedFileUri != null) Icons.Default.InsertDriveFile else Icons.Default.FileOpen,
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = if (selectedFileUri != null)
-                                    MaterialTheme.colorScheme.onSecondary
+                        // 文件图标
+                        Surface(
+                            shape = MaterialTheme.shapes.medium,
+                            color = if (selectedFileUri != null)
+                                MaterialTheme.colorScheme.secondary
+                            else
+                                MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (selectedFileUri != null) Icons.Default.InsertDriveFile else Icons.Default.FileOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp),
+                                    tint = if (selectedFileUri != null)
+                                        MaterialTheme.colorScheme.onSecondary
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (selectedFileUri != null) {
+                                    stringResource(R.string.import_data_file_selected)
+                                } else {
+                                    stringResource(R.string.import_data_tap_to_select_file)
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = if (selectedFileUri != null)
+                                    MaterialTheme.colorScheme.onSecondaryContainer
                                 else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                    MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                selectedFileName ?: currentTypeInfo.fileHint,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (selectedFileUri != null)
+                                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                    }
-                    
-                    Spacer(modifier = Modifier.width(16.dp))
-                    
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            if (selectedFileUri != null) {
-                                stringResource(R.string.import_data_file_selected)
-                            } else {
-                                stringResource(R.string.import_data_tap_to_select_file)
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = if (selectedFileUri != null) 
+
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = if (selectedFileUri != null)
                                 MaterialTheme.colorScheme.onSecondaryContainer
-                            else 
-                                MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            selectedFileName ?: currentTypeInfo.fileHint,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (selectedFileUri != null)
-                                MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                             else
-                                MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                                MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    
-                    Icon(
-                        Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = if (selectedFileUri != null)
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
             

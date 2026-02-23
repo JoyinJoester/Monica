@@ -126,6 +126,10 @@ class KeePassKdbxService(
         fun toWebDavFilePath(remotePath: String): String {
             return WEBDAV_PATH_PREFIX + remotePath
         }
+
+        suspend fun <T> withGlobalDecodeLock(block: () -> T): T {
+            return globalDecodeMutex.withLock { block() }
+        }
     }
     
     init {
@@ -1339,7 +1343,7 @@ class KeePassKdbxService(
     }
 
     private suspend fun decodeDatabase(bytes: ByteArray, credentials: Credentials): KeePassDatabase {
-        return globalDecodeMutex.withLock {
+        return withGlobalDecodeLock {
             KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
         }
     }
