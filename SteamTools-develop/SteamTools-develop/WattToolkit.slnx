@@ -1,0 +1,178 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="ARM" />
+    <Platform Name="ARM64" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/0.Root/">
+    <File Path=".github/workflows/CI.yml" />
+    <File Path=".gitignore" />
+    <File Path=".gitmodules" />
+    <File Path="nuget.config" />
+    <File Path="README.en.md" />
+    <File Path="README.md" />
+    <File Path="ref/DirectoryPackages/Directory.Packages.props" />
+    <File Path="src/.editorconfig" />
+    <File Path="src/Directory.Build.props" />
+  </Folder>
+  <Folder Name="/0.Root/Build/">
+    <File Path="build/publish_apphost_linux_x64.sh" />
+    <File Path="build/settings_v4_app.json" />
+  </Folder>
+  <Folder Name="/0.Root/Document/">
+    <File Path="doc/file-system.md" />
+    <File Path="doc/open-source-library.md" />
+    <File Path="doc/openwrt.md" />
+    <File Path="doc/publish.md" />
+    <File Path="doc/release-keylol.md" />
+  </Folder>
+  <Folder Name="/0.Root/Document/Program File Structure/">
+    <File Path="doc/program-file-structure/Linux.md" />
+    <File Path="doc/program-file-structure/macOS.md" />
+    <File Path="doc/program-file-structure/Windows.md" />
+  </Folder>
+  <Folder Name="/0.Root/Source/">
+    <File Path="src/AssemblyInfo.Constants.cs" />
+    <File Path="src/AssemblyInfo.cs" />
+    <File Path="src/AssemblyInfo.Version.Max.cs" />
+    <File Path="src/README.md" />
+    <File Path="src/Utils.cs" />
+  </Folder>
+  <Folder Name="/0.Root/Source/ImplicitUsings/">
+    <File Path="src/ImplicitUsings.ArchiSteamFarm.cs" />
+    <File Path="src/ImplicitUsings.AspNetCore.cs" />
+    <File Path="src/ImplicitUsings.AutoMapper.cs" />
+    <File Path="src/ImplicitUsings.Avalonia.cs" />
+    <File Path="src/ImplicitUsings.BCL.cs" />
+    <File Path="src/ImplicitUsings.Common.cs" />
+    <File Path="src/ImplicitUsings.Controllers.cs" />
+    <File Path="src/ImplicitUsings.Data.cs" />
+    <File Path="src/ImplicitUsings.EntityFrameworkCore.cs" />
+    <File Path="src/ImplicitUsings.Identity.cs" />
+    <File Path="src/ImplicitUsings.Jobs.cs" />
+    <File Path="src/ImplicitUsings.JsonProperty.cs" />
+    <File Path="src/ImplicitUsings.JWT.cs" />
+    <File Path="src/ImplicitUsings.MessagePack.cs" />
+    <File Path="src/ImplicitUsings.Models.cs" />
+    <File Path="src/ImplicitUsings.MSEX.cs" />
+    <File Path="src/ImplicitUsings.Nito.cs" />
+    <File Path="src/ImplicitUsings.NLog.cs" />
+    <File Path="src/ImplicitUsings.Plugins.cs" />
+    <File Path="src/ImplicitUsings.Quartz.cs" />
+    <File Path="src/ImplicitUsings.ReactiveUI.cs" />
+    <File Path="src/ImplicitUsings.Repositories.cs" />
+    <File Path="src/ImplicitUsings.Services.cs" />
+    <File Path="src/ImplicitUsings.Settings.cs" />
+    <File Path="src/ImplicitUsings.SQLite.cs" />
+    <File Path="src/ImplicitUsings.Steam.cs" />
+    <File Path="src/ImplicitUsings.UI.cs" />
+    <File Path="src/ImplicitUsings.UI.ViewModels.cs" />
+    <File Path="src/ImplicitUsings.UI.Views.cs" />
+    <File Path="src/ImplicitUsings.UnitTest.cs" />
+    <File Path="src/ImplicitUsings.WTTS.cs" />
+  </Folder>
+  <Folder Name="/0.Root/TFM/">
+    <File Path="src/TFM_NETX.props" />
+    <File Path="src/TFM_NETX_SINGLE.props" />
+    <File Path="src/TFM_NETX_WINDOWS.props" />
+    <File Path="src/TFM_NETX_WITH_ALL.props" />
+    <File Path="src/TFM_NETX_WITH_DESKTOP.props" />
+    <File Path="src/TFM_NETX_WITH_WINDOWS.props" />
+  </Folder>
+  <Folder Name="/1.AppHost/">
+    <Project Path="src/BD.WTTS.Client.AppHost.Bridge/Steam++.csproj" />
+    <Project Path="src/BD.WTTS.Client.AppHost/BD.WTTS.Client.AppHost.csproj" />
+  </Folder>
+  <Folder Name="/2.Reference/" />
+  <Folder Name="/2.Reference/AppCenter/">
+    <Project Path="ref/appcenter-sdk-dotnet/SDK/AppCenter/BD.AppCenter.Any/BD.AppCenter.Any.csproj" />
+    <Project Path="ref/appcenter-sdk-dotnet/SDK/AppCenterAnalytics/BD.AppCenter.Analytics.Any/BD.AppCenter.Analytics.Any.csproj" />
+  </Folder>
+  <Folder Name="/2.Reference/Avalonia/">
+    <Project Path="ref/Avalonia.Image2/Avalonia.Gif/Avalonia.Gif.csproj" />
+    <Project Path="ref/Avalonia.Image2/LibAPNG/LibAPNG.csproj" />
+  </Folder>
+  <Folder Name="/2.Reference/Common/">
+    <Project Path="ref/Common/src/BD.Common.Area/BD.Common.Area.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Essentials.Maui.Runtime/BD.Common.Essentials.Maui.Runtime.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Essentials.Preferences.SQLite/BD.Common.Essentials.Preferences.SQLite.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Essentials.Primitives/BD.Common.Essentials.Primitives.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Essentials.Utils/BD.Common.Essentials.Utils.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Essentials/BD.Common.Essentials.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Mvvm.ReactiveUI/BD.Common.Mvvm.ReactiveUI.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Mvvm/BD.Common.Mvvm.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Pinyin.TinyPinyin/BD.Common.Pinyin.TinyPinyin.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Pinyin/BD.Common.Pinyin.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Primitives/BD.Common.Primitives.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Repositories.SQLitePCL/BD.Common.Repositories.SQLitePCL.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Security/BD.Common.Security.csproj" />
+    <Project Path="ref/Common/src/BD.Common.Settings/BD.Common.Settings.csproj" />
+    <Project Path="ref/Common/src/BD.Common/BD.Common.csproj" />
+  </Folder>
+  <Folder Name="/2.Reference/Steam/">
+    <Project Path="ref/ArchiSteamFarm/ArchiSteamFarm/ArchiSteamFarm.csproj" />
+    <Project Path="ref/Facepunch.Steamworks/Facepunch.Steamworks/Facepunch.Steamworks.Posix.csproj" />
+    <Project Path="ref/Facepunch.Steamworks/Facepunch.Steamworks/Facepunch.Steamworks.Win64.csproj" />
+    <Project Path="ref/Gameloop.Vdf/Gameloop.Vdf/Gameloop.Vdf.csproj" />
+    <Project Path="ref/Steam4NET/Steam4NET/Steam4NET.csproj" />
+    <Project Path="ref/SteamClient/ref/ValveKeyValue/ValveKeyValue/ValveKeyValue/ValveKeyValue.csproj" />
+    <Project Path="ref/SteamClient/src/BD.SteamClient.Models.Protobuf/BD.SteamClient.Models.Protobuf.csproj" />
+    <Project Path="ref/SteamClient/src/BD.SteamClient/BD.SteamClient.csproj" />
+  </Folder>
+  <Folder Name="/2.Reference/WinAuth/">
+    <Project Path="ref/WinAuth/src/WinAuth/WinAuth.csproj" />
+  </Folder>
+  <Folder Name="/3.Test/">
+    <Project Path="src/BD.WTTS.UnitTest/BD.WTTS.UnitTest.csproj" />
+  </Folder>
+  <Folder Name="/4.Shared/">
+    <Project Path="src/BD.Avalonia8.Image2.Compat/BD.Avalonia8.Image2.Compat.csproj" />
+    <Project Path="src/BD.WTTS.Client.Avalonia/BD.WTTS.Client.Avalonia.csproj" />
+    <Project Path="src/BD.WTTS.Client.IPC/BD.WTTS.Client.IPC.csproj" />
+    <Project Path="src/BD.WTTS.Client/BD.WTTS.Client.csproj" />
+    <Project Path="src/OSShuttingDownHelper/OSShuttingDownHelper.shproj" />
+  </Folder>
+  <Folder Name="/4.Shared/Avalonia.Ref/">
+    <Project Path="src/Avalonia.Base.Internals/Avalonia.Base.Internals.csproj" />
+    <Project Path="src/Avalonia.Base/Avalonia.Base.csproj" />
+    <Project Path="src/Avalonia.Controls.Internals/Avalonia.Controls.Internals.csproj" />
+    <Project Path="src/Avalonia.Desktop/Avalonia.Desktop.csproj" />
+    <Project Path="src/Avalonia.Diagnostics/Avalonia.Diagnostics.csproj" />
+    <Project Path="src/Avalonia.Native/Avalonia.Native.csproj" />
+    <Project Path="src/Avalonia.Skia.Internals/Avalonia.Skia.Internals.csproj" />
+    <Project Path="src/Avalonia.WebView2/Avalonia.WebView2.csproj" />
+    <Project Path="src/Avalonia.Win32/Avalonia.Win32.csproj" />
+    <Project Path="src/Avalonia.X11/Avalonia.X11.csproj" />
+  </Folder>
+  <Folder Name="/4.Shared/ClientSDK/">
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/ref/WTTS.Public/src/BD.WTTS.MicroServices.Primitives.Resources/BD.WTTS.MicroServices.Primitives.Resources.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/ref/WTTS.Public/src/BD.WTTS.Primitives.Resources/BD.WTTS.Primitives.Resources.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/src/BD.WTTS.MicroServices.ClientSDK/BD.WTTS.MicroServices.ClientSDK.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/src/BD.WTTS.MicroServices.Primitives.Models/BD.WTTS.MicroServices.Primitives.Models.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/src/BD.WTTS.MicroServices.Primitives.ViewModels/BD.WTTS.MicroServices.Primitives.ViewModels.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/src/BD.WTTS.MicroServices.Primitives/BD.WTTS.MicroServices.Primitives.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/src/BD.WTTS.Primitives.Models/BD.WTTS.Primitives.Models.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/src/BD.WTTS.Primitives.ViewModels/BD.WTTS.Primitives.ViewModels.csproj" />
+    <Project Path="ref/WTTS.MicroServices.ClientSDK/src/BD.WTTS.Primitives/BD.WTTS.Primitives.csproj" />
+  </Folder>
+  <Folder Name="/5.Plugins/">
+    <Project Path="src/BD.WTTS.Client.Plugins.Accelerator.ReverseProxy/BD.WTTS.Client.Plugins.Accelerator.ReverseProxy.csproj" />
+    <Project Path="src/BD.WTTS.Client.Plugins.Accelerator/BD.WTTS.Client.Plugins.Accelerator.csproj" />
+    <Project Path="src/BD.WTTS.Client.Plugins.ArchiSteamFarmPlus/BD.WTTS.Client.Plugins.ArchiSteamFarmPlus.csproj" />
+    <Project Path="src/BD.WTTS.Client.Plugins.Authenticator/BD.WTTS.Client.Plugins.Authenticator.csproj" />
+    <Project Path="src/BD.WTTS.Client.Plugins.GameAccount/BD.WTTS.Client.Plugins.GameAccount.csproj" />
+    <Project Path="src/BD.WTTS.Client.Plugins.GameList/BD.WTTS.Client.Plugins.GameList.csproj" />
+    <Project Path="src/BD.WTTS.Client.Plugins.GameTools/BD.WTTS.Client.Plugins.GameTools.csproj" />
+    <Project Path="src/BD.WTTS.Client.Plugins.SteamIdleCard/BD.WTTS.Client.Plugins.SteamIdleCard.csproj" />
+  </Folder>
+  <Folder Name="/6.Tools/">
+    <Project Path="ref/Common/src/BD.Common.Settings.V4.SourceGenerator.Tools/BD.Common.Settings.V4.SourceGenerator.Tools.csproj" />
+    <Project Path="src/BD.WTTS.Client.Avalonia.Designer.HostApp/BD.WTTS.Client.Avalonia.Designer.HostApp.csproj" />
+    <Project Path="src/BD.WTTS.Client.Tools.HostsTest/BD.WTTS.Client.Tools.HostsTest.csproj" />
+    <Project Path="src/BD.WTTS.Client.Tools.OpenSourceLibraryList/BD.WTTS.Client.Tools.OpenSourceLibraryList.csproj" />
+    <Project Path="src/BD.WTTS.Client.Tools.Publish/BD.WTTS.Client.Tools.Publish.csproj" />
+  </Folder>
+  <Project Path="src/BD.WTTS.Client.Avalonia.App/BD.WTTS.Client.Avalonia.App.csproj" />
+</Solution>

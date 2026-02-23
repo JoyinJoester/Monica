@@ -1101,6 +1101,42 @@ fun SettingsScreen(
 
                     // 导航栏版本切换 - Removed
 
+                    // Bitwarden 底部状态栏开关（实验）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                viewModel.updateBitwardenBottomStatusBarEnabled(
+                                    !settings.bitwardenBottomStatusBarEnabled
+                                )
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.bitwarden_bottom_status_bar_title),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.bitwarden_bottom_status_bar_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.bitwardenBottomStatusBarEnabled,
+                            onCheckedChange = { viewModel.updateBitwardenBottomStatusBarEnabled(it) }
+                        )
+                    }
 
                     // 减少动画设置
                     Row(

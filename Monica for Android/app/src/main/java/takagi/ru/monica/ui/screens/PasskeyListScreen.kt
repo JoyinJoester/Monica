@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
@@ -321,13 +322,26 @@ fun PasskeyListScreen(
         lastShownFailedPasskeyCount = failedPasskeyCount
     }
     
-    val isBitwardenDatabaseView = when (selectedCategoryFilter) {
+    // Passkeys keep pull-to-search; disable pull-to-sync on Bitwarden filters.
+    val isBitwardenDatabaseView = false && when (selectedCategoryFilter) {
         is UnifiedCategoryFilterSelection.BitwardenVaultFilter,
         is UnifiedCategoryFilterSelection.BitwardenFolderFilter,
         is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter,
         is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> true
         else -> false
     }
+    val selectedBitwardenVaultId = when (val filter = selectedCategoryFilter) {
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> filter.vaultId
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> filter.vaultId
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> filter.vaultId
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> filter.vaultId
+        else -> null
+    }
+    val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
+    val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
+        bitwardenSyncStatusByVault[vaultId]?.isRunning == true
+    } == true
 
     // 下拉搜索相关
     var currentOffset by remember { mutableFloatStateOf(0f) }
@@ -779,6 +793,22 @@ fun PasskeyListScreen(
                             contentDescription = stringResource(R.string.category),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    if (selectedBitwardenVaultId != null) {
+                        IconButton(
+                            onClick = {
+                                if (isTopBarSyncing) return@IconButton
+                                val vaultId = selectedBitwardenVaultId ?: return@IconButton
+                                bitwardenViewModel.requestManualSync(vaultId)
+                            },
+                            enabled = !isTopBarSyncing
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = stringResource(R.string.refresh),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     IconButton(onClick = { isSearchExpanded = true }) {
                         Icon(
@@ -1261,7 +1291,7 @@ fun PasskeyListScreen(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
-        onTargetSelected = { target ->
+        onTargetSelected = { target, _ ->
             val passkey = passkeyToMoveCategory ?: return@UnifiedMoveToCategoryBottomSheet
             scope.launch {
                 val updateResult = applyStorageTarget(passkey, target)
@@ -1293,7 +1323,7 @@ fun PasskeyListScreen(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
-        onTargetSelected = { target ->
+        onTargetSelected = { target, _ ->
             scope.launch {
                 val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
                 val movable = selectedItems.filter { it.boundPasswordId == null && it.syncStatus != "REFERENCE" }

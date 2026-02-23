@@ -604,6 +604,7 @@
     
     <string name="filter_monica">Monica</string>
     <string name="filter_bitwarden">Bitwarden</string>
+    <string name="move">移动</string>
     <string name="move_to_category">移动到分类</string>
     <string name="ledger_select_category">选择分类</string>
     <string name="filter_keepass">KeePass</string>
@@ -752,7 +753,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.25</string>
+    <string name="settings_version_number">V1.0.26</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -2094,6 +2095,13 @@
     <string name="sync_backup_import_export_low_freq">导入导出（低频）</string>
     <string name="extensions_password_field_customization_title">添加密码页面字段定制</string>
     <string name="extensions_password_field_customization_desc">自定义显示的字段卡片</string>
+    <string name="bitwarden_bottom_status_bar_title">Bitwarden 底部状态栏</string>
+    <string name="bitwarden_bottom_status_bar_description">在 Bitwarden 页面底部区域上方显示同步状态</string>
+    <string name="bitwarden_status_auth_required">需要重新登录</string>
+    <string name="bitwarden_status_wait_unlock">等待解锁后同步</string>
+    <string name="bitwarden_status_retrying">网络异常，稍后重试</string>
+    <string name="bitwarden_status_queued">同步排队中</string>
+    <string name="bitwarden_status_synced">已同步</string>
     <string name="target_account">目标账户</string>
     <string name="payment_platform_afdian">爱发电</string>
     <string name="password_field_customization_title">添加密码页面字段定制</string>

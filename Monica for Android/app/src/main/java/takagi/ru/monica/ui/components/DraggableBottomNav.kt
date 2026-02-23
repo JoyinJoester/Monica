@@ -78,6 +78,7 @@ fun DraggableBottomNavScaffold(
     modifier: Modifier = Modifier,
     peekHeight: Dp = 80.dp,
     expandedHeight: Dp = 320.dp,
+    statusIndicatorVisible: Boolean = false,
     floatingActionButton: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
@@ -90,8 +91,9 @@ fun DraggableBottomNavScaffold(
     val navBarExtraPadding = 6.dp
     
     // 实际高度（包含系统导航栏）
-    val actualPeekHeight = peekHeight + navBarPadding + navBarExtraPadding
-    val actualExpandedHeight = expandedHeight + navBarPadding + navBarExtraPadding
+    val indicatorSlotHeight = if (statusIndicatorVisible) 8.dp else 0.dp
+    val actualPeekHeight = peekHeight + indicatorSlotHeight + navBarPadding + navBarExtraPadding
+    val actualExpandedHeight = expandedHeight + indicatorSlotHeight + navBarPadding + navBarExtraPadding
     
     // 拖拽状态
     val maxOffset = with(density) { (actualExpandedHeight - actualPeekHeight).toPx() }
@@ -269,7 +271,7 @@ fun DraggableBottomNavScaffold(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 24.dp)
+                        .padding(top = if (statusIndicatorVisible) 30.dp else 24.dp)
                         .height(56.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
@@ -376,10 +378,28 @@ fun DraggableBottomNavScaffold(
                         onAdd = { performQuickAdd() },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 80.dp)
+                            .padding(top = if (statusIndicatorVisible) 88.dp else 80.dp)
                             .padding(horizontal = 16.dp)
                             .graphicsLayer { alpha = expansionProgress }
                     )
+                }
+
+                if (statusIndicatorVisible) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(top = 18.dp)
+                            .height(4.dp),
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        )
+                    }
                 }
                 
                 // 系统导航栏空间

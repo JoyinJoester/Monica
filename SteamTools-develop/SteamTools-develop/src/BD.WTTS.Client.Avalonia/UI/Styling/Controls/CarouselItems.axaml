@@ -1,0 +1,111 @@
+<Styles
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:generic="using:System.Collections.Generic"
+    xmlns:spp="https://steampp.net/ui"
+    xmlns:sys="using:System"
+    xmlns:ui="using:FluentAvalonia.UI.Controls"
+    x:CompileBindings="True">
+    <Design.PreviewWith>
+        <Border Padding="20">
+            <spp:CarouselItems>
+                <spp:CarouselItems.Items>
+                    <Border Background="Red" />
+                    <Border Background="Blue" />
+                    <Border Background="Black" />
+                    <Border Background="Yellow" />
+                </spp:CarouselItems.Items>
+            </spp:CarouselItems>
+        </Border>
+    </Design.PreviewWith>
+
+    <Style Selector="spp|CarouselItems">
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0"
+                    ClipToBounds="True"
+                    CornerRadius="8">
+                    <Grid RowDefinitions="*,5,Auto">
+                        <Carousel Name="CarouselControl" Classes="AnimeSlide">
+                            <Carousel.ItemTemplate>
+                                <DataTemplate DataType="sys:Object">
+                                    <ItemsControl ItemTemplate="{Binding $parent[spp:CarouselItems].ItemTemplate}" ItemsSource="{Binding}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <spp:FixedWrapPanel ItemsPerLine="{Binding $parent[spp:CarouselItems].ItemsPerPage}" Spacing="5" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </DataTemplate>
+                            </Carousel.ItemTemplate>
+                        </Carousel>
+                        <Button
+                            Name="Left"
+                            HorizontalAlignment="Left"
+                            Background="#80000000"
+                            Classes="action"
+                            IsVisible="False">
+                            <ui:SymbolIcon FontSize="18" Symbol="ChevronLeft" />
+                        </Button>
+                        <Button
+                            Name="Right"
+                            HorizontalAlignment="Right"
+                            Background="#80000000"
+                            Classes="action"
+                            IsVisible="False">
+                            <ui:SymbolIcon FontSize="18" Symbol="ChevronRight" />
+                        </Button>
+
+                        <Panel
+                            Grid.Row="2"
+                            Height="10"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom">
+                            <ItemsControl Name="Swiper" IsVisible="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DataTemplate.DataType>
+                                            <x:Type x:TypeArguments="x:Int32, x:String" TypeName="generic:KeyValuePair" />
+                                        </DataTemplate.DataType>
+                                        <Button
+                                            Padding="0"
+                                            Classes="Plain"
+                                            Command="{Binding $parent[spp:CarouselItems].CarouselBannerIndexCommand}"
+                                            CommandParameter="{Binding Key}">
+                                            <Ellipse
+                                                Name="IndexEllipse"
+                                                Width="10"
+                                                Height="10"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Fill="{Binding Value}"
+                                                Opacity="0.6"
+                                                StrokeThickness="0" />
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Panel>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+
+    <Style Selector="spp|CarouselItems /template/ Button.action">
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="64" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="White" />
+    </Style>
+</Styles>

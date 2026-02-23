@@ -181,7 +181,8 @@ fun SendScreen(
 
     LaunchedEffect(activeVault?.id, unlockState) {
         if (canCreateSend) {
-            bitwardenViewModel.loadSends(forceRemoteSync = true)
+            bitwardenViewModel.requestPageEnterAutoSync()
+            bitwardenViewModel.loadSends(forceRemoteSync = false)
         }
     }
 

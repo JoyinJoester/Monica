@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -44,7 +45,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +72,11 @@ sealed interface UnifiedMoveCategoryTarget {
     data class KeePassGroupTarget(val databaseId: Long, val groupPath: String) : UnifiedMoveCategoryTarget
 }
 
+enum class UnifiedMoveAction {
+    MOVE,
+    COPY
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnifiedMoveToCategoryBottomSheet(
@@ -81,13 +87,15 @@ fun UnifiedMoveToCategoryBottomSheet(
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
-    onTargetSelected: (UnifiedMoveCategoryTarget) -> Unit
+    allowCopy: Boolean = false,
+    onTargetSelected: (UnifiedMoveCategoryTarget, UnifiedMoveAction) -> Unit
 ) {
     if (!visible) return
 
-    var monicaExpanded = remember { androidx.compose.runtime.mutableStateOf(false) }
-    val bitwardenExpanded = remember { mutableStateMapOf<Long, Boolean>() }
-    val keepassExpanded = remember { mutableStateMapOf<Long, Boolean>() }
+    val monicaExpanded = remember { mutableStateOf(false) }
+    val selectedAction = remember { mutableStateOf(UnifiedMoveAction.MOVE) }
+    val bitwardenExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
+    val keepassExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
     val expandCollapseSpec = spring<IntSize>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMediumLow
@@ -114,9 +122,30 @@ fun UnifiedMoveToCategoryBottomSheet(
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = stringResource(R.string.move_to_category),
+                    text = if (selectedAction.value == UnifiedMoveAction.COPY) {
+                        stringResource(R.string.copy)
+                    } else {
+                        stringResource(R.string.move_to_category)
+                    },
                     style = MaterialTheme.typography.titleLarge
                 )
+            }
+            if (allowCopy) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedAction.value == UnifiedMoveAction.MOVE,
+                        onClick = { selectedAction.value = UnifiedMoveAction.MOVE },
+                        label = { Text(text = stringResource(R.string.move)) }
+                    )
+                    FilterChip(
+                        selected = selectedAction.value == UnifiedMoveAction.COPY,
+                        onClick = { selectedAction.value = UnifiedMoveAction.COPY },
+                        label = { Text(text = stringResource(R.string.copy)) }
+                    )
+                }
             }
 
             LazyColumn(
@@ -152,7 +181,12 @@ fun UnifiedMoveToCategoryBottomSheet(
                                     MoveTargetItem(
                                         title = stringResource(R.string.category_none),
                                         icon = Icons.Default.FolderOff,
-                                        onClick = { onTargetSelected(UnifiedMoveCategoryTarget.Uncategorized) }
+                                        onClick = {
+                                            onTargetSelected(
+                                                UnifiedMoveCategoryTarget.Uncategorized,
+                                                selectedAction.value
+                                            )
+                                        }
                                     )
                                 }
                                 categories.forEach { category ->
@@ -161,7 +195,10 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             title = category.name,
                                             icon = Icons.Default.Folder,
                                             onClick = {
-                                                onTargetSelected(UnifiedMoveCategoryTarget.MonicaCategory(category.id))
+                                                onTargetSelected(
+                                                    UnifiedMoveCategoryTarget.MonicaCategory(category.id),
+                                                    selectedAction.value
+                                                )
                                             }
                                         )
                                     }
@@ -175,7 +212,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                     item {
                         MoveSectionCard(title = stringResource(R.string.filter_bitwarden)) {
                             bitwardenVaults.forEach { vault ->
-                                val expanded = bitwardenExpanded[vault.id] ?: false
+                                val expanded = bitwardenExpanded.value[vault.id] ?: false
                                 val folders by (
                                     if (expanded) getBitwardenFolders(vault.id) else flowOf(emptyList())
                                 ).collectAsState(initial = emptyList())
@@ -184,7 +221,10 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         title = vault.email,
                                         icon = Icons.Default.CloudSync,
                                         onClick = {
-                                            onTargetSelected(UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id))
+                                            onTargetSelected(
+                                                UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id),
+                                                selectedAction.value
+                                            )
                                         },
                                         badge = if (vault.isDefault) {
                                             {
@@ -198,7 +238,13 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             null
                                         },
                                         menu = {
-                                            IconButton(onClick = { bitwardenExpanded[vault.id] = !expanded }) {
+                                            IconButton(
+                                                onClick = {
+                                                    bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
+                                                        this[vault.id] = !expanded
+                                                    }
+                                                }
+                                            ) {
                                                 Icon(
                                                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                                     contentDescription = null
@@ -225,7 +271,8 @@ fun UnifiedMoveToCategoryBottomSheet(
                                                                 UnifiedMoveCategoryTarget.BitwardenFolderTarget(
                                                                     vaultId = vault.id,
                                                                     folderId = folder.bitwardenFolderId
-                                                                )
+                                                                ),
+                                                                selectedAction.value
                                                             )
                                                         }
                                                     )
@@ -243,7 +290,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                     item {
                         MoveSectionCard(title = stringResource(R.string.local_keepass_database)) {
                             localKeePassDatabases.forEachIndexed { index, database ->
-                                val expanded = keepassExpanded[database.id] ?: false
+                                val expanded = keepassExpanded.value[database.id] ?: false
                                 val groups by (
                                     if (expanded) getKeePassGroups(database.id) else flowOf(emptyList())
                                 ).collectAsState(initial = emptyList())
@@ -252,7 +299,10 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         title = database.name,
                                         icon = Icons.Default.Key,
                                         onClick = {
-                                            onTargetSelected(UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id))
+                                            onTargetSelected(
+                                                UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id),
+                                                selectedAction.value
+                                            )
                                         },
                                         badge = {
                                             Text(
@@ -266,7 +316,13 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             )
                                         },
                                         menu = {
-                                            IconButton(onClick = { keepassExpanded[database.id] = !expanded }) {
+                                            IconButton(
+                                                onClick = {
+                                                    keepassExpanded.value = keepassExpanded.value.toMutableMap().apply {
+                                                        this[database.id] = !expanded
+                                                    }
+                                                }
+                                            ) {
                                                 Icon(
                                                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                                     contentDescription = null
@@ -293,7 +349,8 @@ fun UnifiedMoveToCategoryBottomSheet(
                                                                 UnifiedMoveCategoryTarget.KeePassGroupTarget(
                                                                     databaseId = database.id,
                                                                     groupPath = group.path
-                                                                )
+                                                                ),
+                                                                selectedAction.value
                                                             )
                                                         }
                                                     )

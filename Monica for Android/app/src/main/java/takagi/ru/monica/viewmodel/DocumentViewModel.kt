@@ -117,6 +117,7 @@ class DocumentViewModel(
         imagePaths: String = "",
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
+        keepassGroupPath: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null
     ) {
@@ -130,6 +131,7 @@ class DocumentViewModel(
                 isFavorite = isFavorite,
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
+                keepassGroupPath = keepassGroupPath,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",

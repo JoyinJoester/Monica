@@ -164,6 +164,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateBitwardenBottomStatusBarEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateBitwardenBottomStatusBarEnabled(enabled)
+        }
+    }
+
     fun updateCopyNextCodeWhenExpiring(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateCopyNextCodeWhenExpiring(enabled)

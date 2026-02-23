@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +51,7 @@ fun AddEditDocumentScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val bitwardenSyncViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val settingsManager = remember { SettingsManager(context) }
     
     var title by rememberSaveable { mutableStateOf("") }
@@ -143,6 +145,7 @@ fun AddEditDocumentScreen(
     val save: () -> Unit = saveAction@{
         if (isSaving || documentNumber.isBlank()) return@saveAction
         isSaving = true // 防止重复点击
+        val syncVaultId = bitwardenVaultId
 
         val documentData = DocumentData(
             documentNumber = documentNumber,
@@ -213,6 +216,7 @@ fun AddEditDocumentScreen(
                 )
             )
         }
+        syncVaultId?.let(bitwardenSyncViewModel::requestLocalMutationSync)
         onNavigateBack()
     }
     val toggleFavoriteAction: () -> Unit = {

@@ -68,7 +68,7 @@
     <string name="settings_clear_data_subtitle">删除本地所有验证器</string>
     
     <string name="settings_about_app">Monica Wear</string>
-    <string name="settings_version">版本 1.0.25</string>
+    <string name="settings_version">版本 1.0.26</string>
     <string name="settings_about_description">基于 Monica 的轻量版本\n专为小屏设备优化的 TOTP 验证器</string>
     
     <!-- 同步 -->

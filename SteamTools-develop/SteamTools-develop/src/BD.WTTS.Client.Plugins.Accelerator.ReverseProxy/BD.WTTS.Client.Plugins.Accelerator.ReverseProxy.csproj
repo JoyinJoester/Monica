@@ -1,0 +1,129 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<AssemblyName>Steam++.Accelerator</AssemblyName>
+		<OutputType>Exe</OutputType>
+		<AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
+		<RootNamespace>BD.WTTS</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<SelfContained>false</SelfContained>
+		<DefineConstants>APP_REVERSE_PROXY;NONE_UI;$(DefineConstants)</DefineConstants>
+		<ApplicationManifest>Properties\app.manifest</ApplicationManifest>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<ApplicationIcon Condition="'$(Configuration)'=='Release'">..\..\res\icons\app\v3\Icon.ico</ApplicationIcon>
+		<ApplicationIcon Condition="'$(Configuration)'=='Debug'">..\..\res\icons\app\v3\Icon.ico</ApplicationIcon>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="$([MSBuild]::IsOSPlatform('windows')) AND ($(RuntimeIdentifier.StartsWith('win-')) OR $(RuntimeIdentifier) == '')">
+		<DefineConstants>WINDOWS7_0_OR_GREATER;WINDOWS;$(DefineConstants)</DefineConstants>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Release'">
+		<AllowedReferenceRelatedFileExtensions>
+			<!-- Prevent default XML and PDB files copied to output in RELEASE. 
+           		 Only *.allowedextension files will be included, which doesn't exist in my case.
+       		-->
+			.allowedextension
+		</AllowedReferenceRelatedFileExtensions>
+		<DebugType>none</DebugType>
+		<DebugSymbols>false</DebugSymbols>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- ImplicitUsings -->
+		<Compile Include="..\ImplicitUsings.MessagePack.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Services.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.MSEX.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Nito.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Models.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Enums.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.NLog.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.AspNetCore.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- AppCenter -->
+		<Compile Include="..\VisualStudioAppCenterSDK.cs">
+			<LinkBase>Helpers</LinkBase>
+		</Compile>
+		<Compile Include="..\VisualStudioAppCenterSDK.AppSecret.cs">
+			<LinkBase>Helpers</LinkBase>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\BD.WTTS.Client\Constants\CertificateConstants.cs">
+			<LinkBase>Constants</LinkBase>
+		</Compile>
+		<Compile Include="..\BD.WTTS.Client\Services\Platform\IPlatformService.OS.Linux.Etc.Os_Release.cs">
+			<LinkBase>Services\Platform</LinkBase>
+		</Compile>
+		<Compile Include="..\BD.WTTS.Client\Services\Mvvm\LogConsoleService.Logger.cs">
+			<LinkBase>Services\Mvvm</LinkBase>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\BD.WTTS.Client.Plugins.Accelerator\Enums\ProxyMode.cs">
+			<LinkBase>Enums</LinkBase>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--<PackageReference Include="BD.Common" />
+		<PackageReference Include="BD.Common.Repositories.SQLitePCL" />-->
+		<ProjectReference Include="..\..\ref\Common\src\BD.Common.Repositories.SQLitePCL\BD.Common.Repositories.SQLitePCL.csproj" />
+		<ProjectReference Include="..\..\ref\Common\src\BD.Common\BD.Common.csproj" />
+		<PackageReference Include="NLog" />
+		<PackageReference Include="System.Linq.Async" />
+		<PackageReference Include="Ae.DNS.Client" />
+		<PackageReference Include="DNS" />
+		<PackageReference Include="DnsClient" />
+		<PackageReference Include="Yarp.ReverseProxy" />
+		<PackageReference Include="NLog.Web.AspNetCore" />
+		<!--<PackageReference Include="Aigio.Any.AppCenter" />
+		<PackageReference Include="Aigio.Any.AppCenter.Analytics" />
+		<PackageReference Include="Aigio.Any.AppCenter.Crashes" />-->
+		<PackageReference Include="System.Drawing.Common" />
+		<PackageReference Include="System.Runtime.Caching" />
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
+		<PackageReference Include="Utf8StringInterpolation" />
+	</ItemGroup>
+
+	<ItemGroup Condition="!$(DefineConstants.Contains('REMOVE_DNS_INTERCEPT')) AND $([MSBuild]::IsOSPlatform('windows')) AND ($(RuntimeIdentifier.StartsWith('win-')) OR $(RuntimeIdentifier) == '')">
+		<PackageReference Include="Aigio.WinDivertSharp" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\ref\WTTS.MicroServices.ClientSDK\src\BD.WTTS.MicroServices.Primitives.Models\BD.WTTS.MicroServices.Primitives.Models.csproj" />
+		<ProjectReference Include="..\BD.WTTS.Client.IPC\BD.WTTS.Client.IPC.csproj" />
+	</ItemGroup>
+
+	<Import Project="..\OSShuttingDownHelper\OSShuttingDownHelper.projitems" Label="Shared" />
+
+	<!-- 此项目不使用平台 TFM ！！！ -->
+	<Import Project="..\TFM_NETX.props" />
+
+</Project>

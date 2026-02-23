@@ -595,9 +595,21 @@ class BitwardenSyncService(
     ): Int = withContext(Dispatchers.IO) {
         val pendingOps = pendingOpDao.getRunnableOperationsByVault(vault.id)
         var processed = 0
+        if (pendingOps.isNotEmpty()) {
+            android.util.Log.i(
+                TAG,
+                "Processing ${pendingOps.size} pending operations for vault ${vault.id}"
+            )
+        }
         
         for (op in pendingOps) {
             try {
+                if (op.operationType == BitwardenPendingOperation.OP_DELETE) {
+                    android.util.Log.i(
+                        TAG,
+                        "Process delete op: vault=${vault.id}, itemType=${op.itemType}, entryId=${op.entryId}, cipherId=${op.bitwardenCipherId}"
+                    )
+                }
                 val success = when (op.operationType) {
                     BitwardenPendingOperation.OP_CREATE -> processCreateOperation(vault, op, accessToken, symmetricKey)
                     BitwardenPendingOperation.OP_UPDATE -> processUpdateOperation(vault, op, accessToken, symmetricKey)
@@ -609,8 +621,14 @@ class BitwardenSyncService(
                 if (success) {
                     pendingOpDao.markCompleted(op.id)
                     processed++
+                    if (op.operationType == BitwardenPendingOperation.OP_DELETE) {
+                        android.util.Log.i(TAG, "Delete op completed: opId=${op.id}, cipherId=${op.bitwardenCipherId}")
+                    }
                 } else {
                     pendingOpDao.updateStatus(op.id, BitwardenPendingOperation.STATUS_FAILED)
+                    if (op.operationType == BitwardenPendingOperation.OP_DELETE) {
+                        android.util.Log.w(TAG, "Delete op failed: opId=${op.id}, cipherId=${op.bitwardenCipherId}")
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Failed to process operation ${op.id}: ${e.message}")
@@ -633,7 +651,7 @@ class BitwardenSyncService(
     ): Boolean {
         val entryId = op.entryId ?: return false
         val entry = passwordEntryDao.getPasswordEntryById(entryId) ?: return false
-        return uploadLocalEntry(vault, entry, accessToken, symmetricKey)
+        return uploadLocalEntry(vault, entry, accessToken, symmetricKey).success
     }
     
     private suspend fun processUpdateOperation(
@@ -645,7 +663,7 @@ class BitwardenSyncService(
         val entryId = op.entryId ?: return false
         val entry = passwordEntryDao.getPasswordEntryById(entryId) ?: return false
         val cipherId = entry.bitwardenCipherId ?: return false
-        return updateRemoteCipher(vault, entry, cipherId, accessToken, symmetricKey)
+        return updateRemoteCipher(vault, entry, cipherId, accessToken, symmetricKey).success
     }
     
     private suspend fun processDeleteOperation(
@@ -684,6 +702,7 @@ class BitwardenSyncService(
         
         var uploaded = 0
         var failed = 0
+        var authRequiredFailures = 0
 
         if (entriesToUpload.isNotEmpty()) {
             android.util.Log.i(TAG, "Found ${entriesToUpload.size} password entries to upload")
@@ -691,15 +710,21 @@ class BitwardenSyncService(
 
         for (entry in entriesToUpload) {
             try {
-                val success = uploadLocalEntry(vault, entry, accessToken, symmetricKey)
-                if (success) {
+                val result = uploadLocalEntry(vault, entry, accessToken, symmetricKey)
+                if (result.success) {
                     uploaded++
                 } else {
                     failed++
+                    if (result.authRequired) {
+                        authRequiredFailures++
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Failed to upload entry ${entry.id}: ${e.message}")
                 failed++
+                if (isMdkUnavailableException(e)) {
+                    authRequiredFailures++
+                }
             }
         }
         
@@ -717,7 +742,11 @@ class BitwardenSyncService(
             TAG,
             "Upload complete: $uploaded uploaded, $failed failed (password + secure items + passkeys)"
         )
-        UploadResult.Success(uploaded = uploaded, failed = failed)
+        UploadResult.Success(
+            uploaded = uploaded,
+            failed = failed,
+            authRequiredFailures = authRequiredFailures
+        )
     }
 
     /**
@@ -737,6 +766,7 @@ class BitwardenSyncService(
 
         var uploaded = 0
         var failed = 0
+        var authRequiredFailures = 0
 
         if (modifiedEntries.isNotEmpty()) {
             android.util.Log.i(TAG, "Found ${modifiedEntries.size} modified password entries to upload")
@@ -749,15 +779,21 @@ class BitwardenSyncService(
                     failed++
                     continue
                 }
-                val success = updateRemoteCipher(vault, entry, cipherId, accessToken, symmetricKey)
-                if (success) {
+                val result = updateRemoteCipher(vault, entry, cipherId, accessToken, symmetricKey)
+                if (result.success) {
                     uploaded++
                 } else {
                     failed++
+                    if (result.authRequired) {
+                        authRequiredFailures++
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Failed to upload modified entry ${entry.id}: ${e.message}")
                 failed++
+                if (isMdkUnavailableException(e)) {
+                    authRequiredFailures++
+                }
             }
         }
 
@@ -767,7 +803,11 @@ class BitwardenSyncService(
         failed += secureResult.failed
 
         android.util.Log.i(TAG, "Modified upload complete: $uploaded uploaded, $failed failed")
-        UploadResult.Success(uploaded = uploaded, failed = failed)
+        UploadResult.Success(
+            uploaded = uploaded,
+            failed = failed,
+            authRequiredFailures = authRequiredFailures
+        )
     }
     
     /**
@@ -778,7 +818,7 @@ class BitwardenSyncService(
         entry: PasswordEntry,
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
-    ): Boolean {
+    ): UploadAttemptResult {
         try {
             // 构建加密的 Cipher 请求
             val createRequest = passwordEntryToCipherRequest(entry, symmetricKey)
@@ -791,10 +831,10 @@ class BitwardenSyncService(
             
             if (!response.isSuccessful) {
                 android.util.Log.e(TAG, "Create cipher failed: ${response.code()} ${response.message()}")
-                return false
+                return UploadAttemptResult(success = false)
             }
             
-            val createdCipher = response.body() ?: return false
+            val createdCipher = response.body() ?: return UploadAttemptResult(success = false)
             
             // 更新本地条目，添加服务器返回的 cipherId 和 revisionDate
             val updatedEntry = entry.copy(
@@ -806,10 +846,13 @@ class BitwardenSyncService(
             passwordEntryDao.update(updatedEntry)
             
             android.util.Log.d(TAG, "Successfully uploaded entry ${entry.id} as cipher ${createdCipher.id}")
-            return true
+            return UploadAttemptResult(success = true)
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Upload entry failed: ${e.message}", e)
-            return false
+            return UploadAttemptResult(
+                success = false,
+                authRequired = isMdkUnavailableException(e)
+            )
         }
     }
     
@@ -822,7 +865,7 @@ class BitwardenSyncService(
         cipherId: String,
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
-    ): Boolean {
+    ): UploadAttemptResult {
         try {
             val vaultApi = apiManager.getVaultApi(vault.apiUrl)
             val mergedFields = runCatching {
@@ -855,10 +898,10 @@ class BitwardenSyncService(
             
             if (!response.isSuccessful) {
                 android.util.Log.e(TAG, "Update cipher failed: ${response.code()}")
-                return false
+                return UploadAttemptResult(success = false)
             }
             
-            val updatedCipher = response.body() ?: return false
+            val updatedCipher = response.body() ?: return UploadAttemptResult(success = false)
             
             // 更新本地条目
             val updatedEntry = entry.copy(
@@ -868,11 +911,31 @@ class BitwardenSyncService(
             )
             passwordEntryDao.update(updatedEntry)
             
-            return true
+            return UploadAttemptResult(success = true)
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Update remote cipher failed: ${e.message}", e)
-            return false
+            return UploadAttemptResult(
+                success = false,
+                authRequired = isMdkUnavailableException(e)
+            )
         }
+    }
+
+    private data class UploadAttemptResult(
+        val success: Boolean,
+        val authRequired: Boolean = false
+    )
+
+    private fun isMdkUnavailableException(error: Throwable?): Boolean {
+        var current = error
+        while (current != null) {
+            val message = current.message?.lowercase().orEmpty()
+            if (message.contains("mdk not available")) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
     
     /**
@@ -1205,6 +1268,10 @@ sealed class CipherSyncResult {
 }
 
 sealed class UploadResult {
-    data class Success(val uploaded: Int, val failed: Int) : UploadResult()
+    data class Success(
+        val uploaded: Int,
+        val failed: Int,
+        val authRequiredFailures: Int = 0
+    ) : UploadResult()
     data class Error(val message: String) : UploadResult()
 }

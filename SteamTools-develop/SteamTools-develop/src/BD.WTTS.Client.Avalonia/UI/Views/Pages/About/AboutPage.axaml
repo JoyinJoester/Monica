@@ -1,0 +1,191 @@
+<UserControl
+    x:Class="BD.WTTS.UI.Views.Pages.AboutPage"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:s="https://steampp.net/services"
+    xmlns:spp="https://steampp.net/ui"
+    xmlns:ui="using:FluentAvalonia.UI.Controls"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    x:CompileBindings="True"
+    x:DataType="spp:AboutPageViewModel"
+    mc:Ignorable="d">
+    <StackPanel Spacing="{StaticResource SettingsSpacing}">
+        <TextBlock
+            Margin="0,0,0,5"
+            Text="{Binding Path=Res.About, Mode=OneWay, Source={x:Static s:ResourceService.Current}}"
+            Theme="{StaticResource SubtitleTextBlockStyle}" />
+
+        <spp:OptionsDisplayItem
+            Description="{Binding Copyright}"
+            Expands="True"
+            Header="{Binding AppName}"
+            IsExpanded="True">
+            <spp:OptionsDisplayItem.Icon>
+                <ui:ImageIcon PointerReleased="EasterEgg_PointerReleased" Source="avares://BD.WTTS.Client.Avalonia/UI/Assets/ApplicationIcon.ico" />
+            </spp:OptionsDisplayItem.Icon>
+            <spp:OptionsDisplayItem.ActionButton>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    Text="{Binding VersionDisplay}" />
+            </spp:OptionsDisplayItem.ActionButton>
+            <spp:OptionsDisplayItem.Content>
+                <StackPanel
+                    Margin="24,0,24,6"
+                    VerticalAlignment="Center"
+                    Orientation="Vertical"
+                    Spacing="6">
+                    <DockPanel Margin="0,-6,0,0" LastChildFill="False">
+                        <DockPanel
+                            Margin="12,10,0,10"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Cursor="Hand"
+                            Tapped="GPLv3_Tapped">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding Licensed}"
+                                Theme="{StaticResource CaptionTextBlockStyle}" />
+                            <Image
+                                Width="42"
+                                Height="21"
+                                Margin="4,0,0,0"
+                                Cursor="Hand"
+                                DockPanel.Dock="Right"
+                                Source="avares://BD.WTTS.Client.Avalonia/UI/Assets/Logos/gplv3-with-text-84x42.png"
+                                Tapped="GPLv3_Tapped"
+                                ToolTip.Tip="GNU General Public License (GPLv3) Free Software Free as in Freedom" />
+                        </DockPanel>
+                        <StackPanel
+                            Margin="0,0,-10,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            Spacing="0">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="Powered by"
+                                Theme="{StaticResource CaptionTextBlockStyle}" />
+                            <!--<Border
+                            Width="18"
+                            Height="18"
+                            Margin="0,0,2,0"
+                            Background="#512BD4">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="6"
+                                Foreground="White"
+                                Text=".NET"
+                                TextAlignment="Center" />
+                        </Border>-->
+                            <DockPanel
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Cursor="Hand"
+                                Tapped="Dotnet_Tapped"
+                                ToolTip.Tip="{Binding DotnetDesc, Mode=OneTime}">
+                                <Image
+                                    Width="18"
+                                    Height="18"
+                                    Margin="4,0,4,0"
+                                    Source="avares://BD.WTTS.Client.Avalonia/UI/Assets/Logos/dotnet-logo.png" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    DockPanel.Dock="Right"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding RuntimeVersion}"
+                                    Theme="{StaticResource CaptionTextBlockStyle}" />
+                            </DockPanel>
+                            <TextBlock
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="&amp;"
+                                Theme="{StaticResource CaptionTextBlockStyle}" />
+                            <DockPanel
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Cursor="Hand"
+                                Tapped="Avalonia_Tapped"
+                                ToolTip.Tip="{Binding AvaloniaDesc, Mode=OneTime}">
+                                <Image
+                                    Width="18"
+                                    Height="18"
+                                    Margin="1.5,0,1.5,0"
+                                    DockPanel.Dock="Left"
+                                    Source="avares://BD.WTTS.Client.Avalonia/UI/Assets/Logos/avaloniaui-logo.png" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    DockPanel.Dock="Right"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding AvaloniaVersion}"
+                                    Theme="{StaticResource CaptionTextBlockStyle}" />
+                            </DockPanel>
+                        </StackPanel>
+                    </DockPanel>
+                    <Border
+                        Height="1"
+                        Margin="-50,0"
+                        Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" />
+                    <TextBlock
+                        Margin="12,4,0,0"
+                        VerticalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="{Binding Path=Res.Link, Mode=OneWay, Source={x:Static s:ResourceService.Current}}" />
+                    <ItemsControl Margin="0,0,6,6" ItemsSource="{Binding Hyperlinks, Mode=OneTime}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="spp:HyperlinkModel">
+                                <Border MinWidth="166">
+                                    <Button
+                                        Command="{Binding Command, Mode=OneWay}"
+                                        Content="{Binding Text, Mode=OneWay}"
+                                        Cursor="Hand"
+                                        Theme="{StaticResource HyperlinkButton}" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border
+                        Height="1"
+                        Margin="-50,0"
+                        Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" />
+                    <TextBlock
+                        Margin="12,4,0,0"
+                        VerticalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        Text="{Binding Path=Res.OpenSourceLibrary, Mode=OneWay, Source={x:Static s:ResourceService.Current}}" />
+                    <ItemsControl Margin="0,0,6,6" ItemsSource="{Binding OSL, Mode=OneTime}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="spp:HyperlinkModel">
+                                <Border MinWidth="290">
+                                    <Button
+                                        Command="{Binding Command, Mode=OneWay}"
+                                        Content="{Binding Text, Mode=OneWay}"
+                                        Cursor="Hand"
+                                        Theme="{StaticResource HyperlinkButton}" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </spp:OptionsDisplayItem.Content>
+        </spp:OptionsDisplayItem>
+    </StackPanel>
+</UserControl>

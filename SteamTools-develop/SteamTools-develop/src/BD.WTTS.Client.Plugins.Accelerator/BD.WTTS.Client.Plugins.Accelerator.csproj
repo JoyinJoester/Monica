@@ -1,0 +1,166 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<RootNamespace>BD.WTTS</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<DefineConstants>WTTS_PLUGIN;WTTS_PLUGIN_ACCELERATOR;$(DefineConstants)</DefineConstants>
+		<!--<EnableDynamicLoading>true</EnableDynamicLoading>-->
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Remove="UI\Assets\accelerator.ico" />
+		<None Remove="UI\Assets\defaultBackground.png" />
+		<None Remove="UI\Assets\script.ico" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<AvaloniaResource Include="UI\Assets\accelerator.ico" />
+		<AvaloniaResource Include="UI\Assets\defaultBackground.png" />
+		<AvaloniaResource Include="UI\Assets\script.ico" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\AssemblyInfo.Xaml.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<!-- ImplicitUsings -->
+		<Compile Include="..\ImplicitUsings.MessagePack.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.JsonProperty.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.SQLite.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Repositories.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Services.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.ReactiveUI.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Models.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.UI.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.UI.ViewModels.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Settings.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.AutoMapper.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.WTTS.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.MSEX.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Nito.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.NLog.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+		<Compile Include="..\ImplicitUsings.Plugins.cs">
+			<LinkBase>Properties</LinkBase>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="ReactiveUI.Fody" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\BD.WTTS.Client\BD.WTTS.Client.csproj" />
+		<ProjectReference Include="..\BD.WTTS.Client.Avalonia\BD.WTTS.Client.Avalonia.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\BD.WTTS.Client.Plugins.Accelerator.ReverseProxy\Services\Certificate\ICertificateManager.cs">
+			<LinkBase>Services\Certificate</LinkBase>
+		</Compile>
+		<Compile Include="..\BD.WTTS.Client.Plugins.Accelerator.ReverseProxy\Services\Net\IDnsAnalysisService.Constants.cs">
+			<LinkBase>Services\Net</LinkBase>
+		</Compile>
+		<Compile Include="..\BD.WTTS.Client.Plugins.Accelerator.ReverseProxy\Services\IReverseProxyService.Constants.cs">
+			<LinkBase>Services</LinkBase>
+		</Compile>
+		<Compile Include="..\BD.WTTS.Client.Plugins.Accelerator.ReverseProxy\Services\IReverseProxyService.cs">
+			<LinkBase>Services</LinkBase>
+		</Compile>
+		<Compile Include="..\BD.WTTS.Client.Plugins.Accelerator.ReverseProxy\Enums\ExternalProxyType.cs">
+			<LinkBase>Enums</LinkBase>
+		</Compile>
+		<Compile Include="..\BD.WTTS.Client.Plugins.Accelerator.ReverseProxy\Models\FlowStatistics.cs">
+			<LinkBase>Models</LinkBase>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' OR $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos' OR $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' OR $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == ''">
+		<!-- Desktop Only -->
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Update="Properties\Resources.Designer.cs">
+			<DesignTime>True</DesignTime>
+			<AutoGen>True</AutoGen>
+			<DependentUpon>Resources.resx</DependentUpon>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Update="Properties\Resources.resx">
+			<Generator>ResXFileCodeGenerator</Generator>
+			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup Condition="!$(DefineConstants.Contains('REMOVE_DNS_INTERCEPT')) AND $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+		<Compile Update="Properties\WinDivertResource.Designer.cs">
+			<DesignTime>True</DesignTime>
+			<AutoGen>True</AutoGen>
+			<DependentUpon>WinDivertResource.resx</DependentUpon>
+		</Compile>
+		<EmbeddedResource Update="Properties\WinDivertResource.resx">
+			<Generator>ResXFileCodeGenerator</Generator>
+			<LastGenOutput>WinDivertResource.Designer.cs</LastGenOutput>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup Condition="$(DefineConstants.Contains('REMOVE_DNS_INTERCEPT')) OR $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'windows'">
+		<Compile Remove="Properties\WinDivertResource.Designer.cs" />
+		<EmbeddedResource Remove="Properties\WinDivertResource.resx" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="$(MSBuildProjectDirectory)\..\XunYouSDK\**\*.cs">
+			<LinkBase>XunYouSDK</LinkBase>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup Condition=" Exists('$(MSBuildProjectDirectory)\..\..\..\XunYouSDK\src\Sample.ConsoleApp\XunYouSDK\XunYouSDK.AppId.cs') ">
+		<Compile Remove="$(MSBuildProjectDirectory)\..\XunYouSDK\XunYouSDK.AppId.cs" />
+		<Compile Include="$(MSBuildProjectDirectory)\..\..\..\XunYouSDK\src\Sample.ConsoleApp\XunYouSDK\XunYouSDK.AppId.cs">
+			<LinkBase>XunYouSDK</LinkBase>
+		</Compile>
+		<!--<None Condition=" $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' AND Exists('$(MSBuildProjectDirectory)\..\..\..\XunYouSDK\src\Sample.ConsoleApp\xunyoucall.dll') " Include="$(MSBuildProjectDirectory)\..\..\..\XunYouSDK\src\Sample.ConsoleApp\xunyoucall.dll">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>-->
+	</ItemGroup>
+
+	<Import Project="..\TFM_NETX_WITH_DESKTOP.props" />
+
+	<ItemGroup>
+		<UpToDateCheckInput Remove="UI\Views\Pages\AcceleratorPage2.axaml" />
+	</ItemGroup>
+
+</Project>

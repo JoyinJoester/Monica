@@ -804,7 +804,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.25</string>
+    <string name="settings_version_number">V1.0.26</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -958,6 +958,13 @@
     <string name="experimental_features_section">Experimental Features</string>
     <string name="hide_fab_on_scroll_title">Hide FAB on scroll</string>
     <string name="hide_fab_on_scroll_description">Hide the floating action button when scrolling down</string>
+    <string name="bitwarden_bottom_status_bar_title">Bitwarden bottom status bar</string>
+    <string name="bitwarden_bottom_status_bar_description">Show sync state above the bottom area on Bitwarden pages</string>
+    <string name="bitwarden_status_auth_required">Re-login required</string>
+    <string name="bitwarden_status_wait_unlock">Waiting for unlock</string>
+    <string name="bitwarden_status_retrying">Network issue, retrying soon</string>
+    <string name="bitwarden_status_queued">Sync queued</string>
+    <string name="bitwarden_status_synced">Synced</string>
     
     <!-- Validator Vibration -->
     <string name="validator_vibration">Validator Vibration</string>
@@ -1057,6 +1064,7 @@
     <string name="selected_items">%d items selected</string>
     <string name="exit_selection_mode">Exit selection mode</string>
     <string name="select_all">Select all</string>
+    <string name="move">Move</string>
     <string name="move_to_category">Move to category</string>
     <string name="batch_delete">Batch delete</string>
     <string name="batch_delete_passwords_title">Batch Delete Passwords</string>

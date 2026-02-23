@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -58,6 +59,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Velocity
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -79,6 +81,7 @@ import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
+import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.security.SecurityManager
@@ -174,13 +177,26 @@ fun CardWalletScreen(
     var verifyDeleteIds by remember { mutableStateOf(setOf<Long>()) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    val isBitwardenDatabaseView = when (selectedCategoryFilter) {
+    // Card wallet keeps pull-to-search; disable pull-to-sync on Bitwarden filters.
+    val isBitwardenDatabaseView = false && when (selectedCategoryFilter) {
         is UnifiedCategoryFilterSelection.BitwardenVaultFilter,
         is UnifiedCategoryFilterSelection.BitwardenFolderFilter,
         is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter,
         is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> true
         else -> false
     }
+    val selectedBitwardenVaultId = when (val filter = selectedCategoryFilter) {
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> filter.vaultId
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> filter.vaultId
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> filter.vaultId
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> filter.vaultId
+        else -> null
+    }
+    val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
+    val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
+        bitwardenSyncStatusByVault[vaultId]?.isRunning == true
+    } == true
     var currentOffset by remember { mutableStateOf(0f) }
     val searchTriggerDistance = remember(density, isBitwardenDatabaseView) {
         with(density) { (if (isBitwardenDatabaseView) 40.dp else 72.dp).toPx() }
@@ -230,6 +246,12 @@ fun CardWalletScreen(
             scope = SettingsManager.CategoryFilterScope.CARD_WALLET,
             state = encodeCardWalletCategoryFilter(selectedCategoryFilter)
         )
+    }
+
+    LaunchedEffect(selectedBitwardenVaultId) {
+        selectedBitwardenVaultId?.let { vaultId ->
+            bitwardenViewModel.requestPageEnterAutoSync(vaultId)
+        }
     }
 
     suspend fun resolveSyncableVaultId(): Long? {
@@ -467,13 +489,16 @@ fun CardWalletScreen(
     }
 
     val performDelete: (Set<Long>) -> Unit = { ids ->
-        allItems.filter { it.id in ids }.forEach { item ->
+        val itemsToDelete = allItems.filter { it.id in ids }
+        val affectedVaultIds = itemsToDelete.mapNotNull { it.bitwardenVaultId }.toSet()
+        itemsToDelete.forEach { item ->
             when (item.itemType) {
                 ItemType.BANK_CARD -> bankCardViewModel.deleteCard(item.id)
                 ItemType.DOCUMENT -> documentViewModel.deleteDocument(item.id)
                 else -> Unit
             }
         }
+        affectedVaultIds.forEach(bitwardenViewModel::requestLocalMutationSync)
         isSelectionMode = false
         selectedIds = emptySet()
     }
@@ -490,7 +515,7 @@ fun CardWalletScreen(
         showVerifyDialog = true
     }
 
-    fun performBatchMove(target: UnifiedMoveCategoryTarget) {
+    fun performBatchMove(target: UnifiedMoveCategoryTarget, action: UnifiedMoveAction) {
         val targetCategoryId: Long? = when (target) {
             UnifiedMoveCategoryTarget.Uncategorized -> null
             is UnifiedMoveCategoryTarget.MonicaCategory -> target.categoryId
@@ -517,8 +542,38 @@ fun CardWalletScreen(
 
         val selectedItems = allItems.filter { selectedIds.contains(it.id) }
         selectedItems.forEach { item ->
-            when (item.itemType) {
-                ItemType.BANK_CARD -> {
+            when {
+                action == UnifiedMoveAction.COPY && item.itemType == ItemType.BANK_CARD -> {
+                    val cardData = bankCardViewModel.parseCardData(item.itemData) ?: return@forEach
+                    bankCardViewModel.addCard(
+                        title = item.title,
+                        cardData = cardData,
+                        notes = item.notes,
+                        isFavorite = item.isFavorite,
+                        imagePaths = item.imagePaths,
+                        categoryId = targetCategoryId,
+                        keepassDatabaseId = targetKeepassDatabaseId,
+                        keepassGroupPath = targetKeepassGroupPath,
+                        bitwardenVaultId = targetBitwardenVaultId,
+                        bitwardenFolderId = targetBitwardenFolderId
+                    )
+                }
+                action == UnifiedMoveAction.COPY && item.itemType == ItemType.DOCUMENT -> {
+                    val documentData = documentViewModel.parseDocumentData(item.itemData) ?: return@forEach
+                    documentViewModel.addDocument(
+                        title = item.title,
+                        documentData = documentData,
+                        notes = item.notes,
+                        isFavorite = item.isFavorite,
+                        imagePaths = item.imagePaths,
+                        categoryId = targetCategoryId,
+                        keepassDatabaseId = targetKeepassDatabaseId,
+                        keepassGroupPath = targetKeepassGroupPath,
+                        bitwardenVaultId = targetBitwardenVaultId,
+                        bitwardenFolderId = targetBitwardenFolderId
+                    )
+                }
+                item.itemType == ItemType.BANK_CARD -> {
                     bankCardViewModel.moveCardToStorage(
                         id = item.id,
                         categoryId = targetCategoryId,
@@ -528,7 +583,7 @@ fun CardWalletScreen(
                         bitwardenFolderId = targetBitwardenFolderId
                     )
                 }
-                ItemType.DOCUMENT -> {
+                item.itemType == ItemType.DOCUMENT -> {
                     documentViewModel.moveDocumentToStorage(
                         id = item.id,
                         categoryId = targetCategoryId,
@@ -538,9 +593,13 @@ fun CardWalletScreen(
                         bitwardenFolderId = targetBitwardenFolderId
                     )
                 }
-                else -> Unit
             }
         }
+        val affectedVaultIds = buildSet {
+            selectedItems.mapNotNullTo(this) { it.bitwardenVaultId }
+            targetBitwardenVaultId?.let { add(it) }
+        }
+        affectedVaultIds.forEach(bitwardenViewModel::requestLocalMutationSync)
 
         android.widget.Toast.makeText(
             context,
@@ -732,6 +791,21 @@ fun CardWalletScreen(
                                 showTypeMenu = false
                                 onTabSelected(CardWalletTab.DOCUMENTS)
                             }
+                        )
+                    }
+                }
+                if (selectedBitwardenVaultId != null) {
+                    IconButton(
+                        onClick = {
+                            if (isTopBarSyncing) return@IconButton
+                            val vaultId = selectedBitwardenVaultId ?: return@IconButton
+                            bitwardenViewModel.requestManualSync(vaultId)
+                        },
+                        enabled = !isTopBarSyncing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = stringResource(R.string.refresh)
                         )
                     }
                 }
@@ -1111,6 +1185,7 @@ fun CardWalletScreen(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
+        allowCopy = true,
         onTargetSelected = ::performBatchMove
     )
 }

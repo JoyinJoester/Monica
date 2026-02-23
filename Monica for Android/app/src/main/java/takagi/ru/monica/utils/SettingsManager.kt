@@ -67,6 +67,7 @@ class SettingsManager(private val context: Context) {
         private val VALIDATOR_UNIFIED_PROGRESS_BAR_KEY = stringPreferencesKey("validator_unified_progress_bar")
         private val VALIDATOR_SMOOTH_PROGRESS_KEY = booleanPreferencesKey("validator_smooth_progress")
         private val VALIDATOR_VIBRATION_ENABLED_KEY = booleanPreferencesKey("validator_vibration_enabled")
+        private val BITWARDEN_BOTTOM_STATUS_BAR_ENABLED_KEY = booleanPreferencesKey("bitwarden_bottom_status_bar_enabled")
         private val COPY_NEXT_CODE_WHEN_EXPIRING_KEY = booleanPreferencesKey("copy_next_code_when_expiring")
         private val NOTIFICATION_VALIDATOR_ENABLED_KEY = booleanPreferencesKey("notification_validator_enabled")
         private val NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY = booleanPreferencesKey("notification_validator_auto_match")
@@ -199,6 +200,7 @@ class SettingsManager(private val context: Context) {
             validatorSmoothProgress = preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] ?: true,
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
             hideFabOnScroll = preferences[HIDE_FAB_ON_SCROLL_KEY] ?: false,
+            bitwardenBottomStatusBarEnabled = preferences[BITWARDEN_BOTTOM_STATUS_BAR_ENABLED_KEY] ?: false,
             copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
             notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
             notificationValidatorAutoMatch = preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] ?: false,
@@ -358,6 +360,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateValidatorVibrationEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateBitwardenBottomStatusBarEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BITWARDEN_BOTTOM_STATUS_BAR_ENABLED_KEY] = enabled
         }
     }
 

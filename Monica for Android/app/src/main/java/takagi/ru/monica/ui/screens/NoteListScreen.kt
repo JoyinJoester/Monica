@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
@@ -83,16 +84,19 @@ import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
+import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import takagi.ru.monica.data.model.NoteData
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
 import takagi.ru.monica.util.VibrationPatterns
 import takagi.ru.monica.utils.SavedCategoryFilterState
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -211,13 +215,26 @@ fun NoteListScreen(
         is NoteCategoryFilter.KeePassDatabaseStarred -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_starred)}"
         is NoteCategoryFilter.KeePassDatabaseUncategorized -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_uncategorized)}"
     }
-    val isBitwardenDatabaseView = when (selectedCategoryFilter) {
+    // Notes keep pull-to-search; disable pull-to-sync on Bitwarden filters.
+    val isBitwardenDatabaseView = false && when (selectedCategoryFilter) {
         is NoteCategoryFilter.BitwardenVault,
         is NoteCategoryFilter.BitwardenFolderFilter,
         is NoteCategoryFilter.BitwardenVaultStarred,
         is NoteCategoryFilter.BitwardenVaultUncategorized -> true
         else -> false
     }
+    val selectedBitwardenVaultId = when (val filter = selectedCategoryFilter) {
+        is NoteCategoryFilter.BitwardenVault -> filter.vaultId
+        is NoteCategoryFilter.BitwardenFolderFilter -> filter.vaultId
+        is NoteCategoryFilter.BitwardenVaultStarred -> filter.vaultId
+        is NoteCategoryFilter.BitwardenVaultUncategorized -> filter.vaultId
+        else -> null
+    }
+    val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
+    val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
+        bitwardenSyncStatusByVault[vaultId]?.isRunning == true
+    } == true
     
     // 过滤笔记
     val filteredNotes = remember(notes, searchQuery, selectedCategoryFilter) {
@@ -270,7 +287,7 @@ fun NoteListScreen(
         passwordError = false
     }
 
-    fun performBatchMove(target: UnifiedMoveCategoryTarget) {
+    fun performBatchMove(target: UnifiedMoveCategoryTarget, action: UnifiedMoveAction) {
         scope.launch {
             val selectedItems = notes.filter { selectedNoteIds.contains(it.id) }
             var movedCount = 0
@@ -305,15 +322,32 @@ fun NoteListScreen(
                     else -> null
                 }
 
-                val moved = viewModel.moveNoteToStorage(
-                    item = item,
-                    categoryId = targetCategoryId,
-                    keepassDatabaseId = targetKeepassDatabaseId,
-                    keepassGroupPath = targetKeepassGroupPath,
-                    bitwardenVaultId = targetBitwardenVaultId,
-                    bitwardenFolderId = targetBitwardenFolderId
-                )
-                if (moved) movedCount++ else failedCount++
+                if (action == UnifiedMoveAction.COPY) {
+                    val noteData = runCatching { Json.decodeFromString<NoteData>(item.itemData) }.getOrNull()
+                    viewModel.addNote(
+                        content = noteData?.content ?: item.notes,
+                        title = item.title,
+                        tags = noteData?.tags ?: emptyList(),
+                        isFavorite = item.isFavorite,
+                        categoryId = targetCategoryId,
+                        imagePaths = item.imagePaths,
+                        keepassDatabaseId = targetKeepassDatabaseId,
+                        keepassGroupPath = targetKeepassGroupPath,
+                        bitwardenVaultId = targetBitwardenVaultId,
+                        bitwardenFolderId = targetBitwardenFolderId
+                    )
+                    movedCount++
+                } else {
+                    val moved = viewModel.moveNoteToStorage(
+                        item = item,
+                        categoryId = targetCategoryId,
+                        keepassDatabaseId = targetKeepassDatabaseId,
+                        keepassGroupPath = targetKeepassGroupPath,
+                        bitwardenVaultId = targetBitwardenVaultId,
+                        bitwardenFolderId = targetBitwardenFolderId
+                    )
+                    if (moved) movedCount++ else failedCount++
+                }
             }
 
             val baseMessage = context.getString(R.string.selected_items, movedCount)
@@ -356,6 +390,22 @@ fun NoteListScreen(
                             },
                             tint = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                    if (selectedBitwardenVaultId != null) {
+                        IconButton(
+                            onClick = {
+                                if (isTopBarSyncing) return@IconButton
+                                val vaultId = selectedBitwardenVaultId ?: return@IconButton
+                                bitwardenViewModel.requestManualSync(vaultId)
+                            },
+                            enabled = !isTopBarSyncing
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = stringResource(R.string.refresh),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                     // 搜索按钮
                     IconButton(onClick = { isSearchExpanded = true }) {
@@ -641,6 +691,7 @@ fun NoteListScreen(
             bitwardenVaults = bitwardenVaults,
             getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
             getKeePassGroups = getKeePassGroups,
+            allowCopy = true,
             onTargetSelected = ::performBatchMove
         )
 

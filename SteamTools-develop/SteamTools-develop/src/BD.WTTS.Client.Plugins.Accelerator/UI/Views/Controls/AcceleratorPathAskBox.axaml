@@ -1,0 +1,66 @@
+<UserControl
+    x:Class="BD.WTTS.UI.Views.Controls.AcceleratorPathAskBox"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:i="using:Avalonia.Xaml.Interactivity"
+    xmlns:ia="using:Avalonia.Xaml.Interactions.Core"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ms="https://steampp.net/settings"
+    xmlns:spp="https://steampp.net/ui"
+    xmlns:ui="using:FluentAvalonia.UI.Controls"
+    MinWidth="380"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+    <StackPanel Spacing="15">
+        <TextBlock
+            HorizontalAlignment="Center"
+            FontSize="21"
+            TextAlignment="Center">
+            <Run Text="下载 Watt加速器" />
+            <LineBreak />
+            <Run Text="拒绝游戏延迟，提高稳定性" />
+        </TextBlock>
+
+        <ui:SettingsExpander
+            x:Name="PathSelect"
+            Description="{Binding Source={x:Static ms:GameAcceleratorSettings.WattAcceleratorDirPath}, Path=Value}"
+            Header="安装路径"
+            IsClickEnabled="True"
+            IsVisible="False">
+            <ui:SettingsExpander.IconSource>
+                <ui:FontIconSource FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE188;" />
+            </ui:SettingsExpander.IconSource>
+            <ui:SettingsExpander.Footer>
+                <Button Click="SelectWattAcceleratorInstallPath" Content="选择路径" />
+            </ui:SettingsExpander.Footer>
+        </ui:SettingsExpander>
+
+        <!--<TextBlock Text="需要下载 Watt 加速器插件才可使用，确定要下载吗?" />-->
+
+        <Panel>
+            <Button
+                Margin="0,15"
+                Padding="20,10"
+                HorizontalAlignment="Center"
+                Classes="TransparentAccent"
+                Click="OKButton_Click"
+                Content="立即下载"
+                FontSize="14" />
+
+            <Button
+                Margin="10,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Click="CustomInstallButton_Click"
+                Theme="{StaticResource TransparentButton}">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <TextBlock Text="自定义安装" />
+                    <ui:FontIcon Glyph="&#xE70D;" IsVisible="{Binding !#PathSelect.IsVisible}" />
+                    <ui:FontIcon Glyph="&#xE70E;" IsVisible="{Binding #PathSelect.IsVisible}" />
+                </StackPanel>
+            </Button>
+        </Panel>
+    </StackPanel>
+</UserControl>

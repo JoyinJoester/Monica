@@ -1,0 +1,45 @@
+<Window
+    x:Class="BD.WTTS.UI.Views.Windows.ContentWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:spp="https://steampp.net/ui"
+    xmlns:ui="using:FluentAvalonia.UI.Controls"
+    xmlns:uip="using:FluentAvalonia.UI.Controls.Primitives"
+    xmlns:wnd="using:FluentAvalonia.UI.Windowing"
+    Title="{Binding Title}"
+    Width="{Binding Width}"
+    Height="{Binding Height}"
+    MaxWidth="{Binding MaxWidth}"
+    MaxHeight="{Binding MaxHeight}"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    x:CompileBindings="True"
+    x:DataType="spp:ContentWindowViewModel"
+    WindowStartupLocation="CenterScreen"
+    mc:Ignorable="d">
+    <Grid RowDefinitions="Auto, *">
+        <spp:TitleBar Name="TitleBarHost">
+            <spp:TitleBar.ActionContent>
+                111
+            </spp:TitleBar.ActionContent>
+        </spp:TitleBar>
+        <ContentControl
+            Name="ViewContent"
+            Grid.Row="1"
+            Content="{Binding PageViewModel}">
+            <ContentControl.DataTemplates>
+                <DataTemplate DataType="spp:AboutPageViewModel">
+                    <spp:AboutPage />
+                </DataTemplate>
+                <DataTemplate DataType="spp:SettingsPageViewModel">
+                    <spp:SettingsPage />
+                </DataTemplate>
+                <DataTemplate DataType="spp:DebugPageViewModel">
+                    <spp:DebugPage />
+                </DataTemplate>
+            </ContentControl.DataTemplates>
+        </ContentControl>
+    </Grid>
+</Window>

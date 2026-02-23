@@ -1,0 +1,48 @@
+[submodule "ref/DirectoryPackages"]
+	path = ref/DirectoryPackages
+	url = https://github.com/BeyondDimension/DirectoryPackages.git
+[submodule "ref/ArchiSteamFarm"]
+	path = ref/ArchiSteamFarm
+	url = https://github.com/BeyondDimension/ArchiSteamFarm.git
+[submodule "ref/Avalonia.Image2"]
+	path = ref/Avalonia.Image2
+	url = https://github.com/BeyondDimension/Avalonia.Image2.git
+[submodule "ref/Gameloop.Vdf"]
+	path = ref/Gameloop.Vdf
+	url = https://github.com/BeyondDimension/Gameloop.Vdf.git
+[submodule "ref/Steam4NET"]
+	path = ref/Steam4NET
+	url = https://github.com/BeyondDimension/Steam4NET.git
+[submodule "ref/Titanium-Web-Proxy"]
+	path = ref/Titanium-Web-Proxy
+	url = https://github.com/BeyondDimension/Titanium-Web-Proxy.git
+[submodule "ref/SteamAchievementManager"]
+	path = ref/SteamAchievementManager
+	url = https://github.com/BeyondDimension/SteamAchievementManager.git
+[submodule "ref/SteamClient"]
+	path = ref/SteamClient
+	url = https://github.com/BeyondDimension/SteamClient
+[submodule "ref/dotnet-packaging"]
+	path = ref/dotnet-packaging
+	url = https://github.com/quamotion/dotnet-packaging.git
+[submodule "ref/WTTS.MicroServices.ClientSDK"]
+	path = ref/WTTS.MicroServices.ClientSDK
+	url = https://github.com/BeyondDimension/WTTS.MicroServices.ClientSDK.git
+[submodule "ref/Common"]
+	path = ref/Common
+	url = https://github.com/BeyondDimension/Common.git
+[submodule "ref/WinAuth"]
+	path = ref/WinAuth
+	url = https://github.com/BeyondDimension/WinAuth.git
+[submodule "ref/Facepunch.Steamworks"]
+	path = ref/Facepunch.Steamworks
+	url = https://github.com/BeyondDimension/Facepunch.Steamworks.git
+[submodule "ref/appcenter-sdk-dotnet"]
+	path = ref/appcenter-sdk-dotnet
+	url = https://github.com/BeyondDimension/appcenter-sdk-dotnet.git
+[submodule "ref/Fusillade"]
+	path = ref/Fusillade
+	url = https://github.com/reactiveui/Fusillade
+[submodule "ref/Avalonia8"]
+	path = ref/Avalonia8
+	url = https://github.com/BeyondDimension/Avalonia8
