@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "BD.WTTS.Client.Plugins.Accelerator.ReverseProxy": {
-      "commandName": "Project",
-      "commandLineArgs": "testpipe"
-    }
-  }
-}

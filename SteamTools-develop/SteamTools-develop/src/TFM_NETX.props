@@ -1,5 +1,0 @@
-<Project>
-	<PropertyGroup>
-		<TargetFrameworks>net$(DotNet_Version)</TargetFrameworks>
-	</PropertyGroup>
-</Project>
