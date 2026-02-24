@@ -55,7 +55,7 @@ object AutofillPickerLauncher {
         interactionIdentifierAliases: List<String> = emptyList(),
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
-        val rawFillTargets = credentialTargetsOverride
+        val overrideTargets = credentialTargetsOverride
             ?.filter { item ->
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
                     item.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
@@ -63,8 +63,9 @@ object AutofillPickerLauncher {
                     item.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
                     item.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
             }
-            ?.ifEmpty { null }
-            ?: selectCredentialFillTargets(parsedStructure)
+            .orEmpty()
+        val parserTargets = selectCredentialFillTargets(parsedStructure)
+        val rawFillTargets = (overrideTargets + parserTargets)
         val fillTargets = normalizeCredentialTargetsById(rawFillTargets)
 
         if (fillTargets.isEmpty()) {
@@ -72,7 +73,10 @@ object AutofillPickerLauncher {
             return responseBuilder.build()
         }
 
-        android.util.Log.d("AutofillPicker", "Creating direct list response, mode=$entryMode")
+        android.util.Log.d(
+            "AutofillPicker",
+            "Creating direct list response, mode=$entryMode, overrideTargets=${overrideTargets.size}, parserTargets=${parserTargets.size}, mergedTargets=${fillTargets.size}"
+        )
 
         var addedLastFilledDataset = false
         var lastFilledCanStandAlone = false
@@ -133,11 +137,7 @@ object AutofillPickerLauncher {
 
                 val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
 
-                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-                } else {
-                    PendingIntent.FLAG_UPDATE_CURRENT
-                }
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
                 val requestCode = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
                 val pendingIntent = PendingIntent.getActivity(context, requestCode, pickerIntent, flags)

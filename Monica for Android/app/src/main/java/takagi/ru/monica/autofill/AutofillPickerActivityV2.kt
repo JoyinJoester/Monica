@@ -11,6 +11,7 @@ import android.service.autofill.FillResponse
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
+import android.widget.RemoteViews
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -33,6 +34,7 @@ import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.unit.dp
 import kotlinx.parcelize.Parcelize
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill.core.AutofillLogger
 import takagi.ru.monica.autofill.ui.*
 import takagi.ru.monica.autofill.utils.SmartCopyNotificationHelper
 import takagi.ru.monica.data.LocalKeePassDatabase
@@ -139,6 +141,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState) // BaseMonicaActivity 已调用 enableEdgeToEdge()
+        AutofillLogger.initialize(applicationContext)
+        AutofillLogger.i(
+            "PICKER",
+            "Picker opened: saveMode=${args.isSaveMode}, responseAuth=${args.responseAuthMode}, ids=${args.autofillIds?.size ?: 0}, hints=${args.autofillHints?.size ?: 0}"
+        )
         
         val database = PasswordDatabase.getDatabase(applicationContext)
         val repository = PasswordRepository(database.passwordEntryDao())
@@ -276,8 +283,19 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             finish()
             return
         }
-        
-        val datasetBuilder = Dataset.Builder()
+
+        val cardTitle = password.title.ifBlank {
+            args.webDomain?.takeIf { it.isNotBlank() }
+                ?: args.applicationId?.takeIf { it.isNotBlank() }
+                ?: getString(R.string.tile_autofill_label)
+        }
+        val cardSubtitle = accountValue.ifBlank { getString(R.string.autofill_open_picker) }
+        val selectedPresentation = RemoteViews(packageName, R.layout.autofill_manual_card_v2).apply {
+            setTextViewText(R.id.text_title, cardTitle)
+            setTextViewText(R.id.text_username, cardSubtitle)
+            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
+        }
+        val datasetBuilder = Dataset.Builder(selectedPresentation)
 
         val hints = args.autofillHints
         val hasUsernameHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name) == true
@@ -299,7 +317,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 else -> null
             }
             if (value != null) {
-                datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                datasetBuilder.setValue(autofillId, AutofillValue.forText(value), selectedPresentation)
                 filledCount++
             }
         }
@@ -325,7 +343,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     else -> null
                 }
                 if (!fallbackValue.isNullOrBlank()) {
-                    datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
+                    datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue), selectedPresentation)
                     filledCount++
                 }
             }
@@ -337,6 +355,16 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             finish()
             return
         }
+
+        android.util.Log.i(
+            "AutofillPickerV2",
+            "Autofill auth result prepared: filledCount=$filledCount, ids=${autofillIds.size}, " +
+                "hints=${hints?.joinToString(",") ?: "none"}, passwordId=${password.id}"
+        )
+        AutofillLogger.i(
+            "PICKER",
+            "Auth result prepared: filled=$filledCount, ids=${autofillIds.size}, passwordId=${password.id}, hints=${hints?.joinToString(",") ?: "none"}"
+        )
         
         val dataset = datasetBuilder.build()
         val authResult: Parcelable = if (args.responseAuthMode) {
@@ -356,32 +384,44 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         rememberLastFilledCredential(password.id)
         rememberLearnedFieldSignature()
         
+        android.util.Log.i(
+            "AutofillPickerV2",
+            "Returning authentication result to framework: mode=${if (args.responseAuthMode) "fill_response" else "dataset"}"
+        )
+        AutofillLogger.i(
+            "PICKER",
+            "Returning auth result: mode=${if (args.responseAuthMode) "fill_response" else "dataset"}, passwordId=${password.id}"
+        )
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
     }
 
     private fun rememberLastFilledCredential(passwordId: Long) {
-        val identifiers = linkedSetOf<String>()
-        args.interactionIdentifier
+        val primaryIdentifier = args.interactionIdentifier
             ?.trim()
             ?.lowercase()
             ?.takeIf { it.isNotBlank() }
-            ?.let { identifiers += it }
-        args.interactionIdentifierAliases
-            ?.asSequence()
-            ?.map { it.trim().lowercase() }
-            ?.filter { it.isNotBlank() }
-            ?.forEach { identifiers += it }
-        if (identifiers.isEmpty()) return
+            ?: args.interactionIdentifierAliases
+                ?.asSequence()
+                ?.map { it.trim().lowercase() }
+                ?.firstOrNull { it.isNotBlank() }
+            ?: return
         try {
+            android.util.Log.i(
+                "AutofillPickerV2",
+                "Persisting last-filled credential: passwordId=$passwordId, primaryId=$primaryIdentifier"
+            )
+            AutofillLogger.i(
+                "PICKER",
+                "Persisting last-filled credential: passwordId=$passwordId, primaryId=$primaryIdentifier"
+            )
             runBlocking(Dispatchers.IO) {
                 val preferences = AutofillPreferences(applicationContext)
-                identifiers.forEach { identifier ->
-                    preferences.completeAutofillInteraction(identifier, passwordId)
-                }
+                preferences.completeAutofillInteraction(primaryIdentifier, passwordId)
             }
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)
+            AutofillLogger.e("PICKER", "Failed to persist last-filled credential", e)
         }
     }
 

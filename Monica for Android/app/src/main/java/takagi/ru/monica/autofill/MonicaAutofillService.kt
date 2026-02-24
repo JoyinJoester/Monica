@@ -140,11 +140,30 @@ class MonicaAutofillService : AutofillService() {
         val updatedAt: Long = 0L
     )
 
+    private data class DirectEntryCycleState(
+        val stage: Int = 0,
+        val requestOrdinal: Int = 0,
+        val contextCount: Int = 0,
+        val sessionMarker: String? = null,
+        val fieldSignatureKey: String = "",
+        val updatedAt: Long = 0L
+    )
+
+    private data class DirectEntryModeDecision(
+        val mode: AutofillPickerLauncher.DirectEntryMode,
+        val stage: Int,
+        val reason: String
+    )
+
     private val interactionSessionStates = mutableMapOf<String, InteractionSessionState>()
     private val interactionSessionTtlMs = 3 * 60 * 1000L
     private val interactionSessionMaxSize = 64
     private val lastFilledSuggestionWindowMs = 3 * 60 * 1000L
+    private val directEntryCycleStates = mutableMapOf<String, DirectEntryCycleState>()
+    private val directEntryCycleTtlMs = 10 * 60 * 1000L
+    private val directEntryCycleMaxSize = 128
     private var serviceCreatedAtMs: Long = 0L
+    private var fillContextRequestIdMethod: java.lang.reflect.Method? = null
     private val nonCredentialFocusKeywords = listOf(
         "chat", "message", "msg", "messenger", "comment", "reply", "search", "query",
         "send", "input_message", "chat_input", "messagebox",
@@ -272,6 +291,7 @@ class MonicaAutofillService : AutofillService() {
         serviceScope.cancel()
         appInfoCache.clear()
         interactionSessionStates.clear()
+        directEntryCycleStates.clear()
         
         // 停止SMS Retriever
         smsRetrieverHelper?.stopSmsRetriever()
@@ -309,7 +329,7 @@ class MonicaAutofillService : AutofillService() {
             hasInlineRequest = hasInlineRequest
         )
         
-        serviceScope.launch {
+        val fillJob = serviceScope.launch {
             val startTime = System.currentTimeMillis()
             try {
                 // Keyguard 风格：单次稳定处理，不做短超时+二次重试，避免首击丢响应。
@@ -342,6 +362,7 @@ class MonicaAutofillService : AutofillService() {
                 callback.onFailure(e.message ?: "Unknown error")
             }
         }
+        cancellationSignal.setOnCancelListener { fillJob.cancel() }
     }
     
     /**
@@ -517,12 +538,19 @@ class MonicaAutofillService : AutofillService() {
         }
 
         val shouldUseCompatibilityRecovery = shouldUseCompatibilityTargetRecovery(triggerMode)
+        val shouldForcePairRecovery = shouldRecoverIncompleteCredentialPair(
+            targets = parserOnlyCredentialTargets,
+            parsedStructure = parsedStructure,
+            fieldCollection = fieldCollection,
+            enhancedCollection = enhancedCollection
+        )
+        val shouldAttemptRecovery = shouldUseCompatibilityRecovery || shouldForcePairRecovery
         var effectiveCredentialTargets = parserOnlyCredentialTargets
         var targetStrategy = "keyguard_parser_only"
         var compatibilityRecoveryApplied = false
 
-        if (shouldUseCompatibilityRecovery &&
-            (effectiveCredentialTargets.isEmpty() || lowConfidenceContext)
+        if (shouldAttemptRecovery &&
+            (effectiveCredentialTargets.isEmpty() || lowConfidenceContext || shouldForcePairRecovery)
         ) {
             val triggerResolution = resolveCredentialTargetsForRequest(
                 requestFlags = request.flags,
@@ -550,18 +578,18 @@ class MonicaAutofillService : AutofillService() {
                     "Compatibility recovery: parser=${parserOnlyCredentialTargets.size}, " +
                         "resolved=${triggerResolution.targets.size}, compatAdded=${triggerResolution.compatibilityAdded}, " +
                         "historyAdded=${triggerResolution.historicalAdded}, sessionAdded=${triggerResolution.sessionRecoveryAdded}, " +
-                        "mode=$triggerMode"
+                        "mode=$triggerMode, forcePairRecovery=$shouldForcePairRecovery"
                 )
                 android.util.Log.i(
                     "MonicaAutofill",
                     "Compatibility recovery resolved targets=${triggerResolution.targets.size} " +
                         "(compat=${triggerResolution.compatibilityAdded}, history=${triggerResolution.historicalAdded}, " +
-                        "session=${triggerResolution.sessionRecoveryAdded})"
+                        "session=${triggerResolution.sessionRecoveryAdded}, forcePair=$shouldForcePairRecovery)"
                 )
             }
         }
 
-        if (effectiveCredentialTargets.isEmpty() && shouldUseCompatibilityRecovery) {
+        if (effectiveCredentialTargets.isEmpty() && shouldAttemptRecovery) {
             val focusedFallback = buildFocusedTextFallbackTarget(structure)
             if (focusedFallback != null) {
                 effectiveCredentialTargets = listOf(focusedFallback)
@@ -597,12 +625,19 @@ class MonicaAutofillService : AutofillService() {
         }
 
         val fieldSignatureKey = buildFieldSignatureKey(packageName, webDomain, effectiveCredentialTargets)
+        val requestOrdinal = resolveFillRequestOrdinal(request)
+        val requestContextCount = request.fillContexts.size
         AutofillLogger.d(
             "PARSING",
             "Credential targets: parser=${parserCredentialTargets.size}, parserOnly=${parserOnlyCredentialTargets.size}, " +
                 "effective=${effectiveCredentialTargets.size}, mode=$triggerMode, lowConfidence=$lowConfidenceContext, " +
                 "compatibilityRecovery=$compatibilityRecoveryApplied, strategy=$targetStrategy"
         )
+        val targetDetails = effectiveCredentialTargets.joinToString(separator = ";") { item ->
+            val idKey = autofillIdKey(item.id) ?: item.id.toString()
+            "${item.hint}@${item.traversalIndex},focused=${item.isFocused},id=$idKey"
+        }
+        AutofillLogger.d("PARSING", "Credential target details: $targetDetails")
         android.util.Log.i(
             "MonicaAutofill",
             "Resolved targets parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, " +
@@ -703,7 +738,9 @@ class MonicaAutofillService : AutofillService() {
             inlineRequest = inlineRequest,
             credentialTargets = effectiveCredentialTargets,
             fieldSignatureKey = fieldSignatureKey,
-            interactionIdentifiers = interactionIdentifiers
+            interactionIdentifiers = interactionIdentifiers,
+            requestOrdinal = requestOrdinal,
+            requestContextCount = requestContextCount
         )
     }
     
@@ -1385,7 +1422,9 @@ class MonicaAutofillService : AutofillService() {
         inlineRequest: InlineSuggestionsRequest? = null,
         credentialTargets: List<ParsedItem>,
         fieldSignatureKey: String,
-        interactionIdentifiers: List<String>
+        interactionIdentifiers: List<String>,
+        requestOrdinal: Int,
+        requestContextCount: Int
     ): FillResponse {
         // 🎯 新用户体验: 直接显示所有匹配的密码 + "手动选择"选项
         AutofillLogger.i("RESPONSE", "Creating direct list response with ${passwords.size} passwords")
@@ -1414,14 +1453,15 @@ class MonicaAutofillService : AutofillService() {
             } else {
                 lookupIdentifiers
             }
+            val stageIdentifier = primaryIdentifier
+            val lastFilledLookupIdentifiers = (stateIdentifiers + lookupIdentifiers).distinct()
             val now = System.currentTimeMillis()
-            val recentLastFilledCredential = stateIdentifiers
+            val recentLastFilledCredential = lastFilledLookupIdentifiers
                 .mapNotNull { identifier ->
                     autofillPreferences.getLastFilledCredential(identifier)?.let { identifier to it }
                 }
                 .filter { (_, credential) ->
-                    now - credential.timestamp <= lastFilledSuggestionWindowMs &&
-                        credential.timestamp >= serviceCreatedAtMs
+                    now - credential.timestamp <= lastFilledSuggestionWindowMs
                 }
                 .maxByOrNull { (_, credential) -> credential.timestamp }
             val lastFilledIdentifier = recentLastFilledCredential?.first
@@ -1430,43 +1470,40 @@ class MonicaAutofillService : AutofillService() {
                 passwords.firstOrNull { it.id == credential.passwordId }
                     ?: passwordRepository.getPasswordEntryById(credential.passwordId)
             }
-            val stageIdentifiersForLookup = stateIdentifiers.ifEmpty { listOf(primaryIdentifier) }
-            val entryMode = if (lastFilledPassword == null) {
-                stageIdentifiersForLookup.forEach { identifier ->
-                    autofillPreferences.clearSuggestionStage(identifier)
-                }
-                AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY
-            } else {
-                val stage = stageIdentifiersForLookup
-                    .mapNotNull { identifier ->
-                        autofillPreferences.getSuggestionStage(identifier, lastFilledSuggestionWindowMs)
-                    }
-                    .maxOrNull()
-                    ?: 0
-                val mode = if (stage <= 0) {
-                    AutofillPickerLauncher.DirectEntryMode.TRIGGER_AND_LAST_FILLED
-                } else {
-                    AutofillPickerLauncher.DirectEntryMode.LAST_FILLED_ONLY
-                }
-                val nextStage = (stage + 1).coerceAtMost(1)
-                stageIdentifiersForLookup.forEach { identifier ->
-                    autofillPreferences.setSuggestionStage(identifier, nextStage)
-                }
-                mode
-            }
+            val pickerIdentifierAliases = lastFilledLookupIdentifiers
+                .filterNot { it == stageIdentifier }
+            val directCycleKey = buildDirectEntryCycleKey(
+                primaryIdentifier = primaryIdentifier,
+                fieldSignatureKey = fieldSignatureKey
+            )
+            val modeDecision = resolveDirectEntryMode(
+                cycleKey = directCycleKey,
+                stageIdentifier = stageIdentifier,
+                hasLastFilled = lastFilledPassword != null,
+                requestOrdinal = requestOrdinal,
+                contextCount = requestContextCount,
+                sessionMarker = sessionMarker,
+                fieldSignatureKey = fieldSignatureKey
+            )
+            val entryMode = modeDecision.mode
             AutofillLogger.i(
                 "RESPONSE",
                 "Direct entry mode=$entryMode, hasLastFilled=${lastFilledPassword != null}, " +
                     "baseId=$primaryIdentifier, sessionMarker=${sessionMarker ?: "none"}, " +
                     "scope=${if (useSessionScopedState) "session" else "base"}, " +
-                    "lastFilledId=${lastFilledIdentifier ?: "none"}, serviceCreatedAt=$serviceCreatedAtMs"
+                    "lastFilledId=${lastFilledIdentifier ?: "none"}, stage=${modeDecision.stage}, " +
+                    "reason=${modeDecision.reason}, stageKey=$stageIdentifier, " +
+                    "lookupAliases=${lastFilledLookupIdentifiers.size}, reqOrdinal=$requestOrdinal, reqContexts=$requestContextCount, " +
+                    "serviceCreatedAt=$serviceCreatedAtMs"
             )
             android.util.Log.d(
                 "MonicaAutofill",
                 "Direct response entryMode=$entryMode, hasLastFilled=${lastFilledPassword != null}, " +
                     "id=$primaryIdentifier, aliases=${lookupIdentifiers.size}, " +
-                    "stateAliases=${stageIdentifiersForLookup.size}, " +
-                    "sessionMarker=${sessionMarker ?: "none"}, serviceCreatedAt=$serviceCreatedAtMs"
+                    "stateAliases=${lastFilledLookupIdentifiers.size}, " +
+                    "sessionMarker=${sessionMarker ?: "none"}, stage=${modeDecision.stage}, " +
+                    "reason=${modeDecision.reason}, reqOrdinal=$requestOrdinal, reqContexts=$requestContextCount, " +
+                    "serviceCreatedAt=$serviceCreatedAtMs"
             )
             
             // 🔧 修复: 获取所有密码的 ID,以便"手动选择"时可以显示所有密码
@@ -1486,8 +1523,8 @@ class MonicaAutofillService : AutofillService() {
                 attachSaveInfo = shouldAttachSaveInfo,
                 entryMode = entryMode,
                 lastFilledPassword = lastFilledPassword,
-                interactionIdentifier = stageIdentifiersForLookup.first(),
-                interactionIdentifierAliases = stageIdentifiersForLookup.drop(1),
+                interactionIdentifier = stageIdentifier,
+                interactionIdentifierAliases = pickerIdentifierAliases,
             )
             
             android.util.Log.d("MonicaAutofill", "✓ Direct list response created successfully")
@@ -2748,6 +2785,56 @@ class MonicaAutofillService : AutofillService() {
         return false
     }
 
+    private fun hasUsernameLikeTarget(targets: List<ParsedItem>): Boolean {
+        return targets.any {
+            it.hint == FieldHint.USERNAME ||
+                it.hint == FieldHint.EMAIL_ADDRESS ||
+                it.hint == FieldHint.PHONE_NUMBER
+        }
+    }
+
+    private fun hasPasswordLikeTarget(targets: List<ParsedItem>): Boolean {
+        return targets.any {
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
+        }
+    }
+
+    private fun shouldRecoverIncompleteCredentialPair(
+        targets: List<ParsedItem>,
+        parsedStructure: ParsedStructure,
+        fieldCollection: AutofillFieldCollection,
+        enhancedCollection: EnhancedAutofillFieldCollection
+    ): Boolean {
+        if (targets.isEmpty()) return false
+        val hasUsernameTarget = hasUsernameLikeTarget(targets)
+        val hasPasswordTarget = hasPasswordLikeTarget(targets)
+        if (hasUsernameTarget && hasPasswordTarget) return false
+        if (hasUsernameTarget != hasPasswordTarget) {
+            return true
+        }
+
+        val parsedHasUsernameSignal = parsedStructure.items.any {
+            it.hint == FieldHint.USERNAME ||
+                it.hint == FieldHint.EMAIL_ADDRESS ||
+                it.hint == FieldHint.PHONE_NUMBER
+        }
+        val parsedHasPasswordSignal = parsedStructure.items.any {
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
+        }
+        val enhancedHasUsernameSignal =
+            enhancedCollection.usernameField != null ||
+                enhancedCollection.emailField != null ||
+                enhancedCollection.phoneField != null ||
+                fieldCollection.usernameField != null
+        val enhancedHasPasswordSignal =
+            enhancedCollection.passwordField != null ||
+                fieldCollection.passwordField != null
+
+        val hasUsernameSignal = parsedHasUsernameSignal || enhancedHasUsernameSignal
+        val hasPasswordSignal = parsedHasPasswordSignal || enhancedHasPasswordSignal
+        return hasUsernameSignal && hasPasswordSignal
+    }
+
     private fun findFocusedViewNode(structure: AssistStructure): AssistStructure.ViewNode? {
         fun walk(node: AssistStructure.ViewNode): AssistStructure.ViewNode? {
             if (node.isFocused && node.visibility == android.view.View.VISIBLE) return node
@@ -2937,6 +3024,166 @@ class MonicaAutofillService : AutofillService() {
         if (normalizedBase.isEmpty()) return emptyList()
         val marker = sessionMarker?.trim()?.takeIf { it.isNotBlank() } ?: return normalizedBase
         return normalizedBase.map { identifier -> "$identifier#session:$marker" }
+    }
+
+    private fun buildDirectEntryCycleKey(
+        primaryIdentifier: String,
+        fieldSignatureKey: String
+    ): String {
+        return "${primaryIdentifier.trim().lowercase()}|${fieldSignatureKey.trim().lowercase()}"
+    }
+
+    private fun cleanupDirectEntryCycles(now: Long) {
+        directEntryCycleStates.entries.removeAll { (_, state) ->
+            now - state.updatedAt > directEntryCycleTtlMs
+        }
+        if (directEntryCycleStates.size <= directEntryCycleMaxSize) return
+        val oldestKeys = directEntryCycleStates.entries
+            .sortedBy { it.value.updatedAt }
+            .take(directEntryCycleStates.size - directEntryCycleMaxSize)
+            .map { it.key }
+        oldestKeys.forEach { key -> directEntryCycleStates.remove(key) }
+    }
+
+    private fun resolveFillRequestOrdinal(request: FillRequest): Int {
+        val fallback = request.fillContexts.size
+        val latestContext = request.fillContexts.lastOrNull() ?: return fallback
+        val requestId = runCatching {
+            val method = fillContextRequestIdMethod ?: latestContext.javaClass.methods
+                .firstOrNull { it.name == "getRequestId" && it.parameterCount == 0 }
+                ?.also { fillContextRequestIdMethod = it }
+            (method?.invoke(latestContext) as? Number)?.toInt()
+        }.getOrNull()
+        return requestId ?: fallback
+    }
+
+    private suspend fun resolveDirectEntryMode(
+        cycleKey: String,
+        stageIdentifier: String,
+        hasLastFilled: Boolean,
+        requestOrdinal: Int,
+        contextCount: Int,
+        sessionMarker: String?,
+        fieldSignatureKey: String
+    ): DirectEntryModeDecision {
+        val now = System.currentTimeMillis()
+        cleanupDirectEntryCycles(now)
+
+        if (!hasLastFilled) {
+            directEntryCycleStates.remove(cycleKey)
+            autofillPreferences.clearSuggestionStage(stageIdentifier)
+            return DirectEntryModeDecision(
+                mode = AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY,
+                stage = 0,
+                reason = "no_last_filled"
+            )
+        }
+
+        val persistedStage = autofillPreferences.getSuggestionStage(stageIdentifier, directEntryCycleTtlMs)
+        val previous = directEntryCycleStates[cycleKey]
+        if (previous == null) {
+            if (persistedStage != null) {
+                val recoveredStage = when {
+                    persistedStage <= 0 -> 1
+                    persistedStage == 1 -> 2
+                    else -> 2
+                }
+                val recoveredMode = when (recoveredStage) {
+                    1 -> AutofillPickerLauncher.DirectEntryMode.TRIGGER_AND_LAST_FILLED
+                    else -> AutofillPickerLauncher.DirectEntryMode.LAST_FILLED_ONLY
+                }
+                autofillPreferences.setSuggestionStage(stageIdentifier, recoveredStage)
+                directEntryCycleStates[cycleKey] = DirectEntryCycleState(
+                    stage = recoveredStage,
+                    requestOrdinal = requestOrdinal,
+                    contextCount = contextCount,
+                    sessionMarker = sessionMarker,
+                    fieldSignatureKey = fieldSignatureKey,
+                    updatedAt = now
+                )
+                return DirectEntryModeDecision(
+                    mode = recoveredMode,
+                    stage = recoveredStage,
+                    reason = "restored_stage_$persistedStage"
+                )
+            }
+            directEntryCycleStates[cycleKey] = DirectEntryCycleState(
+                stage = 0,
+                requestOrdinal = requestOrdinal,
+                contextCount = contextCount,
+                sessionMarker = sessionMarker,
+                fieldSignatureKey = fieldSignatureKey,
+                updatedAt = now
+            )
+            return DirectEntryModeDecision(
+                mode = AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY,
+                stage = 0,
+                reason = "new_cycle"
+            )
+        }
+
+        val resetReason = when {
+            requestOrdinal < previous.requestOrdinal -> "request_ordinal_rollback"
+            contextCount < previous.contextCount -> "context_count_rollback"
+            previous.sessionMarker != sessionMarker -> "session_marker_changed"
+            previous.fieldSignatureKey != fieldSignatureKey -> "field_signature_changed"
+            now - previous.updatedAt > directEntryCycleTtlMs -> "cycle_ttl_expired"
+            else -> null
+        }
+
+        if (resetReason != null) {
+            autofillPreferences.clearSuggestionStage(stageIdentifier)
+            directEntryCycleStates[cycleKey] = DirectEntryCycleState(
+                stage = 0,
+                requestOrdinal = requestOrdinal,
+                contextCount = contextCount,
+                sessionMarker = sessionMarker,
+                fieldSignatureKey = fieldSignatureKey,
+                updatedAt = now
+            )
+            return DirectEntryModeDecision(
+                mode = AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY,
+                stage = 0,
+                reason = resetReason
+            )
+        }
+
+        val hasProgressed =
+            requestOrdinal > previous.requestOrdinal || contextCount > previous.contextCount
+        val nextStage = if (!hasProgressed) {
+            previous.stage
+        } else {
+            when (previous.stage) {
+                0 -> 1
+                else -> 2
+            }
+        }
+        directEntryCycleStates[cycleKey] = previous.copy(
+            stage = nextStage,
+            requestOrdinal = requestOrdinal,
+            contextCount = contextCount,
+            sessionMarker = sessionMarker,
+            fieldSignatureKey = fieldSignatureKey,
+            updatedAt = now
+        )
+        val nextMode = when (nextStage) {
+            0 -> AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY
+            1 -> AutofillPickerLauncher.DirectEntryMode.TRIGGER_AND_LAST_FILLED
+            else -> AutofillPickerLauncher.DirectEntryMode.LAST_FILLED_ONLY
+        }
+        val reason = if (!hasProgressed) {
+            "duplicate_request"
+        } else {
+            "advance_from_${previous.stage}_to_$nextStage"
+        }
+        if (nextStage >= 1) {
+            autofillPreferences.setSuggestionStage(stageIdentifier, nextStage)
+        }
+        return DirectEntryModeDecision(
+            mode = nextMode,
+            stage = nextStage,
+            reason = reason
+        )
     }
 
     private fun extractAutofillSessionMarker(

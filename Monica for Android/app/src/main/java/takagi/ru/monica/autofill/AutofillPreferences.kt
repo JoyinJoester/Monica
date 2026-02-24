@@ -1,6 +1,7 @@
 package takagi.ru.monica.autofill
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -13,6 +14,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+import takagi.ru.monica.autofill.core.AutofillLogger
 
 /**
  * 自动填充配置管理
@@ -431,6 +433,14 @@ class AutofillPreferences(private val context: Context) {
         val normalized = normalizeIdentifier(identifier)
         if (normalized.isBlank()) return
         val now = System.currentTimeMillis()
+        Log.i(
+            "AutofillPreferences",
+            "completeAutofillInteraction: id=$normalized, passwordId=$passwordId, at=$now"
+        )
+        AutofillLogger.i(
+            "PREFERENCES",
+            "completeAutofillInteraction: id=$normalized, passwordId=$passwordId, at=$now"
+        )
         context.dataStore.edit { preferences ->
             val existingIdentifier = preferences[KEY_INTERACTION_IDENTIFIER]
             val existingStartedAt = preferences[KEY_INTERACTION_STARTED_AT]
