@@ -107,6 +107,15 @@
                 android:name="android.credentials.provider"
                 android:resource="@xml/credential_provider_config" />
         </service>
+
+        <receiver
+            android:name=".passkey.CredentialProviderRefreshReceiver"
+            android:exported="false"
+            tools:targetApi="upside_down_cake">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         
         <!-- Passkey Create Activity -->
         <activity

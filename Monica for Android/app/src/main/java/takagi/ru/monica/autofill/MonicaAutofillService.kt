@@ -143,6 +143,8 @@ class MonicaAutofillService : AutofillService() {
     private val interactionSessionStates = mutableMapOf<String, InteractionSessionState>()
     private val interactionSessionTtlMs = 3 * 60 * 1000L
     private val interactionSessionMaxSize = 64
+    private val lastFilledSuggestionWindowMs = 3 * 60 * 1000L
+    private var serviceCreatedAtMs: Long = 0L
     private val nonCredentialFocusKeywords = listOf(
         "chat", "message", "msg", "messenger", "comment", "reply", "search", "query",
         "send", "input_message", "chat_input", "messagebox",
@@ -151,6 +153,7 @@ class MonicaAutofillService : AutofillService() {
     
     override fun onCreate() {
         super.onCreate()
+        serviceCreatedAtMs = System.currentTimeMillis()
         
         try {
             AutofillLogger.initialize(applicationContext)
@@ -444,8 +447,10 @@ class MonicaAutofillService : AutofillService() {
         val fieldCollection = parser.parse()
         
         // 🔍 记录字段解析结果到诊断系统
-        val usernameFieldCount = parsedStructure.items.count { 
-            it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS 
+        val usernameFieldCount = parsedStructure.items.count {
+            it.hint == FieldHint.USERNAME ||
+                it.hint == FieldHint.EMAIL_ADDRESS ||
+                it.hint == FieldHint.PHONE_NUMBER
         }
         val passwordFieldCount = parsedStructure.items.count { 
             it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD 
@@ -474,27 +479,106 @@ class MonicaAutofillService : AutofillService() {
             webDomain = extractDomainFromStructure(structure)
         }
         
-        val identifier = buildInteractionIdentifier(packageName, webDomain, parsedStructure.webView)
+        val isWebContextForSuppression =
+            parsedStructure.webView ||
+                !webDomain.isNullOrBlank() ||
+                isLikelyBrowserPackage(packageName)
+        val interactionIdentifiers = buildInteractionIdentifiers(
+            packageName = packageName,
+            domain = webDomain,
+            isWebContext = isWebContextForSuppression
+        )
+        val identifier = interactionIdentifiers.first()
         
         AutofillLogger.d("MATCHING", "Package: $packageName, WebDomain: $webDomain, Identifier: $identifier")
         android.util.Log.d("MonicaAutofill", "Identifier: $identifier (package: $packageName, web: $webDomain)")
 
-        // Keyguard-aligned path:
-        // rely on parser-derived credential targets only; do not inject
-        // compatibility/session/web fallback targets in the fill path.
         val effectiveParsedStructure = parsedStructure
         val parserCredentialTargets = selectCredentialFillTargets(effectiveParsedStructure)
-        val effectiveCredentialTargets = normalizeCredentialTargetsById(parserCredentialTargets)
-        if (effectiveCredentialTargets.isEmpty()) {
-            AutofillLogger.w("PARSING", "No parser-derived credential targets for this request")
-            android.util.Log.i("MonicaAutofill", "No parser-derived credential targets for this request")
-            return null
-        }
+        val parserOnlyCredentialTargets = normalizeCredentialTargetsById(parserCredentialTargets)
         val triggerMode = resolveTriggerMode(request.flags)
         val lowConfidenceContext = isLowConfidenceCredentialContext(parserCredentialTargets)
-        if (lowConfidenceContext &&
-            triggerMode == TriggerMode.AUTO
+        val shouldSuppressNonCredentialFocus = shouldSuppressFocusedNonCredential(
+            structure = structure,
+            triggerMode = triggerMode,
+            isWebContext = isWebContextForSuppression
+        )
+
+        if (shouldSuppressNonCredentialFocus && triggerMode == TriggerMode.AUTO) {
+            AutofillLogger.i(
+                "PARSING",
+                "Suppressing auto request because focused field looks like non-credential input"
+            )
+            android.util.Log.i(
+                "MonicaAutofill",
+                "Suppressing auto request: focused field looks non-credential"
+            )
+            return null
+        }
+
+        val shouldUseCompatibilityRecovery = shouldUseCompatibilityTargetRecovery(triggerMode)
+        var effectiveCredentialTargets = parserOnlyCredentialTargets
+        var targetStrategy = "keyguard_parser_only"
+        var compatibilityRecoveryApplied = false
+
+        if (shouldUseCompatibilityRecovery &&
+            (effectiveCredentialTargets.isEmpty() || lowConfidenceContext)
         ) {
+            val triggerResolution = resolveCredentialTargetsForRequest(
+                requestFlags = request.flags,
+                fillContexts = request.fillContexts,
+                respectAutofillOff = respectAutofillOff,
+                parsedStructure = parsedStructure,
+                fieldCollection = fieldCollection,
+                enhancedCollection = enhancedCollection,
+                structure = structure,
+                packageName = packageName,
+                webDomain = webDomain
+            )
+            if (triggerResolution.targets.isNotEmpty()) {
+                effectiveCredentialTargets = triggerResolution.targets
+                compatibilityRecoveryApplied =
+                    triggerResolution.compatibilityAdded > 0 ||
+                        triggerResolution.historicalAdded > 0 ||
+                        triggerResolution.sessionRecoveryAdded > 0 ||
+                        triggerResolution.targets.size != parserOnlyCredentialTargets.size
+                if (compatibilityRecoveryApplied) {
+                    targetStrategy = "compatibility_recovery"
+                }
+                AutofillLogger.i(
+                    "PARSING",
+                    "Compatibility recovery: parser=${parserOnlyCredentialTargets.size}, " +
+                        "resolved=${triggerResolution.targets.size}, compatAdded=${triggerResolution.compatibilityAdded}, " +
+                        "historyAdded=${triggerResolution.historicalAdded}, sessionAdded=${triggerResolution.sessionRecoveryAdded}, " +
+                        "mode=$triggerMode"
+                )
+                android.util.Log.i(
+                    "MonicaAutofill",
+                    "Compatibility recovery resolved targets=${triggerResolution.targets.size} " +
+                        "(compat=${triggerResolution.compatibilityAdded}, history=${triggerResolution.historicalAdded}, " +
+                        "session=${triggerResolution.sessionRecoveryAdded})"
+                )
+            }
+        }
+
+        if (effectiveCredentialTargets.isEmpty() && shouldUseCompatibilityRecovery) {
+            val focusedFallback = buildFocusedTextFallbackTarget(structure)
+            if (focusedFallback != null) {
+                effectiveCredentialTargets = listOf(focusedFallback)
+                compatibilityRecoveryApplied = true
+                targetStrategy = "focused_text_fallback"
+                AutofillLogger.i("PARSING", "Applied focused text fallback target for trigger continuity")
+                android.util.Log.i("MonicaAutofill", "Applied focused text fallback target")
+            }
+        }
+
+        if (effectiveCredentialTargets.isEmpty()) {
+            AutofillLogger.w("PARSING", "No credential targets resolved for this request")
+            android.util.Log.i("MonicaAutofill", "No credential targets resolved for this request")
+            return null
+        }
+
+        if (lowConfidenceContext && triggerMode == TriggerMode.AUTO && !compatibilityRecoveryApplied) {
             AutofillLogger.i(
                 "PARSING",
                 "Suppressing low-confidence parser context"
@@ -505,15 +589,24 @@ class MonicaAutofillService : AutofillService() {
             )
             return null
         }
+        if (lowConfidenceContext && compatibilityRecoveryApplied) {
+            AutofillLogger.i(
+                "PARSING",
+                "Low-confidence parser context accepted due to compatibility recovery"
+            )
+        }
 
         val fieldSignatureKey = buildFieldSignatureKey(packageName, webDomain, effectiveCredentialTargets)
         AutofillLogger.d(
             "PARSING",
-            "Credential targets: parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, mode=$triggerMode, lowConfidence=$lowConfidenceContext, strategy=keyguard_parser_only"
+            "Credential targets: parser=${parserCredentialTargets.size}, parserOnly=${parserOnlyCredentialTargets.size}, " +
+                "effective=${effectiveCredentialTargets.size}, mode=$triggerMode, lowConfidence=$lowConfidenceContext, " +
+                "compatibilityRecovery=$compatibilityRecoveryApplied, strategy=$targetStrategy"
         )
         android.util.Log.i(
             "MonicaAutofill",
-            "Resolved targets parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, mode=$triggerMode, lowConfidence=$lowConfidenceContext"
+            "Resolved targets parser=${parserCredentialTargets.size}, effective=${effectiveCredentialTargets.size}, " +
+                "mode=$triggerMode, lowConfidence=$lowConfidenceContext, strategy=$targetStrategy"
         )
         
         // 🔍 可选：使用增强的密码匹配器
@@ -599,6 +692,7 @@ class MonicaAutofillService : AutofillService() {
         
         // 🔔 处理验证器通知和自动复制
         processOtpActions(matchedPasswords)
+        autofillPreferences.touchAutofillInteraction(identifier)
         
         return buildFillResponseEnhanced(
             passwords = matchedPasswords, 
@@ -608,7 +702,8 @@ class MonicaAutofillService : AutofillService() {
             packageName = packageName, 
             inlineRequest = inlineRequest,
             credentialTargets = effectiveCredentialTargets,
-            fieldSignatureKey = fieldSignatureKey
+            fieldSignatureKey = fieldSignatureKey,
+            interactionIdentifiers = interactionIdentifiers
         )
     }
     
@@ -1094,9 +1189,10 @@ class MonicaAutofillService : AutofillService() {
         }
         
         // 2. 检测是否有用户名和密码字段
-        val hasUsernameOrEmail = parsedStructure.items.any { 
-            it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME || 
-            it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS 
+        val hasUsernameOrEmail = parsedStructure.items.any {
+            it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                it.hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER
         }
         
         val hasPasswordField = parsedStructure.items.any { 
@@ -1135,9 +1231,10 @@ class MonicaAutofillService : AutofillService() {
             AutofillLogger.i("SUGGESTION", "Generated strong password: ${generatedPassword.length} chars")
             
             // 2. 提取用户名 (如果有)
-            val usernameItems = parsedStructure.items.filter { 
+            val usernameItems = parsedStructure.items.filter {
                 it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
-                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER
             }
             val usernameValue = usernameItems.firstOrNull()?.value ?: ""
             
@@ -1287,7 +1384,8 @@ class MonicaAutofillService : AutofillService() {
         packageName: String,
         inlineRequest: InlineSuggestionsRequest? = null,
         credentialTargets: List<ParsedItem>,
-        fieldSignatureKey: String
+        fieldSignatureKey: String,
+        interactionIdentifiers: List<String>
     ): FillResponse {
         // 🎯 新用户体验: 直接显示所有匹配的密码 + "手动选择"选项
         AutofillLogger.i("RESPONSE", "Creating direct list response with ${passwords.size} passwords")
@@ -1295,6 +1393,81 @@ class MonicaAutofillService : AutofillService() {
         
         return try {
             val domain = parsedStructure.webDomain
+            val requestSaveData = autofillPreferences.isRequestSaveDataEnabled.first()
+            val shouldAttachSaveInfo = requestSaveData && shouldAttachSaveInfoForDirectResponse(parsedStructure)
+            val baseIdentifiers = interactionIdentifiers
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .distinct()
+            val primaryIdentifier = baseIdentifiers.firstOrNull()
+                ?: buildInteractionIdentifiers(
+                    packageName = packageName,
+                    domain = domain,
+                    isWebContext = parsedStructure.webView || !domain.isNullOrBlank() || isLikelyBrowserPackage(packageName)
+                ).first()
+            val lookupIdentifiers = (baseIdentifiers + primaryIdentifier).distinct()
+            val sessionMarker = extractAutofillSessionMarker(credentialTargets)
+            val sessionScopedIdentifiers = buildSuggestionStageIdentifiers(lookupIdentifiers, sessionMarker)
+            val useSessionScopedState = sessionMarker != null && sessionScopedIdentifiers.isNotEmpty()
+            val stateIdentifiers = if (useSessionScopedState) {
+                sessionScopedIdentifiers
+            } else {
+                lookupIdentifiers
+            }
+            val now = System.currentTimeMillis()
+            val recentLastFilledCredential = stateIdentifiers
+                .mapNotNull { identifier ->
+                    autofillPreferences.getLastFilledCredential(identifier)?.let { identifier to it }
+                }
+                .filter { (_, credential) ->
+                    now - credential.timestamp <= lastFilledSuggestionWindowMs &&
+                        credential.timestamp >= serviceCreatedAtMs
+                }
+                .maxByOrNull { (_, credential) -> credential.timestamp }
+            val lastFilledIdentifier = recentLastFilledCredential?.first
+            val lastFilledCredential = recentLastFilledCredential?.second
+            val lastFilledPassword = lastFilledCredential?.let { credential ->
+                passwords.firstOrNull { it.id == credential.passwordId }
+                    ?: passwordRepository.getPasswordEntryById(credential.passwordId)
+            }
+            val stageIdentifiersForLookup = stateIdentifiers.ifEmpty { listOf(primaryIdentifier) }
+            val entryMode = if (lastFilledPassword == null) {
+                stageIdentifiersForLookup.forEach { identifier ->
+                    autofillPreferences.clearSuggestionStage(identifier)
+                }
+                AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY
+            } else {
+                val stage = stageIdentifiersForLookup
+                    .mapNotNull { identifier ->
+                        autofillPreferences.getSuggestionStage(identifier, lastFilledSuggestionWindowMs)
+                    }
+                    .maxOrNull()
+                    ?: 0
+                val mode = if (stage <= 0) {
+                    AutofillPickerLauncher.DirectEntryMode.TRIGGER_AND_LAST_FILLED
+                } else {
+                    AutofillPickerLauncher.DirectEntryMode.LAST_FILLED_ONLY
+                }
+                val nextStage = (stage + 1).coerceAtMost(1)
+                stageIdentifiersForLookup.forEach { identifier ->
+                    autofillPreferences.setSuggestionStage(identifier, nextStage)
+                }
+                mode
+            }
+            AutofillLogger.i(
+                "RESPONSE",
+                "Direct entry mode=$entryMode, hasLastFilled=${lastFilledPassword != null}, " +
+                    "baseId=$primaryIdentifier, sessionMarker=${sessionMarker ?: "none"}, " +
+                    "scope=${if (useSessionScopedState) "session" else "base"}, " +
+                    "lastFilledId=${lastFilledIdentifier ?: "none"}, serviceCreatedAt=$serviceCreatedAtMs"
+            )
+            android.util.Log.d(
+                "MonicaAutofill",
+                "Direct response entryMode=$entryMode, hasLastFilled=${lastFilledPassword != null}, " +
+                    "id=$primaryIdentifier, aliases=${lookupIdentifiers.size}, " +
+                    "stateAliases=${stageIdentifiersForLookup.size}, " +
+                    "sessionMarker=${sessionMarker ?: "none"}, serviceCreatedAt=$serviceCreatedAtMs"
+            )
             
             // 🔧 修复: 获取所有密码的 ID,以便"手动选择"时可以显示所有密码
             val allPasswords = passwordRepository.getAllPasswordEntries().first()
@@ -1309,22 +1482,16 @@ class MonicaAutofillService : AutofillService() {
                 domain = domain,
                 parsedStructure = parsedStructure,
                 credentialTargetsOverride = credentialTargets,
-                fieldSignatureKey = fieldSignatureKey
+                fieldSignatureKey = fieldSignatureKey,
+                attachSaveInfo = shouldAttachSaveInfo,
+                entryMode = entryMode,
+                lastFilledPassword = lastFilledPassword,
+                interactionIdentifier = stageIdentifiersForLookup.first(),
+                interactionIdentifierAliases = stageIdentifiersForLookup.drop(1),
             )
             
             android.util.Log.d("MonicaAutofill", "✓ Direct list response created successfully")
-            
-            // 🔧 添加设备适配的 SaveInfo 配置
-            val requestSaveData = autofillPreferences.isRequestSaveDataEnabled.first()
-            if (requestSaveData) {
-                val saveInfo = takagi.ru.monica.autofill.core.SaveInfoBuilder.build(parsedStructure)
-                if (saveInfo != null) {
-                    android.util.Log.i("MonicaAutofill", "📌 SaveInfo configured using SaveInfoBuilder")
-                } else {
-                    android.util.Log.w("MonicaAutofill", "⚠️ SaveInfo not configured - no saveable fields found")
-                }
-            }
-            
+
             directListResponse
         } catch (e: Exception) {
             AutofillLogger.e("RESPONSE", "Failed to create direct list response, falling back to standard", e)
@@ -1837,7 +2004,11 @@ class MonicaAutofillService : AutofillService() {
             if (indexFromSession != null) {
                 val idFromTraversal = parsedStructure.items.firstOrNull { item ->
                     item.traversalIndex == indexFromSession &&
-                        (item.hint == FieldHint.USERNAME || item.hint == FieldHint.EMAIL_ADDRESS)
+                        (
+                            item.hint == FieldHint.USERNAME ||
+                                item.hint == FieldHint.EMAIL_ADDRESS ||
+                                item.hint == FieldHint.PHONE_NUMBER
+                            )
                 }?.id
                 if (idFromTraversal != null && currentAutofillIds.contains(idFromTraversal)) {
                     return idFromTraversal
@@ -1901,7 +2072,11 @@ class MonicaAutofillService : AutofillService() {
         var sessionRecoveryAddedCount = 0
 
         fun hasUsernameTarget(items: List<ParsedItem>): Boolean {
-            return items.any { it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS }
+            return items.any {
+                it.hint == FieldHint.USERNAME ||
+                    it.hint == FieldHint.EMAIL_ADDRESS ||
+                    it.hint == FieldHint.PHONE_NUMBER
+            }
         }
 
         fun hasPasswordTarget(items: List<ParsedItem>): Boolean {
@@ -1916,13 +2091,7 @@ class MonicaAutofillService : AutofillService() {
             if (id == null) return
             if (!currentAutofillIds.contains(id)) return
             val duplicated = resolvedTargets.any { target ->
-                target.id == id && (
-                    target.hint == hint ||
-                        (hint == FieldHint.USERNAME && target.hint == FieldHint.EMAIL_ADDRESS) ||
-                        (hint == FieldHint.EMAIL_ADDRESS && target.hint == FieldHint.USERNAME) ||
-                        (hint == FieldHint.PASSWORD && target.hint == FieldHint.NEW_PASSWORD) ||
-                        (hint == FieldHint.NEW_PASSWORD && target.hint == FieldHint.PASSWORD)
-                    )
+                target.id == id && isSameCredentialFamily(target.hint, hint)
             }
             if (duplicated) return
             val conflictingCredentialType = resolvedTargets.any { target ->
@@ -2136,6 +2305,7 @@ class MonicaAutofillService : AutofillService() {
         return parsedStructure.items.filter { item ->
             item.hint == FieldHint.USERNAME ||
                 item.hint == FieldHint.EMAIL_ADDRESS ||
+                item.hint == FieldHint.PHONE_NUMBER ||
                 item.hint == FieldHint.PASSWORD ||
                 item.hint == FieldHint.NEW_PASSWORD
         }
@@ -2156,7 +2326,11 @@ class MonicaAutofillService : AutofillService() {
         if (!onlyLowAccuracy) return false
 
         val hasUsernameLike = parserCredentialTargets.any { item ->
-            (item.hint == FieldHint.USERNAME || item.hint == FieldHint.EMAIL_ADDRESS) &&
+            (
+                item.hint == FieldHint.USERNAME ||
+                    item.hint == FieldHint.EMAIL_ADDRESS ||
+                    item.hint == FieldHint.PHONE_NUMBER
+                ) &&
                 item.accuracy.score > EnhancedAutofillStructureParserV2.Accuracy.LOWEST.score
         }
         val hasPasswordLike = parserCredentialTargets.any { item ->
@@ -2209,14 +2383,16 @@ class MonicaAutofillService : AutofillService() {
     private fun credentialHintPriority(hint: FieldHint): Int {
         return when (hint) {
             FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> 3
-            FieldHint.USERNAME, FieldHint.EMAIL_ADDRESS -> 2
+            FieldHint.USERNAME, FieldHint.EMAIL_ADDRESS, FieldHint.PHONE_NUMBER -> 2
             else -> 1
         }
     }
 
     private fun isSameCredentialFamily(lhs: FieldHint, rhs: FieldHint): Boolean {
-        val lhsUsernameLike = lhs == FieldHint.USERNAME || lhs == FieldHint.EMAIL_ADDRESS
-        val rhsUsernameLike = rhs == FieldHint.USERNAME || rhs == FieldHint.EMAIL_ADDRESS
+        val lhsUsernameLike =
+            lhs == FieldHint.USERNAME || lhs == FieldHint.EMAIL_ADDRESS || lhs == FieldHint.PHONE_NUMBER
+        val rhsUsernameLike =
+            rhs == FieldHint.USERNAME || rhs == FieldHint.EMAIL_ADDRESS || rhs == FieldHint.PHONE_NUMBER
         if (lhsUsernameLike && rhsUsernameLike) return true
 
         val lhsPasswordLike = lhs == FieldHint.PASSWORD || lhs == FieldHint.NEW_PASSWORD
@@ -2305,12 +2481,16 @@ class MonicaAutofillService : AutofillService() {
         val usernameLikeIds = mutableSetOf<AutofillId>().apply {
             addAll(
                 parsedStructure.items.filter {
-                    it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS
+                    it.hint == FieldHint.USERNAME ||
+                        it.hint == FieldHint.EMAIL_ADDRESS ||
+                        it.hint == FieldHint.PHONE_NUMBER
                 }.map { it.id }
             )
             addAll(
                 compatibilityTargets.filter {
-                    it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS
+                    it.hint == FieldHint.USERNAME ||
+                        it.hint == FieldHint.EMAIL_ADDRESS ||
+                        it.hint == FieldHint.PHONE_NUMBER
                 }.map { it.id }
             )
         }
@@ -2418,6 +2598,7 @@ class MonicaAutofillService : AutofillService() {
     private fun isCredentialHint(hint: FieldHint): Boolean {
         return hint == FieldHint.USERNAME ||
             hint == FieldHint.EMAIL_ADDRESS ||
+            hint == FieldHint.PHONE_NUMBER ||
             hint == FieldHint.PASSWORD ||
             hint == FieldHint.NEW_PASSWORD
     }
@@ -2591,7 +2772,11 @@ class MonicaAutofillService : AutofillService() {
         hasPasswordSignalNow: Boolean
     ) {
         val bestUsernameTarget = resolvedTargets
-            .filter { it.hint == FieldHint.USERNAME || it.hint == FieldHint.EMAIL_ADDRESS }
+            .filter {
+                it.hint == FieldHint.USERNAME ||
+                    it.hint == FieldHint.EMAIL_ADDRESS ||
+                    it.hint == FieldHint.PHONE_NUMBER
+            }
             .sortedWith(compareByDescending<ParsedItem> { it.isFocused }.thenBy { it.traversalIndex })
             .firstOrNull()
         val bestPasswordTarget = resolvedTargets
@@ -2705,14 +2890,101 @@ class MonicaAutofillService : AutofillService() {
         }
     }
 
-    private fun buildInteractionIdentifier(packageName: String, domain: String?, isWebView: Boolean): String {
-        val normalizedPackage = packageName.trim().lowercase()
-        val normalizedDomain = domain?.trim()?.lowercase().orEmpty()
-        return if (isWebView && normalizedDomain.isNotBlank()) {
-            normalizedDomain
-        } else {
-            normalizedPackage
+    private fun shouldUseCompatibilityTargetRecovery(triggerMode: TriggerMode): Boolean {
+        if (triggerMode != TriggerMode.AUTO) return true
+        val isAndroid12Family =
+            Build.VERSION.SDK_INT == Build.VERSION_CODES.S ||
+                Build.VERSION.SDK_INT == Build.VERSION_CODES.S_V2
+        if (!isAndroid12Family) return false
+        if (!DeviceUtils.isChineseROM()) return false
+        return when (DeviceUtils.getROMType()) {
+            DeviceUtils.ROMType.MIUI,
+            DeviceUtils.ROMType.COLOR_OS,
+            DeviceUtils.ROMType.REALME_UI,
+            DeviceUtils.ROMType.ORIGIN_OS,
+            DeviceUtils.ROMType.FUNTOUCH_OS,
+            DeviceUtils.ROMType.EMUI,
+            DeviceUtils.ROMType.HARMONY_OS,
+            DeviceUtils.ROMType.MAGIC_OS,
+            DeviceUtils.ROMType.OXYGEN_OS -> true
+            else -> false
         }
+    }
+
+    private fun buildInteractionIdentifiers(
+        packageName: String,
+        domain: String?,
+        isWebContext: Boolean
+    ): List<String> {
+        val normalizedPackage = packageName.trim().lowercase()
+        val normalizedDomain = normalizeWebDomain(domain).orEmpty()
+        val identifiers = linkedSetOf<String>()
+        if (isWebContext && normalizedDomain.isNotBlank()) {
+            identifiers += "web:$normalizedDomain"
+        }
+        identifiers += "app:$normalizedPackage"
+        return identifiers.toList()
+    }
+
+    private fun buildSuggestionStageIdentifiers(
+        baseIdentifiers: List<String>,
+        sessionMarker: String?
+    ): List<String> {
+        val normalizedBase = baseIdentifiers
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (normalizedBase.isEmpty()) return emptyList()
+        val marker = sessionMarker?.trim()?.takeIf { it.isNotBlank() } ?: return normalizedBase
+        return normalizedBase.map { identifier -> "$identifier#session:$marker" }
+    }
+
+    private fun extractAutofillSessionMarker(
+        credentialTargets: List<ParsedItem>
+    ): String? {
+        if (credentialTargets.isEmpty()) return null
+        val markerFromToken = credentialTargets
+            .asSequence()
+            .mapNotNull { item ->
+                val raw = item.id.toString()
+                extractAutofillIdSessionToken(raw)
+            }
+            .firstOrNull()
+        if (!markerFromToken.isNullOrBlank()) return markerFromToken
+
+        // Fallback: use full id fingerprint. This should still differ when page-level
+        // AutofillId objects are recreated after a refresh/navigation.
+        val fingerprint = credentialTargets
+            .map { it.id.toString().trim() }
+            .filter { it.isNotBlank() }
+            .sorted()
+            .joinToString(separator = "|")
+        return if (fingerprint.isBlank()) null else fingerprint
+    }
+
+    private fun extractAutofillIdSessionToken(rawId: String): String? {
+        val normalized = rawId.trim()
+        if (normalized.isBlank()) return null
+        val atIndex = normalized.lastIndexOf('@')
+        if (atIndex in 1 until normalized.lastIndex) {
+            val token = normalized.substring(atIndex + 1).trim()
+            if (token.isNotBlank()) return token
+        }
+        return null
+    }
+
+    private fun shouldAttachSaveInfoForDirectResponse(parsedStructure: ParsedStructure): Boolean {
+        // 对 direct-list 登录入口保持最保守策略：只在“新密码”场景附加 SaveInfo。
+        // 这能显著降低部分 OEM 上因 SaveInfo 导致的会话粘住问题（清空后不回调第二次 onFillRequest）。
+        return parsedStructure.items.any { it.hint == FieldHint.NEW_PASSWORD }
+    }
+
+    private fun buildInteractionIdentifier(packageName: String, domain: String?, isWebView: Boolean): String {
+        return buildInteractionIdentifiers(
+            packageName = packageName,
+            domain = domain,
+            isWebContext = isWebView
+        ).first()
     }
 
     private fun isLikelyBrowserPackage(packageName: String): Boolean {
@@ -2734,7 +3006,9 @@ class MonicaAutofillService : AutofillService() {
     }
 
     private fun buildFocusedTextFallbackTarget(structure: AssistStructure): ParsedItem? {
-        val node = findFocusedViewNode(structure) ?: findFirstEditableTextNode(structure) ?: return null
+        val node = findFocusedViewNode(structure) ?: return null
+        if (!isCredentialLikeNode(node)) return null
+
         val focusedId = node.autofillId ?: return null
         val hint = if (isPasswordInputType(node.inputType)) {
             FieldHint.PASSWORD
@@ -3055,7 +3329,7 @@ class MonicaAutofillService : AutofillService() {
         addTarget(fallbackIds.passwordId, FieldHint.PASSWORD)
 
         val focusedNode = findFocusedViewNode(structure)
-        if (focusedNode != null) {
+        if (focusedNode != null && isCredentialLikeNode(focusedNode)) {
             val focusedHint = if (isPasswordInputType(focusedNode.inputType)) {
                 FieldHint.PASSWORD
             } else {
@@ -3074,6 +3348,54 @@ class MonicaAutofillService : AutofillService() {
             variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
     }
 
+    private fun isCredentialLikeNode(node: AssistStructure.ViewNode): Boolean {
+        if (node.visibility != android.view.View.VISIBLE) return false
+        if (node.autofillId == null) return false
+        if (isPasswordInputType(node.inputType)) return true
+
+        val combined = listOfNotNull(
+            node.idEntry,
+            node.hint,
+            node.contentDescription?.toString(),
+            node.text?.toString(),
+            node.className
+        ).joinToString(" ").lowercase()
+
+        val hasCredentialHint = node.autofillHints
+            ?.map { it.lowercase() }
+            ?.any { hint ->
+                hint.contains("username") ||
+                    hint.contains("email") ||
+                    hint.contains("account") ||
+                    hint.contains("login") ||
+                    hint.contains("password")
+            } == true
+
+        val htmlType = node.htmlInfo?.attributes
+            ?.firstOrNull { it.first.equals("type", ignoreCase = true) }
+            ?.second
+            ?.lowercase()
+            .orEmpty()
+        val hasCredentialHtmlType =
+            htmlType == "password" ||
+                htmlType == "email" ||
+                htmlType == "tel"
+
+        val hasCredentialToken = listOf(
+            "user", "username", "email", "mail", "account", "login", "password", "pass", "pwd",
+            "账号", "账户", "用户名", "邮箱", "登录", "密码"
+        ).any { token -> combined.contains(token) }
+
+        if (htmlType == "search" || htmlType == "url") return false
+        if (nonCredentialFocusKeywords.any { keyword -> combined.contains(keyword) }) {
+            if (!hasCredentialHint && !hasCredentialHtmlType && !hasCredentialToken) {
+                return false
+            }
+        }
+
+        return hasCredentialHint || hasCredentialHtmlType || hasCredentialToken
+    }
+
     private fun selectAuthenticationTargets(fillTargets: List<ParsedItem>): List<ParsedItem> {
         if (fillTargets.isEmpty()) return emptyList()
         val priority = compareByDescending<ParsedItem> { it.isFocused }
@@ -3082,7 +3404,8 @@ class MonicaAutofillService : AutofillService() {
                     FieldHint.PASSWORD,
                     FieldHint.NEW_PASSWORD -> 3
                     FieldHint.USERNAME,
-                    FieldHint.EMAIL_ADDRESS -> 2
+                    FieldHint.EMAIL_ADDRESS,
+                    FieldHint.PHONE_NUMBER -> 2
                     else -> 1
                 }
             }
@@ -3241,7 +3564,8 @@ class MonicaAutofillService : AutofillService() {
                 
                 when (item.hint) {
                     EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+                    EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> {
                         if (username.isBlank()) {
                             username = value
                             AutofillLogger.d("SAVE", "提取用户名字段: ${value.take(3)}***")

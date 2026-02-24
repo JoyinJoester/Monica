@@ -782,10 +782,6 @@ fun SimpleMainScreen(
     val passwordById = remember(allPasswords) { allPasswords.associateBy { it.id } }
     val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
     val bitwardenVaults by bitwardenViewModel.vaults.collectAsState()
-    
-    var showAddCategoryDialog by remember { mutableStateOf(false) }
-    var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
-    var categoryNameInput by remember { mutableStateOf("") }
     // 可拖拽导航栏模式开关 (将来可从设置中读取)
     val useDraggableNav = appSettings.useDraggableBottomNav
     
@@ -1309,13 +1305,8 @@ fun SimpleMainScreen(
                                 localKeePassViewModel = localKeePassViewModel,
                                 groupMode = passwordGroupMode,
                                 stackCardMode = stackCardMode,
-                                onCreateCategory = {
-                                    categoryNameInput = ""
-                                    showAddCategoryDialog = true
-                                },
                                 onRenameCategory = { category ->
-                                    categoryNameInput = category.name
-                                    showEditCategoryDialog = category
+                                    passwordViewModel.updateCategory(category)
                                 },
                                 onDeleteCategory = { category ->
                                     passwordViewModel.deleteCategory(category)
@@ -1569,13 +1560,8 @@ fun SimpleMainScreen(
                             localKeePassViewModel = localKeePassViewModel,
                             groupMode = passwordGroupMode,
                             stackCardMode = stackCardMode,
-                            onCreateCategory = {
-                                categoryNameInput = ""
-                                showAddCategoryDialog = true
-                            },
                             onRenameCategory = { category ->
-                                categoryNameInput = category.name
-                                showEditCategoryDialog = category
+                                passwordViewModel.updateCategory(category)
                             },
                             onDeleteCategory = { category ->
                                 passwordViewModel.deleteCategory(category)
@@ -2303,67 +2289,6 @@ fun SimpleMainScreen(
         )
     }
 
-    if (showAddCategoryDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddCategoryDialog = false },
-            title = { Text(stringResource(R.string.new_category)) },
-            text = {
-                OutlinedTextField(
-                    value = categoryNameInput,
-                    onValueChange = { categoryNameInput = it },
-                    label = { Text(stringResource(R.string.category_name)) },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (categoryNameInput.isNotBlank()) {
-                        passwordViewModel.addCategory(categoryNameInput)
-                        categoryNameInput = ""
-                        showAddCategoryDialog = false
-                    }
-                }) {
-                    Text(stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
-
-    if (showEditCategoryDialog != null) {
-        AlertDialog(
-            onDismissRequest = { showEditCategoryDialog = null },
-            title = { Text(stringResource(R.string.edit_category)) },
-            text = {
-                OutlinedTextField(
-                    value = categoryNameInput,
-                    onValueChange = { categoryNameInput = it },
-                    label = { Text(stringResource(R.string.category_name)) },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (categoryNameInput.isNotBlank()) {
-                        passwordViewModel.updateCategory(showEditCategoryDialog!!.copy(name = categoryNameInput))
-                        categoryNameInput = ""
-                        showEditCategoryDialog = null
-                    }
-                }) {
-                    Text(stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditCategoryDialog = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
 }
 
 private val adaptivePreviewTabs = listOf(

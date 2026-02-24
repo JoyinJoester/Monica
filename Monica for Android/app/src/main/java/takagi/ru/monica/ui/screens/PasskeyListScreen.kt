@@ -83,6 +83,7 @@ import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import kotlinx.coroutines.flow.flowOf
@@ -1170,6 +1171,23 @@ fun PasskeyListScreen(
         keepassDatabases = keepassDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        onVerifyMasterPassword = { input ->
+            securityManager.verifyMasterPassword(input)
+        },
+        onRequestBiometricVerify = if (activity != null && canUseBiometric) {
+            { onSuccess, onError ->
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.verify_to_delete),
+                    onSuccess = { onSuccess() },
+                    onError = { error -> onError(error) },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        },
         onCreateCategoryWithName = { name ->
             scope.launch {
                 val finalName = name.trim()
@@ -1185,7 +1203,18 @@ fun PasskeyListScreen(
         },
         onDeleteCategory = { category ->
             scope.launch {
-                database.categoryDao().delete(category)
+                if (passwordViewModel != null) {
+                    passwordViewModel.deleteCategory(category)
+                } else {
+                    database.passwordEntryDao().removeCategoryFromPasswords(category.id)
+                    database.secureItemDao().removeCategoryFromItems(category.id)
+                    database.passkeyDao().removeCategoryFromPasskeys(category.id)
+                    database.categoryDao().delete(category)
+                }
+                val currentFilter = selectedCategoryFilter
+                if (currentFilter is UnifiedCategoryFilterSelection.Custom && currentFilter.categoryId == category.id) {
+                    selectedCategoryFilter = UnifiedCategoryFilterSelection.All
+                }
             }
         }
     )
@@ -1394,7 +1423,7 @@ fun PasskeyListScreen(
                     is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> context.getString(R.string.filter_bitwarden)
                     is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> context.getString(R.string.filter_bitwarden)
                     is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> keepassDatabases.find { it.id == target.databaseId }?.name ?: context.getString(R.string.filter_keepass)
-                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath.substringAfterLast('/')
+                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> decodeKeePassPathForDisplay(target.groupPath)
                 }
                 Toast.makeText(context, context.getString(R.string.passkey_category_updated, targetLabel), Toast.LENGTH_SHORT).show()
                 passkeyToMoveCategory = null

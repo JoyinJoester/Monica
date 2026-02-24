@@ -83,7 +83,7 @@ class MonicaApplication : Application() {
     }
     
     /**
-     * 仅在首次运行或版本升级时刷新 Credential Provider Service
+     * 仅在首次运行或安装包发生更新时刷新 Credential Provider Service
      * 避免每次启动都切换组件导致系统缓存抖动
      */
     private fun maybeRefreshCredentialProviderService() {
@@ -92,13 +92,22 @@ class MonicaApplication : Application() {
             val prefs = getSharedPreferences("app_state", MODE_PRIVATE)
             val lastVersion = prefs.getLong("last_version_code", -1L)
             val currentVersion = getCurrentVersionCode()
+            val lastUpdateTime = prefs.getLong("last_update_time", -1L)
+            val currentUpdateTime = getCurrentLastUpdateTime()
 
             val isFirstRun = lastVersion == -1L
             val isUpgrade = lastVersion != -1L && lastVersion != currentVersion
+            val isPackageReinstalledOrUpdated =
+                currentUpdateTime > 0L &&
+                    lastUpdateTime > 0L &&
+                    currentUpdateTime != lastUpdateTime
 
-            prefs.edit().putLong("last_version_code", currentVersion).apply()
+            prefs.edit()
+                .putLong("last_version_code", currentVersion)
+                .putLong("last_update_time", currentUpdateTime)
+                .apply()
 
-            if (isFirstRun || isUpgrade) {
+            if (isFirstRun || isUpgrade || isPackageReinstalledOrUpdated) {
                 refreshCredentialProviderService()
             }
         } catch (e: Exception) {
@@ -159,6 +168,16 @@ class MonicaApplication : Application() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to read versionCode", e)
+            -1L
+        }
+    }
+
+    private fun getCurrentLastUpdateTime(): Long {
+        return try {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            info.lastUpdateTime
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read lastUpdateTime", e)
             -1L
         }
     }

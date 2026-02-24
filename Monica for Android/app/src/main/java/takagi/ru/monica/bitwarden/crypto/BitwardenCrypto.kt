@@ -1,7 +1,6 @@
 package takagi.ru.monica.bitwarden.crypto
 
 import android.util.Base64
-import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -35,8 +34,6 @@ import javax.crypto.spec.SecretKeySpec
  * - 内存中的敏感数据生命周期要尽量短
  */
 object BitwardenCrypto {
-    
-    private const val TAG = "BitwardenCrypto"
     private const val MAX_CIPHER_STRING_LENGTH = 1024 * 1024
     private const val MAX_BASE64_PART_LENGTH = 1024 * 1024
     
@@ -191,11 +188,6 @@ object BitwardenCrypto {
         )
         // keyguard 使用标准 Base64，不是 URL-safe
         val result = Base64.encodeToString(hash, Base64.NO_WRAP)
-        
-        // 调试日志 - 用于验证密钥派生是否正确
-        Log.d(TAG, "deriveMasterPasswordHash: masterKey.size=${masterKey.size}, hash.size=${hash.size}, result.length=${result.length}")
-        Log.d(TAG, "deriveMasterPasswordHash: masterKey(hex first 8)=${masterKey.take(8).joinToString("") { "%02x".format(it) }}")
-        Log.d(TAG, "deriveMasterPasswordHash: hash(hex first 8)=${hash.take(8).joinToString("") { "%02x".format(it) }}")
         
         return result
     }

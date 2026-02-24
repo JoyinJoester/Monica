@@ -220,6 +220,9 @@ interface PasskeyDao {
      */
     @Query("UPDATE passkeys SET bound_password_id = :passwordId WHERE credential_id = :credentialId")
     suspend fun updateBoundPasswordId(credentialId: String, passwordId: Long?)
+
+    @Query("UPDATE passkeys SET category_id = NULL WHERE category_id = :categoryId")
+    suspend fun removeCategoryFromPasskeys(categoryId: Long)
     
     /**
      * 获取待上传到 Bitwarden 的 Passkeys

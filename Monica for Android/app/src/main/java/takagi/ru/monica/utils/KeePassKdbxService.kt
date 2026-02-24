@@ -63,7 +63,9 @@ data class KeePassEntryData(
 data class KeePassGroupInfo(
     val name: String,
     val path: String,
-    val uuid: String?
+    val uuid: String?,
+    val depth: Int = 0,
+    val displayPath: String = path
 )
 
 data class KeePassSecureItemData(
@@ -243,17 +245,12 @@ class KeePassKdbxService(
                 throw IllegalArgumentException("分组名称不能为空")
             }
             val groupInfo = mutateDatabase(databaseId) { loaded ->
-                val parentSegments = parentPath
-                    ?.split("/")
-                    ?.map { it.trim() }
-                    ?.filter { it.isNotBlank() }
-                    ?: emptyList()
-
+                val parentSegments = decodeKeePassPathSegments(parentPath)
                 val result = addGroupToPath(
                     group = loaded.keePassDatabase.content.group,
                     parentSegments = parentSegments,
                     newGroupName = normalizedName,
-                    currentPath = ""
+                    currentPathKey = ""
                 )
                 MutationPlan(
                     updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
@@ -276,9 +273,7 @@ class KeePassKdbxService(
             if (normalizedName.isBlank()) {
                 throw IllegalArgumentException("分组名称不能为空")
             }
-            val pathSegments = groupPath.split("/")
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
+            val pathSegments = decodeKeePassPathSegments(groupPath)
             if (pathSegments.isEmpty()) {
                 throw IllegalArgumentException("分组路径无效")
             }
@@ -287,7 +282,7 @@ class KeePassKdbxService(
                     group = loaded.keePassDatabase.content.group,
                     pathSegments = pathSegments,
                     newName = normalizedName,
-                    currentPath = ""
+                    currentPathKey = ""
                 )
                 MutationPlan(
                     updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
@@ -305,9 +300,7 @@ class KeePassKdbxService(
         groupPath: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val pathSegments = groupPath.split("/")
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
+            val pathSegments = decodeKeePassPathSegments(groupPath)
             if (pathSegments.isEmpty()) {
                 throw IllegalArgumentException("分组路径无效")
             }
@@ -348,9 +341,9 @@ class KeePassKdbxService(
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
             val groups = mutableListOf<KeePassGroupInfo>()
             keePassDatabase.content.group.groups.forEach { group ->
-                collectGroups(group, "", groups)
+                collectGroups(group, "", 0, groups)
             }
-            Result.success(groups.sortedBy { it.path })
+            Result.success(groups.sortedBy { it.displayPath })
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -790,11 +783,10 @@ class KeePassKdbxService(
         groupPath: String?,
         entry: Entry
     ): Group {
-        val segments = groupPath
-            ?.split("/")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
+        val segments = decodeKeePassPathSegments(groupPath)
+        if (segments.isEmpty()) {
+            return rootGroup.copy(entries = rootGroup.entries + entry)
+        }
         return addEntryToGroupPathSegments(rootGroup, segments, entry)
     }
 
@@ -1116,34 +1108,38 @@ class KeePassKdbxService(
 
     private fun collectEntriesWithGroupPath(
         group: Group,
-        currentPath: String?,
+        currentPathKey: String?,
         entries: MutableList<Pair<Entry, String?>>
     ) {
         group.entries.forEach { entry ->
-            entries.add(entry to currentPath)
+            entries.add(entry to currentPathKey)
         }
         group.groups.forEach { child ->
-            val nextPath = if (currentPath.isNullOrBlank()) child.name else "$currentPath/${child.name}"
-            collectEntriesWithGroupPath(child, nextPath, entries)
+            val nextPathKey = buildKeePassPathKey(currentPathKey, child.name)
+            collectEntriesWithGroupPath(child, nextPathKey, entries)
         }
     }
 
     private fun collectGroups(
         group: Group,
-        parentPath: String,
+        parentPathKey: String,
+        depth: Int,
         result: MutableList<KeePassGroupInfo>
     ) {
         val name = group.name.ifBlank { "(未命名)" }
-        val currentPath = if (parentPath.isBlank()) name else "$parentPath/$name"
+        val currentPathKey = buildKeePassPathKey(parentPathKey, name)
+        val currentDisplayPath = decodeKeePassPathForDisplay(currentPathKey)
         result.add(
             KeePassGroupInfo(
                 name = name,
-                path = currentPath,
-                uuid = group.uuid.toString()
+                path = currentPathKey,
+                uuid = group.uuid.toString(),
+                depth = depth,
+                displayPath = currentDisplayPath
             )
         )
         group.groups.forEach { child ->
-            collectGroups(child, currentPath, result)
+            collectGroups(child, currentPathKey, depth + 1, result)
         }
     }
 
@@ -1151,16 +1147,18 @@ class KeePassKdbxService(
         group: Group,
         parentSegments: List<String>,
         newGroupName: String,
-        currentPath: String
+        currentPathKey: String
     ): Pair<Group, KeePassGroupInfo> {
         if (parentSegments.isEmpty()) {
             val existing = group.groups.firstOrNull { it.name.equals(newGroupName, ignoreCase = true) }
             if (existing != null) {
-                val existingPath = if (currentPath.isBlank()) existing.name else "$currentPath/${existing.name}"
+                val existingPath = buildKeePassPathKey(currentPathKey, existing.name)
                 return group to KeePassGroupInfo(
                     name = existing.name,
                     path = existingPath,
-                    uuid = existing.uuid.toString()
+                    uuid = existing.uuid.toString(),
+                    depth = decodeKeePassPathSegments(existingPath).size - 1,
+                    displayPath = decodeKeePassPathForDisplay(existingPath)
                 )
             }
 
@@ -1168,11 +1166,13 @@ class KeePassKdbxService(
                 uuid = UUID.randomUUID(),
                 name = newGroupName
             )
-            val newPath = if (currentPath.isBlank()) newGroupName else "$currentPath/$newGroupName"
+            val newPath = buildKeePassPathKey(currentPathKey, newGroupName)
             return group.copy(groups = group.groups + newGroup) to KeePassGroupInfo(
                 name = newGroupName,
                 path = newPath,
-                uuid = newGroup.uuid.toString()
+                uuid = newGroup.uuid.toString(),
+                depth = decodeKeePassPathSegments(newPath).size - 1,
+                displayPath = decodeKeePassPathForDisplay(newPath)
             )
         }
 
@@ -1183,12 +1183,12 @@ class KeePassKdbxService(
         }
 
         val child = group.groups[childIndex]
-        val childPath = if (currentPath.isBlank()) child.name else "$currentPath/${child.name}"
+        val childPath = buildKeePassPathKey(currentPathKey, child.name)
         val childResult = addGroupToPath(
             group = child,
             parentSegments = parentSegments.drop(1),
             newGroupName = newGroupName,
-            currentPath = childPath
+            currentPathKey = childPath
         )
 
         val updatedGroups = group.groups.toMutableList()
@@ -1200,7 +1200,7 @@ class KeePassKdbxService(
         group: Group,
         pathSegments: List<String>,
         newName: String,
-        currentPath: String
+        currentPathKey: String
     ): Pair<Group, KeePassGroupInfo> {
         val targetName = pathSegments.firstOrNull()
             ?: throw IllegalArgumentException("分组路径无效")
@@ -1222,19 +1222,21 @@ class KeePassKdbxService(
 
             val renamed = child.copy(name = newName)
             updatedGroups[childIndex] = renamed
-            val newPath = if (currentPath.isBlank()) newName else "$currentPath/$newName"
+            val newPath = buildKeePassPathKey(currentPathKey, newName)
             group.copy(groups = updatedGroups) to KeePassGroupInfo(
                 name = newName,
                 path = newPath,
-                uuid = renamed.uuid.toString()
+                uuid = renamed.uuid.toString(),
+                depth = decodeKeePassPathSegments(newPath).size - 1,
+                displayPath = decodeKeePassPathForDisplay(newPath)
             )
         } else {
-            val childPath = if (currentPath.isBlank()) child.name else "$currentPath/${child.name}"
+            val childPath = buildKeePassPathKey(currentPathKey, child.name)
             val childResult = renameGroupByPath(
                 group = child,
                 pathSegments = pathSegments.drop(1),
                 newName = newName,
-                currentPath = childPath
+                currentPathKey = childPath
             )
             updatedGroups[childIndex] = childResult.first
             group.copy(groups = updatedGroups) to childResult.second

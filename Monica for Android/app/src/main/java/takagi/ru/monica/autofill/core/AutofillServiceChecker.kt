@@ -143,25 +143,44 @@ class AutofillServiceChecker(private val context: Context) {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val autofillManager = context.getSystemService(AutofillManager::class.java)
-                
-                // 检查是否有启用的自动填充服务
+
+                // 主路径：AutofillManager
                 val hasEnabledServices = autofillManager?.hasEnabledAutofillServices() == true
-                
-                if (hasEnabledServices) {
-                    // 进一步检查是否是 Monica 服务
-                    val componentName = ComponentName(context, MonicaAutofillService::class.java)
-                    val currentService = autofillManager?.autofillServiceComponentName
-                    
-                    val isMonicaEnabled = currentService == componentName
-                    
-                    AutofillLogger.d(TAG, "System enabled: $hasEnabledServices, Monica enabled: $isMonicaEnabled")
-                    AutofillLogger.d(TAG, "Current service: $currentService")
-                    
-                    return isMonicaEnabled
-                } else {
-                    AutofillLogger.d(TAG, "No autofill service enabled in system")
-                    return false
+                val targetComponent = ComponentName(context, MonicaAutofillService::class.java)
+                val managerComponent = autofillManager?.autofillServiceComponentName
+                val managerMatches = managerComponent == targetComponent
+
+                // 兜底路径：Settings.Secure（部分 ROM 上 manager 返回会延迟/空值）
+                val secureAutofillServiceRaw = Settings.Secure.getString(
+                    context.contentResolver,
+                    "autofill_service"
+                )
+                val secureComponent = ComponentName.unflattenFromString(secureAutofillServiceRaw)
+                val secureMatches = secureComponent == targetComponent
+
+                AutofillLogger.d(
+                    TAG,
+                    "System autofill state: managerEnabled=$hasEnabledServices, " +
+                        "managerComponent=$managerComponent, secureRaw=$secureAutofillServiceRaw, " +
+                        "secureComponent=$secureComponent"
+                )
+
+                if (managerMatches || secureMatches) {
+                    if (!hasEnabledServices || !managerMatches) {
+                        AutofillLogger.w(
+                            TAG,
+                            "Detected via secure fallback (possible OEM framework inconsistency)"
+                        )
+                    }
+                    return true
                 }
+
+                if (!hasEnabledServices && secureAutofillServiceRaw.isNullOrBlank()) {
+                    AutofillLogger.d(TAG, "No autofill service enabled in system")
+                } else {
+                    AutofillLogger.d(TAG, "Autofill is enabled but not Monica service")
+                }
+                return false
             } catch (e: Exception) {
                 AutofillLogger.e(TAG, "Error checking system enabled status", e)
                 false
@@ -232,8 +251,10 @@ class AutofillServiceChecker(private val context: Context) {
             
             // 2. 检查设备品牌兼容性
             val manufacturer = Build.MANUFACTURER.lowercase()
-            val romType = DeviceUtils.getROMType()
-            
+            val isAndroid12Family =
+                Build.VERSION.SDK_INT == Build.VERSION_CODES.S ||
+                    Build.VERSION.SDK_INT == Build.VERSION_CODES.S_V2
+
             when {
                 manufacturer.contains("huawei") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
                     issues.add("华为设备在 Android 10+ 上可能存在自动填充限制")
@@ -251,6 +272,10 @@ class AutofillServiceChecker(private val context: Context) {
                     // Samsung 通常兼容性较好
                     AutofillLogger.d(TAG, "Samsung device detected, generally good compatibility")
                 }
+            }
+
+            if (isAndroid12Family && DeviceUtils.isChineseROM()) {
+                issues.add("Android 12 国产 ROM 可能存在自动填充触发不稳定（系统框架兼容性）")
             }
             
             // 3. 检查内联建议支持
@@ -367,6 +392,10 @@ class AutofillServiceChecker(private val context: Context) {
                         }
                         issue.contains("内联建议") -> {
                             recommendations.add("设备不支持内联建议，将使用传统下拉菜单模式")
+                        }
+                        issue.contains("Android 12 国产 ROM") -> {
+                            recommendations.add("请在系统设置中关闭 Monica 的省电限制，并允许自启动/后台运行")
+                            recommendations.add("若仍不稳定，请在登录页或输入框内手动触发一次自动填充以建立会话")
                         }
                     }
                 }

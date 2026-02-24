@@ -28,6 +28,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.unit.dp
 import kotlinx.parcelize.Parcelize
 import takagi.ru.monica.R
@@ -90,6 +92,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val applicationId: String? = null,
         val webDomain: String? = null,
         val webScheme: String? = null,
+        val interactionIdentifier: String? = null,
+        val interactionIdentifierAliases: ArrayList<String>? = null,
         val capturedUsername: String? = null,
         val capturedPassword: String? = null,
         val autofillIds: ArrayList<AutofillId>? = null,
@@ -277,13 +281,17 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         val hints = args.autofillHints
         val hasUsernameHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name) == true
+        val hasPhoneHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name) == true
         val hasEmailHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name) == true
-        val allowAccountInEmailField = fillEmailWithAccount || accountValue.contains("@") || (!hasUsernameHint && hasEmailHint)
+        val hasAccountHint = hasUsernameHint || hasPhoneHint
+        val allowAccountInEmailField =
+            fillEmailWithAccount || accountValue.contains("@") || (!hasAccountHint && hasEmailHint)
         var filledCount = 0
         autofillIds.forEachIndexed { index, autofillId ->
             val hint = hints?.getOrNull(index)
             val value = when (hint) {
                 EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
+                EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name -> accountValue
                 EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
                     if (allowAccountInEmailField) accountValue else null
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
@@ -304,6 +312,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     normalizedHint.contains("pass") -> decryptedPassword
                     normalizedHint.contains("user") ||
                         normalizedHint.contains("email") ||
+                        normalizedHint.contains("phone") ||
+                        normalizedHint.contains("mobile") ||
+                        normalizedHint.contains("tel") ||
+                        normalizedHint.contains("号码") ||
+                        normalizedHint.contains("手机号") ||
                         normalizedHint.contains("account") ||
                         normalizedHint.contains("login") -> accountValue
                     autofillIds.size == 1 -> if (accountValue.isNotBlank()) accountValue else decryptedPassword
@@ -340,10 +353,36 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             saveUriBinding(password)
         }
 
+        rememberLastFilledCredential(password.id)
         rememberLearnedFieldSignature()
         
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
+    }
+
+    private fun rememberLastFilledCredential(passwordId: Long) {
+        val identifiers = linkedSetOf<String>()
+        args.interactionIdentifier
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { identifiers += it }
+        args.interactionIdentifierAliases
+            ?.asSequence()
+            ?.map { it.trim().lowercase() }
+            ?.filter { it.isNotBlank() }
+            ?.forEach { identifiers += it }
+        if (identifiers.isEmpty()) return
+        try {
+            runBlocking(Dispatchers.IO) {
+                val preferences = AutofillPreferences(applicationContext)
+                identifiers.forEach { identifier ->
+                    preferences.completeAutofillInteraction(identifier, passwordId)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)
+        }
     }
 
     private fun rememberLearnedFieldSignature() {

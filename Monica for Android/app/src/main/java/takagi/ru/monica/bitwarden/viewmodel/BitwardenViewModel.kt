@@ -200,7 +200,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     fun login(
         serverUrl: String?,
         email: String,
-        masterPassword: String
+        masterPassword: String,
+        captchaResponse: String? = null
     ) {
         if (email.isBlank() || masterPassword.isBlank()) {
             viewModelScope.launch {
@@ -215,7 +216,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             val result = repository.login(
                 serverUrl = serverUrl?.takeIf { it.isNotBlank() },
                 email = email,
-                masterPassword = masterPassword
+                masterPassword = masterPassword,
+                captchaResponse = captchaResponse
             )
             
             when (result) {
@@ -237,6 +239,23 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     _loginState.value = LoginState.TwoFactorRequired(result.providers)
                     _events.emit(BitwardenEvent.ShowTwoFactorDialog(result.providers))
                 }
+
+                is BitwardenRepository.RepositoryLoginResult.CaptchaRequired -> {
+                    if (!result.siteKey.isNullOrBlank()) {
+                        _loginState.value = LoginState.Error(result.message)
+                        _events.emit(
+                            BitwardenEvent.ShowCaptchaDialog(
+                                message = result.message,
+                                forTwoFactor = false,
+                                siteKey = result.siteKey
+                            )
+                        )
+                    } else {
+                        val message = "登录被风控拦截，请稍后重试或使用官方客户端完成一次验证后再试。"
+                        _loginState.value = LoginState.Error(message)
+                        _events.emit(BitwardenEvent.ShowError(message))
+                    }
+                }
                 
                 is BitwardenRepository.RepositoryLoginResult.Error -> {
                     _loginState.value = LoginState.Error(result.message)
@@ -250,11 +269,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
      * 使用两步验证登录
      */
     fun loginWithTwoFactor(
-        serverUrl: String?,
-        email: String,
-        masterPassword: String,
         twoFactorCode: String,
-        twoFactorMethod: Int
+        twoFactorMethod: Int,
+        captchaResponse: String? = null
     ) {
         val state = twoFactorState ?: run {
             viewModelScope.launch {
@@ -270,7 +287,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 twoFactorState = state,
                 twoFactorCode = twoFactorCode,
                 twoFactorProvider = twoFactorMethod,
-                serverUrl = pendingServerUrl
+                serverUrl = pendingServerUrl,
+                captchaResponse = captchaResponse
             )
             
             when (result) {
@@ -289,6 +307,23 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 is BitwardenRepository.RepositoryLoginResult.TwoFactorRequired -> {
                     _loginState.value = LoginState.TwoFactorRequired(result.providers)
                     _events.emit(BitwardenEvent.ShowError("验证码错误，请重试"))
+                }
+
+                is BitwardenRepository.RepositoryLoginResult.CaptchaRequired -> {
+                    if (!result.siteKey.isNullOrBlank()) {
+                        _loginState.value = LoginState.Error(result.message)
+                        _events.emit(
+                            BitwardenEvent.ShowCaptchaDialog(
+                                message = result.message,
+                                forTwoFactor = true,
+                                siteKey = result.siteKey
+                            )
+                        )
+                    } else {
+                        val message = "两步验证被风控拦截，请稍后重试或使用官方客户端完成一次验证后再试。"
+                        _loginState.value = LoginState.Error(message)
+                        _events.emit(BitwardenEvent.ShowError(message))
+                    }
                 }
                 
                 is BitwardenRepository.RepositoryLoginResult.Error -> {
@@ -895,6 +930,11 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         data class ShowError(val message: String) : BitwardenEvent()
         data class ShowWarning(val message: String) : BitwardenEvent()
         data class ShowTwoFactorDialog(val methods: List<Int>) : BitwardenEvent()
+        data class ShowCaptchaDialog(
+            val message: String,
+            val forTwoFactor: Boolean,
+            val siteKey: String? = null
+        ) : BitwardenEvent()
         data class NavigateToVault(val vaultId: Long) : BitwardenEvent()
         object NavigateToLogin : BitwardenEvent()
     }

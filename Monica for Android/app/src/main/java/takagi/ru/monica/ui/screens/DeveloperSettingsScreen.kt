@@ -76,6 +76,7 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill.AutofillPickerActivityV2
 import takagi.ru.monica.autofill.core.AutofillLogger
+import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.viewmodel.SettingsViewModel
 
@@ -574,6 +575,7 @@ private object DeveloperLogDebugHelper {
 
     suspend fun collectLogs(context: Context): DeveloperLogSnapshot = withContext(Dispatchers.IO) {
         runCatching { AutofillLogger.initialize(context.applicationContext) }
+        runCatching { BitwardenDiagLogger.initialize(context.applicationContext) }
         val autofillTagLogs = readAutofillTagLogs()
         val appProcessLogs = readLogcat(
             arrayOf(
@@ -629,6 +631,11 @@ private object DeveloperLogDebugHelper {
         }.getOrElse {
             "Autofill persisted logs unavailable: ${it.message}"
         }
+        val persistedBitwardenLogs = runCatching {
+            BitwardenDiagLogger.exportPersistedLogs(2000)
+        }.getOrElse {
+            "Bitwarden persisted logs unavailable: ${it.message}"
+        }
 
         val report = buildString {
             appendLine("=== Monica Developer Log Report ===")
@@ -652,12 +659,21 @@ private object DeveloperLogDebugHelper {
             } else {
                 appendLine(persistedAutofillLogs.trim())
             }
+            appendLine()
+            appendLine("=== Bitwarden Persisted Logs ===")
+            if (persistedBitwardenLogs.isBlank()) {
+                appendLine(context.getString(R.string.developer_no_logs))
+            } else {
+                appendLine(persistedBitwardenLogs.trim())
+            }
         }
 
         val parsedSystem = parseLines(selectedLogs)
         val parsedPersisted = parseLines(persistedAutofillLogs)
+        val parsedBitwarden = parseLines(persistedBitwardenLogs)
         val parsed = when {
             parsedSystem.isNotEmpty() -> parsedSystem
+            parsedBitwarden.isNotEmpty() -> parsedBitwarden
             parsedPersisted.isNotEmpty() -> parsedPersisted
             else -> parseLines(autofillLogs)
         }
@@ -667,6 +683,9 @@ private object DeveloperLogDebugHelper {
     suspend fun clearLogs(): ClearLogsResult = withContext(Dispatchers.IO) {
         runCatching {
             AutofillLogger.clear()
+        }
+        runCatching {
+            BitwardenDiagLogger.clear()
         }
 
         val process = runCatching {

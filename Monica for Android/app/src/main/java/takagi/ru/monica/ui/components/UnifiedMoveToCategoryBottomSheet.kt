@@ -61,7 +61,9 @@ import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
+import takagi.ru.monica.utils.decodeKeePassPathSegments
 
 sealed interface UnifiedMoveCategoryTarget {
     data object Uncategorized : UnifiedMoveCategoryTarget
@@ -101,6 +103,7 @@ fun UnifiedMoveToCategoryBottomSheet(
         stiffness = Spring.StiffnessMediumLow
     )
     val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
+    val monicaCategoryNodes = remember(categories) { buildMonicaCategoryNodes(categories) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -189,14 +192,16 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         }
                                     )
                                 }
-                                categories.forEach { category ->
-                                    Box(modifier = Modifier.padding(start = 16.dp)) {
+                                monicaCategoryNodes.forEach { node ->
+                                    val indentation = (16 + node.depth * 14).coerceAtMost(72)
+                                    Box(modifier = Modifier.padding(start = indentation.dp)) {
                                         MoveTargetItem(
-                                            title = category.name,
+                                            title = node.displayName,
                                             icon = Icons.Default.Folder,
+                                            supportingText = node.parentPathLabel,
                                             onClick = {
                                                 onTargetSelected(
-                                                    UnifiedMoveCategoryTarget.MonicaCategory(category.id),
+                                                    UnifiedMoveCategoryTarget.MonicaCategory(node.category.id),
                                                     selectedAction.value
                                                 )
                                             }
@@ -226,17 +231,9 @@ fun UnifiedMoveToCategoryBottomSheet(
                                                 selectedAction.value
                                             )
                                         },
-                                        badge = if (vault.isDefault) {
-                                            {
-                                                Text(
-                                                    text = stringResource(R.string.default_label),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                        } else {
-                                            null
-                                        },
+                                        supportingText = if (vault.isDefault) {
+                                            stringResource(R.string.default_label)
+                                        } else null,
                                         menu = {
                                             IconButton(
                                                 onClick = {
@@ -294,6 +291,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                                 val groups by (
                                     if (expanded) getKeePassGroups(database.id) else flowOf(emptyList())
                                 ).collectAsState(initial = emptyList())
+                                val groupNodes = remember(groups) { buildKeePassGroupNodes(groups) }
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     MoveTargetItem(
                                         title = database.name,
@@ -304,16 +302,10 @@ fun UnifiedMoveToCategoryBottomSheet(
                                                 selectedAction.value
                                             )
                                         },
-                                        badge = {
-                                            Text(
-                                                text = when {
-                                                    database.storageLocation == KeePassStorageLocation.EXTERNAL ->
-                                                        stringResource(R.string.external_storage)
-                                                    else -> stringResource(R.string.internal_storage)
-                                                },
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                        supportingText = when {
+                                            database.storageLocation == KeePassStorageLocation.EXTERNAL ->
+                                                stringResource(R.string.external_storage)
+                                            else -> stringResource(R.string.internal_storage)
                                         },
                                         menu = {
                                             IconButton(
@@ -339,16 +331,18 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Spacer(modifier = Modifier.height(8.dp))
-                                            groups.forEach { group ->
-                                                Box(modifier = Modifier.padding(start = 16.dp)) {
+                                            groupNodes.forEach { groupNode ->
+                                                val indentation = (16 + groupNode.depth * 14).coerceAtMost(72)
+                                                Box(modifier = Modifier.padding(start = indentation.dp)) {
                                                     MoveTargetItem(
-                                                        title = group.name,
+                                                        title = groupNode.displayName,
                                                         icon = Icons.Default.Folder,
+                                                        supportingText = groupNode.parentPathLabel,
                                                         onClick = {
                                                             onTargetSelected(
                                                                 UnifiedMoveCategoryTarget.KeePassGroupTarget(
                                                                     databaseId = database.id,
-                                                                    groupPath = group.path
+                                                                    groupPath = groupNode.group.path
                                                                 ),
                                                                 selectedAction.value
                                                             )
@@ -379,15 +373,15 @@ private fun MoveSectionCard(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
+        Column(modifier = Modifier.padding(10.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             )
             content()
         }
@@ -399,7 +393,7 @@ private fun MoveTargetItem(
     title: String,
     icon: ImageVector,
     onClick: () -> Unit,
-    badge: (@Composable () -> Unit)? = null,
+    supportingText: String? = null,
     menu: (@Composable () -> Unit)? = null
 ) {
     ListItem(
@@ -408,21 +402,91 @@ private fun MoveTargetItem(
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
         colors = ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.34f),
             headlineColor = MaterialTheme.colorScheme.onSurface,
             leadingIconColor = MaterialTheme.colorScheme.onSurface,
-            trailingIconColor = MaterialTheme.colorScheme.onSurface
+            supportingColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            trailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
         ),
         leadingContent = { Icon(icon, contentDescription = null) },
         headlineContent = { Text(title, style = MaterialTheme.typography.bodyLarge) },
-        supportingContent = badge,
-        trailingContent = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                menu?.invoke()
+        supportingContent = if (supportingText.isNullOrBlank()) {
+            null
+        } else {
+            {
+                Text(
+                    text = supportingText,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        },
+        trailingContent = menu
+    )
+}
+
+private data class MonicaCategoryNode(
+    val category: Category,
+    val displayName: String,
+    val depth: Int,
+    val parentPathLabel: String?
+)
+
+private data class KeePassGroupNode(
+    val group: KeePassGroupInfo,
+    val displayName: String,
+    val depth: Int,
+    val parentPathLabel: String?
+)
+
+private fun buildMonicaCategoryNodes(categories: List<Category>): List<MonicaCategoryNode> {
+    return categories
+        .sortedBy { it.name.lowercase() }
+        .map { category ->
+            val segments = splitPathSegments(category.name)
+            if (segments.isEmpty()) {
+                MonicaCategoryNode(
+                    category = category,
+                    displayName = category.name,
+                    depth = 0,
+                    parentPathLabel = null
+                )
+            } else {
+                MonicaCategoryNode(
+                    category = category,
+                    displayName = segments.last(),
+                    depth = (segments.size - 1).coerceAtLeast(0),
+                    parentPathLabel = segments.dropLast(1)
+                        .takeIf { it.isNotEmpty() }
+                        ?.joinToString(" / ")
+                )
             }
         }
-    )
+}
+
+private fun buildKeePassGroupNodes(groups: List<KeePassGroupInfo>): List<KeePassGroupNode> {
+    return groups
+        .sortedBy { it.displayPath.lowercase() }
+        .map { group ->
+            val pathSegments = decodeKeePassPathSegments(group.path)
+            val display = pathSegments.lastOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: group.name.ifBlank { group.displayPath }
+            val parentPath = pathSegments
+                .dropLast(1)
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString(KEEPASS_DISPLAY_PATH_SEPARATOR)
+            KeePassGroupNode(
+                group = group,
+                displayName = display.ifBlank { group.path },
+                depth = group.depth.coerceAtLeast(0),
+                parentPathLabel = parentPath
+            )
+        }
+}
+
+private fun splitPathSegments(path: String): List<String> {
+    return path
+        .split('/')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
 }

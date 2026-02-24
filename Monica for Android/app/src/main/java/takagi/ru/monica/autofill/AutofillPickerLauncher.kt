@@ -21,6 +21,17 @@ import takagi.ru.monica.data.PasswordEntry
  * 负责创建启动AutofillPickerActivity的PendingIntent和FillResponse
  */
 object AutofillPickerLauncher {
+    enum class DirectEntryMode {
+        TRIGGER_ONLY,
+        TRIGGER_AND_LAST_FILLED,
+        LAST_FILLED_ONLY,
+    }
+
+    private data class LastFilledDatasetBuildResult(
+        val dataset: Dataset,
+        val hasUsernameLikeValue: Boolean,
+        val hasPasswordValue: Boolean,
+    )
     
     /**
      * 创建直接列表响应 (单一入口模式)
@@ -36,80 +47,242 @@ object AutofillPickerLauncher {
         domain: String?,
         parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure,
         credentialTargetsOverride: List<EnhancedAutofillStructureParserV2.ParsedItem>? = null,
-        fieldSignatureKey: String? = null
+        fieldSignatureKey: String? = null,
+        attachSaveInfo: Boolean = false,
+        entryMode: DirectEntryMode = DirectEntryMode.TRIGGER_ONLY,
+        lastFilledPassword: PasswordEntry? = null,
+        interactionIdentifier: String? = null,
+        interactionIdentifierAliases: List<String> = emptyList(),
     ): FillResponse {
         val responseBuilder = FillResponse.Builder()
         val rawFillTargets = credentialTargetsOverride
             ?.filter { item ->
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
                     item.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                    item.hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER ||
                     item.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
                     item.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
             }
             ?.ifEmpty { null }
             ?: selectCredentialFillTargets(parsedStructure)
         val fillTargets = normalizeCredentialTargetsById(rawFillTargets)
-        val authTargets = selectAuthenticationTargets(fillTargets)
 
-        if (fillTargets.isEmpty() || authTargets.isEmpty()) {
+        if (fillTargets.isEmpty()) {
             android.util.Log.w("AutofillPicker", "No credential targets available, skip building response")
             return responseBuilder.build()
         }
 
-        android.util.Log.d("AutofillPicker", "Creating single entry point response (Unlock/Search style)")
-        
-        // 1. 构建跳转 Intent - 始终跳转到全屏选择器
-        val args = AutofillPickerActivityV2.Args(
-            applicationId = packageName,
-            webDomain = domain,
-            autofillIds = ArrayList(fillTargets.map { it.id }),
-            autofillHints = ArrayList(fillTargets.map { it.hint.name }),
-            suggestedPasswordIds = matchedPasswords.map { it.id }.toLongArray(),
-            isSaveMode = false,
-            // 如果只有用户名/密码字段，传过去以便预填
-            capturedUsername = parsedStructure.items.find { 
-                it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME || 
-                it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS 
-            }?.value,
-            capturedPassword = parsedStructure.items.find { 
-                it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD 
-            }?.value,
-            fieldSignatureKey = fieldSignatureKey ?: buildFieldSignatureKey(packageName, domain, fillTargets)
-        )
-        
-        val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
-        
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
+        android.util.Log.d("AutofillPicker", "Creating direct list response, mode=$entryMode")
+
+        var addedLastFilledDataset = false
+        var lastFilledCanStandAlone = false
+        if (entryMode != DirectEntryMode.TRIGGER_ONLY && lastFilledPassword != null) {
+            val datasetResult = buildLastFilledDataset(
+                context = context,
+                password = lastFilledPassword,
+                fillTargets = fillTargets,
+            )
+            if (datasetResult != null) {
+                responseBuilder.addDataset(datasetResult.dataset)
+                addedLastFilledDataset = true
+                val needsUsernameLike = fillTargets.any {
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER
+                }
+                val needsPassword = fillTargets.any {
+                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
+                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
+                }
+                lastFilledCanStandAlone =
+                    (!needsUsernameLike || datasetResult.hasUsernameLikeValue) &&
+                        (!needsPassword || datasetResult.hasPasswordValue)
+            }
         }
-        
-        val requestCode = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
-        val pendingIntent = PendingIntent.getActivity(context, requestCode, pickerIntent, flags)
-        
-        // 2. 创建手动触发入口 Presentation（始终保留）
-        // v2 手动入口：使用本地化文案，避免中文系统显示英文硬编码
-        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
-            setTextViewText(R.id.text_title, context.getString(R.string.tile_autofill_label))
-            setTextViewText(R.id.text_username, context.getString(R.string.autofill_open_picker))
-            setImageViewResource(R.id.icon_app, R.drawable.ic_key) 
+
+        val includeTriggerEntry = when (entryMode) {
+            DirectEntryMode.LAST_FILLED_ONLY -> !addedLastFilledDataset || !lastFilledCanStandAlone
+            else -> true
         }
-        
-        // 3. 字段级入口：对每个认证目标字段挂一个触发项，避免单入口在部分 OEM 上二次不弹
-        authTargets.forEach { item ->
-            val datasetBuilder = Dataset.Builder(presentation)
-            datasetBuilder.setValue(item.id, null, presentation)
-            datasetBuilder.setAuthentication(pendingIntent.intentSender)
-            responseBuilder.addDataset(datasetBuilder.build())
+        if (includeTriggerEntry) {
+            val authTargets = selectAuthenticationTargets(fillTargets)
+            if (authTargets.isEmpty()) {
+                android.util.Log.w("AutofillPicker", "No authentication targets available")
+            } else {
+                // 1. 构建跳转 Intent - 始终跳转到全屏选择器
+                val args = AutofillPickerActivityV2.Args(
+                    applicationId = packageName,
+                    webDomain = domain,
+                    interactionIdentifier = interactionIdentifier,
+                    interactionIdentifierAliases = ArrayList(interactionIdentifierAliases),
+                    autofillIds = ArrayList(fillTargets.map { it.id }),
+                    autofillHints = ArrayList(fillTargets.map { it.hint.name }),
+                    suggestedPasswordIds = matchedPasswords.map { it.id }.toLongArray(),
+                    isSaveMode = false,
+                    // 如果只有用户名/密码字段，传过去以便预填
+                    capturedUsername = parsedStructure.items.find {
+                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
+                            it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                            it.hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER
+                    }?.value,
+                    capturedPassword = parsedStructure.items.find {
+                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD
+                    }?.value,
+                    fieldSignatureKey = fieldSignatureKey ?: buildFieldSignatureKey(packageName, domain, fillTargets)
+                )
+
+                val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
+
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+
+                val requestCode = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+                val pendingIntent = PendingIntent.getActivity(context, requestCode, pickerIntent, flags)
+
+                // 2. 创建手动触发入口 Presentation（始终保留）
+                // v2 手动入口：使用本地化文案，避免中文系统显示英文硬编码
+                val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
+                    setTextViewText(R.id.text_title, context.getString(R.string.tile_autofill_label))
+                    setTextViewText(R.id.text_username, context.getString(R.string.autofill_open_picker))
+                    setImageViewResource(R.id.icon_app, R.drawable.ic_key)
+                }
+
+                // 3. 对每个字段单独挂一个认证 Dataset，贴近 Keyguard 实现。
+                // 这样系统在切换聚焦字段时更容易把入口锚定到当前字段，减少错位和丢触发。
+                val orderedTargets = selectPreferredAuthTargets(authTargets)
+                orderedTargets.forEach { item ->
+                    val datasetBuilder = Dataset.Builder(presentation)
+                    datasetBuilder.setValue(item.id, null, presentation)
+                    datasetBuilder.setAuthentication(pendingIntent.intentSender)
+                    responseBuilder.addDataset(datasetBuilder.build())
+                }
+            }
         }
-        
-        // 4. Keyguard-aligned behavior:
-        // do not attach SaveInfo on the authentication-entry response path.
-        // Keeping this response "selection-only" avoids sticky sessions
-        // that can block second-pass autofill requests on some OEM builds.
+
+        // 4. Optional SaveInfo for save flow.
+        // If enabled, the framework can trigger onSaveRequest after user submits
+        // new credentials, so Monica can show its custom save UI.
+        if (attachSaveInfo) {
+            val saveInfo = takagi.ru.monica.autofill.core.SaveInfoBuilder.build(parsedStructure)
+            if (saveInfo != null) {
+                responseBuilder.setSaveInfo(saveInfo)
+                android.util.Log.d("AutofillPicker", "✅ SaveInfo attached on direct list response")
+            } else {
+                android.util.Log.w("AutofillPicker", "⚠️ SaveInfo skipped on direct list response - no saveable fields")
+            }
+        }
 
         return responseBuilder.build()
+    }
+
+    private fun buildLastFilledDataset(
+        context: Context,
+        password: PasswordEntry,
+        fillTargets: List<EnhancedAutofillStructureParserV2.ParsedItem>,
+    ): LastFilledDatasetBuildResult? {
+        val securityManager = takagi.ru.monica.security.SecurityManager(context)
+        val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
+        val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(context)
+        val decryptedPassword = runCatching {
+            securityManager.decryptData(password.password)
+        }.getOrElse { password.password }
+
+        val title = password.title
+            .ifBlank { accountValue }
+            .ifBlank { context.getString(R.string.tile_autofill_label) }
+        val subtitle = accountValue.ifBlank { context.getString(R.string.autofill_open_picker) }
+        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
+            setTextViewText(R.id.text_title, title)
+            setTextViewText(R.id.text_username, subtitle)
+            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
+        }
+
+        val datasetBuilder = Dataset.Builder(presentation)
+        var hasValue = false
+        var hasUsernameLikeValue = false
+        var hasPasswordValue = false
+        val orderedTargets = fillTargets.sortedWith(
+            compareByDescending<EnhancedAutofillStructureParserV2.ParsedItem> { it.isFocused }
+                .thenBy { lastFilledAnchorPriority(it.hint) }
+                .thenBy { it.traversalIndex }
+        )
+        orderedTargets.forEach { item ->
+            val value = when (item.hint) {
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+                EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> {
+                    accountValue.takeIf { it.isNotBlank() }
+                }
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                    if (fillEmailWithAccount || accountValue.contains("@")) {
+                        accountValue.takeIf { it.isNotBlank() }
+                    } else {
+                        null
+                    }
+                }
+                EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+                EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
+                    decryptedPassword.takeIf { it.isNotBlank() }
+                }
+                else -> null
+            }
+            if (value != null) {
+                datasetBuilder.setValue(item.id, AutofillValue.forText(value), presentation)
+                hasValue = true
+                when (item.hint) {
+                    EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+                    EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> hasUsernameLikeValue = true
+                    EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+                    EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> hasPasswordValue = true
+                    else -> Unit
+                }
+            }
+        }
+
+        if (!hasValue) return null
+        val dataset = runCatching { datasetBuilder.build() }.getOrNull() ?: return null
+        return LastFilledDatasetBuildResult(
+            dataset = dataset,
+            hasUsernameLikeValue = hasUsernameLikeValue,
+            hasPasswordValue = hasPasswordValue,
+        )
+    }
+
+    private fun selectPreferredAuthTargets(
+        authTargets: List<EnhancedAutofillStructureParserV2.ParsedItem>
+    ): List<EnhancedAutofillStructureParserV2.ParsedItem> {
+        if (authTargets.isEmpty()) return emptyList()
+        val priority = compareByDescending<EnhancedAutofillStructureParserV2.ParsedItem> { it.isFocused }
+            .thenBy { authAnchorPriority(it.hint) }
+            .thenBy { it.traversalIndex }
+        return authTargets
+            .sortedWith(priority)
+            .distinctBy { it.id }
+    }
+
+    private fun lastFilledAnchorPriority(hint: EnhancedAutofillStructureParserV2.FieldHint): Int {
+        return when (hint) {
+            EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+            EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+            EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> 0
+            EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+            EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> 1
+            else -> 2
+        }
+    }
+
+    private fun authAnchorPriority(hint: EnhancedAutofillStructureParserV2.FieldHint): Int {
+        return when (hint) {
+            EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+            EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+            EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> 0
+            EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
+            EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> 1
+            else -> 2
+        }
     }
     
     /**
@@ -162,7 +335,8 @@ object AutofillPickerLauncher {
             android.util.Log.d("AutofillPicker", "  Field hint: ${item.hint}, id: ${item.id}")
             when (item.hint) {
                 EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+                EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> {
                     usernameFields.add(item.id)
                 }
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD -> {
@@ -339,7 +513,8 @@ object AutofillPickerLauncher {
         parsedStructure.items.forEach { item ->
             when (item.hint) {
                 EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> {
+                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+                EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> {
                     usernameFields.add(item.id)
                 }
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD -> {
@@ -405,6 +580,7 @@ object AutofillPickerLauncher {
             when (item.hint) {
                 EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
                 EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+                EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER,
                 EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
                 EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> {
                     saveFieldIds.add(item.id)
@@ -532,6 +708,7 @@ object AutofillPickerLauncher {
         return parsedStructure.items.filter { item ->
             item.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
+                item.hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER ||
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
                 item.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
         }
@@ -566,7 +743,8 @@ object AutofillPickerLauncher {
             EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
             EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> 3
             EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-            EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> 2
+            EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+            EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> 2
             else -> 1
         }
     }
@@ -581,7 +759,8 @@ object AutofillPickerLauncher {
                     EnhancedAutofillStructureParserV2.FieldHint.PASSWORD,
                     EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD -> 3
                     EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
-                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS -> 2
+                    EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS,
+                    EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> 2
                     else -> 1
                 }
             }
@@ -642,7 +821,8 @@ object AutofillPickerLauncher {
         // 填充字段
         parsedStructure.items.forEach { item ->
             when (item.hint) {
-                EnhancedAutofillStructureParserV2.FieldHint.USERNAME -> {
+                EnhancedAutofillStructureParserV2.FieldHint.USERNAME,
+                EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER -> {
                     datasetBuilder.setValue(
                         item.id,
                         android.view.autofill.AutofillValue.forText(accountValue)

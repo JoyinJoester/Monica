@@ -131,7 +131,9 @@ class MainActivity : BaseMonicaActivity() {
         val repository = PasswordRepository(
             database.passwordEntryDao(), 
             database.categoryDao(),
-            database.bitwardenFolderDao()
+            database.bitwardenFolderDao(),
+            database.secureItemDao(),
+            database.passkeyDao()
         )
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)
@@ -1167,16 +1169,11 @@ fun MonicaContent(
                 },
                 onImportKdbx = { uri, password ->
                     val ctx = navController.context
-                    val inputStream = ctx.contentResolver.openInputStream(uri)
-                    if (inputStream != null) {
-                        val result = keePassViewModel.importFromLocalKdbx(ctx, inputStream, password)
-                        result.fold(
-                            onSuccess = { count: Int -> Result.success(count) },
-                            onFailure = { error: Throwable -> Result.failure(error) }
-                        )
-                    } else {
-                        Result.failure(Exception("无法打开文件"))
-                    }
+                    val result = keePassViewModel.importFromLocalKdbx(ctx, uri, password)
+                    result.fold(
+                        onSuccess = { count: Int -> Result.success(count) },
+                        onFailure = { error: Throwable -> Result.failure(error) }
+                    )
                 }
             )
         }

@@ -117,6 +117,7 @@ class PasswordViewModel(
 
     init {
         restoreLastCategoryFilter()
+        observeInvalidCustomCategoryFilter()
     }
     
     fun getBitwardenFolders(vaultId: Long): Flow<List<BitwardenFolder>> {
@@ -777,6 +778,14 @@ class PasswordViewModel(
     }
 
     private suspend fun sanitizeRestoredCategoryFilter(filter: CategoryFilter): CategoryFilter {
+        if (filter is CategoryFilter.Custom) {
+            return if (repository.getCategoryById(filter.categoryId) == null) {
+                CategoryFilter.All
+            } else {
+                filter
+            }
+        }
+
         val keepassDatabaseId = when (filter) {
             is CategoryFilter.KeePassDatabase -> filter.databaseId
             is CategoryFilter.KeePassGroupFilter -> filter.databaseId
@@ -791,6 +800,25 @@ class PasswordViewModel(
             CategoryFilter.All
         } else {
             filter
+        }
+    }
+
+    private fun observeInvalidCustomCategoryFilter() {
+        viewModelScope.launch {
+            combine(_categoryFilter, categories) { filter, categoryList ->
+                filter to categoryList
+            }.collectLatest { (filter, categoryList) ->
+                val customFilter = filter as? CategoryFilter.Custom ?: return@collectLatest
+                if (categoryList.any { it.id == customFilter.categoryId }) return@collectLatest
+
+                val existsInDb = repository.getCategoryById(customFilter.categoryId) != null
+                if (!existsInDb &&
+                    _categoryFilter.value is CategoryFilter.Custom &&
+                    (_categoryFilter.value as CategoryFilter.Custom).categoryId == customFilter.categoryId
+                ) {
+                    applyCategoryFilter(CategoryFilter.All, persist = true)
+                }
+            }
         }
     }
 

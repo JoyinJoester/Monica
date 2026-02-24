@@ -1,5 +1,10 @@
 package takagi.ru.monica.bitwarden.ui
 
+import android.annotation.SuppressLint
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -24,8 +29,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.service.BitwardenAuthService
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
+
+private enum class BitwardenServerPreset(val label: String) {
+    US("美国官方"),
+    EU("欧洲官方"),
+    SELF_HOSTED("自托管")
+}
 
 /**
  * Bitwarden 登录界面
@@ -47,16 +60,56 @@ fun BitwardenLoginScreen(
     
     // 表单状态
     var serverUrl by rememberSaveable { mutableStateOf("") }
+    var selectedServerPresetName by rememberSaveable { mutableStateOf(BitwardenServerPreset.US.name) }
+    var serverMenuExpanded by remember { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
     var masterPassword by rememberSaveable { mutableStateOf("") }
     var showPassword by rememberSaveable { mutableStateOf(false) }
-    var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    val selectedServerPreset = runCatching {
+        BitwardenServerPreset.valueOf(selectedServerPresetName)
+    }.getOrElse { BitwardenServerPreset.US }
     
     // 两步验证状态
     var showTwoFactorDialog by remember { mutableStateOf(false) }
     var twoFactorCode by remember { mutableStateOf("") }
     var selectedTwoFactorMethod by remember { mutableStateOf(0) }
     var availableTwoFactorMethods by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var showCaptchaDialog by remember { mutableStateOf(false) }
+    var captchaResponse by remember { mutableStateOf("") }
+    var captchaMessage by remember { mutableStateOf("需要验证码，请输入 Captcha response") }
+    var captchaForTwoFactor by remember { mutableStateOf(false) }
+    var captchaSiteKey by remember { mutableStateOf<String?>(null) }
+    var showCaptchaWebView by remember { mutableStateOf(false) }
+
+    fun resolveServerUrlForLogin(): String? {
+        return when (selectedServerPreset) {
+            BitwardenServerPreset.US -> BitwardenApiFactory.OFFICIAL_VAULT_URL
+            BitwardenServerPreset.EU -> BitwardenApiFactory.OFFICIAL_EU_VAULT_URL
+            BitwardenServerPreset.SELF_HOSTED -> serverUrl.trim().takeIf { it.isNotBlank() }
+        }
+    }
+
+    fun submitPrimaryLogin(captcha: String? = null) {
+        val normalizedEmail = email.trim()
+        val resolvedServerUrl = resolveServerUrlForLogin()
+        if (normalizedEmail.isBlank() || masterPassword.isBlank()) return
+        if (selectedServerPreset == BitwardenServerPreset.SELF_HOSTED && resolvedServerUrl.isNullOrBlank()) return
+        viewModel.login(
+            resolvedServerUrl,
+            normalizedEmail,
+            masterPassword,
+            captchaResponse = captcha
+        )
+    }
+
+    fun submitTwoFactorLogin(captcha: String? = null) {
+        if (twoFactorCode.isBlank()) return
+        viewModel.loginWithTwoFactor(
+            twoFactorCode = twoFactorCode,
+            twoFactorMethod = selectedTwoFactorMethod,
+            captchaResponse = captcha
+        )
+    }
     
     // 监听事件
     LaunchedEffect(Unit) {
@@ -69,6 +122,12 @@ fun BitwardenLoginScreen(
                 }
                 is BitwardenViewModel.BitwardenEvent.NavigateToVault -> {
                     onLoginSuccess()
+                }
+                is BitwardenViewModel.BitwardenEvent.ShowCaptchaDialog -> {
+                    captchaForTwoFactor = event.forTwoFactor
+                    captchaMessage = event.message
+                    captchaSiteKey = event.siteKey
+                    showCaptchaDialog = true
                 }
                 else -> {}
             }
@@ -129,7 +188,7 @@ fun BitwardenLoginScreen(
                 // 邮箱输入
                 OutlinedTextField(
                     value = email,
-                    onValueChange = { email = it },
+                    onValueChange = { email = it.trim() },
                     label = { Text("邮箱地址") },
                     leadingIcon = {
                         Icon(Icons.Outlined.Email, contentDescription = null)
@@ -171,9 +230,7 @@ fun BitwardenLoginScreen(
                     keyboardActions = KeyboardActions(
                         onDone = {
                             focusManager.clearFocus()
-                            if (email.isNotBlank() && masterPassword.isNotBlank()) {
-                                viewModel.login(serverUrl.takeIf { it.isNotBlank() }, email, masterPassword)
-                            }
+                            submitPrimaryLogin()
                         }
                     ),
                     singleLine = true,
@@ -181,33 +238,50 @@ fun BitwardenLoginScreen(
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
-                
-                // 高级选项展开按钮
-                TextButton(
-                    onClick = { showAdvanced = !showAdvanced },
-                    modifier = Modifier.align(Alignment.Start)
+
+                ExposedDropdownMenuBox(
+                    expanded = serverMenuExpanded,
+                    onExpandedChange = { serverMenuExpanded = !serverMenuExpanded },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
+                    OutlinedTextField(
+                        value = selectedServerPreset.label,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("服务器") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = serverMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("高级选项")
+                    ExposedDropdownMenu(
+                        expanded = serverMenuExpanded,
+                        onDismissRequest = { serverMenuExpanded = false }
+                    ) {
+                        BitwardenServerPreset.entries.forEach { preset ->
+                            DropdownMenuItem(
+                                text = { Text(preset.label) },
+                                onClick = {
+                                    selectedServerPresetName = preset.name
+                                    serverMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
                 }
-                
-                // 高级选项（自托管服务器）
+
                 AnimatedVisibility(
-                    visible = showAdvanced,
+                    visible = selectedServerPreset == BitwardenServerPreset.SELF_HOSTED,
                     enter = fadeIn(),
                     exit = fadeOut()
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
+                        Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
                             value = serverUrl,
-                            onValueChange = { serverUrl = it },
-                            label = { Text("服务器 URL（可选）") },
-                            placeholder = { Text("https://vault.bitwarden.com") },
+                            onValueChange = { serverUrl = it.trim() },
+                            label = { Text("自托管服务器 URL") },
+                            placeholder = { Text("https://vault.example.com") },
                             leadingIcon = {
                                 Icon(Icons.Outlined.Cloud, contentDescription = null)
                             },
@@ -218,13 +292,6 @@ fun BitwardenLoginScreen(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        
-                        Text(
-                            text = "留空则使用官方 Bitwarden 服务器",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp, start = 16.dp)
-                        )
                     }
                 }
                 
@@ -234,11 +301,12 @@ fun BitwardenLoginScreen(
                 Button(
                     onClick = {
                         focusManager.clearFocus()
-                        viewModel.login(serverUrl.takeIf { it.isNotBlank() }, email, masterPassword)
+                        submitPrimaryLogin()
                     },
                     enabled = loginState !is BitwardenViewModel.LoginState.Loading 
-                            && email.isNotBlank() 
-                            && masterPassword.isNotBlank(),
+                            && email.trim().isNotBlank() 
+                            && masterPassword.isNotBlank()
+                            && (selectedServerPreset != BitwardenServerPreset.SELF_HOSTED || serverUrl.trim().isNotBlank()),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp)
@@ -333,14 +401,7 @@ fun BitwardenLoginScreen(
             onCodeChange = { twoFactorCode = it },
             onConfirm = {
                 showTwoFactorDialog = false
-                viewModel.loginWithTwoFactor(
-                    serverUrl.takeIf { it.isNotBlank() },
-                    email,
-                    masterPassword,
-                    twoFactorCode,
-                    selectedTwoFactorMethod
-                )
-                twoFactorCode = ""
+                submitTwoFactorLogin()
             },
             onDismiss = {
                 showTwoFactorDialog = false
@@ -349,6 +410,204 @@ fun BitwardenLoginScreen(
             }
         )
     }
+
+    if (showCaptchaDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showCaptchaDialog = false
+                captchaResponse = ""
+            },
+            icon = {
+                Icon(
+                    Icons.Outlined.Security,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text("需要 Captcha 验证") },
+            text = {
+                Column {
+                    Text(
+                        text = captchaMessage,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (!captchaSiteKey.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(
+                            onClick = { showCaptchaWebView = true }
+                        ) {
+                            Text("自动完成 Captcha（实验）")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = captchaResponse,
+                        onValueChange = { captchaResponse = it },
+                        label = { Text("Captcha response") },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                if (captchaResponse.isNotBlank()) {
+                                    if (captchaForTwoFactor) {
+                                        submitTwoFactorLogin(captchaResponse)
+                                    } else {
+                                        submitPrimaryLogin(captchaResponse)
+                                    }
+                                    showCaptchaDialog = false
+                                    captchaResponse = ""
+                                }
+                            }
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (captchaForTwoFactor) {
+                            submitTwoFactorLogin(captchaResponse)
+                        } else {
+                            submitPrimaryLogin(captchaResponse)
+                        }
+                        showCaptchaDialog = false
+                        captchaResponse = ""
+                    },
+                    enabled = captchaResponse.isNotBlank()
+                ) {
+                    Text("提交")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCaptchaDialog = false
+                        captchaResponse = ""
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showCaptchaWebView && !captchaSiteKey.isNullOrBlank()) {
+        val effectiveVaultUrl = resolveServerUrlForLogin()
+            ?: BitwardenApiFactory.OFFICIAL_VAULT_URL
+        CaptchaWebViewDialog(
+            siteKey = captchaSiteKey!!,
+            baseUrl = effectiveVaultUrl,
+            onToken = { token ->
+                captchaResponse = token
+                showCaptchaWebView = false
+                showCaptchaDialog = false
+                if (captchaForTwoFactor) {
+                    submitTwoFactorLogin(token)
+                } else {
+                    submitPrimaryLogin(token)
+                }
+            },
+            onError = { message ->
+                captchaMessage = "自动 Captcha 失败：$message，请改为手动输入。"
+                showCaptchaWebView = false
+            },
+            onDismiss = { showCaptchaWebView = false }
+        )
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun CaptchaWebViewDialog(
+    siteKey: String,
+    baseUrl: String,
+    onToken: (String) -> Unit,
+    onError: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Captcha 验证") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp)
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        val bridge = object {
+                            @JavascriptInterface
+                            fun onToken(token: String?) {
+                                val value = token?.trim().orEmpty()
+                                if (value.isNotBlank()) {
+                                    onToken(value)
+                                } else {
+                                    onError("empty token")
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onError(error: String?) {
+                                onError(error ?: "unknown error")
+                            }
+                        }
+
+                        WebView(context).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            webChromeClient = WebChromeClient()
+                            webViewClient = WebViewClient()
+                            addJavascriptInterface(bridge, "CaptchaBridge")
+
+                            val html = """
+                                <!doctype html>
+                                <html>
+                                <head>
+                                  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                                  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+                                </head>
+                                <body style="margin:0;padding:16px;font-family:sans-serif;">
+                                  <div class="h-captcha"
+                                       data-sitekey="$siteKey"
+                                       data-callback="onCaptchaSuccess"
+                                       data-error-callback="onCaptchaError"></div>
+                                  <script>
+                                    function onCaptchaSuccess(token) {
+                                      CaptchaBridge.onToken(token);
+                                    }
+                                    function onCaptchaError() {
+                                      CaptchaBridge.onError("widget error");
+                                    }
+                                  </script>
+                                </body>
+                                </html>
+                            """.trimIndent()
+
+                            loadDataWithBaseURL(
+                                if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/",
+                                html,
+                                "text/html",
+                                "UTF-8",
+                                null
+                            )
+                        }
+                    }
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
 }
 
 /**

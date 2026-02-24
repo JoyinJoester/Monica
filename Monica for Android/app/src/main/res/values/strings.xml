@@ -1981,6 +1981,9 @@
     <string name="new_category">New category</string>
     <string name="edit_category">Edit category</string>
     <string name="category_name">Category name</string>
+    <string name="category_rename_mode_leaf_only">Rename current level</string>
+    <string name="category_rename_mode_full_path">Edit full path</string>
+    <string name="category_parent_path_hint">Parent path: %1$s</string>
     <string name="menu">Menu</string>
     <string name="multi_select">Multi-select</string>
     
@@ -2224,6 +2227,12 @@
     <string name="create_target_keepass">KeePass</string>
     <string name="create_select_bitwarden_vault">Choose Bitwarden account</string>
     <string name="create_select_keepass_database">Choose KeePass database</string>
+    <string name="create_target_section_title">Target</string>
+    <string name="create_nested_section_title">Nested location</string>
+    <string name="create_select_local_parent">Choose local parent folder</string>
+    <string name="create_select_keepass_parent_group">Choose KeePass parent group (optional)</string>
+    <string name="create_preview_path_label">Preview</string>
+    <string name="bitwarden_folder_flat_hint">Bitwarden folders are flat. New folders are created at root level.</string>
     <string name="bitwarden_all_types">All types</string>
     <string name="sync_type_note">Note</string>
     <string name="sync_type_identity">Identity</string>

@@ -66,7 +66,7 @@ class CipherUploadProcessor(
                 else -> return UploadItemResult.Error("Unsupported item type: ${item.itemType}")
             }
             
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.createCipher(
                 authorization = "Bearer $accessToken",
                 cipher = request
@@ -116,7 +116,7 @@ class CipherUploadProcessor(
             }
 
             val updateRequest = request.toUpdateRequest()
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.updateCipher(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId,
@@ -173,7 +173,7 @@ class CipherUploadProcessor(
             // 加密请求
             val encryptedRequest = encryptCipherRequest(request, symmetricKey)
             
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.createCipher(
                 authorization = "Bearer $accessToken",
                 cipher = encryptedRequest
@@ -232,7 +232,7 @@ class CipherUploadProcessor(
             val encryptedCreate = encryptCipherRequest(createRequest, symmetricKey)
             val updateRequest = encryptedCreate.toUpdateRequest()
 
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.updateCipher(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId,

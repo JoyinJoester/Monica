@@ -88,6 +88,7 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -719,7 +720,7 @@ fun CardWalletScreen(
         is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
             keepassDatabases.find { it.id == filter.databaseId }?.name ?: stringResource(R.string.filter_keepass)
         is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
-            filter.groupPath.substringAfterLast('/')
+            decodeKeePassPathForDisplay(filter.groupPath)
         is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> {
             val name = keepassDatabases.find { it.id == filter.databaseId }?.name ?: stringResource(R.string.filter_keepass)
             "$name · ${stringResource(R.string.filter_starred)}"

@@ -1804,6 +1804,9 @@
     <string name="new_category">新建分类</string>
     <string name="edit_category">编辑分类</string>
     <string name="category_name">分类名称</string>
+    <string name="category_rename_mode_leaf_only">仅重命名当前层级</string>
+    <string name="category_rename_mode_full_path">编辑完整路径</string>
+    <string name="category_parent_path_hint">父级路径：%1$s</string>
     <string name="menu">菜单</string>
     <string name="multi_select">多选</string>
     
@@ -2047,6 +2050,12 @@
     <string name="create_target_keepass">KeePass</string>
     <string name="create_select_bitwarden_vault">选择 Bitwarden 账户</string>
     <string name="create_select_keepass_database">选择 KeePass 数据库</string>
+    <string name="create_target_section_title">目标位置</string>
+    <string name="create_nested_section_title">嵌套位置</string>
+    <string name="create_select_local_parent">选择本地父级分类</string>
+    <string name="create_select_keepass_parent_group">选择 KeePass 父分组（可选）</string>
+    <string name="create_preview_path_label">预览</string>
+    <string name="bitwarden_folder_flat_hint">Bitwarden 文件夹是单层结构，新建文件夹将创建在根层级。</string>
     <string name="bitwarden_all_types">全部类型</string>
     <string name="sync_type_note">笔记</string>
     <string name="sync_type_identity">身份信息</string>

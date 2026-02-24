@@ -78,7 +78,7 @@ class BitwardenSyncService(
         android.util.Log.i(TAG, "Starting full sync for vault ${vault.id}")
         
         try {
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.sync(
                 authorization = "Bearer $accessToken"
             )
@@ -828,7 +828,7 @@ class BitwardenSyncService(
             // 构建加密的 Cipher 请求
             val createRequest = passwordEntryToCipherRequest(entry, symmetricKey)
             
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.createCipher(
                 authorization = "Bearer $accessToken",
                 cipher = createRequest
@@ -872,7 +872,7 @@ class BitwardenSyncService(
         symmetricKey: SymmetricCryptoKey
     ): UploadAttemptResult {
         try {
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val mergedFields = runCatching {
                 val remote = vaultApi.getCipher(
                     authorization = "Bearer $accessToken",
@@ -952,7 +952,7 @@ class BitwardenSyncService(
         accessToken: String
     ): Boolean {
         try {
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.deleteCipher(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId
@@ -971,7 +971,7 @@ class BitwardenSyncService(
         accessToken: String
     ): Boolean {
         try {
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl)
+            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
             val response = vaultApi.restoreCipher(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId

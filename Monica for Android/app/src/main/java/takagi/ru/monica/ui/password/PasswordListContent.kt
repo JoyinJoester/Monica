@@ -106,6 +106,7 @@ import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
@@ -202,7 +203,6 @@ fun PasswordListContent(
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
-    onCreateCategory: () -> Unit,
     onRenameCategory: (Category) -> Unit,
     onDeleteCategory: (Category) -> Unit,
     onPasswordClick: (takagi.ru.monica.data.PasswordEntry) -> Unit,
@@ -264,6 +264,9 @@ fun PasswordListContent(
     
     
     val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? FragmentActivity
+    val biometricHelper = remember { BiometricHelper(context) }
+    val canUseBiometric = activity != null && appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
     val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
 
@@ -674,7 +677,7 @@ fun PasswordListContent(
                                     viewModel.movePasswordsToKeePassGroup(selectedIds, target.databaseId, target.groupPath)
                                     Toast.makeText(
                                         context,
-                                        "${context.getString(R.string.move_to_category)} ${target.groupPath.substringAfterLast('/')}",
+                                        "${context.getString(R.string.move_to_category)} ${decodeKeePassPathForDisplay(target.groupPath)}",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 } else {
@@ -713,9 +716,9 @@ fun PasswordListContent(
             is CategoryFilter.Uncategorized -> stringResource(R.string.filter_uncategorized)
             is CategoryFilter.LocalStarred -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_starred)}"
             is CategoryFilter.LocalUncategorized -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_uncategorized)}"
-            is CategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name ?: stringResource(R.string.unknown_category)
+            is CategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name ?: stringResource(R.string.filter_all)
             is CategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
-            is CategoryFilter.KeePassGroupFilter -> filter.groupPath.substringAfterLast('/')
+            is CategoryFilter.KeePassGroupFilter -> decodeKeePassPathForDisplay(filter.groupPath)
             is CategoryFilter.KeePassDatabaseStarred -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_starred)}"
             is CategoryFilter.KeePassDatabaseUncategorized -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_uncategorized)}"
             is CategoryFilter.BitwardenVault -> "Bitwarden"
@@ -829,9 +832,22 @@ fun PasswordListContent(
                 bitwardenVaults = bitwardenVaults,
                 getBitwardenFolders = viewModel::getBitwardenFolders,
                 getKeePassGroups = localKeePassViewModel::getGroups,
-                onCreateCategory = onCreateCategory,
                 onVerifyMasterPassword = { input ->
                     SecurityManager(context).verifyMasterPassword(input)
+                },
+                onRequestBiometricVerify = if (canUseBiometric) {
+                    { onSuccess, onError ->
+                        biometricHelper.authenticate(
+                            activity = activity!!,
+                            title = context.getString(R.string.verify_identity),
+                            subtitle = context.getString(R.string.verify_to_delete),
+                            onSuccess = { onSuccess() },
+                            onError = { error -> onError(error) },
+                            onFailed = {}
+                        )
+                    }
+                } else {
+                    null
                 },
                 onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
                 onCreateBitwardenFolder = { vaultId, name ->
@@ -1408,10 +1424,6 @@ fun PasswordListContent(
         }
     }
     
-    val activity = context as? FragmentActivity
-    val biometricHelper = remember { BiometricHelper(context) }
-    val canUseBiometric = activity != null && appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
-
     // 批量删除验证对话框（统一 M3 身份验证弹窗）
     if (showBatchDeleteDialog) {
         val biometricAction = if (canUseBiometric) {

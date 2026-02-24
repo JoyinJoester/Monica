@@ -45,7 +45,6 @@ import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +75,7 @@ import java.util.Locale
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
@@ -116,8 +116,6 @@ fun NoteListScreen(
     var selectedNoteIds by remember { mutableStateOf(setOf<Long>()) }
     var isCategorySheetVisible by remember { mutableStateOf(false) }
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-    var showAddCategoryDialog by remember { mutableStateOf(false) }
-    var categoryNameInput by rememberSaveable { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
@@ -138,6 +136,7 @@ fun NoteListScreen(
     }
     
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
     val database = remember { PasswordDatabase.getDatabase(context) }
     val settingsManager = remember { SettingsManager(context) }
     val scope = rememberCoroutineScope()
@@ -169,7 +168,7 @@ fun NoteListScreen(
         }
     }
     val biometricHelper = remember { BiometricHelper(context) }
-    val canUseBiometric = settings.biometricEnabled && biometricHelper.isBiometricAvailable()
+    val canUseBiometric = activity != null && settings.biometricEnabled && biometricHelper.isBiometricAvailable()
     LaunchedEffect(Unit) {
         bitwardenVaults = bitwardenRepository.getAllVaults()
     }
@@ -211,7 +210,7 @@ fun NoteListScreen(
         is NoteCategoryFilter.BitwardenVaultStarred -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
         is NoteCategoryFilter.BitwardenVaultUncategorized -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
         is NoteCategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
-        is NoteCategoryFilter.KeePassGroupFilter -> filter.groupPath.substringAfterLast('/')
+        is NoteCategoryFilter.KeePassGroupFilter -> decodeKeePassPathForDisplay(filter.groupPath)
         is NoteCategoryFilter.KeePassDatabaseStarred -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_starred)}"
         is NoteCategoryFilter.KeePassDatabaseUncategorized -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_uncategorized)}"
     }
@@ -469,13 +468,43 @@ fun NoteListScreen(
                 bitwardenVaults = bitwardenVaults,
                 getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
                 getKeePassGroups = getKeePassGroups,
-                onCreateCategory = { showAddCategoryDialog = true },
                 onVerifyMasterPassword = { input ->
                     securityManager.verifyMasterPassword(input)
+                },
+                onRequestBiometricVerify = if (activity != null && canUseBiometric) {
+                    { onSuccess, onError ->
+                        biometricHelper.authenticate(
+                            activity = activity,
+                            title = context.getString(R.string.verify_identity),
+                            subtitle = context.getString(R.string.verify_to_delete),
+                            onSuccess = { onSuccess() },
+                            onError = { error -> onError(error) },
+                            onFailed = {}
+                        )
+                    }
+                } else {
+                    null
                 },
                 onCreateCategoryWithName = { name ->
                     scope.launch {
                         database.categoryDao().insert(Category(name = name))
+                    }
+                },
+                onRenameCategory = { category ->
+                    scope.launch {
+                        database.categoryDao().update(category)
+                    }
+                },
+                onDeleteCategory = { category ->
+                    scope.launch {
+                        database.passwordEntryDao().removeCategoryFromPasswords(category.id)
+                        database.secureItemDao().removeCategoryFromItems(category.id)
+                        database.passkeyDao().removeCategoryFromPasskeys(category.id)
+                        database.categoryDao().delete(category)
+                        val currentFilter = selectedCategoryFilter
+                        if (currentFilter is NoteCategoryFilter.Custom && currentFilter.categoryId == category.id) {
+                            selectedCategoryFilter = NoteCategoryFilter.All
+                        }
                     }
                 },
                 onCreateBitwardenFolder = { vaultId, name ->
@@ -595,41 +624,7 @@ fun NoteListScreen(
             )
         }
 
-        if (showAddCategoryDialog) {
-            AlertDialog(
-                onDismissRequest = { showAddCategoryDialog = false },
-                title = { Text(stringResource(R.string.new_category)) },
-                text = {
-                    OutlinedTextField(
-                        value = categoryNameInput,
-                        onValueChange = { categoryNameInput = it },
-                        label = { Text(stringResource(R.string.category_name)) },
-                        singleLine = true
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val name = categoryNameInput.trim()
-                            if (name.isBlank()) return@TextButton
-                            scope.launch {
-                                database.categoryDao().insert(Category(name = name))
-                                categoryNameInput = ""
-                                showAddCategoryDialog = false
-                            }
-                        }
-                    ) { Text(stringResource(R.string.confirm)) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showAddCategoryDialog = false }) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                }
-            )
-        }
-
         if (showPasswordDialog) {
-            val activity = context as? FragmentActivity
             val biometricAction = if (activity != null && canUseBiometric) {
                 {
                     biometricHelper.authenticate(

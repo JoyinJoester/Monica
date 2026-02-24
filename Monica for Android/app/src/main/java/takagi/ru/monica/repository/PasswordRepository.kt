@@ -3,8 +3,10 @@ package takagi.ru.monica.repository
 import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.CategoryDao
+import takagi.ru.monica.data.PasskeyDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
+import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import java.util.Date
@@ -16,7 +18,9 @@ import java.util.Locale
 class PasswordRepository(
     private val passwordEntryDao: PasswordEntryDao,
     private val categoryDao: CategoryDao? = null,
-    private val bitwardenFolderDao: BitwardenFolderDao? = null
+    private val bitwardenFolderDao: BitwardenFolderDao? = null,
+    private val secureItemDao: SecureItemDao? = null,
+    private val passkeyDao: PasskeyDao? = null
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
@@ -69,9 +73,10 @@ class PasswordRepository(
     }
 
     suspend fun deleteCategory(category: Category) {
-        // First remove category from passwords
+        // Clear category references across all local data types first.
         passwordEntryDao.removeCategoryFromPasswords(category.id)
-        // Then delete category
+        secureItemDao?.removeCategoryFromItems(category.id)
+        passkeyDao?.removeCategoryFromPasskeys(category.id)
         categoryDao?.delete(category)
     }
     

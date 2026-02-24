@@ -107,6 +107,7 @@ import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
@@ -308,8 +309,6 @@ fun TotpListContent(
     var selectedItems by remember { mutableStateOf(setOf<Long>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var showMoveToCategoryDialog by remember { mutableStateOf(false) }
-    var showAddCategoryDialog by remember { mutableStateOf(false) }
-    var categoryNameInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -458,7 +457,7 @@ fun TotpListContent(
                     }
                     is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
                         viewModel.moveToKeePassGroup(movableIds, target.databaseId, target.groupPath)
-                        val groupName = target.groupPath.substringAfterLast('/')
+                        val groupName = decodeKeePassPathForDisplay(target.groupPath)
                         Toast.makeText(context, "${context.getString(R.string.move_to_category)} $groupName", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -468,37 +467,6 @@ fun TotpListContent(
             selectedItems = emptySet()
         }
     )
-
-    if (showAddCategoryDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddCategoryDialog = false },
-            title = { Text(stringResource(R.string.new_category)) },
-            text = {
-                OutlinedTextField(
-                    value = categoryNameInput,
-                    onValueChange = { categoryNameInput = it },
-                    label = { Text(stringResource(R.string.category_name)) },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (categoryNameInput.isNotBlank()) {
-                        passwordViewModel.addCategory(categoryNameInput)
-                        categoryNameInput = ""
-                        showAddCategoryDialog = false
-                    }
-                }) {
-                    Text(stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
 
     Column {
         // M3E Top Bar with integrated search - 根据当前分类过滤器动态显示标题
@@ -511,7 +479,7 @@ fun TotpListContent(
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.LocalUncategorized -> "${stringResource(R.string.filter_monica)} · ${stringResource(R.string.filter_uncategorized)}"
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.Custom -> categories.find { it.id == filter.categoryId }?.name ?: stringResource(R.string.unknown_category)
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabase -> keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"
-            is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> filter.groupPath.substringAfterLast('/')
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> decodeKeePassPathForDisplay(filter.groupPath)
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseStarred -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_starred)}"
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseUncategorized -> "${keepassDatabases.find { it.id == filter.databaseId }?.name ?: "KeePass"} · ${stringResource(R.string.filter_uncategorized)}"
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> stringResource(R.string.filter_bitwarden)
@@ -618,11 +586,26 @@ fun TotpListContent(
             bitwardenVaults = bitwardenVaults,
             getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
             getKeePassGroups = getKeePassGroups,
-            onCreateCategory = { showAddCategoryDialog = true },
             onVerifyMasterPassword = { input ->
                 SecurityManager(context).verifyMasterPassword(input)
             },
-            onCreateCategoryWithName = { name -> passwordViewModel.addCategory(name) },
+            onRequestBiometricVerify = if (canUseBiometric) {
+                { onSuccess, onError ->
+                    biometricHelper.authenticate(
+                        activity = activity!!,
+                        title = context.getString(R.string.verify_identity),
+                        subtitle = context.getString(R.string.verify_to_delete),
+                        onSuccess = { onSuccess() },
+                        onError = { error -> onError(error) },
+                        onFailed = {}
+                    )
+                }
+            } else {
+                null
+            },
+            onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
+            onRenameCategory = { category -> viewModel.updateCategory(category) },
+            onDeleteCategory = { category -> viewModel.deleteCategory(category) },
             onCreateBitwardenFolder = { vaultId, name ->
                 scope.launch {
                     val result = bitwardenRepository.createFolder(vaultId, name)

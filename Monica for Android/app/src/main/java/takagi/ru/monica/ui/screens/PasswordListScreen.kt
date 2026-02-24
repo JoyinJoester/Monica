@@ -51,9 +51,9 @@ import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
-import takagi.ru.monica.data.Category
 
 import androidx.compose.ui.unit.Velocity
 import takagi.ru.monica.util.VibrationPatterns
@@ -208,10 +208,6 @@ fun PasswordListScreen(
     val categories by viewModel.categories.collectAsState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
     
-    var showAddCategoryDialog by remember { mutableStateOf(false) }
-    var showEditCategoryDialog by remember { mutableStateOf<Category?>(null) }
-    var categoryNameInput by remember { mutableStateOf("") }
-    
     BackHandler(enabled = selectionMode) {
         selectionMode = false
         selectedItems = setOf()
@@ -233,9 +229,9 @@ fun PasswordListScreen(
                                     is CategoryFilter.Uncategorized -> context.getString(R.string.filter_uncategorized)
                                     is CategoryFilter.LocalStarred -> "${context.getString(R.string.filter_monica)} · ${context.getString(R.string.filter_starred)}"
                                     is CategoryFilter.LocalUncategorized -> "${context.getString(R.string.filter_monica)} · ${context.getString(R.string.filter_uncategorized)}"
-                                    is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: context.getString(R.string.unknown_category)
+                                    is CategoryFilter.Custom -> categories.find { it.id == (currentFilter as CategoryFilter.Custom).categoryId }?.name ?: context.getString(R.string.filter_all)
                                     is CategoryFilter.KeePassDatabase -> "KeePass"
-                                    is CategoryFilter.KeePassGroupFilter -> (currentFilter as CategoryFilter.KeePassGroupFilter).groupPath.substringAfterLast('/')
+                                    is CategoryFilter.KeePassGroupFilter -> decodeKeePassPathForDisplay((currentFilter as CategoryFilter.KeePassGroupFilter).groupPath)
                                     is CategoryFilter.KeePassDatabaseStarred -> "KeePass · ${context.getString(R.string.filter_starred)}"
                                     is CategoryFilter.KeePassDatabaseUncategorized -> "KeePass · ${context.getString(R.string.filter_uncategorized)}"
                                     is CategoryFilter.BitwardenVault -> "Bitwarden"
@@ -812,67 +808,6 @@ fun PasswordListScreen(
         )
     }
 
-    if (showAddCategoryDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddCategoryDialog = false },
-            title = { Text(context.getString(R.string.new_category)) },
-            text = {
-                OutlinedTextField(
-                    value = categoryNameInput,
-                    onValueChange = { categoryNameInput = it },
-                    label = { Text(context.getString(R.string.category_name)) },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (categoryNameInput.isNotBlank()) {
-                        viewModel.addCategory(categoryNameInput)
-                        categoryNameInput = ""
-                        showAddCategoryDialog = false
-                    }
-                }) {
-                    Text(context.getString(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text(context.getString(R.string.cancel))
-                }
-            }
-        )
-    }
-
-    if (showEditCategoryDialog != null) {
-        AlertDialog(
-            onDismissRequest = { showEditCategoryDialog = null },
-            title = { Text(context.getString(R.string.edit_category)) },
-            text = {
-                OutlinedTextField(
-                    value = categoryNameInput,
-                    onValueChange = { categoryNameInput = it },
-                    label = { Text(context.getString(R.string.category_name)) },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (categoryNameInput.isNotBlank()) {
-                        viewModel.updateCategory(showEditCategoryDialog!!.copy(name = categoryNameInput))
-                        categoryNameInput = ""
-                        showEditCategoryDialog = null
-                    }
-                }) {
-                    Text(context.getString(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditCategoryDialog = null }) {
-                    Text(context.getString(R.string.cancel))
-                }
-            }
-        )
-    }
 }
 
 /**

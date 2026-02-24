@@ -66,6 +66,9 @@ class AutofillPreferences(private val context: Context) {
         private val KEY_INTERACTION_IDENTIFIER = stringPreferencesKey("autofill_interaction_identifier")
         private val KEY_INTERACTION_STARTED_AT = longPreferencesKey("autofill_interaction_started_at")
         private val KEY_INTERACTION_COMPLETED = booleanPreferencesKey("autofill_interaction_completed")
+        private val KEY_SUGGESTION_STAGE_IDENTIFIER = stringPreferencesKey("autofill_suggestion_stage_identifier")
+        private val KEY_SUGGESTION_STAGE = intPreferencesKey("autofill_suggestion_stage")
+        private val KEY_SUGGESTION_STAGE_AT = longPreferencesKey("autofill_suggestion_stage_at")
         private val KEY_LEARNED_FIELD_SIGNATURES = stringSetPreferencesKey("learned_field_signatures")
         
         // 默认黑名单应用
@@ -441,6 +444,11 @@ class AutofillPreferences(private val context: Context) {
             preferences[KEY_LAST_FILLED_IDENTIFIER] = normalized
             preferences[KEY_LAST_FILLED_PASSWORD_ID] = passwordId
             preferences[KEY_LAST_FILLED_AT] = now
+            // Reset suggestion stage so the next request starts from
+            // "trigger + last filled" after a successful fill.
+            preferences[KEY_SUGGESTION_STAGE_IDENTIFIER] = normalized
+            preferences[KEY_SUGGESTION_STAGE] = 0
+            preferences[KEY_SUGGESTION_STAGE_AT] = now
         }
     }
 
@@ -485,6 +493,41 @@ class AutofillPreferences(private val context: Context) {
         val passwordId = preferences[KEY_LAST_FILLED_PASSWORD_ID] ?: return null
         val timestamp = preferences[KEY_LAST_FILLED_AT] ?: 0L
         return LastFilledCredential(storedIdentifier, passwordId, timestamp)
+    }
+
+    suspend fun getSuggestionStage(identifier: String, validForMs: Long): Int? {
+        val normalized = normalizeIdentifier(identifier)
+        if (normalized.isBlank()) return null
+        val preferences = context.dataStore.data.first()
+        val stageIdentifier = preferences[KEY_SUGGESTION_STAGE_IDENTIFIER] ?: return null
+        if (stageIdentifier != normalized) return null
+        val updatedAt = preferences[KEY_SUGGESTION_STAGE_AT] ?: return null
+        val now = System.currentTimeMillis()
+        if (validForMs > 0 && now - updatedAt > validForMs) return null
+        return preferences[KEY_SUGGESTION_STAGE] ?: 0
+    }
+
+    suspend fun setSuggestionStage(identifier: String, stage: Int) {
+        val normalized = normalizeIdentifier(identifier)
+        if (normalized.isBlank()) return
+        val now = System.currentTimeMillis()
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SUGGESTION_STAGE_IDENTIFIER] = normalized
+            preferences[KEY_SUGGESTION_STAGE] = stage.coerceAtLeast(0)
+            preferences[KEY_SUGGESTION_STAGE_AT] = now
+        }
+    }
+
+    suspend fun clearSuggestionStage(identifier: String? = null) {
+        val normalized = identifier?.let(::normalizeIdentifier)?.takeIf { it.isNotBlank() }
+        context.dataStore.edit { preferences ->
+            val currentIdentifier = preferences[KEY_SUGGESTION_STAGE_IDENTIFIER]
+            if (normalized == null || currentIdentifier == normalized) {
+                preferences.remove(KEY_SUGGESTION_STAGE_IDENTIFIER)
+                preferences.remove(KEY_SUGGESTION_STAGE)
+                preferences.remove(KEY_SUGGESTION_STAGE_AT)
+            }
+        }
     }
 
     suspend fun markFieldSignatureLearned(signatureKey: String) {

@@ -11,6 +11,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,8 +33,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.graphics.Color as AndroidColor
 import android.graphics.drawable.ColorDrawable
@@ -62,6 +67,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -93,6 +99,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,8 +118,12 @@ import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
+import takagi.ru.monica.utils.decodeKeePassPathSegments
 import kotlin.math.roundToInt
+
+typealias BiometricVerifyRequester = (onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit
 
 sealed interface UnifiedCategoryFilterSelection {
     data object All : UnifiedCategoryFilterSelection
@@ -156,12 +167,14 @@ fun UnifiedCategoryFilterBottomSheet(
     onVerifyMasterPassword: ((String) -> Boolean)? = null,
     onRenameCategory: ((Category) -> Unit)? = null,
     onDeleteCategory: ((Category) -> Unit)? = null,
+    onRequestBiometricVerify: BiometricVerifyRequester? = null,
     onCreateKeePassGroup: ((databaseId: Long, parentPath: String?, name: String) -> Unit)? = null,
     onRenameKeePassGroup: ((databaseId: Long, groupPath: String, newName: String) -> Unit)? = null,
     onDeleteKeePassGroup: ((databaseId: Long, groupPath: String) -> Unit)? = null
 ) {
     if (!visible) return
 
+    val context = LocalContext.current
     var expandedMenuId by remember { mutableStateOf<Long?>(null) }
     var monicaExpanded by remember { mutableStateOf(false) }
     val bitwardenExpanded = remember { mutableStateMapOf<Long, Boolean>() }
@@ -169,10 +182,14 @@ fun UnifiedCategoryFilterBottomSheet(
     var showCreateDialog by remember { mutableStateOf(false) }
     var createNameInput by remember { mutableStateOf("") }
     var createTarget by remember { mutableStateOf(CreateTarget.Local) }
+    var createLocalParentPath by remember { mutableStateOf<String?>(null) }
+    var createKeePassParentPath by remember { mutableStateOf<String?>(null) }
     var selectedCreateVaultId by remember { mutableStateOf<Long?>(null) }
     var selectedCreateKeePassDbId by remember { mutableStateOf<Long?>(null) }
+    var createOptionsExpanded by remember { mutableStateOf(true) }
     var renameAction by remember { mutableStateOf<RenameAction?>(null) }
     var renameInput by remember { mutableStateOf("") }
+    var localCategoryRenameMode by remember { mutableStateOf(LocalCategoryRenameMode.LeafOnly) }
     var deleteAction by remember { mutableStateOf<DeleteAction?>(null) }
     var deletePasswordInput by remember { mutableStateOf("") }
     var deletePasswordError by remember { mutableStateOf(false) }
@@ -187,8 +204,17 @@ fun UnifiedCategoryFilterBottomSheet(
         }
     }
     LaunchedEffect(keepassDatabases) {
-        if (selectedCreateKeePassDbId == null) {
-            selectedCreateKeePassDbId = keepassDatabases.firstOrNull()?.id
+        val preferredId = keepassDatabases.firstOrNull { !it.isWebDavDatabase() }?.id
+            ?: keepassDatabases.firstOrNull()?.id
+        val isCurrentValid = keepassDatabases.any { it.id == selectedCreateKeePassDbId }
+        if (!isCurrentValid) {
+            selectedCreateKeePassDbId = preferredId
+        } else if (
+            selectedCreateKeePassDbId != null &&
+            keepassDatabases.firstOrNull { it.id == selectedCreateKeePassDbId }?.isWebDavDatabase() == true &&
+            preferredId != null
+        ) {
+            selectedCreateKeePassDbId = preferredId
         }
     }
 
@@ -226,6 +252,7 @@ fun UnifiedCategoryFilterBottomSheet(
     val canCreateBitwarden = onCreateBitwardenFolder != null && bitwardenVaults.isNotEmpty()
     val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.any { !it.isWebDavDatabase() }
     val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
+    val localCategoryNodes = remember(categories) { buildLocalCategoryNodes(categories) }
 
     @Composable
     fun KeePassDatabaseItems(databases: List<LocalKeePassDatabase>, forceWebDavBadge: Boolean) {
@@ -317,14 +344,17 @@ fun UnifiedCategoryFilterBottomSheet(
                             )
                         }
                         groups.forEach { group ->
-                            val depth = group.path.count { it == '/' }
-                            val startPadding = 16 + (depth * 10)
+                            val depth = group.depth.coerceAtLeast(0)
                             val groupSelected = selected is UnifiedCategoryFilterSelection.KeePassGroupFilter &&
                                 selected.databaseId == database.id &&
                                 selected.groupPath == group.path
-                            Box(modifier = Modifier.padding(start = startPadding.dp)) {
+                            val parentPathLabel = decodeKeePassPathSegments(group.path)
+                                .dropLast(1)
+                                .takeIf { it.isNotEmpty() }
+                                ?.joinToString(KEEPASS_DISPLAY_PATH_SEPARATOR)
+                            HierarchyIndentedItem(depth = depth) {
                                 UnifiedCategoryListItem(
-                                    title = group.name,
+                                    title = buildHierarchyDisplayTitle(group.name, depth),
                                     icon = Icons.Default.Folder,
                                     selected = groupSelected,
                                     onClick = {
@@ -368,12 +398,25 @@ fun UnifiedCategoryFilterBottomSheet(
                                                             deleteAction = DeleteAction.KeePassGroup(
                                                                 databaseId = database.id,
                                                                 groupPath = group.path,
-                                                                displayName = group.name
+                                                                displayName = group.displayPath
                                                             )
                                                         }
                                                     )
                                                 }
                                             }
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                    badge = if (!parentPathLabel.isNullOrBlank()) {
+                                        {
+                                            Text(
+                                                text = parentPathLabel,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
                                     } else {
                                         null
@@ -492,16 +535,30 @@ fun UnifiedCategoryFilterBottomSheet(
                                     onClick = { onSelect(UnifiedCategoryFilterSelection.LocalUncategorized) }
                                 )
                             }
-                            categories.forEach { category ->
+                            localCategoryNodes.forEach { node ->
+                                val category = node.category
                                 val isSelected = selected is UnifiedCategoryFilterSelection.Custom &&
                                     selected.categoryId == category.id
-                                Box(modifier = Modifier.padding(start = 16.dp)) {
+                                HierarchyIndentedItem(depth = node.depth) {
                                     UnifiedCategoryListItem(
-                                        title = category.name,
+                                        title = buildHierarchyDisplayTitle(node.displayName, node.depth),
                                         icon = Icons.Default.Folder,
                                         selected = isSelected,
                                         onClick = { onSelect(UnifiedCategoryFilterSelection.Custom(category.id)) },
-                                        menu = if (onRenameCategory != null && onDeleteCategory != null) {
+                                        badge = if (!node.parentPathLabel.isNullOrBlank()) {
+                                            {
+                                                Text(
+                                                    text = node.parentPathLabel,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                        menu = if (canCreateLocal || onRenameCategory != null || onDeleteCategory != null) {
                                             {
                                                 IconButton(onClick = { expandedMenuId = category.id }) {
                                                     Icon(Icons.Default.MoreVert, contentDescription = null)
@@ -511,24 +568,48 @@ fun UnifiedCategoryFilterBottomSheet(
                                                     onDismissRequest = { expandedMenuId = null },
                                                     modifier = Modifier.clip(RoundedCornerShape(18.dp))
                                                 ) {
-                                                    DropdownMenuItem(
-                                                        text = { Text(stringResource(R.string.edit)) },
-                                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                                        onClick = {
-                                                            expandedMenuId = null
-                                                            onRenameCategory(category)
-                                                        }
-                                                    )
-                                                    DropdownMenuItem(
-                                                        text = { Text(stringResource(R.string.delete)) },
-                                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                                                        onClick = {
-                                                            expandedMenuId = null
-                                                            deletePasswordInput = ""
-                                                            deletePasswordError = false
-                                                            deleteAction = DeleteAction.LocalCategory(category)
-                                                        }
-                                                    )
+                                                    if (canCreateLocal) {
+                                                        DropdownMenuItem(
+                                                            text = { Text(stringResource(R.string.new_category)) },
+                                                            leadingIcon = {
+                                                                Icon(
+                                                                    Icons.Default.Add,
+                                                                    contentDescription = null
+                                                                )
+                                                            },
+                                                            onClick = {
+                                                                expandedMenuId = null
+                                                                createNameInput = ""
+                                                                createTarget = CreateTarget.Local
+                                                                createLocalParentPath = node.fullPath
+                                                                showCreateDialog = true
+                                                            }
+                                                        )
+                                                    }
+                                                    if (onRenameCategory != null) {
+                                                        DropdownMenuItem(
+                                                            text = { Text(stringResource(R.string.edit)) },
+                                                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                                            onClick = {
+                                                                expandedMenuId = null
+                                                                localCategoryRenameMode = LocalCategoryRenameMode.LeafOnly
+                                                                renameInput = getLocalCategoryLeafName(category.name)
+                                                                renameAction = RenameAction.LocalCategory(category)
+                                                            }
+                                                        )
+                                                    }
+                                                    if (onDeleteCategory != null) {
+                                                        DropdownMenuItem(
+                                                            text = { Text(stringResource(R.string.delete)) },
+                                                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                                            onClick = {
+                                                                expandedMenuId = null
+                                                                deletePasswordInput = ""
+                                                                deletePasswordError = false
+                                                                deleteAction = DeleteAction.LocalCategory(category)
+                                                            }
+                                                        )
+                                                    }
                                                 }
                                             }
                                         } else {
@@ -706,12 +787,15 @@ fun UnifiedCategoryFilterBottomSheet(
                         FilledTonalButton(
                             onClick = {
                                 createNameInput = ""
+                                createLocalParentPath = null
+                                createKeePassParentPath = null
                                 createTarget = when {
                                     canCreateLocal -> CreateTarget.Local
                                     canCreateBitwarden -> CreateTarget.Bitwarden
                                     canCreateKeePass -> CreateTarget.KeePass
                                     else -> CreateTarget.Local
                                 }
+                                createOptionsExpanded = true
                                 showCreateDialog = true
                             },
                             modifier = Modifier
@@ -730,6 +814,73 @@ fun UnifiedCategoryFilterBottomSheet(
     }
 
     if (showCreateDialog) {
+        val createTargetScroll = rememberScrollState()
+        val createVaultScroll = rememberScrollState()
+        val createLocalParentScroll = rememberScrollState()
+        val createKeePassDbScroll = rememberScrollState()
+        val createKeePassParentScroll = rememberScrollState()
+        val createKeePassGroups by (
+            if (
+                createTarget == CreateTarget.KeePass &&
+                selectedCreateKeePassDbId != null &&
+                getKeePassGroups != null
+            ) {
+                getKeePassGroups.invoke(selectedCreateKeePassDbId!!)
+            } else {
+                kotlinx.coroutines.flow.flowOf(emptyList())
+            }
+        ).collectAsState(initial = emptyList())
+        val sortedCreateKeePassGroups = remember(createKeePassGroups) {
+            createKeePassGroups.sortedBy { it.displayPath.lowercase() }
+        }
+
+        LaunchedEffect(createTarget, sortedCreateKeePassGroups, createKeePassParentPath) {
+            if (createTarget != CreateTarget.KeePass) return@LaunchedEffect
+            val currentParent = createKeePassParentPath ?: return@LaunchedEffect
+            if (sortedCreateKeePassGroups.none { it.path == currentParent }) {
+                createKeePassParentPath = null
+            }
+        }
+
+        val selectedCreateKeePassParentDisplay = sortedCreateKeePassGroups
+            .firstOrNull { it.path == createKeePassParentPath }
+            ?.displayPath
+        val localPreviewPath = buildNestedLocalCategoryPath(createLocalParentPath, createNameInput)
+        val keepassPreviewPath = if (createNameInput.trim().isBlank()) {
+            ""
+        } else {
+            val parentDisplay = selectedCreateKeePassParentDisplay.orEmpty()
+            if (parentDisplay.isBlank()) {
+                createNameInput.trim()
+            } else {
+                "$parentDisplay$KEEPASS_DISPLAY_PATH_SEPARATOR${createNameInput.trim()}"
+            }
+        }
+        val previewPath = when (createTarget) {
+            CreateTarget.Local -> localPreviewPath
+            CreateTarget.Bitwarden -> createNameInput.trim()
+            CreateTarget.KeePass -> keepassPreviewPath
+        }
+        val targetLabel = when (createTarget) {
+            CreateTarget.Local -> stringResource(R.string.create_target_local)
+            CreateTarget.Bitwarden -> stringResource(R.string.create_target_bitwarden)
+            CreateTarget.KeePass -> stringResource(R.string.create_target_keepass)
+        }
+        val targetIcon = when (createTarget) {
+            CreateTarget.Local -> Icons.Default.Smartphone
+            CreateTarget.Bitwarden -> Icons.Default.CloudSync
+            CreateTarget.KeePass -> Icons.Default.Key
+        }
+        val targetTint = when (createTarget) {
+            CreateTarget.Local -> MaterialTheme.colorScheme.primary
+            CreateTarget.Bitwarden -> MaterialTheme.colorScheme.secondary
+            CreateTarget.KeePass -> MaterialTheme.colorScheme.tertiary
+        }
+        val createChipColors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            selectedLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer
+        )
         val canSubmit = when (createTarget) {
             CreateTarget.Local -> canCreateLocal
             CreateTarget.Bitwarden -> canCreateBitwarden && selectedCreateVaultId != null
@@ -737,85 +888,378 @@ fun UnifiedCategoryFilterBottomSheet(
         } && createNameInput.trim().isNotBlank()
 
         AlertDialog(
-            onDismissRequest = { showCreateDialog = false },
-            title = { Text(stringResource(R.string.create_folder_dialog_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = stringResource(R.string.create_folder_dialog_subtitle),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+            onDismissRequest = {
+                showCreateDialog = false
+                createLocalParentPath = null
+                createKeePassParentPath = null
+            },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (canCreateLocal) {
-                            FilterChip(
-                                selected = createTarget == CreateTarget.Local,
-                                onClick = { createTarget = CreateTarget.Local },
-                                label = { Text(stringResource(R.string.create_target_local)) },
-                                leadingIcon = { Icon(Icons.Default.Smartphone, contentDescription = null) }
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = targetTint.copy(alpha = 0.18f)
+                        ) {
+                            Icon(
+                                imageVector = targetIcon,
+                                contentDescription = null,
+                                tint = targetTint,
+                                modifier = Modifier.padding(10.dp)
                             )
                         }
-                        if (canCreateBitwarden) {
-                            FilterChip(
-                                selected = createTarget == CreateTarget.Bitwarden,
-                                onClick = { createTarget = CreateTarget.Bitwarden },
-                                label = { Text(stringResource(R.string.create_target_bitwarden)) },
-                                leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = stringResource(R.string.create_folder_dialog_title),
+                                style = MaterialTheme.typography.titleLarge
                             )
-                        }
-                        if (canCreateKeePass) {
-                            FilterChip(
-                                selected = createTarget == CreateTarget.KeePass,
-                                onClick = { createTarget = CreateTarget.KeePass },
-                                label = { Text(stringResource(R.string.create_target_keepass)) },
-                                leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                            Text(
+                                text = stringResource(R.string.create_folder_dialog_subtitle),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                    if (createTarget == CreateTarget.Bitwarden && canCreateBitwarden) {
-                        Text(
-                            text = stringResource(R.string.create_select_bitwarden_vault),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = targetTint.copy(alpha = 0.14f),
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = targetTint.copy(alpha = 0.25f)
                         )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            bitwardenVaults.forEach { vault ->
-                                FilterChip(
-                                    selected = selectedCreateVaultId == vault.id,
-                                    onClick = { selectedCreateVaultId = vault.id },
-                                    label = { Text(vault.email) },
-                                    leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) }
+                            Text(
+                                text = stringResource(R.string.create_target_section_title),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = targetIcon,
+                                    contentDescription = null,
+                                    tint = targetTint,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = targetLabel,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = targetTint
                                 )
                             }
                         }
                     }
-                    if (createTarget == CreateTarget.KeePass && canCreateKeePass) {
-                        Text(
-                            text = stringResource(R.string.create_select_keepass_database),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                         )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            keepassDatabases.forEach { db ->
-                                FilterChip(
-                                    selected = selectedCreateKeePassDbId == db.id,
-                                    onClick = { selectedCreateKeePassDbId = db.id },
-                                    label = { Text(db.name) },
-                                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                            Text(
+                                text = stringResource(R.string.create_target_section_title),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(createTargetScroll),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (canCreateLocal) {
+                                    FilterChip(
+                                        selected = createTarget == CreateTarget.Local,
+                                        onClick = {
+                                            createTarget = CreateTarget.Local
+                                            createKeePassParentPath = null
+                                        },
+                                        modifier = Modifier.height(38.dp),
+                                        colors = createChipColors,
+                                        label = { Text(stringResource(R.string.create_target_local)) },
+                                        leadingIcon = { Icon(Icons.Default.Smartphone, contentDescription = null) }
+                                    )
+                                }
+                                if (canCreateBitwarden) {
+                                    FilterChip(
+                                        selected = createTarget == CreateTarget.Bitwarden,
+                                        onClick = {
+                                            createTarget = CreateTarget.Bitwarden
+                                            createLocalParentPath = null
+                                            createKeePassParentPath = null
+                                        },
+                                        modifier = Modifier.height(38.dp),
+                                        colors = createChipColors,
+                                        label = { Text(stringResource(R.string.create_target_bitwarden)) },
+                                        leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
+                                    )
+                                }
+                                if (canCreateKeePass) {
+                                    FilterChip(
+                                        selected = createTarget == CreateTarget.KeePass,
+                                        onClick = {
+                                            createTarget = CreateTarget.KeePass
+                                            createLocalParentPath = null
+                                        },
+                                        modifier = Modifier.height(38.dp),
+                                        colors = createChipColors,
+                                        label = { Text(stringResource(R.string.create_target_keepass)) },
+                                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { createOptionsExpanded = !createOptionsExpanded }
+                                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.create_nested_section_title),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Icon(
+                                    imageVector = if (createOptionsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            AnimatedVisibility(
+                                visible = createOptionsExpanded,
+                                enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                                exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    when (createTarget) {
+                                        CreateTarget.Local -> {
+                                            Text(
+                                                text = stringResource(R.string.create_select_local_parent),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(createLocalParentScroll),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                FilterChip(
+                                                    selected = createLocalParentPath.isNullOrBlank(),
+                                                    onClick = { createLocalParentPath = null },
+                                                    colors = createChipColors,
+                                                    label = { Text(stringResource(R.string.folder_no_folder_root)) },
+                                                    leadingIcon = { Icon(Icons.Default.FolderOff, contentDescription = null) }
+                                                )
+                                                localCategoryNodes.forEach { node ->
+                                                    FilterChip(
+                                                        selected = createLocalParentPath == node.fullPath,
+                                                        onClick = { createLocalParentPath = node.fullPath },
+                                                        colors = createChipColors,
+                                                        label = {
+                                                            Text(
+                                                                text = node.fullPath,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                modifier = Modifier.widthIn(max = 180.dp)
+                                                            )
+                                                        },
+                                                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
+                                                    )
+                                                }
+                                            }
+                                            if (!createLocalParentPath.isNullOrBlank()) {
+                                                Text(
+                                                    text = stringResource(
+                                                        R.string.category_parent_path_hint,
+                                                        createLocalParentPath.orEmpty()
+                                                    ),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        CreateTarget.Bitwarden -> {
+                                            if (canCreateBitwarden) {
+                                                Text(
+                                                    text = stringResource(R.string.create_select_bitwarden_vault),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .horizontalScroll(createVaultScroll),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    bitwardenVaults.forEach { vault ->
+                                                        FilterChip(
+                                                            selected = selectedCreateVaultId == vault.id,
+                                                            onClick = { selectedCreateVaultId = vault.id },
+                                                            colors = createChipColors,
+                                                            label = {
+                                                                Text(
+                                                                    text = vault.email,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                    modifier = Modifier.widthIn(max = 200.dp)
+                                                                )
+                                                            },
+                                                            leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) }
+                                                        )
+                                                    }
+                                                }
+                                                Text(
+                                                    text = stringResource(R.string.bitwarden_folder_flat_hint),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        CreateTarget.KeePass -> {
+                                            if (canCreateKeePass) {
+                                                Text(
+                                                    text = stringResource(R.string.create_select_keepass_database),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .horizontalScroll(createKeePassDbScroll),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    localKeePassDatabases.forEach { db ->
+                                                        FilterChip(
+                                                            selected = selectedCreateKeePassDbId == db.id,
+                                                            onClick = {
+                                                                selectedCreateKeePassDbId = db.id
+                                                                createKeePassParentPath = null
+                                                            },
+                                                            colors = createChipColors,
+                                                            label = {
+                                                                Text(
+                                                                    text = db.name,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                    modifier = Modifier.widthIn(max = 180.dp)
+                                                                )
+                                                            },
+                                                            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                                                        )
+                                                    }
+                                                }
+
+                                                Text(
+                                                    text = stringResource(R.string.create_select_keepass_parent_group),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .horizontalScroll(createKeePassParentScroll),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    FilterChip(
+                                                        selected = createKeePassParentPath.isNullOrBlank(),
+                                                        onClick = { createKeePassParentPath = null },
+                                                        colors = createChipColors,
+                                                        label = { Text(stringResource(R.string.folder_no_folder_root)) },
+                                                        leadingIcon = { Icon(Icons.Default.FolderOff, contentDescription = null) }
+                                                    )
+                                                    sortedCreateKeePassGroups.forEach { group ->
+                                                        FilterChip(
+                                                            selected = createKeePassParentPath == group.path,
+                                                            onClick = { createKeePassParentPath = group.path },
+                                                            colors = createChipColors,
+                                                            label = {
+                                                                Text(
+                                                                    text = group.displayPath,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                    modifier = Modifier.widthIn(max = 220.dp)
+                                                                )
+                                                            },
+                                                            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (previewPath.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.24f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.create_preview_path_label),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = previewPath,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
                         }
                     }
+
                     OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
                         value = createNameInput,
                         onValueChange = { createNameInput = it },
                         label = { Text(stringResource(R.string.folder_name_label)) },
@@ -824,15 +1268,21 @@ fun UnifiedCategoryFilterBottomSheet(
                 }
             },
             confirmButton = {
-                TextButton(
+                FilledTonalButton(
                     enabled = canSubmit,
+                    shape = RoundedCornerShape(12.dp),
                     onClick = {
                         val name = createNameInput.trim()
-                        if (name.isBlank()) return@TextButton
+                        if (name.isBlank()) return@FilledTonalButton
                         when (createTarget) {
                             CreateTarget.Local -> {
+                                val normalizedName = buildNestedLocalCategoryPath(
+                                    createLocalParentPath,
+                                    name
+                                )
+                                if (normalizedName.isBlank()) return@FilledTonalButton
                                 if (onCreateCategoryWithName != null) {
-                                    onCreateCategoryWithName(name)
+                                    onCreateCategoryWithName(normalizedName)
                                 } else {
                                     onCreateCategory?.invoke()
                                 }
@@ -846,18 +1296,28 @@ fun UnifiedCategoryFilterBottomSheet(
                             CreateTarget.KeePass -> {
                                 val dbId = selectedCreateKeePassDbId
                                 if (dbId != null) {
-                                    onCreateKeePassGroup?.invoke(dbId, null, name)
+                                    onCreateKeePassGroup?.invoke(dbId, createKeePassParentPath, name)
                                 }
                             }
                         }
                         showCreateDialog = false
+                        createLocalParentPath = null
+                        createKeePassParentPath = null
                     }
                 ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(stringResource(R.string.confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCreateDialog = false }) {
+                TextButton(
+                    modifier = Modifier.padding(end = 4.dp),
+                    onClick = {
+                    showCreateDialog = false
+                    createLocalParentPath = null
+                    createKeePassParentPath = null
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -865,24 +1325,82 @@ fun UnifiedCategoryFilterBottomSheet(
     }
 
     if (renameAction != null) {
+        val target = renameAction!!
+        val localCategory = (target as? RenameAction.LocalCategory)?.category
+        val localCategoryParentPath = localCategory?.name?.let(::getLocalCategoryParentPath)
+        val canEditFullPath = !localCategoryParentPath.isNullOrBlank()
+        val titleRes = if (target is RenameAction.LocalCategory) {
+            R.string.edit_category
+        } else {
+            R.string.folder_edit
+        }
+        val labelRes = if (target is RenameAction.LocalCategory) {
+            R.string.category_name
+        } else {
+            R.string.folder_name_label
+        }
         AlertDialog(
             onDismissRequest = { renameAction = null },
-            title = { Text(stringResource(R.string.folder_edit)) },
+            title = { Text(stringResource(titleRes)) },
             text = {
-                OutlinedTextField(
-                    value = renameInput,
-                    onValueChange = { renameInput = it },
-                    label = { Text(stringResource(R.string.folder_name_label)) },
-                    singleLine = true
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (canEditFullPath) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = localCategoryRenameMode == LocalCategoryRenameMode.LeafOnly,
+                                onClick = {
+                                    localCategoryRenameMode = LocalCategoryRenameMode.LeafOnly
+                                    renameInput = getLocalCategoryLeafName(localCategory?.name.orEmpty())
+                                },
+                                label = { Text(stringResource(R.string.category_rename_mode_leaf_only)) }
+                            )
+                            FilterChip(
+                                selected = localCategoryRenameMode == LocalCategoryRenameMode.FullPath,
+                                onClick = {
+                                    localCategoryRenameMode = LocalCategoryRenameMode.FullPath
+                                    renameInput = localCategory?.name.orEmpty()
+                                },
+                                label = { Text(stringResource(R.string.category_rename_mode_full_path)) }
+                            )
+                        }
+                        Text(
+                            text = stringResource(
+                                R.string.category_parent_path_hint,
+                                localCategoryParentPath.orEmpty()
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    OutlinedTextField(
+                        value = renameInput,
+                        onValueChange = { renameInput = it },
+                        label = { Text(stringResource(labelRes)) },
+                        singleLine = true
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val target = renameAction ?: return@TextButton
                         val newName = renameInput.trim()
                         if (newName.isBlank()) return@TextButton
                         when (target) {
+                            is RenameAction.LocalCategory -> {
+                                val resolvedName = when (localCategoryRenameMode) {
+                                    LocalCategoryRenameMode.LeafOnly -> {
+                                        buildNestedLocalCategoryPath(localCategoryParentPath, newName)
+                                    }
+                                    LocalCategoryRenameMode.FullPath -> {
+                                        buildNestedLocalCategoryPath(null, newName)
+                                    }
+                                }
+                                if (resolvedName.isBlank()) return@TextButton
+                                onRenameCategory?.invoke(target.category.copy(name = resolvedName))
+                            }
                             is RenameAction.BitwardenFolder -> onRenameBitwardenFolder?.invoke(
                                 target.vaultId,
                                 target.folderId,
@@ -911,6 +1429,32 @@ fun UnifiedCategoryFilterBottomSheet(
     if (deleteAction != null) {
         val action = deleteAction!!
         val displayType = stringResource(R.string.folder_generic)
+        val performDeleteAction = {
+            when (action) {
+                is DeleteAction.LocalCategory -> onDeleteCategory?.invoke(action.category)
+                is DeleteAction.BitwardenFolder -> onDeleteBitwardenFolder?.invoke(action.vaultId, action.folderId)
+                is DeleteAction.KeePassGroup -> onDeleteKeePassGroup?.invoke(action.databaseId, action.groupPath)
+            }
+            deleteAction = null
+            deletePasswordInput = ""
+            deletePasswordError = false
+        }
+        val biometricAction = onRequestBiometricVerify?.let { request ->
+            {
+                request(
+                    {
+                        performDeleteAction()
+                    },
+                    { error ->
+                        android.widget.Toast.makeText(
+                            context,
+                            error,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
+            }
+        }
         M3IdentityVerifyDialog(
             title = stringResource(R.string.delete_item_title, displayType),
             message = stringResource(R.string.delete_item_message, displayType, action.displayName),
@@ -931,22 +1475,19 @@ fun UnifiedCategoryFilterBottomSheet(
                     deletePasswordError = true
                     return@M3IdentityVerifyDialog
                 }
-                when (action) {
-                    is DeleteAction.LocalCategory -> onDeleteCategory?.invoke(action.category)
-                    is DeleteAction.BitwardenFolder -> onDeleteBitwardenFolder?.invoke(action.vaultId, action.folderId)
-                    is DeleteAction.KeePassGroup -> onDeleteKeePassGroup?.invoke(action.databaseId, action.groupPath)
-                }
-                deleteAction = null
-                deletePasswordInput = ""
-                deletePasswordError = false
+                performDeleteAction()
             },
             confirmText = stringResource(R.string.delete),
             destructiveConfirm = true,
             isPasswordError = deletePasswordError,
             passwordErrorText = stringResource(R.string.current_password_incorrect),
             showBiometricSlot = true,
-            onBiometricClick = null,
-            biometricHintText = stringResource(R.string.biometric_not_available)
+            onBiometricClick = biometricAction,
+            biometricHintText = if (biometricAction == null) {
+                stringResource(R.string.biometric_not_available)
+            } else {
+                null
+            }
         )
     }
 }
@@ -1036,13 +1577,134 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
+private data class LocalCategoryNode(
+    val category: Category,
+    val fullPath: String,
+    val displayName: String,
+    val depth: Int,
+    val parentPathLabel: String?
+)
+
+private fun buildLocalCategoryNodes(categories: List<Category>): List<LocalCategoryNode> {
+    return categories
+        .map { category ->
+            val segments = category.name
+                .split("/")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+            val fullPath = if (segments.isEmpty()) category.name.trim() else segments.joinToString("/")
+            val displayName = segments.lastOrNull() ?: fullPath
+            val depth = (segments.size - 1).coerceAtLeast(0)
+            LocalCategoryNode(
+                category = category,
+                fullPath = fullPath,
+                displayName = displayName,
+                depth = depth,
+                parentPathLabel = segments
+                    .dropLast(1)
+                    .takeIf { it.isNotEmpty() }
+                    ?.joinToString(" / ")
+            )
+        }
+        .sortedWith(
+            compareBy<LocalCategoryNode>(
+                { it.fullPath.lowercase() },
+                { it.category.sortOrder },
+                { it.category.id }
+            )
+        )
+}
+
+private fun buildNestedLocalCategoryPath(parentPath: String?, name: String): String {
+    val child = name
+        .split("/")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString("/")
+    if (child.isBlank()) return ""
+
+    val parent = parentPath
+        ?.split("/")
+        ?.map { it.trim() }
+        ?.filter { it.isNotBlank() }
+        ?.joinToString("/")
+        .orEmpty()
+
+    return if (parent.isBlank()) child else "$parent/$child"
+}
+
+private fun getLocalCategoryLeafName(path: String): String {
+    val normalizedPath = buildNestedLocalCategoryPath(null, path)
+    if (normalizedPath.isBlank()) return ""
+    return normalizedPath.substringAfterLast('/')
+}
+
+private fun getLocalCategoryParentPath(path: String): String? {
+    val normalizedPath = buildNestedLocalCategoryPath(null, path)
+    if (!normalizedPath.contains('/')) return null
+    return normalizedPath.substringBeforeLast('/').ifBlank { null }
+}
+
+private fun buildHierarchyDisplayTitle(baseName: String, depth: Int): String {
+    if (depth <= 0) return baseName
+    val prefix = buildString {
+        repeat((depth - 1).coerceAtMost(3)) { append("  ") }
+        append("> ")
+    }
+    return prefix + baseName
+}
+
+@Composable
+private fun HierarchyIndentedItem(
+    depth: Int,
+    content: @Composable () -> Unit
+) {
+    val clampedDepth = depth.coerceAtLeast(0).coerceAtMost(6)
+    val startInset = 14 + (clampedDepth * 18)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = startInset.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (clampedDepth > 0) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.padding(end = 8.dp)
+            ) {
+                repeat(clampedDepth) { index ->
+                    val alpha = 0.20f + (index * 0.10f)
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .height(24.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+                    )
+                }
+            }
+        } else {
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            content()
+        }
+    }
+}
+
 private enum class CreateTarget {
     Local,
     Bitwarden,
     KeePass
 }
 
+private enum class LocalCategoryRenameMode {
+    LeafOnly,
+    FullPath
+}
+
 private sealed interface RenameAction {
+    data class LocalCategory(val category: Category) : RenameAction
     data class BitwardenFolder(val vaultId: Long, val folderId: String) : RenameAction
     data class KeePassGroup(val databaseId: Long, val groupPath: String) : RenameAction
 }

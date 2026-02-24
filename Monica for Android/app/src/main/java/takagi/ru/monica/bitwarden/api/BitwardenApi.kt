@@ -47,6 +47,7 @@ interface BitwardenIdentityApi {
         @Field("password") passwordHash: String,  // 标准 Base64 编码的 Master Password Hash
         @Field("scope") scope: String = "api offline_access",
         @Field("client_id") clientId: String = "desktop",  // 使用 desktop (与 Keyguard 一致)
+        @Field("captchaResponse") captchaResponse: String? = null,
         @Field("deviceIdentifier") deviceIdentifier: String,
         @Field("deviceType") deviceType: String = "8",  // 8 = Linux (与 Keyguard 一致)
         @Field("deviceName") deviceName: String = "linux"  // 与 Keyguard 一致
@@ -81,6 +82,7 @@ interface BitwardenIdentityApi {
         @Field("password") passwordHash: String,
         @Field("scope") scope: String = "api offline_access",
         @Field("client_id") clientId: String = "desktop",  // 与 Keyguard 一致
+        @Field("captchaResponse") captchaResponse: String? = null,
         @Field("deviceIdentifier") deviceIdentifier: String,
         @Field("deviceType") deviceType: String = "8",  // 8 = Linux (与 Keyguard 一致)
         @Field("deviceName") deviceName: String = "linux",  // 与 Keyguard 一致
@@ -105,6 +107,7 @@ interface BitwardenIdentityApi {
         @Field("password") passwordHash: String,
         @Field("scope") scope: String = "api offline_access",
         @Field("client_id") clientId: String = "desktop",
+        @Field("captchaResponse") captchaResponse: String? = null,
         @Field("deviceIdentifier") deviceIdentifier: String,
         @Field("deviceType") deviceType: String = "8",
         @Field("deviceName") deviceName: String = "linux",
@@ -337,6 +340,9 @@ data class TokenResponse(
     @JsonNames("errorModel")
     @SerialName("ErrorModel")
     val errorModel: ErrorModel? = null,
+    @JsonNames("HCaptcha_SiteKey", "hCaptcha_SiteKey")
+    @SerialName("HCaptcha_SiteKey")
+    val hCaptchaSiteKey: String? = null,
     @JsonNames("twoFactorProviders")
     @SerialName("TwoFactorProviders")
     val twoFactorProviders: List<Int>? = null,

@@ -2,7 +2,9 @@ package takagi.ru.monica.ui.screens
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import app.keemobile.kotpass.constants.BasicField
 import app.keemobile.kotpass.cryptography.EncryptedValue
 import app.keemobile.kotpass.database.Credentials
@@ -353,22 +355,24 @@ class KeePassWebDavViewModel {
     }
     
     /**
-     * 从本地 InputStream 导入 .kdbx 文件
+     * 从本地 URI 导入 .kdbx 文件
      * 供导入页面使用，不需要 WebDAV 配置
-     * 
+     *
      * @param context Android Context
-     * @param inputStream KDBX 文件输入流
+     * @param sourceUri KDBX 文件 URI
      * @param kdbxPassword 用于解密 .kdbx 文件的密码
      * @return 导入的条目数量
      */
     suspend fun importFromLocalKdbx(
         context: Context,
-        inputStream: InputStream,
+        sourceUri: Uri,
         kdbxPassword: String
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Starting local KDBX import...")
-            val importedCount = parseKdbxAndInsertToDb(context, inputStream, kdbxPassword)
+            Log.d(TAG, "Starting local KDBX import from uri=$sourceUri ...")
+            val importedCount = context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
+                parseKdbxAndInsertToDb(context, sourceUri, inputStream, kdbxPassword)
+            } ?: throw Exception(context.getString(R.string.import_data_error))
             Log.d(TAG, "Local KDBX import completed: $importedCount entries")
             Result.success(importedCount)
         } catch (e: Exception) {
@@ -585,6 +589,64 @@ class KeePassWebDavViewModel {
                     storageLocation = KeePassStorageLocation.EXTERNAL,
                     encryptedPassword = encryptedPassword,
                     description = "WebDAV: $serverUrl",
+                    entryCount = entryCount,
+                    isDefault = allDatabases.isEmpty()
+                )
+            )
+        }
+    }
+
+    private suspend fun bindLocalDatabase(
+        context: Context,
+        sourceUri: Uri,
+        kdbxPassword: String,
+        entryCount: Int
+    ): Long {
+        val appDb = PasswordDatabase.getDatabase(context)
+        val keepassDao = appDb.localKeePassDatabaseDao()
+        val securityManager = SecurityManager(context)
+        val encryptedPassword = if (kdbxPassword.isNotBlank()) {
+            securityManager.encryptData(kdbxPassword)
+        } else {
+            null
+        }
+
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                sourceUri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+
+        val allDatabases = keepassDao.getAllDatabasesSync()
+        val uriPath = sourceUri.toString()
+        val displayName = (
+            DocumentFile.fromSingleUri(context, sourceUri)?.name
+                ?: sourceUri.lastPathSegment?.substringAfterLast('/')
+                ?: "ImportedKeePass"
+            ).removeSuffix(".kdbx")
+        val existing = allDatabases.firstOrNull { it.filePath == uriPath }
+
+        return if (existing != null) {
+            keepassDao.updateDatabase(
+                existing.copy(
+                    name = displayName,
+                    encryptedPassword = encryptedPassword,
+                    storageLocation = KeePassStorageLocation.EXTERNAL,
+                    lastAccessedAt = System.currentTimeMillis(),
+                    entryCount = entryCount
+                )
+            )
+            existing.id
+        } else {
+            keepassDao.insertDatabase(
+                LocalKeePassDatabase(
+                    name = displayName,
+                    filePath = uriPath,
+                    storageLocation = KeePassStorageLocation.EXTERNAL,
+                    encryptedPassword = encryptedPassword,
+                    description = "Imported local KDBX",
                     entryCount = entryCount,
                     isDefault = allDatabases.isEmpty()
                 )
@@ -819,6 +881,7 @@ class KeePassWebDavViewModel {
      */
     private suspend fun parseKdbxAndInsertToDb(
         context: Context,
+        sourceUri: Uri,
         inputStream: InputStream,
         kdbxPassword: String
     ): Int = withContext(Dispatchers.IO) {
@@ -833,10 +896,9 @@ class KeePassWebDavViewModel {
                 KeePassDatabase.decode(inputStream, credentials)
             }
             
-            // 3. 获取所有条目
-            val allEntries = mutableListOf<Entry>()
-            collectEntries(keePassDatabase.content.group, allEntries)
-            
+            // 3. 获取所有条目（保留分组路径）
+            val allEntries = mutableListOf<Pair<Entry, String?>>()
+            collectEntriesWithGroupPath(keePassDatabase.content.group, null, allEntries)
             Log.d(TAG, "Found ${allEntries.size} entries in KDBX file")
             
             // 4. 准备数据库和安全管理器
@@ -844,11 +906,18 @@ class KeePassWebDavViewModel {
             val passwordDao = database.passwordEntryDao()
             val secureItemDao = database.secureItemDao()
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
+            val keepassCredentialCount = allEntries.count { (entry, _) -> isCredentialLikeEntry(entry) }
+            val keepassDatabaseId = bindLocalDatabase(
+                context = context,
+                sourceUri = sourceUri,
+                kdbxPassword = kdbxPassword,
+                entryCount = keepassCredentialCount
+            )
             
             var passwordImportedCount = 0
             var totpImportedCount = 0
             
-            allEntries.forEach { entry ->
+            allEntries.forEach { (entry, groupPath) ->
                 try {
                     // 安全获取字段值的辅助函数
                     fun getFieldValue(key: String): String {
@@ -898,57 +967,102 @@ class KeePassWebDavViewModel {
                         }
                         
                         if (totpData != null) {
-                            // 检查是否重复
-                            val existingItem = secureItemDao.findDuplicateItem(ItemType.TOTP, title)
-                            if (existingItem != null) {
-                                Log.d(TAG, "Skipping duplicate TOTP: $title")
-                                return@forEach
+                            val normalizedTitle = title.ifEmpty { totpData.issuer }
+                            val duplicateByTitle = secureItemDao.findDuplicateItem(ItemType.TOTP, normalizedTitle)
+                            val existingItem = duplicateByTitle?.takeIf { candidate ->
+                                (candidate.keepassDatabaseId == keepassDatabaseId && candidate.keepassGroupPath == groupPath) ||
+                                    (candidate.keepassDatabaseId == null && candidate.bitwardenVaultId == null)
                             }
-                            
-                            val secureItem = SecureItem(
-                                itemType = ItemType.TOTP,
-                                title = title.ifEmpty { totpData.issuer },
-                                notes = notes,
-                                itemData = Json.encodeToString(TotpData.serializer(), totpData),
-                                createdAt = Date(),
-                                updatedAt = Date()
-                            )
-                            
-                            secureItemDao.insertItem(secureItem)
-                            totpImportedCount++
-                            Log.d(TAG, "Imported TOTP: $title")
+                            if (existingItem != null) {
+                                val updatedItem = existingItem.copy(
+                                    title = normalizedTitle,
+                                    notes = notes,
+                                    itemData = Json.encodeToString(TotpData.serializer(), totpData),
+                                    keepassDatabaseId = keepassDatabaseId,
+                                    keepassGroupPath = groupPath,
+                                    isDeleted = false,
+                                    deletedAt = null,
+                                    updatedAt = Date()
+                                )
+                                secureItemDao.updateItem(updatedItem)
+                                Log.d(TAG, "Updated existing TOTP: $normalizedTitle")
+                            } else {
+                                val secureItem = SecureItem(
+                                    itemType = ItemType.TOTP,
+                                    title = normalizedTitle,
+                                    notes = notes,
+                                    itemData = Json.encodeToString(TotpData.serializer(), totpData),
+                                    createdAt = Date(),
+                                    updatedAt = Date(),
+                                    keepassDatabaseId = keepassDatabaseId,
+                                    keepassGroupPath = groupPath
+                                )
+                                
+                                secureItemDao.insertItem(secureItem)
+                                totpImportedCount++
+                                Log.d(TAG, "Imported TOTP: $normalizedTitle")
+                            }
                         }
                     } else if (username.isNotEmpty() || password.isNotEmpty() || url.isNotEmpty()) {
-                        // 这是一个普通密码条目
-                        // 检查是否重复
-                        val isDuplicate = passwordDao.countByTitleUsernameWebsite(title, username, url) > 0
-                        if (isDuplicate) {
-                            Log.d(TAG, "Skipping duplicate password: $title")
-                            return@forEach
-                        }
-                        
-                        // 加密密码
+                        // 这是一个普通密码条目（按数据库+分组路径去重）
                         val encryptedPassword = securityManager.encryptData(password)
-                        
-                        val passwordEntry = takagi.ru.monica.data.PasswordEntry(
+                        val existingByKeePass = passwordDao.findDuplicateEntryInKeePass(
+                            databaseId = keepassDatabaseId,
                             title = title,
                             username = username,
-                            password = encryptedPassword,
                             website = url,
-                            notes = notes,
-                            createdAt = Date(),
-                            updatedAt = Date()
+                            groupPath = groupPath
                         )
-                        
-                        val newPasswordId = passwordDao.insertPasswordEntry(passwordEntry)
-                        passwordImportedCount++
+                        val existingLocal = if (existingByKeePass == null) {
+                            passwordDao.findLocalDuplicateByKey(
+                                title = title.lowercase(Locale.ROOT),
+                                username = username.lowercase(Locale.ROOT),
+                                website = url.lowercase(Locale.ROOT)
+                            )
+                        } else {
+                            null
+                        }
+                        val existingEntry = existingByKeePass ?: existingLocal
+
+                        val insertedPasswordId = if (existingEntry != null) {
+                            val updated = existingEntry.copy(
+                                title = title,
+                                username = username,
+                                password = encryptedPassword,
+                                website = url,
+                                notes = notes,
+                                keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = groupPath,
+                                isDeleted = false,
+                                deletedAt = null,
+                                updatedAt = Date()
+                            )
+                            passwordDao.update(updated)
+                            Log.d(TAG, "Updated existing password: $title")
+                            null
+                        } else {
+                            val passwordEntry = takagi.ru.monica.data.PasswordEntry(
+                                title = title,
+                                username = username,
+                                password = encryptedPassword,
+                                website = url,
+                                notes = notes,
+                                createdAt = Date(),
+                                updatedAt = Date(),
+                                keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = groupPath
+                            )
+                            val newPasswordId = passwordDao.insertPasswordEntry(passwordEntry)
+                            passwordImportedCount++
+                            newPasswordId
+                        }
                         
                         // 导入自定义字段（KeePass 中的非标准字段）
-                        if (newPasswordId > 0) {
+                        if (insertedPasswordId != null && insertedPasswordId > 0) {
                             val customFieldDao = database.customFieldDao()
                             val standardFields = setOf(
                                 "Title", "UserName", "Password", "URL", "Notes",
-                                "otp", "TOTP Seed", "TOTP Settings"
+                                "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType"
                             )
                             
                             var sortOrder = 0
@@ -960,7 +1074,7 @@ class KeePassWebDavViewModel {
                                             val isProtected = fieldValue is EntryValue.Encrypted
                                             val customField = CustomField(
                                                 id = 0,
-                                                entryId = newPasswordId,
+                                                entryId = insertedPasswordId,
                                                 title = fieldKey,
                                                 value = if (isProtected) securityManager.encryptData(fieldContent) else fieldContent,
                                                 isProtected = isProtected,
@@ -1011,6 +1125,24 @@ class KeePassWebDavViewModel {
         entries.addAll(group.entries)
         group.groups.forEach { subGroup ->
             collectEntries(subGroup, entries)
+        }
+    }
+
+    private fun collectEntriesWithGroupPath(
+        group: Group,
+        currentPath: String?,
+        entries: MutableList<Pair<Entry, String?>>
+    ) {
+        group.entries.forEach { entry ->
+            entries.add(entry to currentPath)
+        }
+        group.groups.forEach { subGroup ->
+            val nextPath = if (currentPath.isNullOrBlank()) {
+                subGroup.name
+            } else {
+                "$currentPath/${subGroup.name}"
+            }
+            collectEntriesWithGroupPath(subGroup, nextPath, entries)
         }
     }
 

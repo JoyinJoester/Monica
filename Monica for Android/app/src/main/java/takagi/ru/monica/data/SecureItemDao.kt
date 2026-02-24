@@ -16,6 +16,9 @@ interface SecureItemDao {
     // 根据类型获取项目（排除已删除）
     @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND itemType = :type ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getItemsByType(type: ItemType): Flow<List<SecureItem>>
+
+    @Query("UPDATE secure_items SET categoryId = NULL WHERE categoryId = :categoryId")
+    suspend fun removeCategoryFromItems(categoryId: Long)
     
     // 搜索项目（排除已删除）
     @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND (title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%') ORDER BY updatedAt DESC")

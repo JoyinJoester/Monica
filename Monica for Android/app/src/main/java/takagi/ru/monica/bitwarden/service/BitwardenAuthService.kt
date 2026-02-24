@@ -14,6 +14,7 @@ import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -33,9 +34,14 @@ class BitwardenAuthService(
     private val context: Context,
     private val apiManager: BitwardenApiManager = BitwardenApiManager()
 ) {
+    init {
+        BitwardenDiagLogger.initialize(context.applicationContext)
+    }
     
     companion object {
         private const val TAG = "BitwardenAuthService"
+        private const val DIAG_PREFIX = "[BW_DIAG]"
+        private const val ERROR_BODY_SNIPPET_LIMIT = 240
         
         // 两步验证类型
         const val TWO_FACTOR_AUTHENTICATOR = 0
@@ -60,18 +66,44 @@ class BitwardenAuthService(
      */
     suspend fun preLogin(
         email: String,
-        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL
+        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
+        diagnosticAttemptId: String? = null
     ): Result<PreLoginResult> = withContext(Dispatchers.IO) {
+        val startMs = System.currentTimeMillis()
         try {
+            val normalizedEmail = email.trim()
             val urls = BitwardenApiFactory.inferServerUrls(serverUrl)
-            val identityApi = apiManager.getIdentityApi(urls.identity)
+            diagnosticAttemptId?.let { attemptId ->
+                logDiag(
+                    flow = "primary",
+                    attemptId = attemptId,
+                    stage = "prelogin_start",
+                    message =
+                        "serverClass=${classifyServer(urls.vault)}, identity=${urls.identity}, " +
+                            "emailDomain=${emailDomain(normalizedEmail)}"
+                )
+            }
+            val identityApi = apiManager.getIdentityApi(
+                identityUrl = urls.identity,
+                refererUrl = urls.vault
+            )
             
-            val response = identityApi.preLogin(PreLoginRequest(email))
+            val response = identityApi.preLogin(PreLoginRequest(normalizedEmail))
             
             if (response.isSuccessful) {
                 val body = response.body() ?: return@withContext Result.failure(
                     Exception("Empty response from server")
                 )
+                diagnosticAttemptId?.let { attemptId ->
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "prelogin_ok",
+                        message =
+                            "kdf=${body.kdf}, iter=${body.kdfIterations}, mem=${body.kdfMemory}, " +
+                                "parallelism=${body.kdfParallelism}, latencyMs=${System.currentTimeMillis() - startMs}"
+                    )
+                }
                 
                 Result.success(
                     PreLoginResult(
@@ -82,11 +114,36 @@ class BitwardenAuthService(
                     )
                 )
             } else {
+                val errorBody = response.errorBody()?.string()
+                diagnosticAttemptId?.let { attemptId ->
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "prelogin_fail",
+                        message =
+                            "code=${response.code()}, message=${response.message()}, " +
+                                "latencyMs=${System.currentTimeMillis() - startMs}, " +
+                                "body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                    )
+                }
                 Result.failure(
-                    Exception("PreLogin failed: ${response.code()} ${response.message()}")
+                    Exception(
+                        "PreLogin failed: ${response.code()} ${response.message()} " +
+                            "[attemptId=${diagnosticAttemptId ?: "n/a"}]"
+                    )
                 )
             }
         } catch (e: Exception) {
+            diagnosticAttemptId?.let { attemptId ->
+                logDiag(
+                    flow = "primary",
+                    attemptId = attemptId,
+                    stage = "prelogin_exception",
+                    message =
+                        "type=${e.javaClass.simpleName}, msg=${oneLine(e.message, 120)}, " +
+                            "latencyMs=${System.currentTimeMillis() - startMs}"
+                )
+            }
             Result.failure(e)
         }
     }
@@ -102,35 +159,55 @@ class BitwardenAuthService(
     suspend fun login(
         email: String,
         password: String,
-        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL
+        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
+        captchaResponse: String? = null
     ): Result<LoginResult> = withContext(Dispatchers.IO) {
         var masterKey: ByteArray? = null
         var stretchedKey: SymmetricCryptoKey? = null
+        val startMs = System.currentTimeMillis()
+        val attemptId = newAttemptId()
         
         try {
+            val normalizedEmail = email.trim()
             val urls = BitwardenApiFactory.inferServerUrls(serverUrl)
-            
-            // 调试: 打印密码信息（不显示完整密码）
-            Log.d(TAG, "login: password.length=${password.length}, first=${password.firstOrNull()}, last=${password.lastOrNull()}")
-            Log.d(TAG, "login: password bytes (hex first 4)=${password.toByteArray(Charsets.UTF_8).take(4).joinToString("") { "%02x".format(it) }}")
+            val normalizedCaptcha = captchaResponse?.trim()?.takeIf { it.isNotBlank() }
+            val emailTrimmed = normalizedEmail != email
+            val emailContainsUpper = normalizedEmail.any { it.isUpperCase() }
+            val primaryHeaderProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT
+            val primaryHeaderProfileName = BitwardenApiFactory.headerProfileName(primaryHeaderProfile)
+            val primaryUaVersion = BitwardenApiFactory.headerProfileUserAgentVersion(primaryHeaderProfile)
+            val primaryRefererApplied = BitwardenApiFactory.isRefererApplied(primaryHeaderProfile, urls.vault)
+
+            logDiag(
+                flow = "primary",
+                attemptId = attemptId,
+                stage = "start",
+                message =
+                    "serverClass=${classifyServer(urls.vault)}, vault=${urls.vault}, identity=${urls.identity}, api=${urls.api}, " +
+                        "emailDomain=${emailDomain(normalizedEmail)}, emailTrimmed=$emailTrimmed, " +
+                        "emailContainsUpper=$emailContainsUpper, passwordLen=${password.length}, " +
+                        "captchaProvided=${!normalizedCaptcha.isNullOrBlank()}, androidApi=${Build.VERSION.SDK_INT}, " +
+                        "headerProfile=$primaryHeaderProfileName, uaVersion=$primaryUaVersion, refererApplied=$primaryRefererApplied"
+            )
             
             // 1. 预登录获取 KDF 参数
-            val preLoginResult = preLogin(email, serverUrl).getOrElse {
+            val preLoginResult = preLogin(
+                email = normalizedEmail,
+                serverUrl = serverUrl,
+                diagnosticAttemptId = attemptId
+            ).getOrElse {
+                logDiag(
+                    flow = "primary",
+                    attemptId = attemptId,
+                    stage = "stop_prelogin_error",
+                    message =
+                        "reason=${oneLine(it.message, 140)}, latencyMs=${System.currentTimeMillis() - startMs}"
+                )
                 return@withContext Result.failure(it)
             }
             
             // 邮箱必须小写化 (使用英文 locale，与 Keyguard 保持一致)
-            val emailLower = email.lowercase(java.util.Locale.ENGLISH)
-            
-            // 调试: 对比两种 PBKDF2 实现
-            Log.d(TAG, "========== PBKDF2 Implementation Comparison ==========")
-            val comparison = BitwardenCrypto.comparePbkdf2Implementations(
-                password = password,
-                salt = emailLower,
-                iterations = preLoginResult.kdfIterations
-            )
-            Log.d(TAG, comparison)
-            Log.d(TAG, "========== End Comparison ==========")
+            val emailLower = normalizedEmail.lowercase(Locale.ENGLISH)
             
             // 2. 派生 Master Key
             masterKey = if (preLoginResult.kdfType == BitwardenVault.KDF_TYPE_ARGON2ID) {
@@ -158,26 +235,31 @@ class BitwardenAuthService(
             // 5. 准备 Auth-Email header (Base64 编码的邮箱，URL-safe)
             // 注意: Auth-Email 和 username 使用原始邮箱，不是小写！
             // 只有密钥派生使用小写邮箱作为盐
-            val authEmail = toBase64UrlNoPadding(email)
-            
-            // 调试日志 - 用于验证登录参数 (使用 Log.e 确保一定显示)
-            Log.e(TAG, "========== LOGIN REQUEST PARAMETERS ==========")
-            Log.e(TAG, "login: email=$email")
-            Log.e(TAG, "login: emailLower (used for KDF salt)=$emailLower")
-            Log.e(TAG, "login: KDF type=${preLoginResult.kdfType}, iterations=${preLoginResult.kdfIterations}")
-            Log.e(TAG, "login: authEmail (Base64)=$authEmail")
-            Log.e(TAG, "login: passwordHash=$passwordHash")
-            Log.e(TAG, "login: masterKey (hex)=${masterKey.joinToString("") { "%02x".format(it) }}")
-            Log.e(TAG, "login: deviceId=${getDeviceId()}")
-            Log.e(TAG, "================================================")
+            val authEmail = toBase64UrlNoPadding(normalizedEmail)
+            val deviceId = getDeviceId()
+            logDiag(
+                flow = "primary",
+                attemptId = attemptId,
+                stage = "token_request",
+                message =
+                    "kdf=${preLoginResult.kdfType}, iter=${preLoginResult.kdfIterations}, mem=${preLoginResult.kdfMemory}, " +
+                        "parallelism=${preLoginResult.kdfParallelism}, authEmailLen=${authEmail.length}, " +
+                        "deviceIdLen=${deviceId.length}, headerProfile=$primaryHeaderProfileName, " +
+                        "uaVersion=$primaryUaVersion, refererApplied=$primaryRefererApplied"
+            )
             
             // 6. 发送登录请求 (模拟 Keyguard Linux Desktop 模式)
-            val identityApi = apiManager.getIdentityApi(urls.identity)
+            val identityApi = apiManager.getIdentityApi(
+                identityUrl = urls.identity,
+                refererUrl = urls.vault,
+                headerProfile = primaryHeaderProfile
+            )
             val response = identityApi.login(
                 authEmail = authEmail,
-                username = email,
+                username = normalizedEmail,
                 passwordHash = passwordHash,
-                deviceIdentifier = getDeviceId()
+                captchaResponse = normalizedCaptcha,
+                deviceIdentifier = deviceId
                 // deviceName 使用默认值 "linux"
             )
             
@@ -188,6 +270,14 @@ class BitwardenAuthService(
                 
                 // 检查是否需要两步验证
                 if (body.twoFactorProviders != null && body.twoFactorProviders.isNotEmpty()) {
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "result_two_factor",
+                        message =
+                            "code=${response.code()}, providers=${body.twoFactorProviders.joinToString(",")}, " +
+                                "latencyMs=${System.currentTimeMillis() - startMs}"
+                    )
                     return@withContext Result.success(
                         LoginResult.TwoFactorRequired(
                             providers = body.twoFactorProviders,
@@ -195,12 +285,14 @@ class BitwardenAuthService(
                             // 保存中间状态用于后续两步验证
                             tempMasterKey = masterKey,
                             tempStretchedKey = stretchedKey,
-                            email = email,
+                            email = normalizedEmail,
                             passwordHash = passwordHash,
                             kdfType = preLoginResult.kdfType,
                             kdfIterations = preLoginResult.kdfIterations,
                             kdfMemory = preLoginResult.kdfMemory,
-                            kdfParallelism = preLoginResult.kdfParallelism
+                            kdfParallelism = preLoginResult.kdfParallelism,
+                            authHeaderProfile = primaryHeaderProfile,
+                            diagnosticAttemptId = attemptId
                         )
                     )
                 }
@@ -211,6 +303,14 @@ class BitwardenAuthService(
                 )
                 
                 val symmetricKey = BitwardenCrypto.decryptSymmetricKey(encryptedKey, stretchedKey)
+                logDiag(
+                    flow = "primary",
+                    attemptId = attemptId,
+                    stage = "result_success",
+                    message =
+                        "code=${response.code()}, expiresIn=${body.expiresIn}, hasRefresh=${!body.refreshToken.isNullOrBlank()}, " +
+                            "latencyMs=${System.currentTimeMillis() - startMs}"
+                )
                 
                 Result.success(
                     LoginResult.Success(
@@ -234,59 +334,308 @@ class BitwardenAuthService(
                 // 两步验证 (标准 2FA)
                 val providers = errorResponse?.twoFactorProviders
                 if (!providers.isNullOrEmpty()) {
+                    val tokenError = errorResponse
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "result_two_factor_from_error",
+                        message =
+                            "code=${response.code()}, error=${tokenError.error}, desc=${tokenError.errorDescription}, " +
+                                "providers=${providers.joinToString(",")}, latencyMs=${System.currentTimeMillis() - startMs}, " +
+                                "body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                    )
                     return@withContext Result.success(
                         LoginResult.TwoFactorRequired(
                             providers = providers,
                             providersData = errorResponse.twoFactorProviders2,
                             tempMasterKey = masterKey,
                             tempStretchedKey = stretchedKey,
-                            email = email,
+                            email = normalizedEmail,
                             passwordHash = passwordHash,
                             kdfType = preLoginResult.kdfType,
                             kdfIterations = preLoginResult.kdfIterations,
                             kdfMemory = preLoginResult.kdfMemory,
-                            kdfParallelism = preLoginResult.kdfParallelism
+                            kdfParallelism = preLoginResult.kdfParallelism,
+                            authHeaderProfile = primaryHeaderProfile,
+                            diagnosticAttemptId = attemptId
                         )
                     )
                 }
 
                 // 新设备验证 (Email New Device OTP)
                 if (isNewDeviceVerificationRequired(errorResponse)) {
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "result_new_device_required",
+                        message =
+                            "code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}, " +
+                                "latencyMs=${System.currentTimeMillis() - startMs}, body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                    )
                     return@withContext Result.success(
                         LoginResult.TwoFactorRequired(
                             providers = listOf(TWO_FACTOR_EMAIL_NEW_DEVICE),
                             providersData = null,
                             tempMasterKey = masterKey,
                             tempStretchedKey = stretchedKey,
-                            email = email,
+                            email = normalizedEmail,
                             passwordHash = passwordHash,
                             kdfType = preLoginResult.kdfType,
                             kdfIterations = preLoginResult.kdfIterations,
                             kdfMemory = preLoginResult.kdfMemory,
-                            kdfParallelism = preLoginResult.kdfParallelism
+                            kdfParallelism = preLoginResult.kdfParallelism,
+                            authHeaderProfile = primaryHeaderProfile,
+                            diagnosticAttemptId = attemptId
                         )
                     )
                 }
-                Log.e(TAG, "Login failed: ${response.code()} - $errorBody")
-                
-                // 如果是密码错误，运行加密测试来验证实现
-                if (errorBody?.contains("invalid_username_or_password") == true || 
-                    errorBody?.contains("invalid_grant") == true) {
-                    Log.e(TAG, "========== Running Crypto Tests ==========")
-                    try {
-                        val testReport = takagi.ru.monica.bitwarden.crypto.BitwardenCryptoTest.runAllTests()
-                        Log.e(TAG, testReport)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to run crypto tests: ${e.message}")
-                    }
-                    Log.e(TAG, "========== End Crypto Tests ==========")
+
+                if (isCaptchaRequired(errorResponse, errorBody)) {
+                    val message = errorResponse?.errorDescription
+                        ?: errorResponse?.errorModel?.message
+                        ?: "需要验证码，请输入 Captcha response 后重试"
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "result_captcha_required",
+                        message =
+                            "code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}, " +
+                                "hasSiteKey=${!errorResponse?.hCaptchaSiteKey.isNullOrBlank()}, latencyMs=${System.currentTimeMillis() - startMs}, " +
+                                "body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                    )
+                    return@withContext Result.success(
+                        LoginResult.CaptchaRequired(
+                            message = message,
+                            siteKey = errorResponse?.hCaptchaSiteKey
+                        )
+                    )
                 }
+                var retrySummary = "not_attempted"
+                if (shouldRetryWithKeyguardFallback(
+                        responseCode = response.code(),
+                        errorResponse = errorResponse,
+                        errorBody = errorBody,
+                        captchaProvided = !normalizedCaptcha.isNullOrBlank()
+                    )
+                ) {
+                    val retryHeaderProfile = BitwardenApiFactory.HeaderProfile.KEYGUARD_FALLBACK
+                    val retryHeaderProfileName = BitwardenApiFactory.headerProfileName(retryHeaderProfile)
+                    val retryUaVersion = BitwardenApiFactory.headerProfileUserAgentVersion(retryHeaderProfile)
+                    val retryRefererApplied = BitwardenApiFactory.isRefererApplied(retryHeaderProfile, urls.vault)
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "retry_keyguard_start",
+                        message =
+                            "reason=invalid_grant, headerProfile=$retryHeaderProfileName, uaVersion=$retryUaVersion, " +
+                                "refererApplied=$retryRefererApplied, firstCode=${response.code()}, " +
+                                "firstError=${errorResponse?.error}, firstDesc=${errorResponse?.errorDescription}"
+                    )
+
+                    try {
+                        val retryIdentityApi = apiManager.getIdentityApi(
+                            identityUrl = urls.identity,
+                            refererUrl = urls.vault,
+                            headerProfile = retryHeaderProfile
+                        )
+                        val retryResponse = retryIdentityApi.login(
+                            authEmail = authEmail,
+                            username = normalizedEmail,
+                            passwordHash = passwordHash,
+                            captchaResponse = normalizedCaptcha,
+                            deviceIdentifier = deviceId
+                        )
+                        if (retryResponse.isSuccessful) {
+                            val retryBody = retryResponse.body() ?: return@withContext Result.failure(
+                                Exception("Empty login response on retry")
+                            )
+                            if (retryBody.twoFactorProviders != null && retryBody.twoFactorProviders.isNotEmpty()) {
+                                logDiag(
+                                    flow = "primary",
+                                    attemptId = attemptId,
+                                    stage = "retry_keyguard_two_factor",
+                                    message =
+                                        "code=${retryResponse.code()}, providers=${retryBody.twoFactorProviders.joinToString(",")}, " +
+                                            "latencyMs=${System.currentTimeMillis() - startMs}"
+                                )
+                                return@withContext Result.success(
+                                    LoginResult.TwoFactorRequired(
+                                        providers = retryBody.twoFactorProviders,
+                                        providersData = retryBody.twoFactorProviders2,
+                                        tempMasterKey = masterKey,
+                                        tempStretchedKey = stretchedKey,
+                                        email = normalizedEmail,
+                                        passwordHash = passwordHash,
+                                        kdfType = preLoginResult.kdfType,
+                                        kdfIterations = preLoginResult.kdfIterations,
+                                        kdfMemory = preLoginResult.kdfMemory,
+                                        kdfParallelism = preLoginResult.kdfParallelism,
+                                        authHeaderProfile = retryHeaderProfile,
+                                        diagnosticAttemptId = attemptId
+                                    )
+                                )
+                            }
+
+                            val retryEncryptedKey = retryBody.key ?: return@withContext Result.failure(
+                                Exception("No encryption key in retry response")
+                            )
+                            val retrySymmetricKey = BitwardenCrypto.decryptSymmetricKey(
+                                retryEncryptedKey,
+                                stretchedKey
+                            )
+                            logDiag(
+                                flow = "primary",
+                                attemptId = attemptId,
+                                stage = "retry_keyguard_success",
+                                message =
+                                    "code=${retryResponse.code()}, expiresIn=${retryBody.expiresIn}, hasRefresh=${!retryBody.refreshToken.isNullOrBlank()}, " +
+                                        "latencyMs=${System.currentTimeMillis() - startMs}"
+                            )
+                            return@withContext Result.success(
+                                LoginResult.Success(
+                                    accessToken = retryBody.accessToken,
+                                    refreshToken = retryBody.refreshToken,
+                                    expiresIn = retryBody.expiresIn,
+                                    masterKey = masterKey,
+                                    stretchedKey = stretchedKey,
+                                    symmetricKey = retrySymmetricKey,
+                                    kdfType = preLoginResult.kdfType,
+                                    kdfIterations = preLoginResult.kdfIterations,
+                                    kdfMemory = preLoginResult.kdfMemory,
+                                    kdfParallelism = preLoginResult.kdfParallelism,
+                                    serverUrls = urls
+                                )
+                            )
+                        } else {
+                            val retryErrorBody = retryResponse.errorBody()?.string()
+                            val retryErrorResponse = parseTokenError(retryErrorBody)
+                            retrySummary =
+                                "code=${retryResponse.code()},error=${retryErrorResponse?.error},desc=${retryErrorResponse?.errorDescription}"
+
+                            val retryProviders = retryErrorResponse?.twoFactorProviders
+                            if (!retryProviders.isNullOrEmpty()) {
+                                logDiag(
+                                    flow = "primary",
+                                    attemptId = attemptId,
+                                    stage = "retry_keyguard_two_factor_from_error",
+                                    message =
+                                        "code=${retryResponse.code()}, providers=${retryProviders.joinToString(",")}, " +
+                                            "latencyMs=${System.currentTimeMillis() - startMs}, body=${oneLine(retryErrorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                                )
+                                return@withContext Result.success(
+                                    LoginResult.TwoFactorRequired(
+                                        providers = retryProviders,
+                                        providersData = retryErrorResponse.twoFactorProviders2,
+                                        tempMasterKey = masterKey,
+                                        tempStretchedKey = stretchedKey,
+                                        email = normalizedEmail,
+                                        passwordHash = passwordHash,
+                                        kdfType = preLoginResult.kdfType,
+                                        kdfIterations = preLoginResult.kdfIterations,
+                                        kdfMemory = preLoginResult.kdfMemory,
+                                        kdfParallelism = preLoginResult.kdfParallelism,
+                                        authHeaderProfile = retryHeaderProfile,
+                                        diagnosticAttemptId = attemptId
+                                    )
+                                )
+                            }
+
+                            if (isNewDeviceVerificationRequired(retryErrorResponse)) {
+                                logDiag(
+                                    flow = "primary",
+                                    attemptId = attemptId,
+                                    stage = "retry_keyguard_new_device_required",
+                                    message =
+                                        "code=${retryResponse.code()}, error=${retryErrorResponse?.error}, desc=${retryErrorResponse?.errorDescription}, " +
+                                            "latencyMs=${System.currentTimeMillis() - startMs}, body=${oneLine(retryErrorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                                )
+                                return@withContext Result.success(
+                                    LoginResult.TwoFactorRequired(
+                                        providers = listOf(TWO_FACTOR_EMAIL_NEW_DEVICE),
+                                        providersData = null,
+                                        tempMasterKey = masterKey,
+                                        tempStretchedKey = stretchedKey,
+                                        email = normalizedEmail,
+                                        passwordHash = passwordHash,
+                                        kdfType = preLoginResult.kdfType,
+                                        kdfIterations = preLoginResult.kdfIterations,
+                                        kdfMemory = preLoginResult.kdfMemory,
+                                        kdfParallelism = preLoginResult.kdfParallelism,
+                                        authHeaderProfile = retryHeaderProfile,
+                                        diagnosticAttemptId = attemptId
+                                    )
+                                )
+                            }
+
+                            if (isCaptchaRequired(retryErrorResponse, retryErrorBody)) {
+                                val retryMessage = retryErrorResponse?.errorDescription
+                                    ?: retryErrorResponse?.errorModel?.message
+                                    ?: "需要验证码，请输入 Captcha response 后重试"
+                                logDiag(
+                                    flow = "primary",
+                                    attemptId = attemptId,
+                                    stage = "retry_keyguard_captcha_required",
+                                    message =
+                                        "code=${retryResponse.code()}, error=${retryErrorResponse?.error}, desc=${retryErrorResponse?.errorDescription}, " +
+                                            "hasSiteKey=${!retryErrorResponse?.hCaptchaSiteKey.isNullOrBlank()}, latencyMs=${System.currentTimeMillis() - startMs}, " +
+                                            "body=${oneLine(retryErrorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                                )
+                                return@withContext Result.success(
+                                    LoginResult.CaptchaRequired(
+                                        message = retryMessage,
+                                        siteKey = retryErrorResponse?.hCaptchaSiteKey
+                                    )
+                                )
+                            }
+
+                            logDiag(
+                                flow = "primary",
+                                attemptId = attemptId,
+                                stage = "retry_keyguard_error",
+                                message =
+                                    "code=${retryResponse.code()}, error=${retryErrorResponse?.error}, desc=${retryErrorResponse?.errorDescription}, " +
+                                        "latencyMs=${System.currentTimeMillis() - startMs}, body=${oneLine(retryErrorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                            )
+                        }
+                    } catch (retryError: Exception) {
+                        retrySummary = "exception:${retryError.javaClass.simpleName}"
+                        logDiag(
+                            flow = "primary",
+                            attemptId = attemptId,
+                            stage = "retry_keyguard_exception",
+                            message =
+                                "type=${retryError.javaClass.simpleName}, msg=${oneLine(retryError.message, 120)}, " +
+                                    "latencyMs=${System.currentTimeMillis() - startMs}"
+                        )
+                    }
+                }
+                Log.e(
+                    TAG,
+                    "Login failed: code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}"
+                )
+                logDiag(
+                    flow = "primary",
+                    attemptId = attemptId,
+                    stage = "result_error",
+                    message =
+                        "code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}, " +
+                            "modelMsg=${oneLine(errorResponse?.errorModel?.message, 100)}, latencyMs=${System.currentTimeMillis() - startMs}, " +
+                            "body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}, retry=$retrySummary"
+                )
                 
                 Result.failure(
-                    Exception("Login failed: ${response.code()} - $errorBody")
+                    Exception("Login failed [attemptId=$attemptId]: ${response.code()} - $errorBody")
                 )
             }
         } catch (e: Exception) {
+            logDiag(
+                flow = "primary",
+                attemptId = attemptId,
+                stage = "exception",
+                message =
+                    "type=${e.javaClass.simpleName}, msg=${oneLine(e.message, 140)}, " +
+                        "latencyMs=${System.currentTimeMillis() - startMs}"
+            )
             Result.failure(e)
         } finally {
             // 安全清除敏感数据 (如果登录失败)
@@ -302,11 +651,32 @@ class BitwardenAuthService(
         twoFactorCode: String,
         twoFactorProvider: Int,
         remember: Boolean = false,
-        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL
-    ): Result<LoginResult.Success> = withContext(Dispatchers.IO) {
+        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
+        captchaResponse: String? = null
+    ): Result<LoginResult> = withContext(Dispatchers.IO) {
+        val attemptId = twoFactorState.diagnosticAttemptId ?: newAttemptId()
+        val startMs = System.currentTimeMillis()
         try {
             val urls = BitwardenApiFactory.inferServerUrls(serverUrl)
-            val identityApi = apiManager.getIdentityApi(urls.identity)
+            val normalizedCaptcha = captchaResponse?.trim()?.takeIf { it.isNotBlank() }
+            val headerProfile = twoFactorState.authHeaderProfile
+            logDiag(
+                flow = "two_factor",
+                attemptId = attemptId,
+                stage = "start",
+                message =
+                    "provider=$twoFactorProvider, remember=$remember, codeLen=${twoFactorCode.trim().length}, " +
+                        "serverClass=${classifyServer(urls.vault)}, identity=${urls.identity}, " +
+                        "captchaProvided=${!normalizedCaptcha.isNullOrBlank()}, " +
+                        "headerProfile=${BitwardenApiFactory.headerProfileName(headerProfile)}, " +
+                        "uaVersion=${BitwardenApiFactory.headerProfileUserAgentVersion(headerProfile)}, " +
+                        "refererApplied=${BitwardenApiFactory.isRefererApplied(headerProfile, urls.vault)}"
+            )
+            val identityApi = apiManager.getIdentityApi(
+                identityUrl = urls.identity,
+                refererUrl = urls.vault,
+                headerProfile = headerProfile
+            )
             
             // Auth-Email header - 使用原始邮箱，不是小写！
             val authEmail = toBase64UrlNoPadding(twoFactorState.email)
@@ -315,6 +685,7 @@ class BitwardenAuthService(
                 authEmail = authEmail,
                 username = twoFactorState.email,
                 passwordHash = twoFactorState.passwordHash,
+                captchaResponse = normalizedCaptcha,
                 deviceIdentifier = getDeviceId(),
                 // deviceName 使用默认值 "linux"
                 twoFactorToken = twoFactorCode.trim(),  // keyguard 也会 trim
@@ -335,6 +706,14 @@ class BitwardenAuthService(
                     encryptedKey, 
                     twoFactorState.tempStretchedKey
                 )
+                logDiag(
+                    flow = "two_factor",
+                    attemptId = attemptId,
+                    stage = "result_success",
+                    message =
+                        "code=${response.code()}, hasRefresh=${!body.refreshToken.isNullOrBlank()}, " +
+                            "latencyMs=${System.currentTimeMillis() - startMs}"
+                )
                 
                 Result.success(
                     LoginResult.Success(
@@ -354,11 +733,48 @@ class BitwardenAuthService(
                 )
             } else {
                 val errorBody = response.errorBody()?.string()
+                val errorResponse = parseTokenError(errorBody)
+                if (isCaptchaRequired(errorResponse, errorBody)) {
+                    val message = errorResponse?.errorDescription
+                        ?: errorResponse?.errorModel?.message
+                        ?: "需要验证码，请输入 Captcha response 后重试"
+                    logDiag(
+                        flow = "two_factor",
+                        attemptId = attemptId,
+                        stage = "result_captcha_required",
+                        message =
+                            "code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}, " +
+                                "hasSiteKey=${!errorResponse?.hCaptchaSiteKey.isNullOrBlank()}, latencyMs=${System.currentTimeMillis() - startMs}, " +
+                                "body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                    )
+                    return@withContext Result.success(
+                        LoginResult.CaptchaRequired(
+                            message = message,
+                            siteKey = errorResponse?.hCaptchaSiteKey
+                        )
+                    )
+                }
+                logDiag(
+                    flow = "two_factor",
+                    attemptId = attemptId,
+                    stage = "result_error",
+                    message =
+                        "code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}, " +
+                            "latencyMs=${System.currentTimeMillis() - startMs}, body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                )
                 Result.failure(
-                    Exception("Two-factor login failed: ${response.code()} - $errorBody")
+                    Exception("Two-factor login failed [attemptId=$attemptId]: ${response.code()} - $errorBody")
                 )
             }
         } catch (e: Exception) {
+            logDiag(
+                flow = "two_factor",
+                attemptId = attemptId,
+                stage = "exception",
+                message =
+                    "type=${e.javaClass.simpleName}, msg=${oneLine(e.message, 140)}, " +
+                        "latencyMs=${System.currentTimeMillis() - startMs}"
+            )
             Result.failure(e)
         }
     }
@@ -369,11 +785,31 @@ class BitwardenAuthService(
     suspend fun loginNewDeviceOtp(
         twoFactorState: LoginResult.TwoFactorRequired,
         newDeviceOtp: String,
-        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL
-    ): Result<LoginResult.Success> = withContext(Dispatchers.IO) {
+        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
+        captchaResponse: String? = null
+    ): Result<LoginResult> = withContext(Dispatchers.IO) {
+        val attemptId = twoFactorState.diagnosticAttemptId ?: newAttemptId()
+        val startMs = System.currentTimeMillis()
         try {
             val urls = BitwardenApiFactory.inferServerUrls(serverUrl)
-            val identityApi = apiManager.getIdentityApi(urls.identity)
+            val normalizedCaptcha = captchaResponse?.trim()?.takeIf { it.isNotBlank() }
+            val headerProfile = twoFactorState.authHeaderProfile
+            logDiag(
+                flow = "new_device",
+                attemptId = attemptId,
+                stage = "start",
+                message =
+                    "otpLen=${newDeviceOtp.trim().length}, serverClass=${classifyServer(urls.vault)}, " +
+                        "identity=${urls.identity}, captchaProvided=${!normalizedCaptcha.isNullOrBlank()}, " +
+                        "headerProfile=${BitwardenApiFactory.headerProfileName(headerProfile)}, " +
+                        "uaVersion=${BitwardenApiFactory.headerProfileUserAgentVersion(headerProfile)}, " +
+                        "refererApplied=${BitwardenApiFactory.isRefererApplied(headerProfile, urls.vault)}"
+            )
+            val identityApi = apiManager.getIdentityApi(
+                identityUrl = urls.identity,
+                refererUrl = urls.vault,
+                headerProfile = headerProfile
+            )
 
             val authEmail = toBase64UrlNoPadding(twoFactorState.email)
 
@@ -381,6 +817,7 @@ class BitwardenAuthService(
                 authEmail = authEmail,
                 username = twoFactorState.email,
                 passwordHash = twoFactorState.passwordHash,
+                captchaResponse = normalizedCaptcha,
                 deviceIdentifier = getDeviceId(),
                 newDeviceOtp = newDeviceOtp.trim()
             )
@@ -397,6 +834,14 @@ class BitwardenAuthService(
                 val symmetricKey = BitwardenCrypto.decryptSymmetricKey(
                     encryptedKey,
                     twoFactorState.tempStretchedKey
+                )
+                logDiag(
+                    flow = "new_device",
+                    attemptId = attemptId,
+                    stage = "result_success",
+                    message =
+                        "code=${response.code()}, hasRefresh=${!body.refreshToken.isNullOrBlank()}, " +
+                            "latencyMs=${System.currentTimeMillis() - startMs}"
                 )
 
                 Result.success(
@@ -416,12 +861,49 @@ class BitwardenAuthService(
                 )
             } else {
                 val errorBody = response.errorBody()?.string()
+                val errorResponse = parseTokenError(errorBody)
+                if (isCaptchaRequired(errorResponse, errorBody)) {
+                    val message = errorResponse?.errorDescription
+                        ?: errorResponse?.errorModel?.message
+                        ?: "需要验证码，请输入 Captcha response 后重试"
+                    logDiag(
+                        flow = "new_device",
+                        attemptId = attemptId,
+                        stage = "result_captcha_required",
+                        message =
+                            "code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}, " +
+                                "hasSiteKey=${!errorResponse?.hCaptchaSiteKey.isNullOrBlank()}, latencyMs=${System.currentTimeMillis() - startMs}, " +
+                                "body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                    )
+                    return@withContext Result.success(
+                        LoginResult.CaptchaRequired(
+                            message = message,
+                            siteKey = errorResponse?.hCaptchaSiteKey
+                        )
+                    )
+                }
                 Log.e(TAG, "New device login failed: ${response.code()} - $errorBody")
+                logDiag(
+                    flow = "new_device",
+                    attemptId = attemptId,
+                    stage = "result_error",
+                    message =
+                        "code=${response.code()}, error=${errorResponse?.error}, desc=${errorResponse?.errorDescription}, " +
+                            "latencyMs=${System.currentTimeMillis() - startMs}, body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                )
                 Result.failure(
-                    Exception("New device login failed: ${response.code()} - $errorBody")
+                    Exception("New device login failed [attemptId=$attemptId]: ${response.code()} - $errorBody")
                 )
             }
         } catch (e: Exception) {
+            logDiag(
+                flow = "new_device",
+                attemptId = attemptId,
+                stage = "exception",
+                message =
+                    "type=${e.javaClass.simpleName}, msg=${oneLine(e.message, 140)}, " +
+                        "latencyMs=${System.currentTimeMillis() - startMs}"
+            )
             Result.failure(e)
         }
     }
@@ -431,10 +913,14 @@ class BitwardenAuthService(
      */
     suspend fun refreshToken(
         refreshToken: String,
-        identityUrl: String = BitwardenApiFactory.OFFICIAL_IDENTITY_URL
+        identityUrl: String = BitwardenApiFactory.OFFICIAL_IDENTITY_URL,
+        refererUrl: String? = null
     ): Result<RefreshResult> = withContext(Dispatchers.IO) {
         try {
-            val identityApi = apiManager.getIdentityApi(identityUrl)
+            val identityApi = apiManager.getIdentityApi(
+                identityUrl = identityUrl,
+                refererUrl = refererUrl
+            )
             
             val response = identityApi.refreshToken(
                 refreshToken = refreshToken
@@ -506,6 +992,56 @@ class BitwardenAuthService(
         val message = errorResponse?.errorModel?.message ?: return false
         return message.equals("new device verification required", ignoreCase = true)
     }
+
+    private fun isCaptchaRequired(errorResponse: TokenResponse?, errorBody: String?): Boolean {
+        if (!errorResponse?.hCaptchaSiteKey.isNullOrBlank()) return true
+        return errorBody?.contains("captcha", ignoreCase = true) == true
+    }
+
+    private fun shouldRetryWithKeyguardFallback(
+        responseCode: Int,
+        errorResponse: TokenResponse?,
+        errorBody: String?,
+        captchaProvided: Boolean
+    ): Boolean {
+        if (captchaProvided) return false
+        if (responseCode != 400) return false
+
+        val error = errorResponse?.error
+        val description = errorResponse?.errorDescription
+        val isInvalidGrant = error.equals("invalid_grant", ignoreCase = true)
+        val isInvalidCredDescription = description.equals("invalid_username_or_password", ignoreCase = true)
+        val isInvalidCredBody = errorBody?.contains("invalid_username_or_password", ignoreCase = true) == true
+
+        return isInvalidGrant && (isInvalidCredDescription || isInvalidCredBody)
+    }
+
+    private fun newAttemptId(): String = UUID.randomUUID().toString().substring(0, 8)
+
+    private fun classifyServer(vaultUrl: String): String {
+        return when {
+            BitwardenApiFactory.isOfficialEuServer(vaultUrl) -> "official_eu"
+            BitwardenApiFactory.isOfficialServer(vaultUrl) -> "official_us"
+            else -> "self_hosted"
+        }
+    }
+
+    private fun emailDomain(email: String): String {
+        val domain = email.substringAfter('@', "unknown")
+        return domain.ifBlank { "unknown" }.lowercase(Locale.ENGLISH)
+    }
+
+    private fun oneLine(raw: String?, maxLen: Int): String {
+        val value = raw?.replace('\n', ' ')?.replace('\r', ' ')?.trim().orEmpty()
+        if (value.isEmpty()) return "-"
+        return if (value.length <= maxLen) value else value.take(maxLen) + "..."
+    }
+
+    private fun logDiag(flow: String, attemptId: String, stage: String, message: String) {
+        val line = "$DIAG_PREFIX flow=$flow attempt=$attemptId stage=$stage $message"
+        Log.e(TAG, line)
+        BitwardenDiagLogger.append("$TAG: $line")
+    }
 }
 
 // ========== 结果数据类 ==========
@@ -563,7 +1099,9 @@ sealed class LoginResult {
         val kdfType: Int,
         val kdfIterations: Int,
         val kdfMemory: Int?,
-        val kdfParallelism: Int?
+        val kdfParallelism: Int?,
+        val authHeaderProfile: BitwardenApiFactory.HeaderProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT,
+        val diagnosticAttemptId: String? = null
     ) : LoginResult() {
         
         /**
@@ -596,6 +1134,11 @@ sealed class LoginResult {
         
         override fun hashCode(): Int = email.hashCode()
     }
+
+    data class CaptchaRequired(
+        val message: String,
+        val siteKey: String? = null
+    ) : LoginResult()
 }
 
 data class RefreshResult(
