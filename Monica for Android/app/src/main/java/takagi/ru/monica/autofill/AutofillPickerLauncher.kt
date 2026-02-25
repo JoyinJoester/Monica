@@ -3,16 +3,20 @@ package takagi.ru.monica.autofill
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.BlendMode
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.autofill.Dataset
 import android.service.autofill.FillResponse
+import android.service.autofill.InlinePresentation
 import android.service.autofill.SaveInfo
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
+import android.view.inputmethod.InlineSuggestionsRequest
 import android.widget.RemoteViews
 import kotlinx.coroutines.flow.first
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill.builder.AutofillDatasetBuilder
 import takagi.ru.monica.data.PasswordEntry
 
 /**
@@ -50,6 +54,7 @@ object AutofillPickerLauncher {
         attachSaveInfo: Boolean = false,
         entryMode: DirectEntryMode = DirectEntryMode.TRIGGER_ONLY,
         lastFilledPassword: PasswordEntry? = null,
+        inlineRequest: InlineSuggestionsRequest? = null,
         interactionIdentifier: String? = null,
         interactionIdentifierAliases: List<String> = emptyList(),
     ): FillResponse {
@@ -106,6 +111,17 @@ object AutofillPickerLauncher {
             DirectEntryMode.LAST_FILLED_ONLY -> lastFilledDatasetResult == null || !lastFilledCanStandAlone
             else -> true
         }
+        val inlineSpecs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            inlineRequest?.inlinePresentationSpecs
+        } else {
+            null
+        }
+        val maxInlineSuggestions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            inlineRequest?.maxSuggestionCount ?: 0
+        } else {
+            0
+        }
+
         if (includeTriggerEntry) {
             val authTargets = selectAuthenticationTargets(fillTargets)
             if (authTargets.isEmpty()) {
@@ -142,11 +158,28 @@ object AutofillPickerLauncher {
                 val flags = PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 val pendingIntent = PendingIntent.getActivity(context, requestCode, pickerIntent, flags)
                 val presentation = createManualTriggerPresentation(context)
+                val manualInlinePresentation = createManualTriggerInlinePresentation(
+                    context = context,
+                    pendingIntent = pendingIntent,
+                    inlineSpecs = inlineSpecs,
+                    maxInlineSuggestions = maxInlineSuggestions,
+                    inlineIndex = 0,
+                )
 
                 val orderedTargets = selectPreferredAuthTargets(authTargets)
                 orderedTargets.forEach { item ->
-                    val datasetBuilder = Dataset.Builder(presentation)
-                    datasetBuilder.setValue(item.id, null, presentation)
+                    val datasetBuilder = AutofillDatasetBuilder.create(
+                        menuPresentation = presentation,
+                        fields = mapOf(
+                            item.id to AutofillDatasetBuilder.FieldData(
+                                value = null,
+                                presentation = presentation,
+                            )
+                        ),
+                        provideInlinePresentation = {
+                            manualInlinePresentation
+                        }
+                    )
                     datasetBuilder.setAuthentication(pendingIntent.intentSender)
                     responseBuilder.addDataset(datasetBuilder.build())
                 }
@@ -277,6 +310,32 @@ object AutofillPickerLauncher {
             setViewVisibility(R.id.text_username, android.view.View.GONE)
             setImageViewResource(R.id.icon_app, R.drawable.ic_list)
         }
+    }
+
+    private fun createManualTriggerInlinePresentation(
+        context: Context,
+        pendingIntent: PendingIntent,
+        inlineSpecs: List<android.widget.inline.InlinePresentationSpec>?,
+        maxInlineSuggestions: Int,
+        inlineIndex: Int,
+    ): InlinePresentation? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        if (inlineSpecs.isNullOrEmpty()) return null
+        if (maxInlineSuggestions <= 0 || inlineIndex >= maxInlineSuggestions) return null
+        val primarySpec = inlineSpecs.getOrNull(inlineIndex) ?: inlineSpecs.first()
+        val icon = Icon.createWithResource(context, R.drawable.ic_list).apply {
+            setTintBlendMode(BlendMode.DST)
+        }
+        return AutofillDatasetBuilder.InlinePresentationBuilder.tryCreate(
+            context = context,
+            spec = primarySpec,
+            specs = inlineSpecs,
+            index = inlineIndex,
+            pendingIntent = pendingIntent,
+            title = context.getString(R.string.autofill_manual_entry_title),
+            icon = icon,
+            contentDescription = context.getString(R.string.autofill_manual_entry_title),
+        )
     }
 
     private fun createLastFilledPresentation(

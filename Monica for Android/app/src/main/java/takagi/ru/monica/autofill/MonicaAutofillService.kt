@@ -46,6 +46,7 @@ import takagi.ru.monica.autofill.core.SafeResponseBuilder
 import takagi.ru.monica.autofill.core.safeTextOrNull
 import takagi.ru.monica.autofill.data.AutofillContext
 import takagi.ru.monica.autofill.data.PasswordMatch
+import takagi.ru.monica.autofill.builder.AutofillDatasetBuilder
 import takagi.ru.monica.utils.DeviceUtils
 import takagi.ru.monica.utils.PermissionGuide
 
@@ -1524,6 +1525,7 @@ class MonicaAutofillService : AutofillService() {
                 attachSaveInfo = shouldAttachSaveInfo,
                 entryMode = entryMode,
                 lastFilledPassword = lastFilledPassword,
+                inlineRequest = inlineRequest,
                 interactionIdentifier = stageIdentifier,
                 interactionIdentifierAliases = pickerIdentifierAliases,
             )
@@ -1629,29 +1631,34 @@ class MonicaAutofillService : AutofillService() {
                 pickerIntent, 
                 flags
             )
-            
+
             // 添加内联建议的手动选择入口（如果有剩余槽位）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R 
+            val manualInline = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 && inlineSpecs != null 
                 && inlineSpecs.isNotEmpty()
                 && reservedForManualSelection > 0) {
                 val manualInlineSpec = inlineSpecs.lastOrNull() ?: inlineSpecs.first()
-                val manualInline = createManualSelectionInlinePresentation(
+                createManualSelectionInlinePresentation(
                     manualInlineSpec, 
                     packageName, 
                     parsedStructure.webDomain,
                     parsedStructure
                 )
-                if (manualInline != null) {
-                    // Android 11+ 需要使用 setInlinePresentation
-                    // 但由于我们已经设置了 Authentication，需要重新构建
-                    android.util.Log.d("MonicaAutofill", "✅ Manual selection inline added")
-                }
+            } else {
+                null
             }
 
             authTargets.forEach { item ->
-                val manualDatasetBuilder = Dataset.Builder(manualSelectionPresentation)
-                manualDatasetBuilder.setValue(item.id, null, manualSelectionPresentation)
+                val manualDatasetBuilder = AutofillDatasetBuilder.create(
+                    menuPresentation = manualSelectionPresentation,
+                    fields = mapOf(
+                        item.id to AutofillDatasetBuilder.FieldData(
+                            value = null,
+                            presentation = manualSelectionPresentation,
+                        )
+                    ),
+                    provideInlinePresentation = { manualInline }
+                )
                 manualDatasetBuilder.setAuthentication(manualPendingIntent.intentSender)
                 responseBuilder.addDataset(manualDatasetBuilder.build())
                 datasetsCreated++

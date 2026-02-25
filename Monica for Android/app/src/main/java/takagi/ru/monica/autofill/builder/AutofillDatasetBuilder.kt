@@ -79,14 +79,12 @@ object AutofillDatasetBuilder {
         
         return Dataset.Builder(presentations).apply {
             fields.forEach { (autofillId, fieldData) ->
-                if (fieldData != null && fieldData.value != null) {
-                    setField(
-                        autofillId,
-                        Field.Builder()
-                            .setValue(fieldData.value)
-                            .build()
-                    )
+                val field = fieldData?.let {
+                    Field.Builder().apply {
+                        it.value?.let(::setValue)
+                    }.build()
                 }
+                setField(autofillId, field)
             }
         }
     }
@@ -107,9 +105,11 @@ object AutofillDatasetBuilder {
             }
             
             fields.forEach { (autofillId, fieldData) ->
-                if (fieldData != null && fieldData.value != null) {
-                    setValue(autofillId, fieldData.value, fieldData.presentation)
-                }
+                setValue(
+                    autofillId,
+                    fieldData?.value,
+                    fieldData?.presentation ?: menuPresentation
+                )
             }
         }
     }

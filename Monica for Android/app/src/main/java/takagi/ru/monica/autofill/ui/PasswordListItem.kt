@@ -19,14 +19,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
+import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
+import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
+import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 
 /**
  * 密码列表项操作类型
@@ -255,10 +259,9 @@ fun PasswordListItem(
  * 智能图标组件
  * 
  * 显示逻辑:
- * 1. 如果有应用包名,尝试加载应用图标
- * 2. 如果开启了Web Icon, 尝试加载网站Favicon
- * 3. 如果没有应用图标,显示首字母头像
- * 4. 如果都没有,显示默认钥匙图标
+ * 1. 图标开关关闭时，始终显示默认钥匙图标
+ * 2. 图标开关开启时，优先级与主应用密码列表一致
+ *    SIMPLE_ICON -> UPLOADED -> AutoMatched -> Favicon -> AppIcon -> DefaultKey
  */
 @Composable
 private fun AppIconOrFallback(
@@ -266,22 +269,40 @@ private fun AppIconOrFallback(
     iconCardsEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    android.util.Log.d("PasswordListItem", "AppIconOrFallback: title=${password.title}, appPackageName=${password.appPackageName}, iconCardsEnabled=$iconCardsEnabled")
-    
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
+        if (!iconCardsEnabled) {
+            DefaultKeyIcon()
+            return@Box
+        }
+
+        val simpleIcon = if (password.customIconType == PASSWORD_ICON_TYPE_SIMPLE) {
+            rememberSimpleIconBitmap(
+                slug = password.customIconValue,
+                tintColor = MaterialTheme.colorScheme.primary,
+                enabled = true
+            )
+        } else {
+            null
+        }
+
+        val uploadedIcon = if (password.customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+            rememberUploadedPasswordIcon(password.customIconValue)
+        } else {
+            null
+        }
+
         val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
             website = password.website,
             title = password.title,
             appPackageName = password.appPackageName,
             tintColor = MaterialTheme.colorScheme.primary,
-            enabled = iconCardsEnabled
+            enabled = password.customIconType == PASSWORD_ICON_TYPE_NONE
         )
 
-        // 尝试加载 Favicon (如果开启) - 放在这里是为了rememberFavicon
-        val favicon = if (iconCardsEnabled && password.website.isNotBlank()) {
+        val favicon = if (password.website.isNotBlank()) {
             rememberFavicon(
                 url = password.website,
                 enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
@@ -290,44 +311,32 @@ private fun AppIconOrFallback(
             null
         }
 
+        val appIcon = if (password.appPackageName.isNotBlank()) {
+            rememberAppIcon(password.appPackageName)
+        } else {
+            null
+        }
+
         when {
-            // 尝试加载应用图标
-            iconCardsEnabled && !password.appPackageName.isNullOrBlank() -> {
-                android.util.Log.d("PasswordListItem", "AppIconOrFallback: trying to load app icon for ${password.appPackageName}")
-                val icon = rememberAppIcon(password.appPackageName)
-                android.util.Log.d("PasswordListItem", "AppIconOrFallback: icon loaded = ${icon != null}")
-                if (icon != null) {
-                    Image(
-                        bitmap = icon,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(12.dp))
-                    )
-                } else if (autoMatchedSimpleIcon.bitmap != null) {
-                    Image(
-                        bitmap = autoMatchedSimpleIcon.bitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(12.dp))
-                    )
-                } else if (favicon != null) {
-                     // 降级到 Favicon
-                    Image(
-                        bitmap = favicon,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(12.dp))
-                    )
-                } else {
-                    // 降级到首字母头像
-                    InitialsAvatar(text = password.title.ifEmpty { password.username })
-                }
+            simpleIcon != null -> {
+                Image(
+                    bitmap = simpleIcon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                )
             }
-            // 尝试加载网站图标
-            iconCardsEnabled && autoMatchedSimpleIcon.bitmap != null -> {
+            uploadedIcon != null -> {
+                Image(
+                    bitmap = uploadedIcon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            }
+            autoMatchedSimpleIcon.bitmap != null -> {
                 Image(
                     bitmap = autoMatchedSimpleIcon.bitmap,
                     contentDescription = null,
@@ -336,8 +345,7 @@ private fun AppIconOrFallback(
                         .clip(RoundedCornerShape(12.dp))
                 )
             }
-            // 尝试加载网站 favicon
-            iconCardsEnabled && favicon != null -> {
+            favicon != null -> {
                 Image(
                     bitmap = favicon,
                     contentDescription = null,
@@ -346,56 +354,38 @@ private fun AppIconOrFallback(
                         .clip(RoundedCornerShape(12.dp))
                 )
             }
-            // 显示首字母头像
-            password.title.isNotEmpty() || password.username.isNotEmpty() -> {
-                InitialsAvatar(text = password.title.ifEmpty { password.username })
-            }
-            // 默认钥匙图标
-            else -> {
-                Box(
+            appIcon != null -> {
+                Image(
+                    bitmap = appIcon,
+                    contentDescription = null,
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Key,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            }
+            else -> {
+                DefaultKeyIcon()
             }
         }
     }
 }
 
-/**
- * 首字母头像
- * 
- * 显示文本的第一个字符作为头像
- * 使用Material You配色方案
- */
 @Composable
-private fun InitialsAvatar(
-    text: String,
+private fun DefaultKeyIcon(
     modifier: Modifier = Modifier
 ) {
-    val initial = text.firstOrNull()?.uppercase() ?: "?"
-    
     Box(
         modifier = modifier
             .fillMaxSize()
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.secondaryContainer),
+            .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = initial,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSecondaryContainer
+        Icon(
+            imageVector = Icons.Default.Key,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(24.dp)
         )
     }
 }

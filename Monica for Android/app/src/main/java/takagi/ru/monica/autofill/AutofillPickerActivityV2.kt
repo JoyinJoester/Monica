@@ -14,32 +14,56 @@ import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.app.NotificationManagerCompat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.unit.dp
 import kotlinx.parcelize.Parcelize
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill.core.AutofillLogger
 import takagi.ru.monica.autofill.ui.*
 import takagi.ru.monica.autofill.utils.SmartCopyNotificationHelper
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
@@ -236,6 +260,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     keepassDatabases = keepassDatabases,
                     canSkipVerification = canSkipAuth,
                     biometricEnabled = settings.biometricEnabled,
+                    iconCardsEnabled = settings.iconCardsEnabled,
                     isManualMode = isManualMode,
                     onAuthenticationSuccess = { markAuthenticationSuccess() },
                     onAutofill = { password, forceAddUri ->
@@ -555,6 +580,7 @@ private fun AutofillPickerContent(
     keepassDatabases: List<LocalKeePassDatabase>,
     canSkipVerification: Boolean = false,
     biometricEnabled: Boolean = false,
+    iconCardsEnabled: Boolean = false,
     isManualMode: Boolean = false,
     onAuthenticationSuccess: () -> Unit = {},
     onAutofill: (PasswordEntry, Boolean) -> Unit,
@@ -570,7 +596,15 @@ private fun AutofillPickerContent(
     var allPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var suggestedPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
+    var sourceFilter by remember { mutableStateOf(AutofillStorageSourceFilter.ALL) }
+    var selectedKeePassDatabaseId by remember { mutableStateOf<Long?>(null) }
+    var selectedKeePassGroupPath by remember { mutableStateOf<String?>(null) }
+    var selectedVaultId by remember { mutableStateOf<Long?>(null) }
+    var selectedFolderId by remember { mutableStateOf<String?>(null) }
+    var isFilterExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
+    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    var foldersByVault by remember { mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap()) }
     val coroutineScope = rememberCoroutineScope()
     
     // 检查通知权限 - 用于决定是否显示智能复制选项
@@ -623,6 +657,8 @@ private fun AutofillPickerContent(
         } ?: (null to null)
     }
     
+    val bitwardenRepository = remember(context) { BitwardenRepository.getInstance(context) }
+
     // 加载密码
     LaunchedEffect(Unit) {
         try {
@@ -640,21 +676,182 @@ private fun AutofillPickerContent(
             isLoading = false
         }
     }
-    
-    // 过滤密码
-    val filteredPasswords by remember(allPasswords, searchQuery) {
+
+    LaunchedEffect(Unit) {
+        bitwardenVaults = withContext(Dispatchers.IO) {
+            bitwardenRepository.getAllVaults()
+        }
+    }
+
+    LaunchedEffect(bitwardenVaults) {
+        foldersByVault = withContext(Dispatchers.IO) {
+            bitwardenVaults.associate { vault ->
+                vault.id to bitwardenRepository.getFolders(vault.id)
+            }
+        }
+    }
+
+    val keepassNameById = remember(keepassDatabases) {
+        keepassDatabases.associate { it.id to it.name }
+    }
+    val vaultLabelById = remember(bitwardenVaults) {
+        bitwardenVaults.associate { vault ->
+            vault.id to (vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email)
+        }
+    }
+    val selectedVaultFolders = remember(selectedVaultId, foldersByVault) {
+        selectedVaultId?.let { foldersByVault[it] }.orEmpty()
+    }
+    val folderNameById = remember(selectedVaultFolders) {
+        selectedVaultFolders.associate { it.bitwardenFolderId to it.name }
+    }
+    val keepassGroupsForSelectedDb = remember(allPasswords, selectedKeePassDatabaseId) {
+        allPasswords
+            .asSequence()
+            .filter { it.keepassDatabaseId == selectedKeePassDatabaseId }
+            .mapNotNull { it.keepassGroupPath?.trim()?.takeIf { path -> path.isNotBlank() } }
+            .distinct()
+            .sorted()
+            .toList()
+    }
+    val hasUncategorizedKeepassEntries = remember(allPasswords, selectedKeePassDatabaseId) {
+        allPasswords.any { entry ->
+            entry.keepassDatabaseId == selectedKeePassDatabaseId && entry.keepassGroupPath.isNullOrBlank()
+        }
+    }
+    val hasUncategorizedBitwardenEntries = remember(allPasswords, selectedVaultId) {
+        selectedVaultId != null && allPasswords.any { entry ->
+            entry.bitwardenVaultId == selectedVaultId && entry.bitwardenFolderId.isNullOrBlank()
+        }
+    }
+
+    val sourceFilteredPasswords by remember(
+        allPasswords,
+        sourceFilter,
+        selectedKeePassDatabaseId,
+        selectedKeePassGroupPath,
+        selectedVaultId,
+        selectedFolderId
+    ) {
         derivedStateOf {
-            if (searchQuery.isBlank()) {
-                allPasswords
-            } else {
-                allPasswords.filter { password ->
-                    password.title.contains(searchQuery, ignoreCase = true) ||
-                    password.username.contains(searchQuery, ignoreCase = true) ||
-                    password.website.contains(searchQuery, ignoreCase = true)
+            allPasswords.filter { entry ->
+                when (sourceFilter) {
+                    AutofillStorageSourceFilter.ALL -> true
+                    AutofillStorageSourceFilter.LOCAL ->
+                        entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+                    AutofillStorageSourceFilter.KEEPASS -> {
+                        val keepassId = entry.keepassDatabaseId
+                        keepassId != null &&
+                            (selectedKeePassDatabaseId == null || keepassId == selectedKeePassDatabaseId) &&
+                            when (selectedKeePassGroupPath) {
+                                null -> true
+                                KEEPASS_GROUP_UNCATEGORIZED -> entry.keepassGroupPath.isNullOrBlank()
+                                else -> entry.keepassGroupPath == selectedKeePassGroupPath
+                            }
+                    }
+                    AutofillStorageSourceFilter.BITWARDEN -> {
+                        val vaultId = entry.bitwardenVaultId
+                        vaultId != null &&
+                            (selectedVaultId == null || vaultId == selectedVaultId) &&
+                            when (selectedFolderId) {
+                                null -> true
+                                BITWARDEN_FOLDER_UNCATEGORIZED -> entry.bitwardenFolderId.isNullOrBlank()
+                                else -> entry.bitwardenFolderId == selectedFolderId
+                            }
+                    }
                 }
             }
         }
     }
+
+    val filteredPasswords by remember(sourceFilteredPasswords, searchQuery) {
+        derivedStateOf {
+            if (searchQuery.isBlank()) {
+                sourceFilteredPasswords
+            } else {
+                sourceFilteredPasswords.filter { it.matchesSearchQuery(searchQuery) }
+            }
+        }
+    }
+
+    val filteredPasswordIds = remember(filteredPasswords) { filteredPasswords.map { it.id }.toHashSet() }
+    val filteredSuggestedPasswords by remember(suggestedPasswords, filteredPasswordIds) {
+        derivedStateOf {
+            suggestedPasswords.filter { it.id in filteredPasswordIds }
+        }
+    }
+
+    val filterSummary = when (sourceFilter) {
+        AutofillStorageSourceFilter.ALL -> stringResource(R.string.filter_all)
+        AutofillStorageSourceFilter.LOCAL -> stringResource(R.string.filter_local_only)
+        AutofillStorageSourceFilter.KEEPASS -> {
+            val databaseLabel = selectedKeePassDatabaseId?.let { keepassNameById[it] }
+                ?: stringResource(R.string.password_picker_all_databases)
+            val groupLabel = when (selectedKeePassGroupPath) {
+                null -> null
+                KEEPASS_GROUP_UNCATEGORIZED -> stringResource(R.string.category_none)
+                else -> selectedKeePassGroupPath
+            }
+            if (groupLabel.isNullOrBlank()) {
+                "${stringResource(R.string.filter_keepass)} · $databaseLabel"
+            } else {
+                "${stringResource(R.string.filter_keepass)} · $databaseLabel · $groupLabel"
+            }
+        }
+        AutofillStorageSourceFilter.BITWARDEN -> {
+            val vaultLabel = selectedVaultId?.let { vaultLabelById[it] }
+                ?: stringResource(R.string.password_picker_all_vaults)
+            val folderLabel = when (selectedFolderId) {
+                null -> null
+                BITWARDEN_FOLDER_UNCATEGORIZED -> stringResource(R.string.category_none)
+                else -> selectedFolderId?.let { folderNameById[it] }
+            }
+            if (folderLabel.isNullOrBlank()) {
+                "${stringResource(R.string.filter_bitwarden)} · $vaultLabel"
+            } else {
+                "${stringResource(R.string.filter_bitwarden)} · $vaultLabel · $folderLabel"
+            }
+        }
+    }
+
+    val activeFilterCount = when (sourceFilter) {
+        AutofillStorageSourceFilter.ALL -> 0
+        AutofillStorageSourceFilter.LOCAL -> 1
+        AutofillStorageSourceFilter.KEEPASS -> 1 +
+            (if (selectedKeePassDatabaseId != null) 1 else 0) +
+            (if (selectedKeePassGroupPath != null) 1 else 0)
+        AutofillStorageSourceFilter.BITWARDEN -> 1 +
+            (if (selectedVaultId != null) 1 else 0) +
+            (if (selectedFolderId != null) 1 else 0)
+    }
+
+    val filterTokens = when (sourceFilter) {
+        AutofillStorageSourceFilter.ALL -> listOf(stringResource(R.string.filter_all))
+        AutofillStorageSourceFilter.LOCAL -> listOf(stringResource(R.string.filter_local_only))
+        AutofillStorageSourceFilter.KEEPASS -> buildList {
+            add(stringResource(sourceFilter.labelResId()))
+            selectedKeePassDatabaseId?.let { keepassNameById[it] }?.let(::add)
+            when (selectedKeePassGroupPath) {
+                null -> Unit
+                KEEPASS_GROUP_UNCATEGORIZED -> add(stringResource(R.string.category_none))
+                else -> selectedKeePassGroupPath?.let { add(it) }
+            }
+        }
+        AutofillStorageSourceFilter.BITWARDEN -> buildList {
+            add(stringResource(sourceFilter.labelResId()))
+            selectedVaultId?.let { vaultLabelById[it] }?.let(::add)
+            when (selectedFolderId) {
+                null -> Unit
+                BITWARDEN_FOLDER_UNCATEGORIZED -> add(stringResource(R.string.category_none))
+                else -> {
+                    val folderLabel = folderNameById[selectedFolderId]
+                        .orEmpty()
+                        .ifBlank { selectedFolderId ?: "" }
+                    if (folderLabel.isNotBlank()) add(folderLabel)
+                }
+            }
+        }
+    }.filter { it.isNotBlank() }
     
     // 根据当前屏幕显示内容 - 带动画过渡
     AnimatedContent(
@@ -697,13 +894,83 @@ private fun AutofillPickerContent(
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // 搜索栏
-                        AutofillSearchBar(
+                        AutofillExpressiveSearchBar(
                             query = searchQuery,
                             onQueryChange = { searchQuery = it },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                        AutofillFilterTrigger(
+                            sourceFilter = sourceFilter,
+                            summary = filterSummary,
+                            chips = filterTokens,
+                            activeFilterCount = activeFilterCount,
+                            expanded = isFilterExpanded,
+                            onClick = { isFilterExpanded = !isFilterExpanded },
+                            panelContent = {
+                                AutofillFilterPanelBody(
+                                    sourceFilter = sourceFilter,
+                                    activeFilterCount = activeFilterCount,
+                                    keepassDatabases = keepassDatabases,
+                                    keepassNameById = keepassNameById,
+                                    selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+                                    selectedKeePassGroupPath = selectedKeePassGroupPath,
+                                    keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
+                                    hasUncategorizedKeepassEntries = hasUncategorizedKeepassEntries,
+                                    bitwardenVaults = bitwardenVaults,
+                                    vaultLabelById = vaultLabelById,
+                                    selectedVaultId = selectedVaultId,
+                                    selectedFolderId = selectedFolderId,
+                                    selectedVaultFolders = selectedVaultFolders,
+                                    folderNameById = folderNameById,
+                                    hasUncategorizedBitwardenEntries = hasUncategorizedBitwardenEntries,
+                                    onSourceFilterChange = { newSource ->
+                                        sourceFilter = newSource
+                                        when (newSource) {
+                                            AutofillStorageSourceFilter.ALL,
+                                            AutofillStorageSourceFilter.LOCAL -> {
+                                                selectedKeePassDatabaseId = null
+                                                selectedKeePassGroupPath = null
+                                                selectedVaultId = null
+                                                selectedFolderId = null
+                                            }
+                                            AutofillStorageSourceFilter.KEEPASS -> {
+                                                selectedVaultId = null
+                                                selectedFolderId = null
+                                            }
+                                            AutofillStorageSourceFilter.BITWARDEN -> {
+                                                selectedKeePassDatabaseId = null
+                                                selectedKeePassGroupPath = null
+                                            }
+                                        }
+                                    },
+                                    onSelectKeePassDatabase = { databaseId ->
+                                        selectedKeePassDatabaseId = databaseId
+                                        selectedKeePassGroupPath = null
+                                    },
+                                    onSelectKeePassGroup = { groupPath ->
+                                        selectedKeePassGroupPath = groupPath
+                                    },
+                                    onSelectVault = { vaultId ->
+                                        selectedVaultId = vaultId
+                                        selectedFolderId = null
+                                    },
+                                    onSelectFolder = { folderId ->
+                                        selectedFolderId = folderId
+                                    },
+                                    onResetAllFilters = {
+                                        sourceFilter = AutofillStorageSourceFilter.ALL
+                                        selectedKeePassDatabaseId = null
+                                        selectedKeePassGroupPath = null
+                                        selectedVaultId = null
+                                        selectedFolderId = null
+                                    }
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 2.dp)
                         )
                         
                         if (isLoading) {
@@ -714,6 +981,22 @@ private fun AutofillPickerContent(
                                 CircularProgressIndicator()
                             }
                         } else {
+                            val showSuggestedSection = searchQuery.isBlank() &&
+                                filteredSuggestedPasswords.isNotEmpty()
+                            val suggestedIds = filteredSuggestedPasswords.map { it.id }.toSet()
+                            val mainPasswords = if (showSuggestedSection) {
+                                filteredPasswords.filter { it.id !in suggestedIds }
+                            } else {
+                                filteredPasswords
+                            }
+                            val showNoSuggestionsHint = sourceFilter == AutofillStorageSourceFilter.ALL &&
+                                selectedKeePassDatabaseId == null &&
+                                selectedKeePassGroupPath == null &&
+                                selectedVaultId == null &&
+                                selectedFolderId == null &&
+                                searchQuery.isBlank() &&
+                                filteredSuggestedPasswords.isEmpty()
+
                             // 密码列表
                             LazyColumn(
                                 modifier = Modifier
@@ -721,7 +1004,7 @@ private fun AutofillPickerContent(
                                     .weight(1f)
                             ) {
                                 // 建议密码区域（高亮）
-                                if (suggestedPasswords.isNotEmpty() && searchQuery.isBlank()) {
+                                if (showSuggestedSection) {
                                     item {
                                         Text(
                                             text = stringResource(R.string.autofill_suggested_fill),
@@ -732,11 +1015,12 @@ private fun AutofillPickerContent(
                                     }
                                     
                                     items(
-                                        items = suggestedPasswords,
+                                        items = filteredSuggestedPasswords,
                                         key = { "suggested_${it.id}" }
                                     ) { password ->
                                         SuggestedPasswordListItem(
                                             password = password,
+                                            iconCardsEnabled = iconCardsEnabled,
                                             showSmartCopyOptions = hasNotificationPermission,
                                             onAction = { action ->
                                                 when (action) {
@@ -777,39 +1061,48 @@ private fun AutofillPickerContent(
                                 }
                                 
                                 // 无建议提示
-                                if (suggestedPasswords.isEmpty() && searchQuery.isBlank()) {
+                                if (showNoSuggestionsHint) {
                                     item {
                                         NoSuggestionsHint()
                                     }
                                 }
                                 
-                                // 所有条目标题
-                                if (filteredPasswords.isNotEmpty()) {
+                                if (mainPasswords.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = if (suggestedPasswords.isNotEmpty()) {
+                                            text = if (showSuggestedSection) {
                                                 stringResource(R.string.autofill_other_entries)
                                             } else {
-                                                stringResource(R.string.autofill_all_entries)
+                                                when (sourceFilter) {
+                                                    AutofillStorageSourceFilter.ALL -> stringResource(R.string.autofill_all_entries)
+                                                    AutofillStorageSourceFilter.LOCAL -> stringResource(R.string.filter_local_only)
+                                                    AutofillStorageSourceFilter.KEEPASS -> stringResource(R.string.filter_keepass)
+                                                    AutofillStorageSourceFilter.BITWARDEN -> stringResource(R.string.filter_bitwarden)
+                                                }
                                             },
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                         )
                                     }
+                                } else if (!showNoSuggestionsHint) {
+                                    item {
+                                        EmptyPasswordState(
+                                            modifier = Modifier
+                                                .fillParentMaxSize()
+                                                .padding(top = 32.dp)
+                                        )
+                                    }
                                 }
                                 
-                                // 过滤掉已在建议中显示的密码
-                                val suggestedIds = suggestedPasswords.map { it.id }.toSet()
-                                val otherPasswords = filteredPasswords.filter { it.id !in suggestedIds }
-                                
                                 items(
-                                    items = otherPasswords,
+                                    items = mainPasswords,
                                     key = { it.id }
                                 ) { password ->
                                     PasswordListItem(
                                         password = password,
                                         showDropdownMenu = true,
+                                        iconCardsEnabled = iconCardsEnabled,
                                         showSmartCopyOptions = hasNotificationPermission,
                                         onAction = { action ->
                                             when (action) {
@@ -847,7 +1140,7 @@ private fun AutofillPickerContent(
                             }
                         }
                     }
-                    
+
                     // FAB: 新建
                     ExtendedFloatingActionButton(
                         onClick = { currentScreen = "add" },
@@ -916,6 +1209,38 @@ private fun AutofillPickerContent(
 
 }
 
+private enum class AutofillStorageSourceFilter {
+    ALL,
+    LOCAL,
+    KEEPASS,
+    BITWARDEN
+}
+
+private const val KEEPASS_GROUP_UNCATEGORIZED = "__keepass_uncategorized__"
+private const val BITWARDEN_FOLDER_UNCATEGORIZED = "__bitwarden_uncategorized__"
+
+private fun AutofillStorageSourceFilter.labelResId(): Int = when (this) {
+    AutofillStorageSourceFilter.ALL -> R.string.filter_all
+    AutofillStorageSourceFilter.LOCAL -> R.string.filter_monica
+    AutofillStorageSourceFilter.KEEPASS -> R.string.filter_keepass
+    AutofillStorageSourceFilter.BITWARDEN -> R.string.filter_bitwarden
+}
+
+private fun AutofillStorageSourceFilter.icon(): ImageVector = when (this) {
+    AutofillStorageSourceFilter.ALL -> Icons.Default.FilterList
+    AutofillStorageSourceFilter.LOCAL -> Icons.Default.Smartphone
+    AutofillStorageSourceFilter.KEEPASS -> Icons.Default.Storage
+    AutofillStorageSourceFilter.BITWARDEN -> Icons.Default.CloudSync
+}
+
+private fun PasswordEntry.matchesSearchQuery(query: String): Boolean {
+    if (query.isBlank()) return true
+    return title.contains(query, ignoreCase = true) ||
+        appName.contains(query, ignoreCase = true) ||
+        username.contains(query, ignoreCase = true) ||
+        website.contains(query, ignoreCase = true)
+}
+
 @Composable
 private fun NoSuggestionsHint() {
     Row(
@@ -936,6 +1261,528 @@ private fun NoSuggestionsHint() {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun AutofillExpressiveSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier,
+        singleLine = true,
+        shape = RoundedCornerShape(22.dp),
+        placeholder = {
+            Text(
+                text = stringResource(R.string.search_passwords),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null
+            )
+        },
+        trailingIcon = {
+            if (query.isNotBlank()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.clear_search)
+                    )
+                }
+            }
+        },
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent
+        )
+    )
+}
+
+@Composable
+private fun AutofillFilterTrigger(
+    sourceFilter: AutofillStorageSourceFilter,
+    summary: String,
+    chips: List<String>,
+    activeFilterCount: Int,
+    expanded: Boolean,
+    onClick: () -> Unit,
+    panelContent: (@Composable ColumnScope.() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(20.dp)
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 170, easing = LinearEasing),
+        label = "filter_arrow_rotation"
+    )
+
+    Surface(
+        modifier = modifier
+            .clip(shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Icon(
+                        imageVector = sourceFilter.icon(),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .padding(8.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.filter_title),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (activeFilterCount > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = activeFilterCount.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.graphicsLayer { rotationZ = arrowRotation }
+                )
+            }
+
+            val visibleChips = chips.take(3)
+            if (visibleChips.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    visibleChips.forEach { chip ->
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(
+                                text = chip,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                    if (chips.size > visibleChips.size) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "+${chips.size - visibleChips.size}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (panelContent != null) {
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically(
+                        animationSpec = tween(durationMillis = 180, easing = LinearEasing),
+                        expandFrom = Alignment.Top
+                    ) + fadeIn(animationSpec = tween(durationMillis = 120, easing = LinearEasing)),
+                    exit = shrinkVertically(
+                        animationSpec = tween(durationMillis = 160, easing = LinearEasing),
+                        shrinkTowards = Alignment.Top
+                    ) + fadeOut(animationSpec = tween(durationMillis = 90, easing = LinearEasing))
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        panelContent()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterScopeCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AutofillFilterPanelBody(
+    sourceFilter: AutofillStorageSourceFilter,
+    activeFilterCount: Int,
+    keepassDatabases: List<LocalKeePassDatabase>,
+    keepassNameById: Map<Long, String>,
+    selectedKeePassDatabaseId: Long?,
+    selectedKeePassGroupPath: String?,
+    keepassGroupsForSelectedDb: List<String>,
+    hasUncategorizedKeepassEntries: Boolean,
+    bitwardenVaults: List<BitwardenVault>,
+    vaultLabelById: Map<Long, String>,
+    selectedVaultId: Long?,
+    selectedFolderId: String?,
+    selectedVaultFolders: List<BitwardenFolder>,
+    folderNameById: Map<String, String>,
+    hasUncategorizedBitwardenEntries: Boolean,
+    onSourceFilterChange: (AutofillStorageSourceFilter) -> Unit,
+    onSelectKeePassDatabase: (Long?) -> Unit,
+    onSelectKeePassGroup: (String?) -> Unit,
+    onSelectVault: (Long?) -> Unit,
+    onSelectFolder: (String?) -> Unit,
+    onResetAllFilters: () -> Unit
+) {
+    var keepassMenuExpanded by remember { mutableStateOf(false) }
+    var keepassGroupMenuExpanded by remember { mutableStateOf(false) }
+    var vaultMenuExpanded by remember { mutableStateOf(false) }
+    var folderMenuExpanded by remember { mutableStateOf(false) }
+    val sourceOptions = AutofillStorageSourceFilter.values().toList()
+    val hasActiveFilters = activeFilterCount > 0
+    val dropdownFieldColors = TextFieldDefaults.colors(
+        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        focusedIndicatorColor = Color.Transparent,
+        unfocusedIndicatorColor = Color.Transparent,
+        disabledIndicatorColor = Color.Transparent
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            sourceOptions.forEach { option ->
+                FilterChip(
+                    selected = sourceFilter == option,
+                    onClick = { onSourceFilterChange(option) },
+                    label = { Text(stringResource(option.labelResId())) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = option.icon(),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+            }
+        }
+
+        if (sourceFilter == AutofillStorageSourceFilter.KEEPASS) {
+            FilterScopeCard(title = stringResource(R.string.filter_keepass)) {
+                Text(
+                    text = stringResource(R.string.password_picker_filter_database),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ExposedDropdownMenuBox(
+                    expanded = keepassMenuExpanded,
+                    onExpandedChange = { keepassMenuExpanded = !keepassMenuExpanded }
+                ) {
+                    TextField(
+                        readOnly = true,
+                        value = selectedKeePassDatabaseId?.let { keepassNameById[it] }
+                            ?: stringResource(R.string.password_picker_all_databases),
+                        onValueChange = {},
+                        leadingIcon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepassMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        colors = dropdownFieldColors
+                    )
+                    ExposedDropdownMenu(
+                        expanded = keepassMenuExpanded,
+                        onDismissRequest = { keepassMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.password_picker_all_databases)) },
+                            onClick = {
+                                onSelectKeePassDatabase(null)
+                                keepassMenuExpanded = false
+                            }
+                        )
+                        keepassDatabases.forEach { databaseItem ->
+                            DropdownMenuItem(
+                                text = { Text(databaseItem.name) },
+                                onClick = {
+                                    onSelectKeePassDatabase(databaseItem.id)
+                                    keepassMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (selectedKeePassDatabaseId != null) {
+                    Text(
+                        text = stringResource(R.string.password_picker_filter_folder),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ExposedDropdownMenuBox(
+                        expanded = keepassGroupMenuExpanded,
+                        onExpandedChange = { keepassGroupMenuExpanded = !keepassGroupMenuExpanded }
+                    ) {
+                        TextField(
+                            readOnly = true,
+                            value = when (selectedKeePassGroupPath) {
+                                null -> stringResource(R.string.password_picker_all_folders)
+                                KEEPASS_GROUP_UNCATEGORIZED -> stringResource(R.string.category_none)
+                                else -> selectedKeePassGroupPath
+                            },
+                            onValueChange = {},
+                            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepassGroupMenuExpanded)
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp),
+                            colors = dropdownFieldColors
+                        )
+                        ExposedDropdownMenu(
+                            expanded = keepassGroupMenuExpanded,
+                            onDismissRequest = { keepassGroupMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.password_picker_all_folders)) },
+                                onClick = {
+                                    onSelectKeePassGroup(null)
+                                    keepassGroupMenuExpanded = false
+                                }
+                            )
+                            if (hasUncategorizedKeepassEntries) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.category_none)) },
+                                    onClick = {
+                                        onSelectKeePassGroup(KEEPASS_GROUP_UNCATEGORIZED)
+                                        keepassGroupMenuExpanded = false
+                                    }
+                                )
+                            }
+                            keepassGroupsForSelectedDb.forEach { groupPath ->
+                                DropdownMenuItem(
+                                    text = { Text(groupPath) },
+                                    onClick = {
+                                        onSelectKeePassGroup(groupPath)
+                                        keepassGroupMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (sourceFilter == AutofillStorageSourceFilter.BITWARDEN) {
+            FilterScopeCard(title = stringResource(R.string.filter_bitwarden)) {
+                Text(
+                    text = stringResource(R.string.password_picker_filter_vault),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ExposedDropdownMenuBox(
+                    expanded = vaultMenuExpanded,
+                    onExpandedChange = { vaultMenuExpanded = !vaultMenuExpanded }
+                ) {
+                    TextField(
+                        readOnly = true,
+                        value = selectedVaultId?.let { vaultLabelById[it] }
+                            ?: stringResource(R.string.password_picker_all_vaults),
+                        onValueChange = {},
+                        leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = vaultMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        colors = dropdownFieldColors
+                    )
+                    ExposedDropdownMenu(
+                        expanded = vaultMenuExpanded,
+                        onDismissRequest = { vaultMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.password_picker_all_vaults)) },
+                            onClick = {
+                                onSelectVault(null)
+                                vaultMenuExpanded = false
+                            }
+                        )
+                        bitwardenVaults.forEach { vault ->
+                            val label = vaultLabelById[vault.id].orEmpty()
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    onSelectVault(vault.id)
+                                    vaultMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (selectedVaultId != null) {
+                    Text(
+                        text = stringResource(R.string.password_picker_filter_folder),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ExposedDropdownMenuBox(
+                        expanded = folderMenuExpanded,
+                        onExpandedChange = { folderMenuExpanded = !folderMenuExpanded }
+                    ) {
+                        TextField(
+                            readOnly = true,
+                            value = when (selectedFolderId) {
+                                null -> stringResource(R.string.password_picker_all_folders)
+                                BITWARDEN_FOLDER_UNCATEGORIZED -> stringResource(R.string.category_none)
+                                else -> folderNameById[selectedFolderId].orEmpty()
+                            },
+                            onValueChange = {},
+                            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = folderMenuExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp),
+                            colors = dropdownFieldColors
+                        )
+                        ExposedDropdownMenu(
+                            expanded = folderMenuExpanded,
+                            onDismissRequest = { folderMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.password_picker_all_folders)) },
+                                onClick = {
+                                    onSelectFolder(null)
+                                    folderMenuExpanded = false
+                                }
+                            )
+                            if (hasUncategorizedBitwardenEntries) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.category_none)) },
+                                    onClick = {
+                                        onSelectFolder(BITWARDEN_FOLDER_UNCATEGORIZED)
+                                        folderMenuExpanded = false
+                                    }
+                                )
+                            }
+                            selectedVaultFolders.forEach { folder ->
+                                DropdownMenuItem(
+                                    text = { Text(folder.name) },
+                                    onClick = {
+                                        onSelectFolder(folder.bitwardenFolderId)
+                                        folderMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (hasActiveFilters) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onResetAllFilters) {
+                    Text(text = stringResource(R.string.clear))
+                }
+            }
+        }
     }
 }
 
