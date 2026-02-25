@@ -1991,6 +1991,7 @@
     <string name="autofill_view_all_passwords">View all passwords</string>
     <string name="autofill_open_full_list">Tap to open full list</string>
     <string name="autofill_open_picker">Tap to open picker</string>
+    <string name="autofill_manual_entry_title">Monica Autofill</string>
     <string name="autofill_save_for_next_fill">Save now and fill next time</string>
     <string name="autofill_select_password">Select password</string>
     <string name="autofill_detected_passwords">Detected %1$d passwords</string>

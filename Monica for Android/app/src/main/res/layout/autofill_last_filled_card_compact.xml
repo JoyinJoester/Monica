@@ -16,23 +16,32 @@
         android:layout_marginEnd="16dp"
         android:contentDescription="@null"
         android:scaleType="centerInside"
-        android:src="@drawable/ic_list"
+        android:src="@drawable/ic_passkey"
         android:tint="?android:colorControlNormal" />
 
-    <TextView
-        android:id="@+id/text_title"
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:paddingEnd="16dp"
-        android:text="@string/autofill_manual_entry_title"
-        android:textAppearance="?android:attr/textAppearanceListItemSmall" />
+        android:orientation="vertical"
+        android:paddingEnd="16dp">
 
-    <TextView
-        android:id="@+id/text_username"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:visibility="gone" />
+        <TextView
+            android:id="@+id/text_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textAppearance="?android:attr/textAppearanceListItemSmall" />
+
+        <TextView
+            android:id="@+id/text_username"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:alpha="0.6"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?android:attr/textAppearanceListItemSmall"
+            android:textSize="12sp" />
+    </LinearLayout>
 </LinearLayout>

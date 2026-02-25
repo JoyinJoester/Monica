@@ -77,7 +77,7 @@ object AutofillPickerLauncher {
             "Creating direct list response, mode=$entryMode, overrideTargets=${overrideTargets.size}, parserTargets=${parserTargets.size}, mergedTargets=${fillTargets.size}"
         )
 
-        var addedLastFilledDataset = false
+        var lastFilledDatasetResult: LastFilledDatasetBuildResult? = null
         var lastFilledCanStandAlone = false
         if (entryMode != DirectEntryMode.TRIGGER_ONLY && lastFilledPassword != null) {
             val datasetResult = buildLastFilledDataset(
@@ -86,8 +86,7 @@ object AutofillPickerLauncher {
                 fillTargets = fillTargets,
             )
             if (datasetResult != null) {
-                responseBuilder.addDataset(datasetResult.dataset)
-                addedLastFilledDataset = true
+                lastFilledDatasetResult = datasetResult
                 val needsUsernameLike = fillTargets.any {
                     it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
                         it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
@@ -104,7 +103,7 @@ object AutofillPickerLauncher {
         }
 
         val includeTriggerEntry = when (entryMode) {
-            DirectEntryMode.LAST_FILLED_ONLY -> !addedLastFilledDataset || !lastFilledCanStandAlone
+            DirectEntryMode.LAST_FILLED_ONLY -> lastFilledDatasetResult == null || !lastFilledCanStandAlone
             else -> true
         }
         if (includeTriggerEntry) {
@@ -112,7 +111,6 @@ object AutofillPickerLauncher {
             if (authTargets.isEmpty()) {
                 android.util.Log.w("AutofillPicker", "No authentication targets available")
             } else {
-                // 1. 构建跳转 Intent - 始终跳转到全屏选择器
                 val args = AutofillPickerActivityV2.Args(
                     applicationId = packageName,
                     webDomain = domain,
@@ -122,7 +120,6 @@ object AutofillPickerLauncher {
                     autofillHints = ArrayList(fillTargets.map { it.hint.name }),
                     suggestedPasswordIds = matchedPasswords.map { it.id }.toLongArray(),
                     isSaveMode = false,
-                    // 如果只有用户名/密码字段，传过去以便预填
                     capturedUsername = parsedStructure.items.find {
                         it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
                             it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
@@ -135,7 +132,6 @@ object AutofillPickerLauncher {
                 )
 
                 val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
-
                 val requestCode = buildStablePickerRequestCode(
                     packageName = packageName,
                     domain = domain,
@@ -145,17 +141,8 @@ object AutofillPickerLauncher {
                 )
                 val flags = PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 val pendingIntent = PendingIntent.getActivity(context, requestCode, pickerIntent, flags)
+                val presentation = createManualTriggerPresentation(context)
 
-                // 2. 创建手动触发入口 Presentation（始终保留）
-                // v2 手动入口：使用本地化文案，避免中文系统显示英文硬编码
-                val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
-                    setTextViewText(R.id.text_title, context.getString(R.string.tile_autofill_label))
-                    setTextViewText(R.id.text_username, context.getString(R.string.autofill_open_picker))
-                    setImageViewResource(R.id.icon_app, R.drawable.ic_key)
-                }
-
-                // 3. 对每个字段单独挂一个认证 Dataset，贴近 Keyguard 实现。
-                // 这样系统在切换聚焦字段时更容易把入口锚定到当前字段，减少错位和丢触发。
                 val orderedTargets = selectPreferredAuthTargets(authTargets)
                 orderedTargets.forEach { item ->
                     val datasetBuilder = Dataset.Builder(presentation)
@@ -165,6 +152,9 @@ object AutofillPickerLauncher {
                 }
             }
         }
+        // On VIVO/Chrome inline UI, later-added dataset appears above.
+        // Add last-filled after trigger to keep it on top in composite view.
+        lastFilledDatasetResult?.let { responseBuilder.addDataset(it.dataset) }
 
         // 4. Optional SaveInfo for save flow.
         // If enabled, the framework can trigger onSaveRequest after user submits
@@ -219,12 +209,16 @@ object AutofillPickerLauncher {
         val title = password.title
             .ifBlank { accountValue }
             .ifBlank { context.getString(R.string.tile_autofill_label) }
-        val subtitle = accountValue.ifBlank { context.getString(R.string.autofill_open_picker) }
-        val presentation = RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
-            setTextViewText(R.id.text_title, title)
-            setTextViewText(R.id.text_username, subtitle)
-            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
-        }
+        val subtitle = accountValue
+        android.util.Log.d(
+            "AutofillPicker",
+            "Building last-filled dataset with compact presentation"
+        )
+        val presentation = createLastFilledPresentation(
+            context = context,
+            title = title,
+            subtitle = subtitle,
+        )
 
         val datasetBuilder = Dataset.Builder(presentation)
         var hasValue = false
@@ -275,6 +269,26 @@ object AutofillPickerLauncher {
             hasUsernameLikeValue = hasUsernameLikeValue,
             hasPasswordValue = hasPasswordValue,
         )
+    }
+
+    private fun createManualTriggerPresentation(context: Context): RemoteViews {
+        return RemoteViews(context.packageName, R.layout.autofill_manual_card_v2).apply {
+            setTextViewText(R.id.text_title, context.getString(R.string.autofill_manual_entry_title))
+            setViewVisibility(R.id.text_username, android.view.View.GONE)
+            setImageViewResource(R.id.icon_app, R.drawable.ic_list)
+        }
+    }
+
+    private fun createLastFilledPresentation(
+        context: Context,
+        title: String,
+        subtitle: String,
+    ): RemoteViews {
+        return RemoteViews(context.packageName, R.layout.autofill_last_filled_card_compact).apply {
+            setTextViewText(R.id.text_title, title)
+            setTextViewText(R.id.text_username, subtitle)
+            setImageViewResource(R.id.icon_app, R.drawable.ic_passkey)
+        }
     }
 
     private fun selectPreferredAuthTargets(
@@ -697,8 +711,8 @@ object AutofillPickerLauncher {
         
         // 创建一个占位Dataset,用于触发Activity
         val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
-            setTextViewText(R.id.text_title, "选择密码 (${passwords.size})")
-            setTextViewText(R.id.text_username, "点击查看所有密码")
+            setTextViewText(R.id.text_title, context.getString(R.string.autofill_detected_passwords, passwords.size))
+            setTextViewText(R.id.text_username, context.getString(R.string.autofill_view_all_passwords))
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
         
@@ -838,6 +852,10 @@ object AutofillPickerLauncher {
         // 创建RemoteViews
         val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
             setTextViewText(R.id.text_title, password.title.ifEmpty { accountValue })
+            setTextViewText(
+                R.id.text_username,
+                accountValue.ifBlank { context.getString(R.string.tile_autofill_label) }
+            )
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
         

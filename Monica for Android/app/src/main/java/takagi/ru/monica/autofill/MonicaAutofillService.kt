@@ -1603,9 +1603,9 @@ class MonicaAutofillService : AutofillService() {
         // 参考 Keyguard: 固定保留兜底入口确保用户始终有选择
         try {
             val manualSelectionPresentation = RemoteViews(this.packageName, R.layout.autofill_manual_card_v2).apply {
-                setTextViewText(R.id.text_title, getString(R.string.tile_autofill_label))
-                setTextViewText(R.id.text_username, getString(R.string.autofill_open_picker))
-                setImageViewResource(R.id.icon_app, R.mipmap.ic_launcher)
+                setTextViewText(R.id.text_title, getString(R.string.autofill_manual_entry_title))
+                setViewVisibility(R.id.text_username, android.view.View.GONE)
+                setImageViewResource(R.id.icon_app, R.drawable.ic_list)
             }
             
             // 创建跳转到选择器的 Dataset

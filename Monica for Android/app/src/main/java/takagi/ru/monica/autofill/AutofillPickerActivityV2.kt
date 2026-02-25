@@ -341,12 +341,16 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 ?: args.applicationId?.takeIf { it.isNotBlank() }
                 ?: getString(R.string.tile_autofill_label)
         }
-        val cardSubtitle = accountValue.ifBlank { getString(R.string.autofill_open_picker) }
-        val selectedPresentation = RemoteViews(packageName, R.layout.autofill_manual_card_v2).apply {
+        val cardSubtitle = accountValue
+        val selectedPresentation = RemoteViews(packageName, R.layout.autofill_last_filled_card_compact).apply {
             setTextViewText(R.id.text_title, cardTitle)
             setTextViewText(R.id.text_username, cardSubtitle)
-            setImageViewResource(R.id.icon_app, R.drawable.ic_key)
+            setImageViewResource(R.id.icon_app, R.drawable.ic_passkey)
         }
+        android.util.Log.d(
+            "AutofillPickerV2",
+            "Using distinct selectedPresentation for auth result dataset"
+        )
         val datasetBuilder = Dataset.Builder(selectedPresentation)
 
         val hints = args.autofillHints

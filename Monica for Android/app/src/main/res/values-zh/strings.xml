@@ -1814,6 +1814,7 @@
     <string name="autofill_view_all_passwords">查看所有密码</string>
     <string name="autofill_open_full_list">点击打开完整列表</string>
     <string name="autofill_open_picker">点击进入选择界面</string>
+    <string name="autofill_manual_entry_title">Monica自动填充</string>
     <string name="autofill_save_for_next_fill">自动保存并在下次填充</string>
     <string name="autofill_select_password">选择密码</string>
     <string name="autofill_detected_passwords">检测到 %1$d 个密码</string>

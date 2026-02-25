@@ -36,6 +36,10 @@ object AutofillResultHandler {
         // 创建RemoteViews - 使用卡片布局
         val presentation = RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
             setTextViewText(R.id.text_title, password.title.ifEmpty { password.username })
+            setTextViewText(
+                R.id.text_username,
+                password.username.ifBlank { context.getString(R.string.tile_autofill_label) }
+            )
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }
         
@@ -113,6 +117,10 @@ object AutofillResultHandler {
             setTextViewText(
                 R.id.text_title,
                 "•••• ${paymentInfo.cardNumber.takeLast(4)}"
+            )
+            setTextViewText(
+                R.id.text_username,
+                paymentInfo.cardHolderName.ifBlank { context.getString(R.string.tile_autofill_label) }
             )
             setImageViewResource(R.id.icon_app, R.drawable.ic_key)
         }

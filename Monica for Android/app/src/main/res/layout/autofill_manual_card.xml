@@ -1,79 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 手动选择卡片 - 蓝色高亮样式 -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingStart="12dp"
-    android:paddingEnd="12dp"
-    android:paddingTop="6dp"
-    android:paddingBottom="6dp">
-    
-    <LinearLayout
-        android:layout_width="match_parent"
+    android:background="?android:attr/windowBackground"
+    android:minHeight="48dp"
+    android:orientation="horizontal">
+
+    <ImageView
+        android:id="@+id/icon_app"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="center"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:contentDescription="@null"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_list"
+        android:tint="?android:colorControlNormal" />
+
+    <TextView
+        android:id="@+id/text_title"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="@drawable/autofill_manual_card_background"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:minHeight="64dp">
-        
-        <!-- 图标容器 -->
-        <FrameLayout
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/autofill_manual_icon_background">
-            
-            <ImageView
-                android:id="@+id/icon_app"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_gravity="center"
-                android:src="@drawable/ic_list"
-                android:scaleType="centerInside"
-                android:tint="@color/autofill_manual_icon_tint"
-                android:contentDescription="@null" />
-        </FrameLayout>
-        
-        <!-- 文本内容 -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="12dp"
-            android:orientation="vertical">
-            
-            <TextView
-                android:id="@+id/text_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/tile_autofill_label"
-                android:textSize="15sp"
-                android:textColor="@color/autofill_text_primary"
-                android:textStyle="bold"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:fontFamily="sans-serif-medium" />
-            
-            <TextView
-                android:id="@+id/text_username"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/autofill_open_picker"
-                android:textSize="13sp"
-                android:textColor="@color/autofill_text_secondary"
-                android:maxLines="2"
-                android:ellipsize="end"
-                android:layout_marginTop="2dp"
-                android:fontFamily="sans-serif" />
-        </LinearLayout>
-        
-        <!-- 右侧图标 -->
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_arrow_forward"
-            android:tint="@color/autofill_manual_icon_tint"
-            android:contentDescription="@null" />
-    </LinearLayout>
-</FrameLayout>
+        android:layout_gravity="center"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:paddingEnd="16dp"
+        android:text="@string/autofill_manual_entry_title"
+        android:textAppearance="?android:attr/textAppearanceListItemSmall" />
+
+    <TextView
+        android:id="@+id/text_username"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+</LinearLayout>

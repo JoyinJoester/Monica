@@ -256,9 +256,9 @@ object AutofillDatasetBuilder {
             packageName: String? = null
         ): RemoteViews {
             return RemoteViews(context.packageName, R.layout.autofill_manual_card).apply {
-                setTextViewText(R.id.text_title, "Monica自动填充")
-                setTextViewText(R.id.text_username, domain ?: packageName ?: "Monica自动填充")
-                setImageViewResource(R.id.icon_app, R.mipmap.ic_launcher)
+                setTextViewText(R.id.text_title, context.getString(R.string.autofill_manual_entry_title))
+                setViewVisibility(R.id.text_username, android.view.View.GONE)
+                setImageViewResource(R.id.icon_app, R.drawable.ic_list)
             }
         }
         
@@ -267,11 +267,12 @@ object AutofillDatasetBuilder {
          */
         fun createUnlockPrompt(
             context: Context,
-            message: String = "解锁 Monica"
+            message: String? = null
         ): RemoteViews {
             return RemoteViews(context.packageName, R.layout.autofill_manual_card).apply {
-                setTextViewText(R.id.text_title, message)
-                setTextViewText(R.id.text_username, "需要验证身份")
+                val displayMessage = message ?: context.getString(R.string.autofill_manual_entry_title)
+                setTextViewText(R.id.text_title, displayMessage)
+                setViewVisibility(R.id.text_username, android.view.View.GONE)
                 setImageViewResource(R.id.icon_app, R.drawable.ic_key)
             }
         }
