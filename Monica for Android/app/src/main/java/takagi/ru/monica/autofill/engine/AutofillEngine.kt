@@ -67,6 +67,7 @@ class AutofillEngine(
                 // 降级方案: 返回空结果
                 AutofillResult(
                     matches = emptyList(),
+                    candidateCount = -1,
                     processingTimeMs = 0,
                     isSuccess = false,
                     error = e.message,
@@ -90,6 +91,7 @@ class AutofillEngine(
             
             AutofillResult(
                 matches = emptyList(),
+                candidateCount = -1,
                 processingTimeMs = duration,
                 isSuccess = false,
                 error = e.message,
@@ -117,6 +119,7 @@ class AutofillEngine(
             MetricsCollector.recordNoMatch()
             return AutofillResult(
                 matches = emptyList(),
+                candidateCount = 0,
                 processingTimeMs = System.currentTimeMillis() - startTime,
                 isSuccess = true,
                 context = context
@@ -159,6 +162,7 @@ class AutofillEngine(
         
         return AutofillResult(
             matches = limitedMatches,
+            candidateCount = candidates.size,
             processingTimeMs = duration,
             isSuccess = true,
             context = context

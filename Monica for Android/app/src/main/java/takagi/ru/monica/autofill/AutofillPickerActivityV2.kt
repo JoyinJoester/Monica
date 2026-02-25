@@ -43,7 +43,6 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
-import takagi.ru.monica.utils.SettingsManager
 import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.PasswordVerificationContent
@@ -64,6 +63,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     companion object {
         private const val EXTRA_ARGS = "extra_args"
+        private const val DUPLICATE_LAUNCH_WINDOW_MS = 1500L
+        @Volatile
+        private var lastLaunchSignature: String? = null
+        @Volatile
+        private var lastLaunchAtMs: Long = 0L
         
         /**
          * 创建启动 Intent（契约保持不变，确保 Service 兼容）
@@ -86,6 +90,42 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 isSaveMode = false
             )
             return getIntent(context, testArgs)
+        }
+
+        private fun buildLaunchSignature(args: Args): String {
+            val idCount = args.autofillIds?.size ?: 0
+            val hintCount = args.autofillHints?.size ?: 0
+            val suggestedCount = args.suggestedPasswordIds?.size ?: 0
+            return buildString {
+                append(args.applicationId.orEmpty())
+                append('|')
+                append(args.webDomain.orEmpty())
+                append('|')
+                append(args.interactionIdentifier.orEmpty())
+                append('|')
+                append(args.fieldSignatureKey.orEmpty())
+                append('|')
+                append(idCount)
+                append('|')
+                append(hintCount)
+                append('|')
+                append(suggestedCount)
+                append('|')
+                append(args.responseAuthMode)
+                append('|')
+                append(args.isSaveMode)
+            }
+        }
+
+        @Synchronized
+        private fun shouldSuppressDuplicateLaunch(args: Args): Boolean {
+            val now = System.currentTimeMillis()
+            val signature = buildLaunchSignature(args)
+            val isDuplicate = lastLaunchSignature == signature &&
+                now - lastLaunchAtMs <= DUPLICATE_LAUNCH_WINDOW_MS
+            lastLaunchSignature = signature
+            lastLaunchAtMs = now
+            return isDuplicate
         }
     }
     
@@ -142,6 +182,12 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState) // BaseMonicaActivity 已调用 enableEdgeToEdge()
         AutofillLogger.initialize(applicationContext)
+        if (shouldSuppressDuplicateLaunch(args)) {
+            AutofillLogger.w("PICKER", "Suppress duplicate picker launch within ${DUPLICATE_LAUNCH_WINDOW_MS}ms")
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
+        }
         AutofillLogger.i(
             "PICKER",
             "Picker opened: saveMode=${args.isSaveMode}, responseAuth=${args.responseAuthMode}, ids=${args.autofillIds?.size ?: 0}, hints=${args.autofillHints?.size ?: 0}"
@@ -187,9 +233,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     args = args,
                     repository = repository,
                     securityManager = securityManager,
-                    settingsManager = localSettingsManager,
                     keepassDatabases = keepassDatabases,
                     canSkipVerification = canSkipAuth,
+                    biometricEnabled = settings.biometricEnabled,
                     isManualMode = isManualMode,
                     onAuthenticationSuccess = { markAuthenticationSuccess() },
                     onAutofill = { password, forceAddUri ->
@@ -209,6 +255,12 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        AutofillLogger.w("PICKER", "onNewIntent received while picker is active; reusing current instance")
     }
     
     private fun handleSmartCopy(password: PasswordEntry, usernameFirst: Boolean) {
@@ -496,9 +548,9 @@ private fun AutofillPickerContent(
     args: AutofillPickerActivityV2.Args,
     repository: PasswordRepository,
     securityManager: SecurityManager,
-    settingsManager: SettingsManager,
     keepassDatabases: List<LocalKeePassDatabase>,
     canSkipVerification: Boolean = false,
+    biometricEnabled: Boolean = false,
     isManualMode: Boolean = false,
     onAuthenticationSuccess: () -> Unit = {},
     onAutofill: (PasswordEntry, Boolean) -> Unit,
@@ -523,18 +575,8 @@ private fun AutofillPickerContent(
         NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
     
-    // 读取自动填充验证设置
-    val appSettingsState = settingsManager.settingsFlow.collectAsState(initial = null)
-    val appSettings = appSettingsState.value
     val autofillUsernameLabel = stringResource(R.string.autofill_username)
     val autofillPasswordLabel = stringResource(R.string.autofill_password)
-    
-    if (appSettings == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        return
-    }
     
     // 验证状态：如果可以跳过验证（会话有效），直接标记为已认证
     var isAuthenticated by remember { mutableStateOf(canSkipVerification) }
@@ -552,7 +594,7 @@ private fun AutofillPickerContent(
             PasswordVerificationContent(
                 isFirstTime = false,
                 disablePasswordVerification = false, // 自动填充始终需要验证
-                biometricEnabled = appSettings.biometricEnabled,
+                biometricEnabled = biometricEnabled,
                 onVerifyPassword = { input -> securityManager.verifyMasterPassword(input) },
                 onSuccess = { 
                     isAuthenticated = true
@@ -580,13 +622,14 @@ private fun AutofillPickerContent(
     // 加载密码
     LaunchedEffect(Unit) {
         try {
-            allPasswords = repository.getAllPasswordEntries().first()
-            
             // 筛选建议密码
             val suggestedIds = args.suggestedPasswordIds?.toList() ?: emptyList()
             if (suggestedIds.isNotEmpty()) {
                 suggestedPasswords = repository.getPasswordsByIds(suggestedIds)
             }
+            // 先展示推荐项，随后异步补齐全量列表，降低首屏等待感
+            isLoading = false
+            allPasswords = repository.getAllPasswordEntries().first()
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Error loading passwords", e)
         } finally {

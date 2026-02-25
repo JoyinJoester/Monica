@@ -249,6 +249,9 @@ class AutofillCache(
 data class AutofillResult(
     /** 匹配的密码列表 */
     val matches: List<PasswordMatch>,
+
+    /** 候选密码总数（用于诊断，-1 表示未知） */
+    val candidateCount: Int = -1,
     
     /** 处理时间（毫秒） */
     val processingTimeMs: Long,

@@ -42,7 +42,6 @@ object AutofillPickerLauncher {
     fun createDirectListResponse(
         context: Context,
         matchedPasswords: List<PasswordEntry>,
-        allPasswordIds: List<Long>,
         packageName: String?,
         domain: String?,
         parsedStructure: EnhancedAutofillStructureParserV2.ParsedStructure,
@@ -137,9 +136,14 @@ object AutofillPickerLauncher {
 
                 val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
 
-                val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-
-                val requestCode = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+                val requestCode = buildStablePickerRequestCode(
+                    packageName = packageName,
+                    domain = domain,
+                    interactionIdentifier = interactionIdentifier,
+                    fieldSignatureKey = args.fieldSignatureKey,
+                    fillTargets = fillTargets
+                )
+                val flags = PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 val pendingIntent = PendingIntent.getActivity(context, requestCode, pickerIntent, flags)
 
                 // 2. 创建手动触发入口 Presentation（始终保留）
@@ -176,6 +180,28 @@ object AutofillPickerLauncher {
         }
 
         return responseBuilder.build()
+    }
+
+    private fun buildStablePickerRequestCode(
+        packageName: String?,
+        domain: String?,
+        interactionIdentifier: String?,
+        fieldSignatureKey: String?,
+        fillTargets: List<EnhancedAutofillStructureParserV2.ParsedItem>
+    ): Int {
+        val targetSignature = fillTargets.joinToString(separator = ",") { it.id.toString() }
+        val requestSeed = buildString {
+            append(packageName.orEmpty())
+            append('|')
+            append(domain.orEmpty())
+            append('|')
+            append(interactionIdentifier.orEmpty())
+            append('|')
+            append(fieldSignatureKey.orEmpty())
+            append('|')
+            append(targetSignature)
+        }
+        return requestSeed.hashCode() and 0x7FFFFFFF
     }
 
     private fun buildLastFilledDataset(

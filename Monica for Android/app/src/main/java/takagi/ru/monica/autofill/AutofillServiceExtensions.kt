@@ -40,7 +40,6 @@ fun createSmartFillResponse(
         AutofillPickerLauncher.createDirectListResponse(
             context = context,
             matchedPasswords = passwords,
-            allPasswordIds = emptyList(), // 将在 Picker 中加载所有密码
             packageName = packageName,
             domain = domain,
             parsedStructure = parsedStructure

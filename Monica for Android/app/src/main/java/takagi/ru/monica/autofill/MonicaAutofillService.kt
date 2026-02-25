@@ -140,15 +140,6 @@ class MonicaAutofillService : AutofillService() {
         val updatedAt: Long = 0L
     )
 
-    private data class DirectEntryCycleState(
-        val stage: Int = 0,
-        val requestOrdinal: Int = 0,
-        val contextCount: Int = 0,
-        val sessionMarker: String? = null,
-        val fieldSignatureKey: String = "",
-        val updatedAt: Long = 0L
-    )
-
     private data class DirectEntryModeDecision(
         val mode: AutofillPickerLauncher.DirectEntryMode,
         val stage: Int,
@@ -159,9 +150,14 @@ class MonicaAutofillService : AutofillService() {
     private val interactionSessionTtlMs = 3 * 60 * 1000L
     private val interactionSessionMaxSize = 64
     private val lastFilledSuggestionWindowMs = 3 * 60 * 1000L
-    private val directEntryCycleStates = mutableMapOf<String, DirectEntryCycleState>()
     private val directEntryCycleTtlMs = 10 * 60 * 1000L
     private val directEntryCycleMaxSize = 128
+    private val directEntryModeResolver by lazy {
+        DirectEntryModeResolver(
+            cycleTtlMs = directEntryCycleTtlMs,
+            maxSize = directEntryCycleMaxSize
+        )
+    }
     private var serviceCreatedAtMs: Long = 0L
     private var fillContextRequestIdMethod: java.lang.reflect.Method? = null
     private val nonCredentialFocusKeywords = listOf(
@@ -291,7 +287,7 @@ class MonicaAutofillService : AutofillService() {
         serviceScope.cancel()
         appInfoCache.clear()
         interactionSessionStates.clear()
-        directEntryCycleStates.clear()
+        directEntryModeResolver.clear()
         
         // 停止SMS Retriever
         smsRetrieverHelper?.stopSmsRetriever()
@@ -675,6 +671,7 @@ class MonicaAutofillService : AutofillService() {
         // 🚀 使用新引擎进行匹配（如果启用）
         val useNewEngine = autofillPreferences.useEnhancedMatching.first() ?: true
         
+        var diagnosticsTotalPasswords = -1
         val matchedPasswords = if (useNewEngine) {
             AutofillLogger.i("MATCHING", "Using new autofill engine for matching")
             try {
@@ -691,6 +688,7 @@ class MonicaAutofillService : AutofillService() {
                 val result = autofillEngine.processRequest(autofillContext)
                 
                 if (result.isSuccess) {
+                    diagnosticsTotalPasswords = result.candidateCount
                     AutofillLogger.i("MATCHING", "New engine found ${result.matches.size} matches in ${result.processingTimeMs}ms")
                     result.matches.map { match: PasswordMatch -> match.entry }
                 } else {
@@ -710,7 +708,11 @@ class MonicaAutofillService : AutofillService() {
         android.util.Log.d("MonicaAutofill", "Found ${matchedPasswords.size} matched passwords")
         
         // 🔍 记录密码匹配结果到诊断系统
-        val allPasswordsCount = passwordRepository.getAllPasswordEntries().first().size
+        val allPasswordsCount = if (diagnosticsTotalPasswords >= 0) {
+            diagnosticsTotalPasswords
+        } else {
+            passwordRepository.getAllPasswordEntries().first().size
+        }
         val matchStrategy = autofillPreferences.domainMatchStrategy.first().toString()
         diagnostics.logPasswordMatching(
             packageName = packageName,
@@ -1476,12 +1478,17 @@ class MonicaAutofillService : AutofillService() {
                 primaryIdentifier = primaryIdentifier,
                 fieldSignatureKey = fieldSignatureKey
             )
+            val directEntryProgressToken = buildDirectEntryProgressToken(
+                requestOrdinal = requestOrdinal,
+                contextCount = requestContextCount,
+                credentialTargets = credentialTargets
+            )
             val modeDecision = resolveDirectEntryMode(
                 cycleKey = directCycleKey,
-                stageIdentifier = stageIdentifier,
                 hasLastFilled = lastFilledPassword != null,
                 requestOrdinal = requestOrdinal,
                 contextCount = requestContextCount,
+                progressToken = directEntryProgressToken,
                 sessionMarker = sessionMarker,
                 fieldSignatureKey = fieldSignatureKey
             )
@@ -1506,15 +1513,9 @@ class MonicaAutofillService : AutofillService() {
                     "serviceCreatedAt=$serviceCreatedAtMs"
             )
             
-            // 🔧 修复: 获取所有密码的 ID,以便"手动选择"时可以显示所有密码
-            val allPasswords = passwordRepository.getAllPasswordEntries().first()
-            val allPasswordIds = allPasswords.map { it.id }
-            android.util.Log.d("MonicaAutofill", "📋 Total passwords available for manual selection: ${allPasswordIds.size}")
-            
             val directListResponse = AutofillPickerLauncher.createDirectListResponse(
                 context = applicationContext,
                 matchedPasswords = passwords,
-                allPasswordIds = allPasswordIds, // 传递所有密码ID而不是空列表
                 packageName = packageName,
                 domain = domain,
                 parsedStructure = parsedStructure,
@@ -3033,18 +3034,6 @@ class MonicaAutofillService : AutofillService() {
         return "${primaryIdentifier.trim().lowercase()}|${fieldSignatureKey.trim().lowercase()}"
     }
 
-    private fun cleanupDirectEntryCycles(now: Long) {
-        directEntryCycleStates.entries.removeAll { (_, state) ->
-            now - state.updatedAt > directEntryCycleTtlMs
-        }
-        if (directEntryCycleStates.size <= directEntryCycleMaxSize) return
-        val oldestKeys = directEntryCycleStates.entries
-            .sortedBy { it.value.updatedAt }
-            .take(directEntryCycleStates.size - directEntryCycleMaxSize)
-            .map { it.key }
-        oldestKeys.forEach { key -> directEntryCycleStates.remove(key) }
-    }
-
     private fun resolveFillRequestOrdinal(request: FillRequest): Int {
         val fallback = request.fillContexts.size
         val latestContext = request.fillContexts.lastOrNull() ?: return fallback
@@ -3057,133 +3046,57 @@ class MonicaAutofillService : AutofillService() {
         return requestId ?: fallback
     }
 
-    private suspend fun resolveDirectEntryMode(
+    private fun resolveDirectEntryMode(
         cycleKey: String,
-        stageIdentifier: String,
         hasLastFilled: Boolean,
         requestOrdinal: Int,
         contextCount: Int,
+        progressToken: String,
         sessionMarker: String?,
         fieldSignatureKey: String
     ): DirectEntryModeDecision {
-        val now = System.currentTimeMillis()
-        cleanupDirectEntryCycles(now)
-
-        if (!hasLastFilled) {
-            directEntryCycleStates.remove(cycleKey)
-            autofillPreferences.clearSuggestionStage(stageIdentifier)
-            return DirectEntryModeDecision(
-                mode = AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY,
-                stage = 0,
-                reason = "no_last_filled"
-            )
-        }
-
-        val persistedStage = autofillPreferences.getSuggestionStage(stageIdentifier, directEntryCycleTtlMs)
-        val previous = directEntryCycleStates[cycleKey]
-        if (previous == null) {
-            if (persistedStage != null) {
-                val recoveredStage = when {
-                    persistedStage <= 0 -> 1
-                    persistedStage == 1 -> 2
-                    else -> 2
-                }
-                val recoveredMode = when (recoveredStage) {
-                    1 -> AutofillPickerLauncher.DirectEntryMode.TRIGGER_AND_LAST_FILLED
-                    else -> AutofillPickerLauncher.DirectEntryMode.LAST_FILLED_ONLY
-                }
-                autofillPreferences.setSuggestionStage(stageIdentifier, recoveredStage)
-                directEntryCycleStates[cycleKey] = DirectEntryCycleState(
-                    stage = recoveredStage,
-                    requestOrdinal = requestOrdinal,
-                    contextCount = contextCount,
-                    sessionMarker = sessionMarker,
-                    fieldSignatureKey = fieldSignatureKey,
-                    updatedAt = now
-                )
-                return DirectEntryModeDecision(
-                    mode = recoveredMode,
-                    stage = recoveredStage,
-                    reason = "restored_stage_$persistedStage"
-                )
-            }
-            directEntryCycleStates[cycleKey] = DirectEntryCycleState(
-                stage = 0,
-                requestOrdinal = requestOrdinal,
-                contextCount = contextCount,
-                sessionMarker = sessionMarker,
-                fieldSignatureKey = fieldSignatureKey,
-                updatedAt = now
-            )
-            return DirectEntryModeDecision(
-                mode = AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY,
-                stage = 0,
-                reason = "new_cycle"
-            )
-        }
-
-        val resetReason = when {
-            requestOrdinal < previous.requestOrdinal -> "request_ordinal_rollback"
-            contextCount < previous.contextCount -> "context_count_rollback"
-            previous.sessionMarker != sessionMarker -> "session_marker_changed"
-            previous.fieldSignatureKey != fieldSignatureKey -> "field_signature_changed"
-            now - previous.updatedAt > directEntryCycleTtlMs -> "cycle_ttl_expired"
-            else -> null
-        }
-
-        if (resetReason != null) {
-            autofillPreferences.clearSuggestionStage(stageIdentifier)
-            directEntryCycleStates[cycleKey] = DirectEntryCycleState(
-                stage = 0,
-                requestOrdinal = requestOrdinal,
-                contextCount = contextCount,
-                sessionMarker = sessionMarker,
-                fieldSignatureKey = fieldSignatureKey,
-                updatedAt = now
-            )
-            return DirectEntryModeDecision(
-                mode = AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY,
-                stage = 0,
-                reason = resetReason
-            )
-        }
-
-        val hasProgressed =
-            requestOrdinal > previous.requestOrdinal || contextCount > previous.contextCount
-        val nextStage = if (!hasProgressed) {
-            previous.stage
-        } else {
-            when (previous.stage) {
-                0 -> 1
-                else -> 2
-            }
-        }
-        directEntryCycleStates[cycleKey] = previous.copy(
-            stage = nextStage,
+        val resolverDecision = directEntryModeResolver.resolve(
+            cycleKey = cycleKey,
+            hasLastFilled = hasLastFilled,
             requestOrdinal = requestOrdinal,
             contextCount = contextCount,
+            progressToken = progressToken,
             sessionMarker = sessionMarker,
-            fieldSignatureKey = fieldSignatureKey,
-            updatedAt = now
+            fieldSignatureKey = fieldSignatureKey
         )
-        val nextMode = when (nextStage) {
-            0 -> AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY
-            1 -> AutofillPickerLauncher.DirectEntryMode.TRIGGER_AND_LAST_FILLED
-            else -> AutofillPickerLauncher.DirectEntryMode.LAST_FILLED_ONLY
-        }
-        val reason = if (!hasProgressed) {
-            "duplicate_request"
-        } else {
-            "advance_from_${previous.stage}_to_$nextStage"
-        }
-        if (nextStage >= 1) {
-            autofillPreferences.setSuggestionStage(stageIdentifier, nextStage)
+        val nextMode = when (resolverDecision.mode) {
+            DirectEntryModeResolver.Mode.TRIGGER_ONLY ->
+                AutofillPickerLauncher.DirectEntryMode.TRIGGER_ONLY
+            DirectEntryModeResolver.Mode.TRIGGER_AND_LAST_FILLED ->
+                AutofillPickerLauncher.DirectEntryMode.TRIGGER_AND_LAST_FILLED
+            DirectEntryModeResolver.Mode.LAST_FILLED_ONLY ->
+                AutofillPickerLauncher.DirectEntryMode.LAST_FILLED_ONLY
         }
         return DirectEntryModeDecision(
             mode = nextMode,
-            stage = nextStage,
-            reason = reason
+            stage = resolverDecision.stage,
+            reason = resolverDecision.reason
         )
+    }
+
+    private fun buildDirectEntryProgressToken(
+        requestOrdinal: Int,
+        contextCount: Int,
+        credentialTargets: List<ParsedItem>
+    ): String {
+        val orderedTargets = credentialTargets.sortedWith(
+            compareByDescending<ParsedItem> { it.isFocused }
+                .thenBy { it.traversalIndex }
+                .thenBy { it.hint.name }
+        )
+        val anchorTarget = orderedTargets.firstOrNull()
+        val anchorKey = if (anchorTarget == null) {
+            "none"
+        } else {
+            val idKey = autofillIdKey(anchorTarget.id) ?: anchorTarget.id.toString()
+            "${anchorTarget.hint.name}:$idKey:${anchorTarget.traversalIndex}:${anchorTarget.isFocused}"
+        }
+        return "$requestOrdinal|$contextCount|$anchorKey"
     }
 
     private fun extractAutofillSessionMarker(
