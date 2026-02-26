@@ -225,9 +225,57 @@ class SettingsViewModel(
         }
     }
 
+    fun updatePasswordPageIconEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordPageIconEnabled(enabled)
+        }
+    }
+
+    fun updateAuthenticatorPageIconEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateAuthenticatorPageIconEnabled(enabled)
+        }
+    }
+
+    fun updatePasskeyPageIconEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasskeyPageIconEnabled(enabled)
+        }
+    }
+
+    fun updateUnmatchedIconHandlingStrategy(strategy: takagi.ru.monica.data.UnmatchedIconHandlingStrategy) {
+        viewModelScope.launch {
+            settingsManager.updateUnmatchedIconHandlingStrategy(strategy)
+        }
+    }
+
     fun updatePasswordCardDisplayMode(mode: takagi.ru.monica.data.PasswordCardDisplayMode) {
         viewModelScope.launch {
             settingsManager.updatePasswordCardDisplayMode(mode)
+        }
+    }
+
+    fun updatePasswordCardDisplayFields(fields: List<takagi.ru.monica.data.PasswordCardDisplayField>) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordCardDisplayFields(fields)
+        }
+    }
+
+    fun updatePasswordCardShowAuthenticator(show: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordCardShowAuthenticator(show)
+        }
+    }
+
+    fun updatePasswordCardHideOtherContentWhenAuthenticator(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordCardHideOtherContentWhenAuthenticator(enabled)
+        }
+    }
+
+    fun updateAuthenticatorCardDisplayFields(fields: List<takagi.ru.monica.data.AuthenticatorCardDisplayField>) {
+        viewModelScope.launch {
+            settingsManager.updateAuthenticatorCardDisplayFields(fields)
         }
     }
 

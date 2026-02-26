@@ -45,6 +45,7 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.ProgressBarStyle
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.model.OtpType
@@ -54,6 +55,8 @@ import kotlin.math.PI
 import kotlin.math.sin
 import takagi.ru.monica.util.VibrationPatterns
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import takagi.ru.monica.ui.icons.UnmatchedIconFallback
+import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 
 /**
  * TOTP验证码卡片
@@ -106,6 +109,14 @@ fun TotpCodeCard(
         }
     }
     val currentSeconds = sharedTickSeconds ?: internalTickSeconds
+    val progressTimeMillis by produceState(initialValue = System.currentTimeMillis(), key1 = settings.validatorSmoothProgress) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            value = now
+            val waitMillis = if (settings.validatorSmoothProgress) 50L else (1000L - (now % 1000L)).coerceAtLeast(16L)
+            delay(waitMillis)
+        }
+    }
 
     var isScreenStarted by remember {
         mutableStateOf(screenLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -171,15 +182,28 @@ fun TotpCodeCard(
         }
     }
 
-    val progress = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+    val progress = remember(
+        currentSeconds,
+        progressTimeMillis,
+        totpData,
+        settings.totpTimeOffset,
+        settings.validatorSmoothProgress
+    ) {
         if (totpData.otpType == OtpType.HOTP) {
             0f
         } else {
-            TotpGenerator.getProgress(
-                period = totpData.period,
-                timeOffset = settings.totpTimeOffset,
-                currentSeconds = currentSeconds
-            )
+            if (settings.validatorSmoothProgress) {
+                val periodMillis = (totpData.period * 1000L).coerceAtLeast(1000L)
+                val correctedMillis = progressTimeMillis + (settings.totpTimeOffset * 1000L)
+                val elapsedInPeriod = ((correctedMillis % periodMillis) + periodMillis) % periodMillis
+                (elapsedInPeriod.toFloat() / periodMillis.toFloat()).coerceIn(0f, 1f)
+            } else {
+                TotpGenerator.getProgress(
+                    period = totpData.period,
+                    timeOffset = settings.totpTimeOffset,
+                    currentSeconds = currentSeconds
+                ).coerceIn(0f, 1f)
+            }
         }
     }
 
@@ -262,6 +286,17 @@ fun TotpCodeCard(
         takagi.ru.monica.autofill.ui.rememberAppIcon(packageName = associatedAppPackage)
     } else {
         null
+    }
+    val infoLines = remember(
+        totpData.issuer,
+        totpData.accountName,
+        settings.authenticatorCardDisplayFields
+    ) {
+        resolveAuthenticatorInfoLines(
+            issuer = totpData.issuer,
+            accountName = totpData.accountName,
+            fields = settings.authenticatorCardDisplayFields
+        )
     }
     
     Card(
@@ -349,15 +384,24 @@ fun TotpCodeCard(
                                 )
                             }
                             else -> {
-                                Icon(
-                                    imageVector = Icons.Default.Security,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(40.dp)
-                                )
+                                if (shouldShowFallbackSlot(settings.unmatchedIconHandlingStrategy)) {
+                                    UnmatchedIconFallback(
+                                        strategy = settings.unmatchedIconHandlingStrategy,
+                                        primaryText = iconWebsite,
+                                        secondaryText = iconTitle,
+                                        defaultIcon = Icons.Default.Security,
+                                        iconSize = 40.dp
+                                    )
+                                }
                             }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        if (autoMatchedSimpleIcon.bitmap != null ||
+                            favicon != null ||
+                            appIcon != null ||
+                            shouldShowFallbackSlot(settings.unmatchedIconHandlingStrategy)
+                        ) {
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
@@ -366,16 +410,9 @@ fun TotpCodeCard(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        if (totpData.issuer.isNotBlank()) {
+                        infoLines.forEach { line ->
                             Text(
-                                text = totpData.issuer,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (totpData.accountName.isNotBlank()) {
-                            Text(
-                                text = totpData.accountName,
+                                text = line,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -674,7 +711,8 @@ fun TotpCodeCard(
                             M3EProgressIndicator(
                                 progress = progress,
                                 color = progressColor,
-                                showWaveAccent = false,
+                                style = settings.validatorProgressBarStyle,
+                                smoothProgress = settings.validatorSmoothProgress,
                                 modifier = Modifier.weight(1f)
                             )
                             
@@ -700,18 +738,44 @@ fun TotpCodeCard(
     }
 }
 
+private fun resolveAuthenticatorInfoLines(
+    issuer: String,
+    accountName: String,
+    fields: List<takagi.ru.monica.data.AuthenticatorCardDisplayField>
+): List<String> {
+    val distinctFields = fields.distinct()
+    return buildList {
+        distinctFields.forEach { field ->
+            when (field) {
+                takagi.ru.monica.data.AuthenticatorCardDisplayField.ISSUER -> {
+                    val value = issuer.trim()
+                    if (value.isNotBlank()) add(value)
+                }
+                takagi.ru.monica.data.AuthenticatorCardDisplayField.ACCOUNT_NAME -> {
+                    val value = accountName.trim()
+                    if (value.isNotBlank()) add(value)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun M3EProgressIndicator(
     progress: Float,
     color: Color,
-    showWaveAccent: Boolean,
+    style: ProgressBarStyle,
+    smoothProgress: Boolean,
     modifier: Modifier = Modifier,
-    trackHeight: Dp = 6.dp
+    trackHeight: Dp = 12.dp
 ) {
     val clampedProgress = progress.coerceIn(0f, 1f)
     val animatedProgress by animateFloatAsState(
         targetValue = clampedProgress,
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        animationSpec = tween(
+            durationMillis = if (smoothProgress) 50 else 280,
+            easing = if (smoothProgress) LinearEasing else FastOutSlowInEasing
+        ),
         label = "m3e_progress"
     )
 
@@ -726,66 +790,91 @@ private fun M3EProgressIndicator(
         label = "m3e_wave_offset"
     )
 
-    val trackShape = RoundedCornerShape(percent = 50)
     val fillFraction = animatedProgress.coerceIn(0f, 1f)
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
 
     Box(
         modifier = modifier
             .height(trackHeight)
     ) {
-        // 背景轨道
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .clip(trackShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-        )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+            if (width <= 0f || height <= 0f) return@Canvas
 
-        if (showWaveAccent) {
-            // 波浪形进度
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(fraction = fillFraction)
-                    .clip(trackShape)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val width = size.width
-                    val height = size.height
-                    
-                    val centerY = height / 2f
-                    val amplitude = height * 0.4f
-                    val wavelength = width * 0.3f
-                    
-                    val wavePath = Path().apply {
-                        moveTo(0f, centerY)
-                        var x = 0f
-                        while (x <= width) {
-                            val phase = ((x / wavelength) * 2f * PI.toFloat()) + waveOffset
-                            val y = centerY + amplitude * sin(phase)
-                            lineTo(x, y)
-                            x += 2f
-                        }
-                        lineTo(width, height)
-                        lineTo(0f, height)
-                        close()
+            val progressWidth = width * fillFraction
+            val centerY = height / 2f
+            val gap = 8.dp.toPx()
+
+            when (style) {
+                ProgressBarStyle.WAVE -> {
+                    // 与统一进度条一致：波浪线 + 断开轨道
+                    val strokeWidth = height * 0.5f
+                    val amplitude = height * 0.25f
+                    val wavelength = 35.dp.toPx()
+                    if (wavelength <= 0f) return@Canvas
+
+                    val trackStartX = progressWidth + gap
+                    if (trackStartX < width) {
+                        drawLine(
+                            color = trackColor,
+                            start = Offset(trackStartX, centerY),
+                            end = Offset(width, centerY),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Round
+                        )
                     }
-                    
-                    drawPath(
-                        path = wavePath,
-                        color = color
-                    )
+
+                    if (progressWidth > strokeWidth) {
+                        val progressPath = Path().apply {
+                            var x = 0f
+                            val startY = centerY + amplitude * sin(waveOffset)
+                            moveTo(0f, startY)
+
+                            while (x <= progressWidth) {
+                                val phase = (x / wavelength) * 2f * PI.toFloat() + waveOffset
+                                val y = centerY + amplitude * sin(phase)
+                                lineTo(x, y)
+                                x += 2f
+                            }
+                        }
+                        drawPath(
+                            path = progressPath,
+                            color = color,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = strokeWidth,
+                                cap = StrokeCap.Round
+                            )
+                        )
+                    }
+                }
+
+                ProgressBarStyle.LINEAR -> {
+                    // 与统一进度条一致：线形断开轨道
+                    val strokeWidth = height * 0.6f
+
+                    if (progressWidth > strokeWidth) {
+                        drawLine(
+                            color = color,
+                            start = Offset(strokeWidth / 2f, centerY),
+                            end = Offset(progressWidth, centerY),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Round
+                        )
+                    }
+
+                    val trackStartX = progressWidth + gap
+                    if (trackStartX < width - strokeWidth / 2f) {
+                        drawLine(
+                            color = trackColor,
+                            start = Offset(trackStartX, centerY),
+                            end = Offset(width - strokeWidth / 2f, centerY),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Round
+                        )
+                    }
                 }
             }
-        } else {
-            // 线形进度
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(fraction = fillFraction)
-                    .clip(trackShape)
-                    .background(color)
-            )
         }
     }
 }

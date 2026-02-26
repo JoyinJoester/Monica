@@ -943,8 +943,6 @@ private fun generatedSchemeForCatppuccin(
 @Composable
 fun MonicaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
     colorScheme: ColorScheme = ColorScheme.DEFAULT,
     customPrimaryColor: Long = 0xFF6650a4,
     customSecondaryColor: Long = 0xFF625b71,
@@ -954,7 +952,7 @@ fun MonicaTheme(
     content: @Composable () -> Unit
 ) {
     val finalColorScheme = when {
-        colorScheme == ColorScheme.DEFAULT && dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        colorScheme == ColorScheme.DEFAULT && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

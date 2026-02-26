@@ -19,6 +19,7 @@ internal fun SettingsTabContent(
     onNavigateToPermissionManagement: () -> Unit,
     onNavigateToMonicaPlus: () -> Unit,
     onNavigateToExtensions: () -> Unit,
+    onNavigateToPageCustomization: () -> Unit,
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit
 ) {
     SettingsScreen(
@@ -36,6 +37,7 @@ internal fun SettingsTabContent(
         onNavigateToPermissionManagement = onNavigateToPermissionManagement,
         onNavigateToMonicaPlus = onNavigateToMonicaPlus,
         onNavigateToExtensions = onNavigateToExtensions,
+        onNavigateToPageCustomization = onNavigateToPageCustomization,
         onClearAllData = onClearAllData,
         showTopBar = false
     )

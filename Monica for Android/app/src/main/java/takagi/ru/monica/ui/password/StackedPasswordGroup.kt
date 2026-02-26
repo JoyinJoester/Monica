@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -45,7 +46,13 @@ fun StackedPasswordGroup(
     onOpenMultiPasswordDialog: (List<takagi.ru.monica.data.PasswordEntry>) -> Unit,
     onLongClick: (takagi.ru.monica.data.PasswordEntry) -> Unit, // 新增：长按进入多选模式
     iconCardsEnabled: Boolean = false,
+    unmatchedIconHandlingStrategy: takagi.ru.monica.data.UnmatchedIconHandlingStrategy = takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON,
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
+    passwordCardDisplayFields: List<PasswordCardDisplayField> = PasswordCardDisplayField.DEFAULT_ORDER,
+    showAuthenticator: Boolean = false,
+    hideOtherContentWhenAuthenticator: Boolean = false,
+    totpTimeOffsetSeconds: Int = 0,
+    smoothAuthenticatorProgress: Boolean = true,
     enableSharedBounds: Boolean = true
 ) {
     // 检查是否为多密码合并卡片(除密码外信息完全相同)
@@ -80,7 +87,13 @@ fun StackedPasswordGroup(
                         isInExpandedGroup = false,
                         isSingleCard = true,
                         iconCardsEnabled = iconCardsEnabled,
+                        unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
                         passwordCardDisplayMode = passwordCardDisplayMode,
+                        passwordCardDisplayFields = passwordCardDisplayFields,
+                        showAuthenticator = showAuthenticator,
+                        hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
+                        totpTimeOffsetSeconds = totpTimeOffsetSeconds,
+                        smoothAuthenticatorProgress = smoothAuthenticatorProgress,
                         enableSharedBounds = enableSharedBounds
                     )
                 }
@@ -116,7 +129,13 @@ fun StackedPasswordGroup(
                 isInExpandedGroup = false,
                 isSingleCard = true,
                 iconCardsEnabled = iconCardsEnabled,
+                unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
                 passwordCardDisplayMode = passwordCardDisplayMode,
+                passwordCardDisplayFields = passwordCardDisplayFields,
+                showAuthenticator = showAuthenticator,
+                hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
+                totpTimeOffsetSeconds = totpTimeOffsetSeconds,
+                smoothAuthenticatorProgress = smoothAuthenticatorProgress,
                 enableSharedBounds = enableSharedBounds
             )
         }
@@ -154,7 +173,13 @@ fun StackedPasswordGroup(
                 hasGroupCover = false,
                 isInExpandedGroup = false,
                 iconCardsEnabled = iconCardsEnabled,
-                passwordCardDisplayMode = passwordCardDisplayMode
+                unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
+                passwordCardDisplayMode = passwordCardDisplayMode,
+                passwordCardDisplayFields = passwordCardDisplayFields,
+                showAuthenticator = showAuthenticator,
+                hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
+                totpTimeOffsetSeconds = totpTimeOffsetSeconds,
+                smoothAuthenticatorProgress = smoothAuthenticatorProgress
             )
         }
         return
@@ -558,7 +583,13 @@ fun StackedPasswordGroup(
                                                             isInExpandedGroup = true, // We are inside the expanded container
                                                             isSingleCard = false,
                                                             iconCardsEnabled = iconCardsEnabled,
+                                                            unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
                                                             passwordCardDisplayMode = passwordCardDisplayMode,
+                                                            passwordCardDisplayFields = passwordCardDisplayFields,
+                                                            showAuthenticator = showAuthenticator,
+                                                            hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
+                                                            totpTimeOffsetSeconds = totpTimeOffsetSeconds,
+                                                            smoothAuthenticatorProgress = smoothAuthenticatorProgress,
                                                             enableSharedBounds = enableSharedBounds
                                                         )
                                                     } else {
@@ -585,7 +616,13 @@ fun StackedPasswordGroup(
                                                             hasGroupCover = hasGroupCover,
                                                             isInExpandedGroup = true, // We are inside the expanded container
                                                             iconCardsEnabled = iconCardsEnabled,
-                                                            passwordCardDisplayMode = passwordCardDisplayMode
+                                                            unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
+                                                            passwordCardDisplayMode = passwordCardDisplayMode,
+                                                            passwordCardDisplayFields = passwordCardDisplayFields,
+                                                            showAuthenticator = showAuthenticator,
+                                                            hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
+                                                            totpTimeOffsetSeconds = totpTimeOffsetSeconds,
+                                                            smoothAuthenticatorProgress = smoothAuthenticatorProgress
                                                         )
                                                     }
                                                 }

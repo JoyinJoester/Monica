@@ -1406,8 +1406,14 @@ fun PasswordListContent(
                                 selectedPasswords = setOf(password.id)
                             }
                         },
-                        iconCardsEnabled = appSettings.iconCardsEnabled,
+                        iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
+                        unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
                         passwordCardDisplayMode = appSettings.passwordCardDisplayMode,
+                        passwordCardDisplayFields = appSettings.passwordCardDisplayFields,
+                        showAuthenticator = appSettings.passwordCardShowAuthenticator,
+                        hideOtherContentWhenAuthenticator = appSettings.passwordCardHideOtherContentWhenAuthenticator,
+                        totpTimeOffsetSeconds = appSettings.totpTimeOffset,
+                        smoothAuthenticatorProgress = appSettings.validatorSmoothProgress,
                         enableSharedBounds = !isLocalOnlyView
                     )
                     

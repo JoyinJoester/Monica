@@ -994,7 +994,9 @@ fun TotpListContent(
                                     isSelectionMode = isSelectionMode,
                                     isSelected = selectedItems.contains(item.id),
                                     sharedTickSeconds = sharedTickSeconds,
-                                    appSettings = appSettings
+                                    appSettings = appSettings.copy(
+                                        iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.authenticatorPageIconEnabled
+                                    )
                                 )
                             }
                         }

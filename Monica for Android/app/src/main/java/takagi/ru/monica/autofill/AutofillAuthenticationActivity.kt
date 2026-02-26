@@ -289,7 +289,6 @@ private fun AutofillPasswordAuthScreen(
 
     MonicaTheme(
         darkTheme = darkTheme,
-        dynamicColor = settings.dynamicColorEnabled,
         colorScheme = settings.colorScheme,
         customPrimaryColor = settings.customPrimaryColor,
         customSecondaryColor = settings.customSecondaryColor,

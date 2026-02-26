@@ -79,7 +79,15 @@ class SettingsManager(private val context: Context) {
         private val TRASH_ENABLED_KEY = booleanPreferencesKey("trash_enabled") // 回收站功能开关
         private val TRASH_AUTO_DELETE_DAYS_KEY = intPreferencesKey("trash_auto_delete_days") // 回收站自动清空天数
         private val ICON_CARDS_ENABLED_KEY = booleanPreferencesKey("icon_cards_enabled") // 带图标卡片开关
+        private val PASSWORD_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("password_page_icon_enabled") // 密码页图标开关
+        private val AUTHENTICATOR_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("authenticator_page_icon_enabled") // 验证器页图标开关
+        private val PASSKEY_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("passkey_page_icon_enabled") // 通行密钥页图标开关
+        private val UNMATCHED_ICON_HANDLING_STRATEGY_KEY = stringPreferencesKey("unmatched_icon_handling_strategy") // 无匹配图标处理策略
         private val PASSWORD_CARD_DISPLAY_MODE_KEY = stringPreferencesKey("password_card_display_mode") // 密码卡片显示模式
+        private val PASSWORD_CARD_DISPLAY_FIELDS_KEY = stringPreferencesKey("password_card_display_fields") // 密码卡片显示字段
+        private val PASSWORD_CARD_SHOW_AUTHENTICATOR_KEY = booleanPreferencesKey("password_card_show_authenticator") // 密码卡片显示绑定验证器
+        private val PASSWORD_CARD_HIDE_OTHER_CONTENT_WHEN_AUTHENTICATOR_KEY = booleanPreferencesKey("password_card_hide_other_content_when_authenticator") // 显示验证器时隐藏其他内容
+        private val AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY = stringPreferencesKey("authenticator_card_display_fields") // 验证器卡片显示字段
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
         private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
@@ -138,6 +146,59 @@ class SettingsManager(private val context: Context) {
     private fun categoryFilterPrimaryKey(scope: String) = longPreferencesKey("last_category_filter_${scope}_primary_id")
     private fun categoryFilterSecondaryKey(scope: String) = longPreferencesKey("last_category_filter_${scope}_secondary_id")
     private fun categoryFilterTextKey(scope: String) = stringPreferencesKey("last_category_filter_${scope}_text")
+
+    private fun fieldsFromMode(
+        mode: takagi.ru.monica.data.PasswordCardDisplayMode
+    ): List<takagi.ru.monica.data.PasswordCardDisplayField> = when (mode) {
+        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY -> emptyList()
+        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME -> listOf(
+            takagi.ru.monica.data.PasswordCardDisplayField.USERNAME
+        )
+        takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL -> listOf(
+            takagi.ru.monica.data.PasswordCardDisplayField.USERNAME,
+            takagi.ru.monica.data.PasswordCardDisplayField.WEBSITE,
+            takagi.ru.monica.data.PasswordCardDisplayField.APP_NAME
+        )
+    }
+
+    private fun modeFromFields(
+        fields: List<takagi.ru.monica.data.PasswordCardDisplayField>
+    ): takagi.ru.monica.data.PasswordCardDisplayMode {
+        if (fields.isEmpty()) return takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY
+        if (fields.size == 1 && fields.first() == takagi.ru.monica.data.PasswordCardDisplayField.USERNAME) {
+            return takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME
+        }
+        return takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL
+    }
+
+    private fun parsePasswordCardDisplayFields(
+        raw: String?
+    ): List<takagi.ru.monica.data.PasswordCardDisplayField>? {
+        if (raw.isNullOrBlank()) return null
+        val parsed = raw.split(",")
+            .mapNotNull { value ->
+                runCatching {
+                    takagi.ru.monica.data.PasswordCardDisplayField.valueOf(value.trim())
+                }.getOrNull()
+            }
+            .distinct()
+        return parsed.ifEmpty { null }
+    }
+
+    private fun parseAuthenticatorCardDisplayFields(
+        raw: String?
+    ): List<takagi.ru.monica.data.AuthenticatorCardDisplayField>? {
+        if (raw == null) return null
+        if (raw.isBlank()) return emptyList()
+        val parsed = raw.split(",")
+            .mapNotNull { value ->
+                runCatching {
+                    takagi.ru.monica.data.AuthenticatorCardDisplayField.valueOf(value.trim())
+                }.getOrNull()
+            }
+            .distinct()
+        return parsed
+    }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
         val storedOrder = preferences[BOTTOM_NAV_ORDER_KEY]
@@ -212,10 +273,34 @@ class SettingsManager(private val context: Context) {
             trashEnabled = preferences[TRASH_ENABLED_KEY] ?: true,
             trashAutoDeleteDays = preferences[TRASH_AUTO_DELETE_DAYS_KEY] ?: 30,
             iconCardsEnabled = preferences[ICON_CARDS_ENABLED_KEY] ?: false,
+            passwordPageIconEnabled = preferences[PASSWORD_PAGE_ICON_ENABLED_KEY]
+                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
+            authenticatorPageIconEnabled = preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY]
+                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
+            passkeyPageIconEnabled = preferences[PASSKEY_PAGE_ICON_ENABLED_KEY]
+                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
+            unmatchedIconHandlingStrategy = runCatching {
+                takagi.ru.monica.data.UnmatchedIconHandlingStrategy.valueOf(
+                    preferences[UNMATCHED_ICON_HANDLING_STRATEGY_KEY]
+                        ?: takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON.name
+                )
+            }.getOrDefault(takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON),
             passwordCardDisplayMode = runCatching {
                 val modeString = preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] ?: takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name
                 takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(modeString)
             }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL),
+            passwordCardDisplayFields = parsePasswordCardDisplayFields(preferences[PASSWORD_CARD_DISPLAY_FIELDS_KEY])
+                ?: fieldsFromMode(
+                    runCatching {
+                        val modeString = preferences[PASSWORD_CARD_DISPLAY_MODE_KEY]
+                            ?: takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name
+                        takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(modeString)
+                    }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL)
+                ),
+            passwordCardShowAuthenticator = preferences[PASSWORD_CARD_SHOW_AUTHENTICATOR_KEY] ?: false,
+            passwordCardHideOtherContentWhenAuthenticator = preferences[PASSWORD_CARD_HIDE_OTHER_CONTENT_WHEN_AUTHENTICATOR_KEY] ?: false,
+            authenticatorCardDisplayFields = parseAuthenticatorCardDisplayFields(preferences[AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY])
+                ?: takagi.ru.monica.data.AuthenticatorCardDisplayField.DEFAULT_ORDER,
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
             autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true, // 默认开启
             passwordFieldVisibility = takagi.ru.monica.data.PasswordFieldVisibility(
@@ -453,9 +538,63 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updatePasswordPageIconEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_PAGE_ICON_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateAuthenticatorPageIconEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updatePasskeyPageIconEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSKEY_PAGE_ICON_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateUnmatchedIconHandlingStrategy(
+        strategy: takagi.ru.monica.data.UnmatchedIconHandlingStrategy
+    ) {
+        dataStore.edit { preferences ->
+            preferences[UNMATCHED_ICON_HANDLING_STRATEGY_KEY] = strategy.name
+        }
+    }
+
     suspend fun updatePasswordCardDisplayMode(mode: takagi.ru.monica.data.PasswordCardDisplayMode) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] = mode.name
+            preferences[PASSWORD_CARD_DISPLAY_FIELDS_KEY] = fieldsFromMode(mode).joinToString(",") { it.name }
+        }
+    }
+
+    suspend fun updatePasswordCardDisplayFields(fields: List<takagi.ru.monica.data.PasswordCardDisplayField>) {
+        val normalizedFields = fields.distinct()
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_CARD_DISPLAY_FIELDS_KEY] = normalizedFields.joinToString(",") { it.name }
+            preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] = modeFromFields(normalizedFields).name
+        }
+    }
+
+    suspend fun updatePasswordCardShowAuthenticator(show: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_CARD_SHOW_AUTHENTICATOR_KEY] = show
+        }
+    }
+
+    suspend fun updatePasswordCardHideOtherContentWhenAuthenticator(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_CARD_HIDE_OTHER_CONTENT_WHEN_AUTHENTICATOR_KEY] = enabled
+        }
+    }
+
+    suspend fun updateAuthenticatorCardDisplayFields(fields: List<takagi.ru.monica.data.AuthenticatorCardDisplayField>) {
+        val normalizedFields = fields.distinct()
+        dataStore.edit { preferences ->
+            preferences[AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY] = normalizedFields.joinToString(",") { it.name }
         }
     }
 

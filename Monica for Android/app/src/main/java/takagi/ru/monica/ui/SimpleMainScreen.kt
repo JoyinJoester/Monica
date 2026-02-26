@@ -540,6 +540,7 @@ fun SimpleMainScreen(
     onNavigateToPermissionManagement: () -> Unit = {},
     onNavigateToMonicaPlus: () -> Unit = {},
     onNavigateToExtensions: () -> Unit = {},
+    onNavigateToPageCustomization: () -> Unit = {},
     onNavigateToBitwardenLogin: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
@@ -658,10 +659,26 @@ fun SimpleMainScreen(
         }
     }
     var selectedTabKey by rememberSaveable { mutableStateOf(defaultTabKey) }
+    var startupAutoTabApplied by rememberSaveable { mutableStateOf(false) }
+    val hasCustomBottomNavConfig = remember(appSettings.bottomNavOrder, bottomNavVisibility) {
+        appSettings.bottomNavOrder != BottomNavContentTab.DEFAULT_ORDER ||
+            bottomNavVisibility != takagi.ru.monica.data.BottomNavVisibility()
+    }
 
     LaunchedEffect(tabs) {
         if (tabs.none { it.key == selectedTabKey }) {
             selectedTabKey = tabs.first().key
+        }
+    }
+    LaunchedEffect(initialTab, tabs, hasCustomBottomNavConfig, startupAutoTabApplied) {
+        if (
+            initialTab == 0 &&
+            !startupAutoTabApplied &&
+            hasCustomBottomNavConfig &&
+            tabs.isNotEmpty()
+        ) {
+            selectedTabKey = tabs.first().key
+            startupAutoTabApplied = true
         }
     }
 
@@ -1409,6 +1426,7 @@ fun SimpleMainScreen(
                                 onNavigateToPermissionManagement = onNavigateToPermissionManagement,
                                 onNavigateToMonicaPlus = onNavigateToMonicaPlus,
                                 onNavigateToExtensions = onNavigateToExtensions,
+                                onNavigateToPageCustomization = onNavigateToPageCustomization,
                                 onClearAllData = onClearAllData
                             )
                         }
@@ -1895,6 +1913,7 @@ fun SimpleMainScreen(
                         onNavigateToPermissionManagement = onNavigateToPermissionManagement,
                         onNavigateToMonicaPlus = onNavigateToMonicaPlus,
                         onNavigateToExtensions = onNavigateToExtensions,
+                        onNavigateToPageCustomization = onNavigateToPageCustomization,
                         onClearAllData = onClearAllData
                     )
                 }

@@ -41,8 +41,6 @@ fun ExtensionsScreen(
     onValidatorVibrationChange: (Boolean) -> Unit = {},
     copyNextCodeWhenExpiring: Boolean = false,
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
-    iconCardsEnabled: Boolean = false,
-    onIconCardsEnabledChange: (Boolean) -> Unit = {},
     smartDeduplicationEnabled: Boolean = false,
     onSmartDeduplicationEnabledChange: (Boolean) -> Unit = {},
     separateUsernameAccountEnabled: Boolean = false,
@@ -58,11 +56,8 @@ fun ExtensionsScreen(
     totpItems: List<SecureItem> = emptyList(),
     onNotificationValidatorEnabledChange: (Boolean) -> Unit = {},
     onNotificationValidatorAutoMatchChange: (Boolean) -> Unit = {},
-    onNotificationValidatorSelected: (Long) -> Unit = {},
-    // 字段定制导航
-    onNavigateToFieldCustomization: () -> Unit = {}
+    onNotificationValidatorSelected: (Long) -> Unit = {}
 ) {
-    val context = LocalContext.current
     val scrollState = rememberScrollState()
     
     // 密码卡片显示模式选择对话框
@@ -203,26 +198,6 @@ fun ExtensionsScreen(
                 )
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                
-                // 添加密码页面字段定制入口
-                ExtensionClickableItem(
-                    icon = Icons.Default.Tune,
-                    title = stringResource(R.string.extensions_password_field_customization_title),
-                    description = stringResource(R.string.extensions_password_field_customization_desc),
-                    onClick = onNavigateToFieldCustomization
-                )
-                
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                
-                ExtensionSwitchItem(
-                    icon = Icons.Default.Web,
-                    title = stringResource(R.string.icon_cards_title),
-                    description = stringResource(R.string.icon_cards_description),
-                    checked = iconCardsEnabled,
-                    onCheckedChange = onIconCardsEnabledChange
-                )
-
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
                 // 密码卡片显示内容模式选择
                 Row(
@@ -294,19 +269,6 @@ fun ExtensionsScreen(
                         description = stringResource(R.string.copy_next_code_when_expiring_description),
                         checked = copyNextCodeWhenExpiring,
                         onCheckedChange = onCopyNextCodeWhenExpiringChange
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    ExtensionSwitchItem(
-                        icon = Icons.Default.LinearScale,
-                        title = stringResource(R.string.unified_progress_bar_title),
-                        description = stringResource(R.string.unified_progress_bar_description),
-                        checked = validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED,
-                        onCheckedChange = { enabled ->
-                            onValidatorUnifiedProgressBarChange(
-                                if (enabled) takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED
-                                else takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED
-                            )
-                        }
                     )
                 }
                 

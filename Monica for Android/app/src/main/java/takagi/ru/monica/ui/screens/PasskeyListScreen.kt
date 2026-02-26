@@ -61,6 +61,7 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
@@ -89,7 +90,9 @@ import takagi.ru.monica.viewmodel.PasswordViewModel
 import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.autofill.ui.rememberAppIcon
 import takagi.ru.monica.autofill.ui.rememberFavicon
+import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
+import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import java.security.KeyFactory
 import java.security.KeyStore
@@ -1078,7 +1081,8 @@ fun PasskeyListScreen(
                                             boundPassword = boundPassword,
                                             currentCategoryName = categoryName,
                                             isCategoryLocked = boundPassword != null || passkey.syncStatus == "REFERENCE",
-                                            iconCardsEnabled = appSettings.iconCardsEnabled,
+                                            iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passkeyPageIconEnabled,
+                                            unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
                                             isSelected = isSelected,
                                             selectionMode = selectionMode,
                                             onClick = { onPasskeyClick(passkey) },
@@ -1686,6 +1690,7 @@ private fun PasskeyListItem(
     currentCategoryName: String,
     isCategoryLocked: Boolean = false,
     iconCardsEnabled: Boolean = false,
+    unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON,
     isSelected: Boolean = false,
     selectionMode: Boolean = false,
     onClick: () -> Unit,
@@ -1723,23 +1728,47 @@ private fun PasskeyListItem(
             else -> "https://$rpId"
         }
     }
-    val iconWebsite = remember(passkey.iconUrl, rpWebsite, boundPassword?.website) {
+    val useBoundPasswordIconSource = boundPassword != null
+    val passkeyIconWebsite = remember(passkey.iconUrl, rpWebsite) {
         when {
             rpWebsite.isNotBlank() -> rpWebsite
             !passkey.iconUrl.isNullOrBlank() -> passkey.iconUrl.trim()
-            !boundPassword?.website.isNullOrBlank() -> boundPassword?.website?.trim().orEmpty()
             else -> ""
         }
     }
-    val iconTitle = remember(passkey.rpName, passkey.userDisplayName, passkey.userName) {
+    val passkeyIconTitle = remember(passkey.rpName, passkey.userDisplayName, passkey.userName) {
         passkey.rpName.ifBlank { passkey.userDisplayName.ifBlank { passkey.userName } }
+    }
+    val boundWebsite = boundPassword?.website?.trim().orEmpty()
+    val boundTitle = boundPassword?.title.orEmpty()
+    val iconWebsite = if (useBoundPasswordIconSource) boundWebsite else passkeyIconWebsite
+    val iconTitle = if (useBoundPasswordIconSource) boundTitle else passkeyIconTitle
+    val iconAppPackage = if (useBoundPasswordIconSource) {
+        boundPassword?.appPackageName?.takeIf { it.isNotBlank() }
+    } else {
+        null
+    }
+    val boundCustomIconType = boundPassword?.customIconType ?: takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+    val boundSimpleIcon = if (iconCardsEnabled && boundCustomIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+        takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
+            slug = boundPassword?.customIconValue,
+            tintColor = MaterialTheme.colorScheme.primary,
+            enabled = true
+        )
+    } else {
+        null
+    }
+    val boundUploadedIcon = if (iconCardsEnabled && boundCustomIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+        takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(boundPassword?.customIconValue)
+    } else {
+        null
     }
     val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
         website = iconWebsite,
         title = iconTitle,
-        appPackageName = boundPassword?.appPackageName?.takeIf { it.isNotBlank() },
+        appPackageName = iconAppPackage,
         tintColor = MaterialTheme.colorScheme.primary,
-        enabled = iconCardsEnabled
+        enabled = iconCardsEnabled && boundCustomIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
     )
     val favicon = if (iconWebsite.isNotBlank()) {
         rememberFavicon(
@@ -1749,8 +1778,8 @@ private fun PasskeyListItem(
     } else {
         null
     }
-    val appIcon = if (iconCardsEnabled && !boundPassword?.appPackageName.isNullOrBlank()) {
-        rememberAppIcon(boundPassword?.appPackageName.orEmpty())
+    val appIcon = if (iconCardsEnabled && !iconAppPackage.isNullOrBlank()) {
+        rememberAppIcon(iconAppPackage)
     } else {
         null
     }
@@ -1796,7 +1825,26 @@ private fun PasskeyListItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Passkey 图标（无背景直出）
+                    var iconSlotVisible = true
                     when {
+                        iconCardsEnabled && boundSimpleIcon != null -> {
+                            Image(
+                                bitmap = boundSimpleIcon,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .size(40.dp)
+                            )
+                        }
+                        iconCardsEnabled && boundUploadedIcon != null -> {
+                            Image(
+                                bitmap = boundUploadedIcon,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .size(40.dp)
+                            )
+                        }
                         iconCardsEnabled && autoMatchedSimpleIcon.bitmap != null -> {
                             Image(
                                 bitmap = autoMatchedSimpleIcon.bitmap,
@@ -1825,16 +1873,23 @@ private fun PasskeyListItem(
                             )
                         }
                         else -> {
-                            Icon(
-                                imageVector = Icons.Default.Key,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(40.dp)
-                            )
+                            if (shouldShowFallbackSlot(unmatchedIconHandlingStrategy)) {
+                                UnmatchedIconFallback(
+                                    strategy = unmatchedIconHandlingStrategy,
+                                    primaryText = iconWebsite,
+                                    secondaryText = iconTitle,
+                                    defaultIcon = Icons.Default.Key,
+                                    iconSize = 40.dp
+                                )
+                            } else {
+                                iconSlotVisible = false
+                            }
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.width(12.dp))
+
+                    if (iconSlotVisible) {
+                        Spacer(modifier = Modifier.width(12.dp))
+                    }
                     
                     Column(modifier = Modifier.weight(1f)) {
                         Text(

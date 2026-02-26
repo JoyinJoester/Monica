@@ -347,7 +347,6 @@ fun MonicaApp(
 
     MonicaTheme(
         darkTheme = darkTheme, 
-        dynamicColor = settings.dynamicColorEnabled,
         colorScheme = settings.colorScheme,
         customPrimaryColor = settings.customPrimaryColor,
         customSecondaryColor = settings.customSecondaryColor,
@@ -630,6 +629,9 @@ fun MonicaContent(
                 onNavigateToExtensions = {
                     navController.navigate(Screen.Extensions.route)
                 },
+                onNavigateToPageCustomization = {
+                    navController.navigate(Screen.PageAdjustmentCustomization.route)
+                },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearNotes: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
                     android.util.Log.d(
@@ -683,7 +685,8 @@ fun MonicaContent(
                             ).show()
                         }
                     }
-                }
+                },
+                initialTab = tab
             )
             } // end CompositionLocalProvider
         }
@@ -1257,6 +1260,9 @@ fun MonicaContent(
                 onNavigateToExtensions = {
                     navController.navigate(Screen.Extensions.route)
                 },
+                onNavigateToPageCustomization = {
+                    navController.navigate(Screen.PageAdjustmentCustomization.route)
+                },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearNotes: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
                     android.util.Log.d(
@@ -1555,10 +1561,6 @@ fun MonicaContent(
                 onCopyNextCodeWhenExpiringChange = { enabled ->
                     settingsViewModel.updateCopyNextCodeWhenExpiring(enabled)
                 },
-                iconCardsEnabled = settings.iconCardsEnabled,
-                onIconCardsEnabledChange = { enabled ->
-                    settingsViewModel.updateIconCardsEnabled(enabled)
-                },
                 smartDeduplicationEnabled = settings.smartDeduplicationEnabled,
                 onSmartDeduplicationEnabledChange = { enabled ->
                     settingsViewModel.updateSmartDeduplicationEnabled(enabled)
@@ -1588,12 +1590,80 @@ fun MonicaContent(
                 },
                 onNotificationValidatorSelected = { id ->
                     settingsViewModel.updateNotificationValidatorId(id)
-                },
-                onNavigateToFieldCustomization = {
-                    navController.navigate(Screen.PasswordFieldCustomization.route)
                 }
             )
             }
+        }
+
+        composable(
+            route = Screen.PageAdjustmentCustomization.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.PageAdjustmentCustomizationScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToPasswordCardAdjustment = {
+                    navController.navigate(Screen.PasswordCardAdjustment.route)
+                },
+                onNavigateToAuthenticatorCardAdjustment = {
+                    navController.navigate(Screen.AuthenticatorCardAdjustment.route)
+                },
+                onNavigateToPasswordFieldCustomization = {
+                    navController.navigate(Screen.PasswordFieldCustomization.route)
+                },
+                onNavigateToIconSettings = {
+                    navController.navigate(Screen.IconSettings.route)
+                }
+            )
+        }
+
+        composable(
+            route = Screen.PasswordCardAdjustment.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.PasswordCardAdjustmentScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
+            route = Screen.AuthenticatorCardAdjustment.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.AuthenticatorCardAdjustmentScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
+            route = Screen.IconSettings.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.IconSettingsScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
         
         // 添加密码页面字段定制页面

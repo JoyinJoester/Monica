@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -103,6 +104,9 @@ object FaviconCache {
                     null
                 }
             }
+        } catch (e: CancellationException) {
+            // Composable left composition; this is expected during fast list updates/navigation.
+            return null
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching favicon for $domain", e)
             return null

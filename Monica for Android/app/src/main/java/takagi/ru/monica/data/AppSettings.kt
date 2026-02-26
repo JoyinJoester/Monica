@@ -316,7 +316,15 @@ data class AppSettings(
     val trashEnabled: Boolean = true, // 回收站功能是否启用
     val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
     val iconCardsEnabled: Boolean = false, // 是否启用带图标卡片
+    val passwordPageIconEnabled: Boolean = false, // 密码页图标开关
+    val authenticatorPageIconEnabled: Boolean = false, // 验证器页图标开关
+    val passkeyPageIconEnabled: Boolean = false, // 通行密钥页图标开关
+    val unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON, // 无匹配图标处理策略
     val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL, // 卡片显示模式
+    val passwordCardDisplayFields: List<PasswordCardDisplayField> = PasswordCardDisplayField.DEFAULT_ORDER, // 卡片显示字段（顺序即展示顺序）
+    val passwordCardShowAuthenticator: Boolean = false, // 密码卡片显示绑定验证器
+    val passwordCardHideOtherContentWhenAuthenticator: Boolean = false, // 显示验证器时隐藏其他卡片内容
+    val authenticatorCardDisplayFields: List<AuthenticatorCardDisplayField> = AuthenticatorCardDisplayField.DEFAULT_ORDER, // 验证器卡片显示字段（顺序即展示顺序）
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
@@ -341,6 +349,46 @@ enum class PasswordCardDisplayMode {
     SHOW_ALL,       // 显示所有信息（默认）
     TITLE_USERNAME, // 仅显示标题和用户名
     TITLE_ONLY      // 仅显示标题
+}
+
+/**
+ * 密码卡片可配置显示字段（标题固定显示）
+ */
+enum class PasswordCardDisplayField {
+    USERNAME,
+    WEBSITE,
+    APP_NAME,
+    NOTE_PREVIEW,
+    UPDATED_AT;
+
+    companion object {
+        val DEFAULT_ORDER: List<PasswordCardDisplayField> = listOf(
+            USERNAME,
+            WEBSITE,
+            APP_NAME
+        )
+    }
+}
+
+/**
+ * 验证器卡片可配置显示字段（标题固定显示）
+ */
+enum class AuthenticatorCardDisplayField {
+    ISSUER,
+    ACCOUNT_NAME;
+
+    companion object {
+        val DEFAULT_ORDER: List<AuthenticatorCardDisplayField> = listOf(
+            ISSUER,
+            ACCOUNT_NAME
+        )
+    }
+}
+
+enum class UnmatchedIconHandlingStrategy {
+    DEFAULT_ICON,              // 显示默认图标
+    WEBSITE_OR_TITLE_INITIAL,  // 显示网站/标题首字
+    HIDE                       // 不显示图标
 }
 
 /**

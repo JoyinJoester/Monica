@@ -75,6 +75,7 @@ fun SettingsScreen(
     onNavigateToPermissionManagement: () -> Unit = {},
     onNavigateToMonicaPlus: () -> Unit = {},
     onNavigateToExtensions: () -> Unit = {},
+    onNavigateToPageCustomization: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _, _ -> },
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {
@@ -94,7 +95,6 @@ fun SettingsScreen(
     
     // 直接使用 LocalContext.current as? ComponentActivity 获取 Activity
     val activity = context as? FragmentActivity
-    android.util.Log.d("SettingsScreen", "Activity: $activity (type: ${context.javaClass.name})")
     
     val settings by viewModel.settings.collectAsState()
     val totpItems by viewModel.totpItems.collectAsState()
@@ -116,10 +116,7 @@ fun SettingsScreen(
     // 生物识别帮助类
     val biometricHelper = remember(context) { BiometricAuthHelper(context) }
     val isBiometricAvailable = remember(biometricHelper) { 
-        val available = biometricHelper.isBiometricAvailable()
-        android.util.Log.d("SettingsScreen", "Biometric available: $available")
-        android.util.Log.d("SettingsScreen", "Activity: $activity")
-        available
+        biometricHelper.isBiometricAvailable()
     }
     
     // 使用本地状态跟踪生物识别开关,避免验证失败时状态不一致
@@ -480,20 +477,13 @@ fun SettingsScreen(
                     onClick = onNavigateToExtensions,
                     modifier = getSharedModifier("extensions_settings_card")
                 )
-                
 
-                // 3. 关闭壁纸取色设置
-                SettingsItemWithSwitch(
-                    icon = Icons.Default.Colorize,
-                    title = context.getString(R.string.disable_wallpaper_color_extraction),
-                    subtitle = context.getString(R.string.disable_wallpaper_color_extraction_description),
-                    checked = !settings.dynamicColorEnabled,
-                    onCheckedChange = { enabled ->
-                        viewModel.updateDynamicColorEnabled(!enabled)
-                    }
+                SettingsItem(
+                    icon = Icons.Default.Tune,
+                    title = context.getString(R.string.page_adjust_custom_title),
+                    subtitle = context.getString(R.string.page_adjust_custom_subtitle),
+                    onClick = onNavigateToPageCustomization
                 )
-
-
             }
 
             // About Settings
@@ -882,147 +872,6 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // === 验证器设置分组 ===
-                    Text(
-                        text = stringResource(R.string.validator_settings_section),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    
-                    // 统一进度条开关
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { 
-                                val newMode = if (settings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED) {
-                                    takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED
-                                } else {
-                                    takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED
-                                }
-                                viewModel.updateValidatorUnifiedProgressBar(newMode)
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LinearScale,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.unified_progress_bar_title),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.unified_progress_bar_description),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = settings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED,
-                            onCheckedChange = { enabled ->
-                                viewModel.updateValidatorUnifiedProgressBar(
-                                    if (enabled) takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED 
-                                    else takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED
-                                )
-                            }
-                        )
-                    }
-                    
-                    // 进度条样式选择
-                    var showProgressStyleDialog by remember { mutableStateOf(false) }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { showProgressStyleDialog = true }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (settings.validatorProgressBarStyle == takagi.ru.monica.data.ProgressBarStyle.WAVE) 
-                                Icons.Default.Waves else Icons.Default.Straighten,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.validator_progress_bar_style),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = getProgressBarStyleDisplayName(settings.validatorProgressBarStyle, context),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    
-                    if (showProgressStyleDialog) {
-                        ProgressBarStyleDialog(
-                            currentStyle = settings.validatorProgressBarStyle,
-                            onStyleSelected = { style ->
-                                viewModel.updateValidatorProgressBarStyle(style)
-                                showProgressStyleDialog = false
-                            },
-                            onDismiss = { showProgressStyleDialog = false }
-                        )
-                    }
-                    
-                    // 平滑进度条开关
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { 
-                                viewModel.updateValidatorSmoothProgress(!settings.validatorSmoothProgress)
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Speed,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.smooth_progress_bar_title),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.smooth_progress_bar_description),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = settings.validatorSmoothProgress,
-                            onCheckedChange = { enabled ->
-                                viewModel.updateValidatorSmoothProgress(enabled)
-                            }
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    HorizontalDivider()
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     // === 实验功能分组 ===

@@ -9,6 +9,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -17,9 +20,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordCardDisplayField
+import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.ui.icons.UnmatchedIconFallback
+import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -39,7 +46,13 @@ fun PasswordEntryCard(
     isInExpandedGroup: Boolean = false,
     isSingleCard: Boolean = false,
     iconCardsEnabled: Boolean = false,
+    unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON,
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
+    passwordCardDisplayFields: List<PasswordCardDisplayField> = PasswordCardDisplayField.DEFAULT_ORDER,
+    showAuthenticator: Boolean = false,
+    hideOtherContentWhenAuthenticator: Boolean = false,
+    totpTimeOffsetSeconds: Int = 0,
+    smoothAuthenticatorProgress: Boolean = true,
     enableSharedBounds: Boolean = true
 ) {
     val displayTitle = entry.title.ifBlank { stringResource(R.string.untitled) }
@@ -153,21 +166,14 @@ fun PasswordEntryCard(
                         modifier = Modifier.size(40.dp).padding(2.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
-                } else {
-                    Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Key,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
+                } else if (shouldShowFallbackSlot(unmatchedIconHandlingStrategy)) {
+                    UnmatchedIconFallback(
+                        strategy = unmatchedIconHandlingStrategy,
+                        primaryText = entry.website,
+                        secondaryText = entry.title,
+                        defaultIcon = Icons.Default.Key,
+                        iconSize = 40.dp
+                    )
                     Spacer(modifier = Modifier.width(16.dp))
                 }
             }
@@ -253,19 +259,36 @@ fun PasswordEntryCard(
                     }
                 }
 
-                if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && entry.website.isNotBlank()) {
+                val authenticatorState = if (showAuthenticator) {
+                    rememberPasswordAuthenticatorDisplayState(
+                        authenticatorKey = entry.authenticatorKey,
+                        timeOffsetSeconds = totpTimeOffsetSeconds,
+                        smoothProgress = smoothAuthenticatorProgress
+                    )
+                } else {
+                    null
+                }
+                val shouldHideDisplayLines = hideOtherContentWhenAuthenticator && authenticatorState != null
+                val displayLines = if (
+                    passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY || shouldHideDisplayLines
+                ) {
+                    emptyList()
+                } else {
+                    resolvePasswordCardDisplayLines(entry, passwordCardDisplayFields).take(3)
+                }
+                displayLines.forEach { line ->
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(if (isSingleCard) 8.dp else 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Default.Language,
+                            line.icon,
                             contentDescription = null,
                             modifier = Modifier.size(if (isSingleCard) 18.dp else 16.dp),
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                         )
                         Text(
-                            text = entry.website,
+                            text = line.text,
                             style = if (isSingleCard) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -274,76 +297,75 @@ fun PasswordEntryCard(
                     }
                 }
 
-                if (passwordCardDisplayMode != takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY && entry.username.isNotBlank()) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(if (isSingleCard) 8.dp else 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(if (isSingleCard) 18.dp else 16.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                if (showAuthenticator) {
+                    if (authenticatorState != null) {
+                        PasswordAuthenticatorInlineRow(
+                            state = authenticatorState,
+                            isSingleCard = isSingleCard,
+                            smoothProgress = smoothAuthenticatorProgress
                         )
-                        Text(
-                            text = entry.username,
-                            style = if (isSingleCard) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                val additionalInfo = buildAdditionalInfoPreview(entry)
-                if (passwordCardDisplayMode == takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL && additionalInfo.isNotEmpty()) {
-                    Surface(
-                        shape = RoundedCornerShape(if (isSingleCard) 10.dp else 8.dp),
-                        color = if (isSingleCard) {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = if (isSingleCard) 14.dp else 12.dp,
-                                    vertical = if (isSingleCard) 10.dp else 8.dp
-                                ),
-                            horizontalArrangement = Arrangement.spacedBy(if (isSingleCard) 20.dp else 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            additionalInfo.take(2).forEach { info ->
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(if (isSingleCard) 6.dp else 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                ) {
-                                    Icon(
-                                        info.icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(if (isSingleCard) 16.dp else 14.dp),
-                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                                    )
-                                    Text(
-                                        text = info.text,
-                                        style = if (isSingleCard) {
-                                            MaterialTheme.typography.labelMedium
-                                        } else {
-                                            MaterialTheme.typography.labelSmall
-                                        },
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PasswordAuthenticatorInlineRow(
+    state: PasswordAuthenticatorDisplayState,
+    isSingleCard: Boolean,
+    smoothProgress: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(if (isSingleCard) 8.dp else 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Security,
+                contentDescription = null,
+                modifier = Modifier.size(if (isSingleCard) 18.dp else 16.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+            )
+            Text(
+                text = state.code,
+                style = if (isSingleCard) {
+                    MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+                } else {
+                    MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                },
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            state.remainingSeconds?.let { remaining ->
+                Text(
+                    text = stringResource(R.string.password_card_authenticator_seconds, remaining),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        state.progress?.let { progress ->
+            val animatedProgress = if (smoothProgress) {
+                animateFloatAsState(
+                    targetValue = progress,
+                    animationSpec = tween(durationMillis = 80, easing = LinearEasing),
+                    label = "password_auth_progress"
+                ).value
+            } else {
+                progress
+            }
+            LinearProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         }
     }
 }

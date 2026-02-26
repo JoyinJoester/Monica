@@ -245,7 +245,6 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
             MonicaTheme(
                 darkTheme = darkTheme,
-                dynamicColor = settings.dynamicColorEnabled,
                 colorScheme = settings.colorScheme,
                 customPrimaryColor = settings.customPrimaryColor,
                 customSecondaryColor = settings.customSecondaryColor,

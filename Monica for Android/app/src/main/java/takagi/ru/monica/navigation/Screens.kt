@@ -96,6 +96,10 @@ sealed class Screen(val route: String) {
     object DeveloperSettings : Screen("developer_settings")  // 添加开发者设置页面路由
     object PermissionManagement : Screen("permission_management")  // 权限管理页面路由
     object Extensions : Screen("extensions")  // 功能拓展页面路由
+    object PageAdjustmentCustomization : Screen("page_adjustment_customization") // 页面调整自定义
+    object PasswordCardAdjustment : Screen("password_card_adjustment") // 密码卡片调整
+    object AuthenticatorCardAdjustment : Screen("authenticator_card_adjustment") // 验证器卡片调整
+    object IconSettings : Screen("icon_settings") // 图标设置
     object PasswordFieldCustomization : Screen("password_field_customization")  // 添加密码页面字段定制
     object SyncBackup : Screen("sync_backup")  // 同步与备份页面路由
     object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面

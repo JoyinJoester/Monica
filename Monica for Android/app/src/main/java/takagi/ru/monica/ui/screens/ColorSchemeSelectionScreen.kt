@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -15,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +41,15 @@ fun ColorSchemeSelectionScreen(
 ) {
     val settings by settingsViewModel.settings.collectAsState()
     val isDarkTheme = isSystemInDarkTheme()
+    val context = LocalContext.current
+    val defaultPreviewColors = remember(context, isDarkTheme) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scheme = if (isDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            Triple(scheme.primary, scheme.secondary, scheme.tertiary)
+        } else {
+            Triple(Color(0xFF6650a4), Color(0xFF625b71), Color(0xFF7D5260))
+        }
+    }
     val customPreviewScheme = remember(
         settings.customPrimaryColor,
         settings.customSecondaryColor,
@@ -125,9 +137,9 @@ fun ColorSchemeSelectionScreen(
             ColorSchemeOption(
                 colorScheme = ColorScheme.DEFAULT,
                 name = stringResource(R.string.default_color_scheme),
-                primaryColor = Color(0xFF6650a4),
-                secondaryColor = Color(0xFF625b71),
-                tertiaryColor = Color(0xFF7D5260),
+                primaryColor = defaultPreviewColors.first,
+                secondaryColor = defaultPreviewColors.second,
+                tertiaryColor = defaultPreviewColors.third,
                 isSelected = previewColorScheme == ColorScheme.DEFAULT,
                 onClick = { 
                     if (!isNavigatingOut) {
