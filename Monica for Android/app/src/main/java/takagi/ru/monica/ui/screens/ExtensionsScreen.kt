@@ -43,8 +43,6 @@ fun ExtensionsScreen(
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
     smartDeduplicationEnabled: Boolean = false,
     onSmartDeduplicationEnabledChange: (Boolean) -> Unit = {},
-    separateUsernameAccountEnabled: Boolean = false,
-    onSeparateUsernameAccountEnabledChange: (Boolean) -> Unit = {},
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
     onPasswordCardDisplayModeChange: (takagi.ru.monica.data.PasswordCardDisplayMode) -> Unit = {},
     validatorUnifiedProgressBar: takagi.ru.monica.data.UnifiedProgressBarMode = takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED,
@@ -187,16 +185,6 @@ fun ExtensionsScreen(
             ExtensionSection(title = stringResource(R.string.extensions_account_settings)) {
                 CommonAccountCard()
                 
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                ExtensionSwitchItem(
-                    icon = Icons.Default.AlternateEmail,
-                    title = stringResource(R.string.separate_username_account_title),
-                    description = stringResource(R.string.separate_username_account_desc),
-                    checked = separateUsernameAccountEnabled,
-                    onCheckedChange = onSeparateUsernameAccountEnabledChange
-                )
-
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
                 // 密码卡片显示内容模式选择

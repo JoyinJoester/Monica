@@ -950,6 +950,8 @@ fun MonicaContent(
                         passwordId = passwordId,
                         disablePasswordVerification = settings.disablePasswordVerification,
                         biometricEnabled = settings.biometricEnabled,
+                        iconCardsEnabled = settings.iconCardsEnabled && settings.passwordPageIconEnabled,
+                        unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy,
                         onNavigateBack = {
                             navController.popBackStack()
                         },
@@ -1564,10 +1566,6 @@ fun MonicaContent(
                 smartDeduplicationEnabled = settings.smartDeduplicationEnabled,
                 onSmartDeduplicationEnabledChange = { enabled ->
                     settingsViewModel.updateSmartDeduplicationEnabled(enabled)
-                },
-                separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
-                onSeparateUsernameAccountEnabledChange = { enabled ->
-                    settingsViewModel.updateSeparateUsernameAccountEnabled(enabled)
                 },
                 passwordCardDisplayMode = settings.passwordCardDisplayMode,
                 onPasswordCardDisplayModeChange = { mode ->

@@ -1849,6 +1849,9 @@
     <string name="password_details">Password Details</string>
     <string name="delete_password">Delete Password</string>
     <string name="delete_password_confirmation">Are you sure you want to delete this password? This action cannot be undone.</string>
+    <string name="password_detail_storage_info">Storage Info</string>
+    <string name="password_detail_time_info">Time Info</string>
+    <string name="password_detail_last_modified">Last Modified</string>
     
     <!-- Common Account / Quick Fill -->
     <string name="common_account_title">Common Account Info</string>

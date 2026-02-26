@@ -1658,6 +1658,9 @@
     <string name="password_details">密码详情</string>
     <string name="delete_password">删除密码</string>
     <string name="delete_password_confirmation">确定要删除此密码吗？此操作无法撤销。</string>
+    <string name="password_detail_storage_info">存储信息</string>
+    <string name="password_detail_time_info">时间信息</string>
+    <string name="password_detail_last_modified">最后修改</string>
     
     <!-- Common Account / Quick Fill -->
     <string name="common_account_title">常用账号信息</string>

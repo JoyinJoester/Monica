@@ -130,6 +130,18 @@ fun PasswordFieldCustomizationScreen(
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
                         FieldToggleItem(
+                            icon = Icons.Default.AlternateEmail,
+                            title = stringResource(R.string.separate_username_account_title),
+                            subtitle = stringResource(R.string.separate_username_account_desc),
+                            checked = settings.separateUsernameAccountEnabled,
+                            onCheckedChange = {
+                                viewModel.updateSeparateUsernameAccountEnabled(it)
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                        FieldToggleItem(
                             icon = Icons.Default.VpnKey,
                             title = stringResource(R.string.password_field_customization_security_title),
                             subtitle = stringResource(R.string.password_field_customization_security_subtitle),

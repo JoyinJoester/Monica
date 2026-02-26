@@ -124,13 +124,16 @@ class PasswordViewModel(
         return repository.getBitwardenFoldersByVaultId(vaultId)
     }
     
+    private val debouncedSearchQuery: Flow<String> = searchQuery
+        .debounce(300)
+        .distinctUntilChanged()
+
     val passwordEntries: StateFlow<List<PasswordEntry>> = combine(
-        searchQuery,
+        debouncedSearchQuery,
         _categoryFilter
     ) { query, filter ->
-        Pair(query, filter)
+        query to filter
     }
-        .debounce(300)
         .distinctUntilChanged()
         .flatMapLatest { (query, filter) ->
             val baseFlow: Flow<List<PasswordEntry>> = if (query.isNotBlank()) {

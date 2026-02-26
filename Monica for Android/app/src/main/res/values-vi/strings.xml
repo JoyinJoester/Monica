@@ -35,6 +35,8 @@
     <string name="password_suggestion_accept">Sử dụng mật khẩu này</string>
     <string name="password_suggestion_decline">Không, cảm ơn</string>
     <string name="password_suggestion_copied">Đã sao chép mật khẩu</string>
+    <string name="separate_username_account_title">Tách Tên người dùng/Tài khoản</string>
+    <string name="separate_username_account_desc">Tính năng thử nghiệm: coi \"Tài khoản\" là định danh đăng nhập độc lập; khi tự động điền sẽ ưu tiên tài khoản thay vì bí danh email</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">Thiết lập mật khẩu chính của bạn</string>
@@ -362,10 +364,14 @@
     
     <!-- Password Entry Card -->
     <string name="username">Tên người dùng</string>
+    <string name="field_account">Tài khoản</string>
     <string name="password">Mật khẩu</string>
     <string name="password_hidden">••••••••</string>
     <string name="delete_password_title">Xóa mật khẩu</string>
     <string name="delete_password_message">Bạn có chắc chắn muốn xóa "%s"?</string>
+    <string name="password_detail_storage_info">Thông tin lưu trữ</string>
+    <string name="password_detail_time_info">Thông tin thời gian</string>
+    <string name="password_detail_last_modified">Chỉnh sửa lần cuối</string>
     
     <!-- Error Messages -->
     <string name="error_password_too_short">Mật khẩu chính phải có ít nhất 6 ký tự</string>

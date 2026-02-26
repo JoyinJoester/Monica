@@ -36,6 +36,8 @@
     <string name="password_suggestion_accept">このパスワードを使用</string>
     <string name="password_suggestion_decline">いいえ、結構です</string>
     <string name="password_suggestion_copied">パスワードをコピーしました</string>
+    <string name="separate_username_account_title">ユーザー名/アカウント分離</string>
+    <string name="separate_username_account_desc">実験機能: 「アカウント」を独立したログイン識別子として扱い、自動入力ではメール別名よりアカウントを優先します</string>
     
     <!-- Login Screen -->
     <string name="setup_master_password">マスターパスワードを設定</string>
@@ -360,10 +362,14 @@
     
     <!-- Password Entry Card -->
     <string name="username">ユーザー名</string>
+    <string name="field_account">アカウント</string>
     <string name="password">パスワード</string>
     <string name="password_hidden">••••••••</string>
     <string name="delete_password_title">パスワードを削除</string>
     <string name="delete_password_message">「%s」を削除してもよろしいですか？</string>
+    <string name="password_detail_storage_info">保存先情報</string>
+    <string name="password_detail_time_info">時刻情報</string>
+    <string name="password_detail_last_modified">最終更新</string>
     
     <!-- Error Messages -->
     <string name="error_password_too_short">マスターパスワードは最低6文字必要です</string>

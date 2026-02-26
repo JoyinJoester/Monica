@@ -1648,6 +1648,8 @@ fun SimpleMainScreen(
                                             passwordId = selectedPasswordId!!,
                                             disablePasswordVerification = appSettings.disablePasswordVerification,
                                             biometricEnabled = appSettings.biometricEnabled,
+                                            iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
+                                            unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
                                             onNavigateBack = { selectedPasswordId = null },
                                             onEditPassword = handlePasswordEditOpen,
                                             modifier = Modifier.fillMaxSize()

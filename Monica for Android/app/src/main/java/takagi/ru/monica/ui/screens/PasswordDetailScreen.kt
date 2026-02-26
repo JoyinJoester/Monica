@@ -3,12 +3,15 @@ package takagi.ru.monica.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -42,9 +46,13 @@ import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.FieldValidation
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.util.TotpGenerator
@@ -62,7 +70,20 @@ import takagi.ru.monica.ui.components.CustomFieldDetailCard
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
+import takagi.ru.monica.ui.icons.UnmatchedIconFallback
+import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
+import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
+import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
+import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
+import takagi.ru.monica.autofill.ui.rememberAppIcon
+import takagi.ru.monica.autofill.ui.rememberFavicon
+import kotlinx.coroutines.flow.flowOf
+import java.text.DateFormat
 import java.util.Locale
+
+private const val MONICA_USERNAME_ALIAS_FIELD_TITLE = "__monica_username_alias"
+private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_alias_meta"
+private const val MONICA_USERNAME_ALIAS_META_VALUE = "migrated_v1"
 
 /**
  * 密码详情页 (Password Detail Screen)
@@ -91,16 +112,31 @@ fun PasswordDetailScreen(
     passwordId: Long,
     disablePasswordVerification: Boolean,
     biometricEnabled: Boolean,
+    iconCardsEnabled: Boolean = false,
+    unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON,
     onNavigateBack: () -> Unit,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val settingsManager = remember { SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val database = remember { PasswordDatabase.getDatabase(context.applicationContext) }
+    val categories by viewModel.categories.collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     
     // 密码条目状态
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
     var groupPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
+    val selectedBitwardenVaultId = passwordEntry?.bitwardenVaultId
+    val bitwardenFoldersFlow = remember(database, selectedBitwardenVaultId) {
+        selectedBitwardenVaultId?.let { vaultId ->
+            database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId)
+        } ?: flowOf(emptyList())
+    }
+    val bitwardenFolders by bitwardenFoldersFlow.collectAsState(initial = emptyList())
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMultiDeleteDialog by remember { mutableStateOf(false) } // 新增：多选删除对话框状态
@@ -114,6 +150,39 @@ fun PasswordDetailScreen(
     
     // 自定义字段状态
     var customFields by remember { mutableStateOf<List<CustomField>>(emptyList()) }
+    val usernameAliasFallbackTitle = stringResource(R.string.autofill_username)
+    val hasAliasMeta = customFields.any {
+        it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE && it.value == MONICA_USERNAME_ALIAS_META_VALUE
+    }
+    val separatedUsername = customFields.firstOrNull {
+        it.title == MONICA_USERNAME_ALIAS_FIELD_TITLE ||
+            (hasAliasMeta && it.title == usernameAliasFallbackTitle)
+    }?.value?.trim().orEmpty()
+    val displayCustomFields = remember(
+        customFields,
+        settings.separateUsernameAccountEnabled,
+        hasAliasMeta,
+        usernameAliasFallbackTitle
+    ) {
+        customFields
+            .asSequence()
+            .filterNot { it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE }
+            .filterNot {
+                settings.separateUsernameAccountEnabled &&
+                    (it.title == MONICA_USERNAME_ALIAS_FIELD_TITLE ||
+                        (hasAliasMeta && it.title == usernameAliasFallbackTitle))
+            }
+            .map { field ->
+                if (!settings.separateUsernameAccountEnabled &&
+                    field.title == MONICA_USERNAME_ALIAS_FIELD_TITLE
+                ) {
+                    field.copy(title = usernameAliasFallbackTitle)
+                } else {
+                    field
+                }
+            }
+            .toList()
+    }
     
     // Helper function for deletion
     fun executeDeletion() {
@@ -347,7 +416,45 @@ fun PasswordDetailScreen(
                 // ==========================================
                 // 🎯 头部区域 - 居中大图标
                 // ==========================================
-                HeaderSection(entry = entry)
+                HeaderSection(
+                    entry = entry,
+                    iconCardsEnabled = iconCardsEnabled,
+                    unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy
+                )
+
+                val categoryPath = categories.firstOrNull { it.id == entry.categoryId }?.name
+                val keepassDatabaseName = keepassDatabases.firstOrNull { it.id == entry.keepassDatabaseId }?.name
+                val bitwardenVaultName = bitwardenVaults
+                    .firstOrNull { it.id == entry.bitwardenVaultId }
+                    ?.let { vault -> vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email }
+                val bitwardenFolderName = bitwardenFolders
+                    .firstOrNull { it.bitwardenFolderId == entry.bitwardenFolderId }
+                    ?.name
+                val sourceName = when {
+                    entry.isBitwardenEntry() -> stringResource(R.string.filter_bitwarden)
+                    entry.isKeePassEntry() -> stringResource(R.string.database_source_keepass)
+                    else -> stringResource(R.string.database_source_local)
+                }
+                val databaseName = when {
+                    entry.isBitwardenEntry() -> bitwardenVaultName
+                        ?: stringResource(R.string.v2_bitwarden_not_connected)
+                    entry.isKeePassEntry() -> keepassDatabaseName
+                        ?: stringResource(R.string.local_keepass_database)
+                    else -> stringResource(R.string.database_source_local)
+                }
+                val folderPath = when {
+                    entry.isBitwardenEntry() -> bitwardenFolderName
+                        ?: stringResource(R.string.folder_no_folder_root)
+                    entry.isKeePassEntry() -> entry.keepassGroupPath
+                        ?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.folder_no_folder_root)
+                    else -> categoryPath
+                        ?.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.folder_no_folder_root)
+                }
+                val dateFormatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+                val createdAtText = remember(entry.createdAt) { dateFormatter.format(entry.createdAt) }
+                val updatedAtText = remember(entry.updatedAt) { dateFormatter.format(entry.updatedAt) }
                 
                 // ==========================================
                 // 🔐 基本信息卡片
@@ -355,10 +462,17 @@ fun PasswordDetailScreen(
                 // ==========================================
                 // 🔐 基本信息卡片 (Common Info)
                 // ==========================================
-                if (entry.username.isNotEmpty()) {
+                val shouldShowBasicInfo = if (settings.separateUsernameAccountEnabled) {
+                    entry.username.isNotEmpty() || separatedUsername.isNotEmpty()
+                } else {
+                    entry.username.isNotEmpty()
+                }
+                if (shouldShowBasicInfo) {
                     BasicInfoCard(
                         entry = entry,
-                        context = context
+                        context = context,
+                        separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
+                        separatedUsername = separatedUsername
                     )
                 }
                 
@@ -400,6 +514,24 @@ fun PasswordDetailScreen(
                         context = context
                      )
                 }
+
+                if (entry.website.isNotBlank()) {
+                    WebsiteCard(
+                        website = entry.website,
+                        context = context
+                    )
+                }
+
+                StorageInfoCard(
+                    source = sourceName,
+                    database = databaseName,
+                    folderPath = folderPath
+                )
+
+                TimeInfoCard(
+                    createdAt = createdAtText,
+                    updatedAt = updatedAtText
+                )
                 
                 // ==========================================
                 // 🔑 2FA / TOTP 卡片 (如果有关联应用)
@@ -526,7 +658,7 @@ fun PasswordDetailScreen(
                 // ==========================================
                 // 📋 自定义字段区块 (独立卡片样式)
                 // ==========================================
-                customFields.forEach { field ->
+                displayCustomFields.forEach { field ->
                     CustomFieldDetailCard(
                         field = field,
                         onCopy = { fieldName ->
@@ -684,23 +816,18 @@ fun PasswordDetailScreen(
 // 🎯 头部区域组件 - 左对齐
 // ============================================
 @Composable
-private fun HeaderSection(entry: PasswordEntry) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        // 标题
+private fun HeaderSection(
+    entry: PasswordEntry,
+    iconCardsEnabled: Boolean,
+    unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy
+) {
+    val textBlock: @Composable ColumnScope.() -> Unit = {
         Text(
             text = entry.title,
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
-        
-        // 网站
         if (entry.website.isNotEmpty()) {
             Text(
                 text = entry.website,
@@ -708,6 +835,286 @@ private fun HeaderSection(entry: PasswordEntry) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+
+    if (iconCardsEnabled) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PasswordDetailIcon(
+                entry = entry,
+                unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                content = textBlock
+            )
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            content = textBlock
+        )
+    }
+}
+
+@Composable
+private fun PasswordDetailIcon(
+    entry: PasswordEntry,
+    unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy
+) {
+    val simpleIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+        rememberSimpleIconBitmap(
+            slug = entry.customIconValue,
+            tintColor = MaterialTheme.colorScheme.primary,
+            enabled = true
+        )
+    } else null
+    val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+        rememberUploadedPasswordIcon(entry.customIconValue)
+    } else null
+    val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
+        rememberAppIcon(entry.appPackageName)
+    } else null
+    val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
+        website = entry.website,
+        title = entry.title,
+        appPackageName = entry.appPackageName,
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+    )
+    val favicon = if (entry.website.isNotBlank()) {
+        rememberFavicon(
+            url = entry.website,
+            enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+        )
+    } else null
+
+    when {
+        simpleIcon != null -> {
+            Image(
+                bitmap = simpleIcon,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(52.dp).padding(2.dp)
+            )
+        }
+        uploadedIcon != null -> {
+            Image(
+                bitmap = uploadedIcon,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(52.dp).padding(2.dp)
+            )
+        }
+        autoMatchedSimpleIcon.bitmap != null -> {
+            Image(
+                bitmap = autoMatchedSimpleIcon.bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(52.dp).padding(2.dp)
+            )
+        }
+        favicon != null -> {
+            Image(
+                bitmap = favicon,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(52.dp).padding(2.dp)
+            )
+        }
+        appIcon != null -> {
+            Image(
+                bitmap = appIcon,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(52.dp).padding(2.dp)
+            )
+        }
+        shouldShowFallbackSlot(unmatchedIconHandlingStrategy) -> {
+            UnmatchedIconFallback(
+                strategy = unmatchedIconHandlingStrategy,
+                primaryText = entry.website,
+                secondaryText = entry.title,
+                defaultIcon = Icons.Default.Key,
+                iconSize = 52.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun WebsiteCard(
+    website: String,
+    context: Context
+) {
+    Card(
+        onClick = { openWebsiteInBrowser(context, website) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Language,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.website_url),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = website,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.OpenInNew,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun StorageInfoCard(
+    source: String,
+    database: String,
+    folderPath: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.password_detail_storage_info),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            DetailInfoRow(
+                label = stringResource(R.string.database_source_label),
+                value = source
+            )
+            DetailInfoRow(
+                label = stringResource(R.string.password_picker_filter_database),
+                value = database
+            )
+            DetailInfoRow(
+                label = stringResource(R.string.password_picker_filter_folder),
+                value = folderPath
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeInfoCard(
+    createdAt: String,
+    updatedAt: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.password_detail_time_info),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            DetailInfoRow(
+                label = stringResource(R.string.created_at),
+                value = createdAt
+            )
+            DetailInfoRow(
+                label = stringResource(R.string.password_detail_last_modified),
+                value = updatedAt
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailInfoRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -717,7 +1124,9 @@ private fun HeaderSection(entry: PasswordEntry) {
 @Composable
 private fun BasicInfoCard(
     entry: PasswordEntry,
-    context: Context
+    context: Context,
+    separateUsernameAccountEnabled: Boolean,
+    separatedUsername: String
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -730,13 +1139,29 @@ private fun BasicInfoCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 用户名
-            if (entry.username.isNotEmpty()) {
-                InfoFieldWithCopy(
-                    label = stringResource(R.string.username),
-                    value = entry.username,
-                    context = context
-                )
+            if (separateUsernameAccountEnabled) {
+                if (entry.username.isNotEmpty()) {
+                    InfoFieldWithCopy(
+                        label = stringResource(R.string.field_account),
+                        value = entry.username,
+                        context = context
+                    )
+                }
+                if (separatedUsername.isNotEmpty()) {
+                    InfoFieldWithCopy(
+                        label = stringResource(R.string.autofill_username),
+                        value = separatedUsername,
+                        context = context
+                    )
+                }
+            } else {
+                if (entry.username.isNotEmpty()) {
+                    InfoFieldWithCopy(
+                        label = stringResource(R.string.username),
+                        value = entry.username,
+                        context = context
+                    )
+                }
             }
         }
     }
@@ -1388,6 +1813,34 @@ private fun CollapsibleSection(
 // ============================================
 // 🔧 辅助函数
 // ============================================
+
+private fun openWebsiteInBrowser(context: Context, website: String) {
+    val target = normalizeWebsiteUrl(website) ?: return
+    runCatching {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }.onFailure {
+        Toast.makeText(
+            context,
+            context.getString(R.string.cannot_open_browser),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+}
+
+private fun normalizeWebsiteUrl(input: String): String? {
+    val value = input.trim()
+    if (value.isEmpty()) return null
+    return if (value.startsWith("http://", ignoreCase = true) ||
+        value.startsWith("https://", ignoreCase = true)
+    ) {
+        value
+    } else {
+        "https://$value"
+    }
+}
 
 private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
     val sourceKey = when {
