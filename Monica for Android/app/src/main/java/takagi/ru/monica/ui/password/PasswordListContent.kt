@@ -216,7 +216,9 @@ fun PasswordListContent(
         onMoveToCategory: () -> Unit,
         onStack: () -> Unit,
         onDelete: () -> Unit
-    ) -> Unit
+    ) -> Unit,
+    onBackToTopVisibilityChange: (Boolean) -> Unit = {},
+    scrollToTopRequestKey: Int = 0
 ) {
     val coroutineScope = rememberCoroutineScope()
     val passwordEntries by viewModel.passwordEntries.collectAsState()
@@ -226,6 +228,8 @@ fun PasswordListContent(
     val currentFilter by viewModel.categoryFilter.collectAsState()
     // settings
     val appSettings by settingsViewModel.settings.collectAsState()
+    val listState = rememberLazyListState()
+    val backToTopVisibilityCallback by rememberUpdatedState(onBackToTopVisibilityChange)
 
     // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
     // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
@@ -340,10 +344,53 @@ fun PasswordListContent(
     var quickFolderRootKey by rememberSaveable { mutableStateOf(QUICK_FOLDER_ROOT_ALL) }
     val outsideTapInteractionSource = remember { MutableInteractionSource() }
     val canCollapseExpandedGroups = effectiveStackCardMode == StackCardMode.AUTO && expandedGroups.isNotEmpty()
+    var shouldShowBackToTop by remember { mutableStateOf(false) }
+    val backToTopEstimatedScrollPx by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).coerceAtLeast(1)
+            val firstVisibleItemSize =
+                layoutInfo.visibleItemsInfo.firstOrNull()?.size?.coerceAtLeast(1) ?: viewportHeight
+            (listState.firstVisibleItemIndex * firstVisibleItemSize) + listState.firstVisibleItemScrollOffset
+        }
+    }
+    val backToTopViewportHeight by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).coerceAtLeast(1)
+        }
+    }
     
     // 当分组模式改变时,重置展开状态
     LaunchedEffect(effectiveGroupMode, effectiveStackCardMode) {
         expandedGroups = setOf()
+    }
+
+    LaunchedEffect(backToTopEstimatedScrollPx, backToTopViewportHeight) {
+        val viewportHeight = backToTopViewportHeight
+        val showThreshold = viewportHeight * 2
+        val hideThreshold = (viewportHeight * 1.6f).toInt()
+        shouldShowBackToTop = if (shouldShowBackToTop) {
+            backToTopEstimatedScrollPx >= hideThreshold
+        } else {
+            backToTopEstimatedScrollPx >= showThreshold
+        }
+    }
+
+    LaunchedEffect(shouldShowBackToTop) {
+        backToTopVisibilityCallback(shouldShowBackToTop)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            backToTopVisibilityCallback(false)
+        }
+    }
+
+    LaunchedEffect(scrollToTopRequestKey) {
+        if (scrollToTopRequestKey > 0) {
+            listState.animateScrollToItem(index = 0)
+        }
     }
 
     LaunchedEffect(appSettings.passwordListQuickFiltersEnabled) {
@@ -1607,7 +1654,7 @@ fun PasswordListContent(
                     }
                 } else {
                     LazyColumn(
-                        state = androidx.compose.foundation.lazy.rememberLazyListState(),
+                        state = listState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()

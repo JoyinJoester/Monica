@@ -26,6 +26,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -591,6 +593,8 @@ fun SimpleMainScreen(
     var onMoveToCategoryPasswords by remember { mutableStateOf({}) }
     var onManualStackPasswords by remember { mutableStateOf({}) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
+    var passwordListShowBackToTop by remember { mutableStateOf(false) }
+    var passwordScrollToTopRequestKey by remember { mutableIntStateOf(0) }
     
     val appSettings by settingsViewModel.settings.collectAsState()
     
@@ -1152,6 +1156,11 @@ fun SimpleMainScreen(
             isAddingPasswordInline = false
         }
     }
+    LaunchedEffect(currentTab.key) {
+        if (currentTab != BottomNavItem.Passwords) {
+            passwordListShowBackToTop = false
+        }
+    }
     LaunchedEffect(currentTab.key, isCompactWidth) {
         if (isCompactWidth || currentTab != BottomNavItem.Authenticator) {
             selectedTotpId = null
@@ -1341,7 +1350,11 @@ fun SimpleMainScreen(
                                     onMoveToCategoryPasswords = onMoveToCategory
                                     onManualStackPasswords = onStack
                                     onDeleteSelectedPasswords = onDelete
-                                }
+                                },
+                                onBackToTopVisibilityChange = { visible ->
+                                    passwordListShowBackToTop = visible
+                                },
+                                scrollToTopRequestKey = passwordScrollToTopRequestKey
                             )
                         }
                         BottomNavItem.Authenticator -> {
@@ -1599,7 +1612,11 @@ fun SimpleMainScreen(
                                 onMoveToCategoryPasswords = onMoveToCategory
                                 onManualStackPasswords = onStack
                                 onDeleteSelectedPasswords = onDelete
-                            }
+                            },
+                            onBackToTopVisibilityChange = { visible ->
+                                passwordListShowBackToTop = visible
+                            },
+                            scrollToTopRequestKey = passwordScrollToTopRequestKey
                         )
                     }
 
@@ -2091,6 +2108,14 @@ fun SimpleMainScreen(
         BottomNavItem.CardWallet -> MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
+    val fabBottomOffset = if (isCompactWidth) 116.dp else 24.dp
+    val shouldShowBackToTopFab =
+        showFab &&
+            isFabVisible &&
+            !isFabExpanded &&
+            currentTab == BottomNavItem.Passwords &&
+            !isAnySelectionMode &&
+            passwordListShowBackToTop
     
     AnimatedVisibility(
         visible = showFab && isFabVisible,
@@ -2098,144 +2123,181 @@ fun SimpleMainScreen(
         exit = slideOutHorizontally(targetOffsetX = { it * 2 }) + fadeOut(),
         modifier = fabOverlayModifier
     ) {
-        SwipeableAddFab(
-            // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
-            // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
-            fabBottomOffset = if (isCompactWidth) 116.dp else 24.dp,
-            fabContainerColor = fabContainerColor,
-            modifier = Modifier,
-            onFabClickOverride = when (currentTab) {
-                BottomNavItem.Passwords -> if (isCompactWidth) null else ({ handlePasswordAddOpen() })
-                BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ handleTotpAddOpen() })
-                BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
-                    null
-                } else {
-                    ({ handleWalletAddOpen() })
-                }
-                BottomNavItem.Notes -> if (isCompactWidth) null else ({ handleNoteOpen(null) })
-                BottomNavItem.Send -> if (isCompactWidth) null else ({ handleSendAddOpen() })
-                BottomNavItem.Generator -> ({ generatorRefreshRequestKey++ })
-                else -> null
-            },
-            onExpandStateChanged = { expanded -> isFabExpanded = expanded },
-            fabContent = { expand ->
-            when (currentTab) {
-                BottomNavItem.Passwords,
-                BottomNavItem.Authenticator,
-                BottomNavItem.CardWallet,
-                BottomNavItem.Notes,
-                BottomNavItem.Send -> {
-                     Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(R.string.add),
-                        tint = fabIconTint
+        Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedVisibility(
+                visible = shouldShowBackToTopFab,
+                enter = scaleIn(
+                    initialScale = 0.22f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
                     )
-                }
-                BottomNavItem.Generator -> {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.regenerate),
-                        tint = fabIconTint
+                ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+                exit = scaleOut(
+                    targetScale = 0.22f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium
                     )
-                }
-                else -> { /* 不显示 */ }
-            }
-        },
-        expandedContent = { collapse ->
-             Box(
+                ) + fadeOut(animationSpec = tween(durationMillis = 90)),
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface)
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 88.dp,
+                        bottom = fabBottomOffset + 16.dp
+                    )
             ) {
-               when (currentTab) {
-                    BottomNavItem.Passwords -> {
-                        AddEditPasswordScreen(
-                            viewModel = passwordViewModel,
-                            totpViewModel = totpViewModel,
-                            bankCardViewModel = bankCardViewModel,
-                            localKeePassViewModel = localKeePassViewModel,
-                            passwordId = null,
-                            onNavigateBack = collapse
-                        )
+                SmallFloatingActionButton(
+                    onClick = { passwordScrollToTopRequestKey++ },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowUp,
+                        contentDescription = stringResource(R.string.cd_back)
+                    )
+                }
+            }
+
+            SwipeableAddFab(
+                // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
+                // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
+                fabBottomOffset = fabBottomOffset,
+                fabContainerColor = fabContainerColor,
+                modifier = Modifier,
+                onFabClickOverride = when (currentTab) {
+                    BottomNavItem.Passwords -> if (isCompactWidth) null else ({ handlePasswordAddOpen() })
+                    BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ handleTotpAddOpen() })
+                    BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
+                        null
+                    } else {
+                        ({ handleWalletAddOpen() })
                     }
-                    BottomNavItem.Authenticator -> {
-                        val totpCategories by totpViewModel.categories.collectAsState()
-                        AddEditTotpScreen(
-                            totpId = null,
-                            initialData = null,
-                            initialTitle = "",
-                            initialNotes = "",
-                            initialCategoryId = totpNewItemDefaults.categoryId,
-                            initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
-                            initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
-                            initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
-                            categories = totpCategories,
-                            passwordViewModel = passwordViewModel,
-                            localKeePassViewModel = localKeePassViewModel,
-                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
-                                totpViewModel.saveTotpItem(
-                                    id = null,
-                                    title = title,
-                                    notes = notes,
-                                    totpData = totpData,
-                                    categoryId = categoryId,
-                                    keepassDatabaseId = keepassDatabaseId,
-                                    bitwardenVaultId = bitwardenVaultId,
-                                    bitwardenFolderId = bitwardenFolderId
-                                )
-                                collapse()
-                            },
-                            onNavigateBack = collapse,
-                            onScanQrCode = {
-                                collapse()
-                                onNavigateToQuickTotpScan()
-                            }
-                        )
-                    }
-                    BottomNavItem.CardWallet -> {
-                        UnifiedWalletAddScreen(
-                            selectedType = walletUnifiedAddType,
-                            onTypeSelected = { walletUnifiedAddType = it },
-                            onNavigateBack = collapse,
-                            bankCardViewModel = bankCardViewModel,
-                            documentViewModel = documentViewModel,
-                            stateHolder = walletAddSaveableStateHolder
-                        )
-                    }
-                    BottomNavItem.Notes -> {
-                        AddEditNoteScreen(
-                            noteId = -1L,
-                            onNavigateBack = collapse,
-                            viewModel = noteViewModel
-                        )
-                    }
+                    BottomNavItem.Notes -> if (isCompactWidth) null else ({ handleNoteOpen(null) })
+                    BottomNavItem.Send -> if (isCompactWidth) null else ({ handleSendAddOpen() })
+                    BottomNavItem.Generator -> ({ generatorRefreshRequestKey++ })
+                    else -> null
+                },
+                onExpandStateChanged = { expanded -> isFabExpanded = expanded },
+                fabContent = { expand ->
+                when (currentTab) {
+                    BottomNavItem.Passwords,
+                    BottomNavItem.Authenticator,
+                    BottomNavItem.CardWallet,
+                    BottomNavItem.Notes,
                     BottomNavItem.Send -> {
-                        AddEditSendScreen(
-                            sendState = sendState,
-                            onNavigateBack = collapse,
-                            onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
-                                bitwardenViewModel.createTextSend(
-                                    title = title,
-                                    text = text,
-                                    notes = notes,
-                                    password = password,
-                                    maxAccessCount = maxAccessCount,
-                                    hideEmail = hideEmail,
-                                    hiddenText = hiddenText,
-                                    expireInDays = expireInDays
-                                )
-                                collapse()
-                            }
+                         Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = stringResource(R.string.add),
+                            tint = fabIconTint
                         )
                     }
                     BottomNavItem.Generator -> {
-                        // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.regenerate),
+                            tint = fabIconTint
+                        )
                     }
-                    else -> { /* Should not happen */ }
+                    else -> { /* 不显示 */ }
+                }
+            },
+            expandedContent = { collapse ->
+                 Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                   when (currentTab) {
+                        BottomNavItem.Passwords -> {
+                            AddEditPasswordScreen(
+                                viewModel = passwordViewModel,
+                                totpViewModel = totpViewModel,
+                                bankCardViewModel = bankCardViewModel,
+                                localKeePassViewModel = localKeePassViewModel,
+                                passwordId = null,
+                                onNavigateBack = collapse
+                            )
+                        }
+                        BottomNavItem.Authenticator -> {
+                            val totpCategories by totpViewModel.categories.collectAsState()
+                            AddEditTotpScreen(
+                                totpId = null,
+                                initialData = null,
+                                initialTitle = "",
+                                initialNotes = "",
+                                initialCategoryId = totpNewItemDefaults.categoryId,
+                                initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                                initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
+                                initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
+                                categories = totpCategories,
+                                passwordViewModel = passwordViewModel,
+                                localKeePassViewModel = localKeePassViewModel,
+                                onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                                    totpViewModel.saveTotpItem(
+                                        id = null,
+                                        title = title,
+                                        notes = notes,
+                                        totpData = totpData,
+                                        categoryId = categoryId,
+                                        keepassDatabaseId = keepassDatabaseId,
+                                        bitwardenVaultId = bitwardenVaultId,
+                                        bitwardenFolderId = bitwardenFolderId
+                                    )
+                                    collapse()
+                                },
+                                onNavigateBack = collapse,
+                                onScanQrCode = {
+                                    collapse()
+                                    onNavigateToQuickTotpScan()
+                                }
+                            )
+                        }
+                        BottomNavItem.CardWallet -> {
+                            UnifiedWalletAddScreen(
+                                selectedType = walletUnifiedAddType,
+                                onTypeSelected = { walletUnifiedAddType = it },
+                                onNavigateBack = collapse,
+                                bankCardViewModel = bankCardViewModel,
+                                documentViewModel = documentViewModel,
+                                stateHolder = walletAddSaveableStateHolder
+                            )
+                        }
+                        BottomNavItem.Notes -> {
+                            AddEditNoteScreen(
+                                noteId = -1L,
+                                onNavigateBack = collapse,
+                                viewModel = noteViewModel
+                            )
+                        }
+                        BottomNavItem.Send -> {
+                            AddEditSendScreen(
+                                sendState = sendState,
+                                onNavigateBack = collapse,
+                                onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                    bitwardenViewModel.createTextSend(
+                                        title = title,
+                                        text = text,
+                                        notes = notes,
+                                        password = password,
+                                        maxAccessCount = maxAccessCount,
+                                        hideEmail = hideEmail,
+                                        hiddenText = hiddenText,
+                                        expireInDays = expireInDays
+                                    )
+                                    collapse()
+                                }
+                            )
+                        }
+                        BottomNavItem.Generator -> {
+                            // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
+                        }
+                        else -> { /* Should not happen */ }
+                    }
                 }
             }
+        )
         }
-    )
     } // End if (showFab)
 
     val navBarInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
