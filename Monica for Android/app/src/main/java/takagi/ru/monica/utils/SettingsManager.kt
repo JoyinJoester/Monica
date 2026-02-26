@@ -11,6 +11,9 @@ import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.PasswordListQuickFilterItem
+import takagi.ru.monica.data.PasswordListQuickFolderStyle
+import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.AutofillSource
@@ -88,6 +91,11 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_CARD_SHOW_AUTHENTICATOR_KEY = booleanPreferencesKey("password_card_show_authenticator") // 密码卡片显示绑定验证器
         private val PASSWORD_CARD_HIDE_OTHER_CONTENT_WHEN_AUTHENTICATOR_KEY = booleanPreferencesKey("password_card_hide_other_content_when_authenticator") // 显示验证器时隐藏其他内容
         private val AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY = stringPreferencesKey("authenticator_card_display_fields") // 验证器卡片显示字段
+        private val PASSWORD_LIST_QUICK_FILTERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_filters_enabled") // 密码列表快捷筛选开关
+        private val PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY = stringPreferencesKey("password_list_quick_filter_items") // 密码列表快捷筛选显示内容
+        private val PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folders_enabled") // 密码列表快捷文件夹开关
+        private val PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY = stringPreferencesKey("password_list_quick_folder_style") // 密码列表快捷文件夹展示样式
+        private val PASSWORD_LIST_TOP_MODULES_ORDER_KEY = stringPreferencesKey("password_list_top_modules_order") // 密码列表顶部模块顺序
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
         private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
@@ -199,6 +207,30 @@ class SettingsManager(private val context: Context) {
             .distinct()
         return parsed
     }
+
+    private fun parsePasswordListTopModulesOrder(
+        raw: String?
+    ): List<PasswordListTopModule>? {
+        if (raw.isNullOrBlank()) return null
+        val parsed = raw.split(",")
+            .mapNotNull { value ->
+                runCatching { PasswordListTopModule.valueOf(value.trim()) }.getOrNull()
+            }
+        if (parsed.isEmpty()) return null
+        return PasswordListTopModule.sanitizeOrder(parsed)
+    }
+
+    private fun parsePasswordListQuickFilterItems(
+        raw: String?
+    ): List<PasswordListQuickFilterItem>? {
+        if (raw == null) return null
+        if (raw.isBlank()) return emptyList()
+        val parsed = raw.split(",")
+            .mapNotNull { value ->
+                runCatching { PasswordListQuickFilterItem.valueOf(value.trim()) }.getOrNull()
+            }
+        return PasswordListQuickFilterItem.sanitizeOrder(parsed)
+    }
     
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
         val storedOrder = preferences[BOTTOM_NAV_ORDER_KEY]
@@ -209,6 +241,12 @@ class SettingsManager(private val context: Context) {
             }
             ?: BottomNavContentTab.DEFAULT_ORDER
         val sanitizedOrder = BottomNavContentTab.sanitizeOrder(parsedOrder)
+        val parsedTopModulesOrder = parsePasswordListTopModulesOrder(
+            preferences[PASSWORD_LIST_TOP_MODULES_ORDER_KEY]
+        ) ?: PasswordListTopModule.DEFAULT_ORDER
+        val parsedQuickFilterItems = parsePasswordListQuickFilterItems(
+            preferences[PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY]
+        ) ?: PasswordListQuickFilterItem.DEFAULT_ORDER
 
         AppSettings(
             themeMode = ThemeMode.valueOf(
@@ -301,6 +339,16 @@ class SettingsManager(private val context: Context) {
             passwordCardHideOtherContentWhenAuthenticator = preferences[PASSWORD_CARD_HIDE_OTHER_CONTENT_WHEN_AUTHENTICATOR_KEY] ?: false,
             authenticatorCardDisplayFields = parseAuthenticatorCardDisplayFields(preferences[AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY])
                 ?: takagi.ru.monica.data.AuthenticatorCardDisplayField.DEFAULT_ORDER,
+            passwordListQuickFiltersEnabled = preferences[PASSWORD_LIST_QUICK_FILTERS_ENABLED_KEY] ?: false,
+            passwordListQuickFilterItems = parsedQuickFilterItems,
+            passwordListQuickFoldersEnabled = preferences[PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY] ?: false,
+            passwordListQuickFolderStyle = runCatching {
+                PasswordListQuickFolderStyle.valueOf(
+                    preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY]
+                        ?: PasswordListQuickFolderStyle.CLASSIC.name
+                )
+            }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC),
+            passwordListTopModulesOrder = parsedTopModulesOrder,
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
             autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true, // 默认开启
             passwordFieldVisibility = takagi.ru.monica.data.PasswordFieldVisibility(
@@ -595,6 +643,40 @@ class SettingsManager(private val context: Context) {
         val normalizedFields = fields.distinct()
         dataStore.edit { preferences ->
             preferences[AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY] = normalizedFields.joinToString(",") { it.name }
+        }
+    }
+
+    suspend fun updatePasswordListQuickFiltersEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_QUICK_FILTERS_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updatePasswordListQuickFilterItems(items: List<PasswordListQuickFilterItem>) {
+        val normalizedItems = items.distinct()
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY] =
+                normalizedItems.joinToString(",") { it.name }
+        }
+    }
+
+    suspend fun updatePasswordListQuickFoldersEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updatePasswordListQuickFolderStyle(style: PasswordListQuickFolderStyle) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY] = style.name
+        }
+    }
+
+    suspend fun updatePasswordListTopModulesOrder(order: List<PasswordListTopModule>) {
+        val sanitizedOrder = PasswordListTopModule.sanitizeOrder(order)
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_TOP_MODULES_ORDER_KEY] =
+                sanitizedOrder.joinToString(",") { it.name }
         }
     }
 

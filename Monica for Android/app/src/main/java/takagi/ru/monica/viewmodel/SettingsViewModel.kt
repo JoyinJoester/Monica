@@ -279,6 +279,36 @@ class SettingsViewModel(
         }
     }
 
+    fun updatePasswordListQuickFiltersEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListQuickFiltersEnabled(enabled)
+        }
+    }
+
+    fun updatePasswordListQuickFilterItems(items: List<takagi.ru.monica.data.PasswordListQuickFilterItem>) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListQuickFilterItems(items)
+        }
+    }
+
+    fun updatePasswordListQuickFoldersEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListQuickFoldersEnabled(enabled)
+        }
+    }
+
+    fun updatePasswordListQuickFolderStyle(style: takagi.ru.monica.data.PasswordListQuickFolderStyle) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListQuickFolderStyle(style)
+        }
+    }
+
+    fun updatePasswordListTopModulesOrder(order: List<takagi.ru.monica.data.PasswordListTopModule>) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListTopModulesOrder(order)
+        }
+    }
+
     fun updateNoteGridLayout(isGrid: Boolean) {
         viewModelScope.launch {
             settingsManager.updateNoteGridLayout(isGrid)

@@ -1606,6 +1606,9 @@ fun MonicaContent(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
+                onNavigateToPasswordListCustomization = {
+                    navController.navigate(Screen.PasswordListCustomization.route)
+                },
                 onNavigateToPasswordCardAdjustment = {
                     navController.navigate(Screen.PasswordCardAdjustment.route)
                 },
@@ -1617,6 +1620,21 @@ fun MonicaContent(
                 },
                 onNavigateToIconSettings = {
                     navController.navigate(Screen.IconSettings.route)
+                }
+            )
+        }
+
+        composable(
+            route = Screen.PasswordListCustomization.route,
+            enterTransition = { fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { fadeOut() }
+        ) {
+            takagi.ru.monica.ui.screens.PasswordListCustomizationScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }

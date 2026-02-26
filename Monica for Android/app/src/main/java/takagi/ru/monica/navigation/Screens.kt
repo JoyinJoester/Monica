@@ -101,6 +101,7 @@ sealed class Screen(val route: String) {
     object AuthenticatorCardAdjustment : Screen("authenticator_card_adjustment") // 验证器卡片调整
     object IconSettings : Screen("icon_settings") // 图标设置
     object PasswordFieldCustomization : Screen("password_field_customization")  // 添加密码页面字段定制
+    object PasswordListCustomization : Screen("password_list_customization") // 密码列表自定义
     object SyncBackup : Screen("sync_backup")  // 同步与备份页面路由
     object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面
     object MonicaPlus : Screen("monica_plus") // Monica Plus 页面

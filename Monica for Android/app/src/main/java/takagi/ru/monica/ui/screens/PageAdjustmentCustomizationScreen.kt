@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,20 +17,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LinearScale
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
@@ -42,6 +48,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +84,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -92,6 +100,8 @@ import takagi.ru.monica.data.AuthenticatorCardDisplayField
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordListQuickFilterItem
+import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.ProgressBarStyle
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.UnifiedProgressBarMode
@@ -108,6 +118,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 fun PageAdjustmentCustomizationScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToPasswordListCustomization: () -> Unit,
     onNavigateToPasswordCardAdjustment: () -> Unit,
     onNavigateToAuthenticatorCardAdjustment: () -> Unit,
     onNavigateToPasswordFieldCustomization: () -> Unit,
@@ -143,6 +154,13 @@ fun PageAdjustmentCustomizationScreen(
             )
 
             PageAdjustmentEntryCard(
+                title = stringResource(R.string.password_list_customization_title),
+                subtitle = stringResource(R.string.password_list_customization_subtitle),
+                icon = Icons.Default.FilterList,
+                onClick = onNavigateToPasswordListCustomization
+            )
+
+            PageAdjustmentEntryCard(
                 title = stringResource(R.string.password_card_adjust_title),
                 subtitle = stringResource(R.string.password_card_adjust_subtitle),
                 icon = Icons.Default.Apps,
@@ -169,6 +187,575 @@ fun PageAdjustmentCustomizationScreen(
                 icon = Icons.Default.Key,
                 onClick = onNavigateToIconSettings
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PasswordListCustomizationScreen(
+    viewModel: SettingsViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val settings by viewModel.settings.collectAsState()
+    val supportedQuickFilterItems = remember {
+        setOf(
+            PasswordListQuickFilterItem.FAVORITE,
+            PasswordListQuickFilterItem.TWO_FA,
+            PasswordListQuickFilterItem.NOTES,
+            PasswordListQuickFilterItem.UNCATEGORIZED,
+            PasswordListQuickFilterItem.LOCAL_ONLY
+        )
+    }
+    val selectedQuickFilterItems = remember(settings.passwordListQuickFilterItems) {
+        mutableStateListOf<PasswordListQuickFilterItem>().apply {
+            addAll(
+                settings.passwordListQuickFilterItems
+                    .filter { supportedQuickFilterItems.contains(it) }
+                    .distinct()
+            )
+        }
+    }
+    LaunchedEffect(settings.passwordListQuickFilterItems) {
+        val normalized = settings.passwordListQuickFilterItems
+            .filter { supportedQuickFilterItems.contains(it) }
+            .distinct()
+        if (normalized != settings.passwordListQuickFilterItems) {
+            viewModel.updatePasswordListQuickFilterItems(normalized)
+        }
+    }
+    var quickFilterOrder by remember(settings.passwordListQuickFilterItems) {
+        mutableStateOf(
+            buildList {
+                settings.passwordListQuickFilterItems
+                    .filter { supportedQuickFilterItems.contains(it) }
+                    .forEach { add(it) }
+                supportedQuickFilterItems
+                    .filter { !contains(it) }
+                    .forEach { add(it) }
+            }
+        )
+    }
+    val quickFilterOptions = listOf(
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.FAVORITE,
+            title = stringResource(R.string.password_list_quick_filter_favorite),
+            icon = if (selectedQuickFilterItems.contains(PasswordListQuickFilterItem.FAVORITE)) {
+                Icons.Default.Favorite
+            } else {
+                Icons.Default.FilterList
+            }
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.TWO_FA,
+            title = stringResource(R.string.password_list_quick_filter_2fa),
+            icon = Icons.Default.Security
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.NOTES,
+            title = stringResource(R.string.password_list_quick_filter_notes),
+            icon = Icons.Default.Description
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.UNCATEGORIZED,
+            title = stringResource(R.string.password_list_quick_filter_uncategorized),
+            icon = Icons.Default.Folder
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.LOCAL_ONLY,
+            title = stringResource(R.string.password_list_quick_filter_local_only),
+            icon = Icons.Default.Key
+        )
+    )
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text(stringResource(R.string.password_list_customization_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back)
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.password_list_customization_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.password_list_preview_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = stringResource(R.string.password_list_preview_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f)
+                        )
+                        if (settings.passwordListQuickFiltersEnabled && selectedQuickFilterItems.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                selectedQuickFilterItems.forEach { item ->
+                                    when (item) {
+                                        PasswordListQuickFilterItem.FAVORITE -> {
+                                            FilterChip(
+                                                selected = true,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_favorite)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Favorite,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        PasswordListQuickFilterItem.TWO_FA -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_2fa)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Security,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        PasswordListQuickFilterItem.NOTES -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_notes)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Description,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        PasswordListQuickFilterItem.UNCATEGORIZED -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_uncategorized)) }
+                                            )
+                                        }
+
+                                        PasswordListQuickFilterItem.LOCAL_ONLY -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_local_only)) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (settings.passwordListQuickFoldersEnabled) {
+                            val previewM3Style =
+                                settings.passwordListQuickFolderStyle == PasswordListQuickFolderStyle.M3_CARD
+                            if (previewM3Style) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState())
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Monica",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                        Text(
+                                            text = ">",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp)
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f))
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "目录1",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+                                        Text(
+                                            text = ">",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp)
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f))
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "子目录",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+                                    }
+                                }
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = stringResource(R.string.password_list_preview_folder_name),
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.password_list_preview_folder_count),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Card(
+                                        modifier = Modifier.size(width = 172.dp, height = 74.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Folder,
+                                                contentDescription = null
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = stringResource(R.string.password_list_preview_folder_count),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.password_list_preview_folder_name),
+                                                    style = MaterialTheme.typography.titleSmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Card(
+                                        modifier = Modifier.size(width = 172.dp, height = 74.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                                contentDescription = null
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = stringResource(R.string.password_list_preview_back_to_parent),
+                                                    style = MaterialTheme.typography.titleSmall
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.password_list_preview_current_folder),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if ((!settings.passwordListQuickFiltersEnabled || selectedQuickFilterItems.isEmpty()) &&
+                            !settings.passwordListQuickFoldersEnabled
+                        ) {
+                            Text(
+                                text = stringResource(R.string.password_list_preview_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.FilterList, contentDescription = null)
+                        Spacer(modifier = Modifier.size(10.dp))
+                        Text(
+                            text = stringResource(R.string.password_list_quick_filters_switch_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = settings.passwordListQuickFiltersEnabled,
+                            onCheckedChange = viewModel::updatePasswordListQuickFiltersEnabled
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.password_list_quick_filters_switch_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    Text(
+                        text = stringResource(R.string.password_list_quick_filters_content_title),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = stringResource(R.string.password_list_quick_filters_content_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    val lazyListState = rememberLazyListState()
+                    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+                        quickFilterOrder = quickFilterOrder.toMutableList().apply {
+                            add(to.index, removeAt(from.index))
+                        }
+                        val newSelected = quickFilterOrder.filter { selectedQuickFilterItems.contains(it) }
+                        selectedQuickFilterItems.clear()
+                        selectedQuickFilterItems.addAll(newSelected)
+                        viewModel.updatePasswordListQuickFilterItems(newSelected)
+                    }
+
+                    LazyColumn(
+                        state = lazyListState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((quickFilterOrder.size * 92).dp),
+                        userScrollEnabled = false,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(quickFilterOrder, key = { it.name }) { item ->
+                            val option = quickFilterOptions.first { it.item == item }
+                            val enabled = selectedQuickFilterItems.contains(item)
+                            val selectedIndex = selectedQuickFilterItems.indexOf(item)
+
+                            ReorderableItem(reorderableState, key = item.name, enabled = true) { isDragging ->
+                                val elevation by animateDpAsState(
+                                    if (isDragging) 6.dp else 0.dp,
+                                    label = "password_list_quick_filter_drag_elevation"
+                                )
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .graphicsLayer { shadowElevation = elevation.toPx() },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (enabled) {
+                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                        }
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(option.icon, contentDescription = null)
+                                        Spacer(modifier = Modifier.size(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = option.title,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                        Text(
+                                            text = if (enabled) "${selectedIndex + 1}" else stringResource(R.string.hide),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .longPressDraggableHandle(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.DragIndicator, contentDescription = null)
+                                        }
+                                        Switch(
+                                            checked = enabled,
+                                            onCheckedChange = { checked ->
+                                                val newSelected = quickFilterOrder.filter { current ->
+                                                    if (current == item) checked else selectedQuickFilterItems.contains(current)
+                                                }
+                                                selectedQuickFilterItems.clear()
+                                                selectedQuickFilterItems.addAll(newSelected)
+                                                viewModel.updatePasswordListQuickFilterItems(newSelected)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.Folder, contentDescription = null)
+                        Spacer(modifier = Modifier.size(10.dp))
+                        Text(
+                            text = stringResource(R.string.password_list_quick_folders_switch_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = settings.passwordListQuickFoldersEnabled,
+                            onCheckedChange = viewModel::updatePasswordListQuickFoldersEnabled
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.password_list_quick_folders_switch_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (settings.passwordListQuickFoldersEnabled) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = stringResource(R.string.password_list_quick_folders_style_title),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            val style = settings.passwordListQuickFolderStyle
+                            listOf(
+                                PasswordListQuickFolderStyle.CLASSIC to stringResource(R.string.password_list_quick_folders_style_classic),
+                                PasswordListQuickFolderStyle.M3_CARD to stringResource(R.string.password_list_quick_folders_style_m3)
+                            ).forEachIndexed { index, (targetStyle, label) ->
+                                SegmentedButton(
+                                    selected = style == targetStyle,
+                                    onClick = { viewModel.updatePasswordListQuickFolderStyle(targetStyle) },
+                                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(
+                                        index = index,
+                                        count = 2
+                                    ),
+                                    label = { Text(text = label) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -234,6 +821,12 @@ private data class GroupModeOption(
     val mode: String,
     val title: String,
     val description: String,
+    val icon: ImageVector
+)
+
+private data class PasswordListQuickFilterOption(
+    val item: PasswordListQuickFilterItem,
+    val title: String,
     val icon: ImageVector
 )
 

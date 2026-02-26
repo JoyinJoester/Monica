@@ -282,6 +282,77 @@ data class PresetCustomField(
     }
 }
 
+/**
+ * 密码列表顶部可配置模块（顺序即显示顺序）
+ */
+enum class PasswordListTopModule {
+    QUICK_FILTERS,
+    QUICK_FOLDERS;
+
+    companion object {
+        val DEFAULT_ORDER: List<PasswordListTopModule> = listOf(
+            QUICK_FILTERS,
+            QUICK_FOLDERS
+        )
+
+        fun sanitizeOrder(order: List<PasswordListTopModule>): List<PasswordListTopModule> {
+            val result = mutableListOf<PasswordListTopModule>()
+            val allowed = values().toSet()
+            order.forEach { module ->
+                if (module in allowed && module !in result) {
+                    result.add(module)
+                }
+            }
+            values().forEach { module ->
+                if (module !in result) {
+                    result.add(module)
+                }
+            }
+            return result
+        }
+    }
+}
+
+/**
+ * 密码列表快捷筛选项（顺序即显示顺序）
+ */
+enum class PasswordListQuickFilterItem {
+    FAVORITE,
+    TWO_FA,
+    NOTES,
+    UNCATEGORIZED,
+    LOCAL_ONLY;
+
+    companion object {
+        val DEFAULT_ORDER: List<PasswordListQuickFilterItem> = listOf(
+            FAVORITE,
+            TWO_FA,
+            NOTES,
+            UNCATEGORIZED,
+            LOCAL_ONLY
+        )
+
+        fun sanitizeOrder(order: List<PasswordListQuickFilterItem>): List<PasswordListQuickFilterItem> {
+            val result = mutableListOf<PasswordListQuickFilterItem>()
+            val allowed = values().toSet()
+            order.forEach { item ->
+                if (item in allowed && item !in result) {
+                    result.add(item)
+                }
+            }
+            return result
+        }
+    }
+}
+
+/**
+ * 密码列表快捷文件夹展示样式
+ */
+enum class PasswordListQuickFolderStyle {
+    CLASSIC,    // 经典快捷卡片（含返回上级）
+    M3_CARD     // M3 卡片模式（无返回卡片，顶部路径横幅）
+}
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val colorScheme: ColorScheme = ColorScheme.DEFAULT,
@@ -325,6 +396,11 @@ data class AppSettings(
     val passwordCardShowAuthenticator: Boolean = false, // 密码卡片显示绑定验证器
     val passwordCardHideOtherContentWhenAuthenticator: Boolean = false, // 显示验证器时隐藏其他卡片内容
     val authenticatorCardDisplayFields: List<AuthenticatorCardDisplayField> = AuthenticatorCardDisplayField.DEFAULT_ORDER, // 验证器卡片显示字段（顺序即展示顺序）
+    val passwordListQuickFiltersEnabled: Boolean = false, // 密码列表快捷筛选开关
+    val passwordListQuickFilterItems: List<PasswordListQuickFilterItem> = PasswordListQuickFilterItem.DEFAULT_ORDER, // 密码列表快捷筛选显示内容
+    val passwordListQuickFoldersEnabled: Boolean = false, // 密码列表快捷文件夹开关
+    val passwordListQuickFolderStyle: PasswordListQuickFolderStyle = PasswordListQuickFolderStyle.CLASSIC, // 密码列表快捷文件夹展示样式
+    val passwordListTopModulesOrder: List<PasswordListTopModule> = PasswordListTopModule.DEFAULT_ORDER, // 密码列表顶部模块顺序
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制

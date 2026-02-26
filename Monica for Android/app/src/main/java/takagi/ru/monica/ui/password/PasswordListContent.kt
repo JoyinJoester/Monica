@@ -32,6 +32,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -218,6 +219,7 @@ fun PasswordListContent(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val passwordEntries by viewModel.passwordEntries.collectAsState()
+    val allPasswords by viewModel.allPasswords.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
@@ -320,6 +322,14 @@ fun PasswordListContent(
     
     // 堆叠展开状态 - 记录哪些分组已展开
     var expandedGroups by remember { mutableStateOf(setOf<String>()) }
+    var quickFilterFavorite by rememberSaveable { mutableStateOf(false) }
+    var quickFilter2fa by rememberSaveable { mutableStateOf(false) }
+    var quickFilterNotes by rememberSaveable { mutableStateOf(false) }
+    var quickFilterUncategorized by rememberSaveable { mutableStateOf(false) }
+    var quickFilterLocalOnly by rememberSaveable { mutableStateOf(false) }
+    val configuredQuickFilterItems = appSettings.passwordListQuickFilterItems
+    val quickFolderStyle = appSettings.passwordListQuickFolderStyle
+    var quickFolderRootKey by rememberSaveable { mutableStateOf(QUICK_FOLDER_ROOT_ALL) }
     val outsideTapInteractionSource = remember { MutableInteractionSource() }
     val canCollapseExpandedGroups = effectiveStackCardMode == StackCardMode.AUTO && expandedGroups.isNotEmpty()
     
@@ -327,10 +337,206 @@ fun PasswordListContent(
     LaunchedEffect(effectiveGroupMode, effectiveStackCardMode) {
         expandedGroups = setOf()
     }
+
+    LaunchedEffect(appSettings.passwordListQuickFiltersEnabled) {
+        if (!appSettings.passwordListQuickFiltersEnabled) {
+            quickFilterFavorite = false
+            quickFilter2fa = false
+            quickFilterNotes = false
+            quickFilterUncategorized = false
+            quickFilterLocalOnly = false
+        }
+    }
+
+    LaunchedEffect(configuredQuickFilterItems) {
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.FAVORITE !in configuredQuickFilterItems) {
+            quickFilterFavorite = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.TWO_FA !in configuredQuickFilterItems) {
+            quickFilter2fa = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.NOTES !in configuredQuickFilterItems) {
+            quickFilterNotes = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED !in configuredQuickFilterItems) {
+            quickFilterUncategorized = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY !in configuredQuickFilterItems) {
+            quickFilterLocalOnly = false
+        }
+    }
+
+    LaunchedEffect(currentFilter) {
+        currentFilter.toQuickFolderRootKeyOrNull()?.let { key ->
+            quickFolderRootKey = key
+        }
+    }
+
+    val quickFolderNodes = remember(categories) {
+        buildPasswordQuickFolderNodes(categories)
+    }
+    val quickFolderNodeByPath = remember(quickFolderNodes) {
+        quickFolderNodes.associateBy { it.path }
+    }
+    val quickFolderCurrentPath = remember(currentFilter, quickFolderNodes) {
+        when (val filter = currentFilter) {
+            is CategoryFilter.Custom -> quickFolderNodes
+                .firstOrNull { it.category.id == filter.categoryId }
+                ?.path
+
+            else -> null
+        }
+    }
+    val quickFolderRootFilter = remember(quickFolderRootKey) {
+        quickFolderRootKey.toQuickFolderRootFilter()
+    }
+    val quickFolderPasswordCountByCategoryId = remember(allPasswords) {
+        allPasswords
+            .asSequence()
+            .mapNotNull { entry ->
+                entry.categoryId?.let { categoryId -> categoryId to entry }
+            }
+            .groupingBy { (categoryId, _) -> categoryId }
+            .eachCount()
+    }
+    val quickFolderShortcuts = remember(
+        appSettings.passwordListQuickFoldersEnabled,
+        quickFolderStyle,
+        currentFilter,
+        quickFolderCurrentPath,
+        quickFolderNodes,
+        quickFolderNodeByPath,
+        quickFolderRootFilter,
+        quickFolderPasswordCountByCategoryId
+    ) {
+        if (!appSettings.passwordListQuickFoldersEnabled || !currentFilter.supportsQuickFolders()) {
+            emptyList()
+        } else {
+            val shortcuts = mutableListOf<PasswordQuickFolderShortcut>()
+            if (quickFolderStyle == takagi.ru.monica.data.PasswordListQuickFolderStyle.CLASSIC &&
+                currentFilter is CategoryFilter.Custom
+            ) {
+                val parentPath = quickFolderCurrentPath?.let(::passwordQuickFolderParentPath)
+                val parentTarget = if (parentPath != null) {
+                    quickFolderNodeByPath[parentPath]?.category?.let { CategoryFilter.Custom(it.id) }
+                        ?: quickFolderRootFilter
+                } else {
+                    quickFolderRootFilter
+                }
+                shortcuts += PasswordQuickFolderShortcut(
+                    key = "back_${quickFolderCurrentPath.orEmpty()}",
+                    title = context.getString(R.string.password_list_quick_folder_back),
+                    subtitle = context.getString(R.string.password_list_quick_folder_back_subtitle),
+                    isBack = true,
+                    targetFilter = parentTarget,
+                    passwordCount = null
+                )
+            }
+
+            val targetParentPath = quickFolderCurrentPath
+            val children = quickFolderNodes.filter { node ->
+                node.parentPath == targetParentPath
+            }
+            children.forEach { node ->
+                shortcuts += PasswordQuickFolderShortcut(
+                    key = "folder_${node.category.id}_${node.path}",
+                    title = node.displayName,
+                    subtitle = "",
+                    isBack = false,
+                    targetFilter = CategoryFilter.Custom(node.category.id),
+                    passwordCount = quickFolderPasswordCountByCategoryId[node.category.id] ?: 0
+                )
+            }
+            shortcuts
+        }
+    }
+    val quickFolderBreadcrumbs = remember(
+        appSettings.passwordListQuickFoldersEnabled,
+        quickFolderStyle,
+        currentFilter,
+        quickFolderCurrentPath,
+        quickFolderNodeByPath,
+        quickFolderRootFilter
+    ) {
+        if (!appSettings.passwordListQuickFoldersEnabled ||
+            quickFolderStyle != takagi.ru.monica.data.PasswordListQuickFolderStyle.M3_CARD ||
+            !currentFilter.supportsQuickFolders()
+        ) {
+            emptyList()
+        } else {
+            val crumbs = mutableListOf<PasswordQuickFolderBreadcrumb>()
+            crumbs += PasswordQuickFolderBreadcrumb(
+                key = "root",
+                title = context.getString(R.string.password_list_quick_folder_root_label),
+                targetFilter = quickFolderRootFilter,
+                isCurrent = quickFolderCurrentPath == null
+            )
+            val path = quickFolderCurrentPath
+            if (!path.isNullOrBlank()) {
+                var cumulative = ""
+                val parts = path.split("/").filter { it.isNotBlank() }
+                parts.forEachIndexed { index, part ->
+                    cumulative = if (cumulative.isBlank()) part else "$cumulative/$part"
+                    val targetFilter = quickFolderNodeByPath[cumulative]
+                        ?.category
+                        ?.let { CategoryFilter.Custom(it.id) }
+                    if (targetFilter != null) {
+                        crumbs += PasswordQuickFolderBreadcrumb(
+                            key = "path_$cumulative",
+                            title = part,
+                            targetFilter = targetFilter,
+                            isCurrent = index == parts.lastIndex
+                        )
+                    }
+                }
+            }
+            crumbs
+        }
+    }
+    
+    val visiblePasswordEntries = remember(
+        passwordEntries,
+        deletedItemIds,
+        appSettings.passwordListQuickFiltersEnabled,
+        configuredQuickFilterItems,
+        quickFilterFavorite,
+        quickFilter2fa,
+        quickFilterNotes,
+        quickFilterUncategorized,
+        quickFilterLocalOnly
+    ) {
+        var filtered = passwordEntries.filter { it.id !in deletedItemIds }
+        if (appSettings.passwordListQuickFiltersEnabled) {
+            if (quickFilterFavorite && takagi.ru.monica.data.PasswordListQuickFilterItem.FAVORITE in configuredQuickFilterItems) {
+                filtered = filtered.filter { it.isFavorite }
+            }
+            if (quickFilter2fa && takagi.ru.monica.data.PasswordListQuickFilterItem.TWO_FA in configuredQuickFilterItems) {
+                filtered = filtered.filter { it.authenticatorKey.isNotBlank() }
+            }
+            if (quickFilterNotes && takagi.ru.monica.data.PasswordListQuickFilterItem.NOTES in configuredQuickFilterItems) {
+                filtered = filtered.filter { it.notes.isNotBlank() }
+            }
+            if (quickFilterUncategorized && takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems) {
+                filtered = filtered.filter { it.categoryId == null }
+            }
+            if (quickFilterLocalOnly && takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY in configuredQuickFilterItems) {
+                filtered = filtered.filter {
+                    it.keepassDatabaseId == null && it.bitwardenVaultId == null
+                }
+            }
+        }
+        filtered
+    }
+
+    LaunchedEffect(visiblePasswordEntries) {
+        if (selectedPasswords.isEmpty()) return@LaunchedEffect
+        val visibleIds = visiblePasswordEntries.map { it.id }.toSet()
+        selectedPasswords = selectedPasswords.intersect(visibleIds)
+    }
     
     // 根据分组模式对密码进行分组
-    val groupedPasswords = remember(passwordEntries, deletedItemIds, effectiveGroupMode, effectiveStackCardMode) {
-        val filteredEntries = passwordEntries.filter { it.id !in deletedItemIds }
+    val groupedPasswords = remember(visiblePasswordEntries, effectiveGroupMode, effectiveStackCardMode) {
+        val filteredEntries = visiblePasswordEntries
         
         // 步骤1: 先按"除密码外的信息"合并；始终展开模式下跳过合并，逐条显示
         val mergedByInfo = if (effectiveStackCardMode == StackCardMode.ALWAYS_EXPANDED) {
@@ -440,10 +646,10 @@ fun PasswordListContent(
     }
     
     val selectAll = {
-        selectedPasswords = if (selectedPasswords.size == passwordEntries.size) {
+        selectedPasswords = if (selectedPasswords.size == visiblePasswordEntries.size) {
             setOf()
         } else {
-            passwordEntries.map { it.id }.toSet()
+            visiblePasswordEntries.map { it.id }.toSet()
         }
     }
     
@@ -837,14 +1043,19 @@ fun PasswordListContent(
                 },
                 onRequestBiometricVerify = if (canUseBiometric) {
                     { onSuccess, onError ->
-                        biometricHelper.authenticate(
-                            activity = activity!!,
-                            title = context.getString(R.string.verify_identity),
-                            subtitle = context.getString(R.string.verify_to_delete),
-                            onSuccess = { onSuccess() },
-                            onError = { error -> onError(error) },
-                            onFailed = {}
-                        )
+                        val hostActivity = activity
+                        if (hostActivity == null) {
+                            onError(context.getString(R.string.biometric_not_available))
+                        } else {
+                            biometricHelper.authenticate(
+                                activity = hostActivity,
+                                title = context.getString(R.string.verify_identity),
+                                subtitle = context.getString(R.string.verify_to_delete),
+                                onSuccess = { onSuccess() },
+                                onError = { error -> onError(error) },
+                                onFailed = {}
+                            )
+                        }
                     }
                 } else {
                     null
@@ -1197,7 +1408,69 @@ fun PasswordListContent(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                if (passwordEntries.isEmpty() && searchQuery.isEmpty()) {
+                val hasVisibleQuickFilters =
+                    appSettings.passwordListQuickFiltersEnabled && configuredQuickFilterItems.isNotEmpty()
+                val showPinnedQuickFolderPathBanner = quickFolderBreadcrumbs.isNotEmpty()
+                val hasScrollableHeaderContent =
+                    hasVisibleQuickFilters || quickFolderShortcuts.isNotEmpty() || showPinnedQuickFolderPathBanner
+
+                if (showPinnedQuickFolderPathBanner) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            quickFolderBreadcrumbs.forEachIndexed { index, crumb ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            color = if (crumb.isCurrent) {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
+                                            }
+                                        )
+                                        .clickable(enabled = !crumb.isCurrent) {
+                                            if (currentFilter != crumb.targetFilter) {
+                                                viewModel.setCategoryFilter(crumb.targetFilter)
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = crumb.title,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (crumb.isCurrent) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSecondaryContainer
+                                        }
+                                    )
+                                }
+                                if (index != quickFolderBreadcrumbs.lastIndex) {
+                                    Text(
+                                        text = ">",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (visiblePasswordEntries.isEmpty() && searchQuery.isEmpty() && !hasScrollableHeaderContent) {
                     // Empty state with pull-to-search
                     Box(
                         modifier = Modifier
@@ -1251,6 +1524,256 @@ fun PasswordListContent(
                             .nestedScroll(pullAction.nestedScrollConnection),
                         contentPadding = PaddingValues(horizontal = 16.dp)
                     ) {
+                    if (hasVisibleQuickFilters) {
+                        item(key = "quick_filters") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(top = 2.dp, bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                configuredQuickFilterItems.forEach { item ->
+                                    when (item) {
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.FAVORITE -> {
+                                            FilterChip(
+                                                selected = quickFilterFavorite,
+                                                onClick = { quickFilterFavorite = !quickFilterFavorite },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_favorite)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = if (quickFilterFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.TWO_FA -> {
+                                            FilterChip(
+                                                selected = quickFilter2fa,
+                                                onClick = { quickFilter2fa = !quickFilter2fa },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_2fa)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Security,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.NOTES -> {
+                                            FilterChip(
+                                                selected = quickFilterNotes,
+                                                onClick = { quickFilterNotes = !quickFilterNotes },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_notes)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Description,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED -> {
+                                            FilterChip(
+                                                selected = quickFilterUncategorized,
+                                                onClick = { quickFilterUncategorized = !quickFilterUncategorized },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_uncategorized)) }
+                                            )
+                                        }
+
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY -> {
+                                            FilterChip(
+                                                selected = quickFilterLocalOnly,
+                                                onClick = { quickFilterLocalOnly = !quickFilterLocalOnly },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_local_only)) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (quickFolderShortcuts.isNotEmpty()) {
+                        val quickFolderUseM3CardStyle =
+                            quickFolderStyle == takagi.ru.monica.data.PasswordListQuickFolderStyle.M3_CARD
+                        item(key = "quick_folder_shortcuts") {
+                            if (quickFolderUseM3CardStyle) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 2.dp, bottom = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    quickFolderShortcuts.forEach { shortcut ->
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    if (currentFilter != shortcut.targetFilter) {
+                                                        viewModel.setCategoryFilter(shortcut.targetFilter)
+                                                    }
+                                                },
+                                            colors = CardDefaults.cardColors()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Folder,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(24.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Column(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Text(
+                                                        text = shortcut.title,
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = stringResource(
+                                                            R.string.password_list_quick_folder_count,
+                                                            shortcut.passwordCount ?: 0
+                                                        ),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                        .padding(top = 2.dp, bottom = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    quickFolderShortcuts.forEach { shortcut ->
+                                        Card(
+                                            modifier = Modifier
+                                                .size(width = 182.dp, height = 74.dp)
+                                                .clickable {
+                                                    if (currentFilter != shortcut.targetFilter) {
+                                                        viewModel.setCategoryFilter(shortcut.targetFilter)
+                                                    }
+                                                },
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (shortcut.isBack) {
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                                } else {
+                                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+                                                }
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (shortcut.isBack) {
+                                                        Icons.AutoMirrored.Filled.KeyboardArrowLeft
+                                                    } else {
+                                                        Icons.Default.Folder
+                                                    },
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(22.dp),
+                                                    tint = if (shortcut.isBack) {
+                                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    }
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    if (!shortcut.isBack) {
+                                                        Text(
+                                                            text = stringResource(
+                                                                R.string.password_list_quick_folder_count,
+                                                                shortcut.passwordCount ?: 0
+                                                            ),
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = shortcut.title,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    if (shortcut.isBack && shortcut.subtitle.isNotBlank()) {
+                                                        Text(
+                                                            text = shortcut.subtitle,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (visiblePasswordEntries.isEmpty() && searchQuery.isEmpty()) {
+                        item(key = "empty_state_with_quick_headers") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 84.dp, bottom = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(64.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = stringResource(R.string.no_passwords_saved),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    } else {
                     groupedPasswords.forEach { (groupKey, passwords) ->
                     val isExpanded = when (effectiveStackCardMode) {
                         StackCardMode.AUTO -> expandedGroups.contains(groupKey)
@@ -1370,7 +1893,9 @@ fun PasswordListContent(
                                         
                                         // 更新sortOrder
                                         val allPasswords = passwordEntries
-                                        val firstItemInGroup = allPasswords.first { it.website.ifBlank { context.getString(R.string.filter_uncategorized) } == websiteKey }
+                                        val firstItemInGroup = allPasswords.firstOrNull {
+                                            it.website.ifBlank { context.getString(R.string.filter_uncategorized) } == websiteKey
+                                        } ?: return@launch
                                         val startSortOrder = allPasswords.indexOf(firstItemInGroup)
                                         
                                         viewModel.updateSortOrders(
@@ -1420,11 +1945,10 @@ fun PasswordListContent(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }
-            
+
                     item {
                         Spacer(modifier = Modifier.height(80.dp))
                     }
-                }
                 }
             }
         }
@@ -1434,31 +1958,40 @@ fun PasswordListContent(
     if (showBatchDeleteDialog) {
         val biometricAction = if (canUseBiometric) {
             {
-                biometricHelper.authenticate(
-                    activity = activity!!,
-                    title = context.getString(R.string.verify_identity),
-                    subtitle = context.getString(R.string.verify_to_delete),
-                    onSuccess = {
-                        coroutineScope.launch {
-                            val toDelete = passwordEntries.filter { selectedPasswords.contains(it.id) }
-                            toDelete.forEach { viewModel.deletePasswordEntry(it) }
-                            android.widget.Toast.makeText(
-                                context,
-                                context.getString(R.string.deleted_items, toDelete.size),
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                            isSelectionMode = false
-                            selectedPasswords = setOf()
-                            passwordInput = ""
-                            passwordError = false
-                            showBatchDeleteDialog = false
-                        }
-                    },
-                    onError = { error ->
-                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                    },
-                    onFailed = {}
-                )
+                val hostActivity = activity
+                if (hostActivity == null) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.biometric_not_available),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    biometricHelper.authenticate(
+                        activity = hostActivity,
+                        title = context.getString(R.string.verify_identity),
+                        subtitle = context.getString(R.string.verify_to_delete),
+                        onSuccess = {
+                            coroutineScope.launch {
+                                val toDelete = passwordEntries.filter { selectedPasswords.contains(it.id) }
+                                toDelete.forEach { viewModel.deletePasswordEntry(it) }
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(R.string.deleted_items, toDelete.size),
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                isSelectionMode = false
+                                selectedPasswords = setOf()
+                                passwordInput = ""
+                                passwordError = false
+                                showBatchDeleteDialog = false
+                            }
+                        },
+                        onError = { error ->
+                            Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                        },
+                        onFailed = {}
+                    )
+                }
             }
         } else {
             null
@@ -1545,11 +2078,12 @@ fun PasswordListContent(
     
     // 单项删除密码验证
     if (showSingleItemPasswordVerify && itemToDelete != null) {
-        LaunchedEffect(Unit) {
+        val pendingDeleteItem = itemToDelete ?: return
+        LaunchedEffect(pendingDeleteItem.id, showSingleItemPasswordVerify) {
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
             if (securityManager.verifyMasterPassword(singleItemPasswordInput)) {
                 // 密码正确，执行真实删除
-                viewModel.deletePasswordEntry(itemToDelete!!)
+                viewModel.deletePasswordEntry(pendingDeleteItem)
                 
                 Toast.makeText(
                     context,
@@ -1563,7 +2097,7 @@ fun PasswordListContent(
                 showSingleItemPasswordVerify = false
             } else {
                 // 密码错误，恢复卡片显示
-                deletedItemIds = deletedItemIds - itemToDelete!!.id
+                deletedItemIds = deletedItemIds - pendingDeleteItem.id
                 
                 Toast.makeText(
                     context,
@@ -1578,4 +2112,102 @@ fun PasswordListContent(
             }
         }
     }
+}
+}
+}
+
+private const val QUICK_FOLDER_ROOT_ALL = "all"
+private const val QUICK_FOLDER_ROOT_LOCAL = "local"
+private const val QUICK_FOLDER_ROOT_STARRED = "starred"
+private const val QUICK_FOLDER_ROOT_UNCATEGORIZED = "uncategorized"
+private const val QUICK_FOLDER_ROOT_LOCAL_STARRED = "local_starred"
+private const val QUICK_FOLDER_ROOT_LOCAL_UNCATEGORIZED = "local_uncategorized"
+
+private data class PasswordQuickFolderNode(
+    val category: Category,
+    val path: String,
+    val parentPath: String?,
+    val displayName: String
+)
+
+private data class PasswordQuickFolderShortcut(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val isBack: Boolean,
+    val targetFilter: CategoryFilter,
+    val passwordCount: Int?
+)
+
+private data class PasswordQuickFolderBreadcrumb(
+    val key: String,
+    val title: String,
+    val targetFilter: CategoryFilter,
+    val isCurrent: Boolean
+)
+
+private fun normalizePasswordQuickFolderPath(path: String): String {
+    return path
+        .split("/")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString("/")
+}
+
+private fun passwordQuickFolderParentPath(path: String): String? {
+    val normalized = normalizePasswordQuickFolderPath(path)
+    if (!normalized.contains('/')) return null
+    return normalized.substringBeforeLast('/').ifBlank { null }
+}
+
+private fun buildPasswordQuickFolderNodes(categories: List<Category>): List<PasswordQuickFolderNode> {
+    return categories
+        .sortedWith(
+            compareBy<Category>({ it.sortOrder }, { it.id })
+        )
+        .mapNotNull { category ->
+            val normalizedPath = normalizePasswordQuickFolderPath(category.name)
+            if (normalizedPath.isBlank()) {
+                null
+            } else {
+                PasswordQuickFolderNode(
+                    category = category,
+                    path = normalizedPath,
+                    parentPath = passwordQuickFolderParentPath(normalizedPath),
+                    displayName = normalizedPath.substringAfterLast('/')
+                )
+            }
+        }
+        .distinctBy { it.path }
+}
+
+private fun CategoryFilter.supportsQuickFolders(): Boolean = when (this) {
+    is CategoryFilter.All,
+    is CategoryFilter.Local,
+    is CategoryFilter.Starred,
+    is CategoryFilter.Uncategorized,
+    is CategoryFilter.LocalStarred,
+    is CategoryFilter.LocalUncategorized,
+    is CategoryFilter.Custom -> true
+
+    else -> false
+}
+
+private fun CategoryFilter.toQuickFolderRootKeyOrNull(): String? = when (this) {
+    is CategoryFilter.All -> QUICK_FOLDER_ROOT_ALL
+    is CategoryFilter.Local -> QUICK_FOLDER_ROOT_LOCAL
+    is CategoryFilter.Starred -> QUICK_FOLDER_ROOT_STARRED
+    is CategoryFilter.Uncategorized -> QUICK_FOLDER_ROOT_UNCATEGORIZED
+    is CategoryFilter.LocalStarred -> QUICK_FOLDER_ROOT_LOCAL_STARRED
+    is CategoryFilter.LocalUncategorized -> QUICK_FOLDER_ROOT_LOCAL_UNCATEGORIZED
+    else -> null
+}
+
+private fun String.toQuickFolderRootFilter(): CategoryFilter = when (this) {
+    QUICK_FOLDER_ROOT_LOCAL -> CategoryFilter.Local
+    QUICK_FOLDER_ROOT_STARRED -> CategoryFilter.Starred
+    QUICK_FOLDER_ROOT_UNCATEGORIZED -> CategoryFilter.Uncategorized
+    QUICK_FOLDER_ROOT_LOCAL_STARRED -> CategoryFilter.LocalStarred
+    QUICK_FOLDER_ROOT_LOCAL_UNCATEGORIZED -> CategoryFilter.LocalUncategorized
+    else -> CategoryFilter.All
 }
