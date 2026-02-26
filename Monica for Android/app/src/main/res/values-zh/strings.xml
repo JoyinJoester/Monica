@@ -1134,6 +1134,27 @@
     <string name="duplicate_url_short">重复URL</string>
     <string name="compromised_short">泄露</string>
     <string name="no_2fa_short">无2FA</string>
+    <string name="inactive_passkeys">可用通行密钥</string>
+    <string name="inactive_passkeys_short">通行密钥</string>
+    <string name="security_analysis_realtime">实时</string>
+    <string name="security_analysis_in_progress_short">分析中</string>
+    <string name="security_analysis_score">安全得分</string>
+    <string name="security_analysis_score_short">得分</string>
+    <string name="security_analysis_auto_toggle_title">自动分析</string>
+    <string name="security_analysis_auto_toggle_subtitle">开启后自动分析；关闭后仅手动点击分析。</string>
+    <string name="security_strength_distribution">密码强度分布</string>
+    <string name="security_strength_medium">中</string>
+    <string name="security_strength_very_strong">极强</string>
+    <string name="security_analysis_scope_title">分析范围</string>
+    <string name="security_analysis_scope_label">选择数据库</string>
+    <string name="security_analysis_scope_all">全部数据库</string>
+    <string name="security_analysis_scope_local">Monica数据库</string>
+    <string name="security_analysis_scope_keepass">KeePass 库 #%1$d</string>
+    <string name="security_analysis_scope_bitwarden">Bitwarden 库 #%1$d</string>
+    <string name="security_risk_cards_title">风险分类</string>
+    <string name="security_issue_duplicate_password_subtitle">%1$d 组 · %2$d 条</string>
+    <string name="security_issue_duplicate_url_subtitle">%1$d 组 · %2$d 条</string>
+    <string name="security_issue_simple_count_subtitle">%1$d 条</string>
     <string name="checking_duplicate_passwords">正在检查重复密码…</string>
     <string name="checking_duplicate_urls">正在检查重复URL…</string>
     <string name="checking_compromised_passwords">正在检查密码泄露情况…</string>
@@ -1147,6 +1168,7 @@
     <string name="no_duplicate_urls">太好了！未发现重复URL</string>
     <string name="no_compromised_passwords">非常好！未发现泄露密码</string>
     <string name="all_accounts_have_twofa">所有重要账户都已启用双重验证</string>
+    <string name="all_accounts_have_passkeys">太好了！没有待配置通行密钥的账户</string>
     <string name="pwned_passwords_attribution">技术支持：Have I Been Pwned</string>
     <string name="twofa_directory_attribution">参考：2FA Directory</string>
 

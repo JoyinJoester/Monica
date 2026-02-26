@@ -376,6 +376,7 @@ fun MonicaApp(
                 localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
                 repository = repository,
+                database = database,
                 secureItemRepository = secureItemRepository,
                 passwordHistoryManager = passwordHistoryManager,
                 initialDisablePasswordVerification = initialDisablePasswordVerification,
@@ -404,6 +405,7 @@ fun MonicaContent(
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
+    database: PasswordDatabase,
     secureItemRepository: SecureItemRepository,
     passwordHistoryManager: PasswordHistoryManager,
     initialDisablePasswordVerification: Boolean = false,
@@ -1496,24 +1498,46 @@ fun MonicaContent(
             popEnterTransition = { fadeIn() },
             popExitTransition = { fadeOut() }
         ) {
-            val securityViewModel: takagi.ru.monica.viewmodel.SecurityAnalysisViewModel = viewModel {
-                takagi.ru.monica.viewmodel.SecurityAnalysisViewModel(repository)
+            val context = LocalContext.current
+            val passkeySupportCatalog = remember(context.applicationContext) {
+                takagi.ru.monica.utils.PasskeySupportCatalog(context.applicationContext)
             }
+            val securityViewModel: takagi.ru.monica.viewmodel.SecurityAnalysisViewModel = viewModel {
+                takagi.ru.monica.viewmodel.SecurityAnalysisViewModel(
+                    repository,
+                    securityManager,
+                    database.localKeePassDatabaseDao(),
+                    database.bitwardenVaultDao(),
+                    database.passkeyDao(),
+                    passkeySupportCatalog
+                )
+            }
+            val securitySettings by settingsViewModel.settings.collectAsState()
             val analysisData by securityViewModel.analysisData.collectAsState()
+            LaunchedEffect(securitySettings.securityAnalysisAutoEnabled) {
+                securityViewModel.setAutoAnalysisEnabled(securitySettings.securityAnalysisAutoEnabled)
+            }
 
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
             ) {
             takagi.ru.monica.ui.screens.SecurityAnalysisScreen(
                 analysisData = analysisData,
+                autoAnalysisEnabled = securitySettings.securityAnalysisAutoEnabled,
                 onStartAnalysis = {
-                    securityViewModel.performSecurityAnalysis()
+                    securityViewModel.refreshRealtimeAnalysis()
+                },
+                onAutoAnalysisEnabledChange = { enabled ->
+                    settingsViewModel.updateSecurityAnalysisAutoEnabled(enabled)
                 },
                 onNavigateBack = {
                     navController.popBackStack()
                 },
                 onNavigateToPassword = { passwordId ->
-                    navController.navigate(Screen.AddEditPassword.createRoute(passwordId))
+                    navController.navigate(Screen.PasswordDetail.createRoute(passwordId))
+                },
+                onSelectScope = { scopeKey ->
+                    securityViewModel.selectScope(scopeKey)
                 }
             )
             }

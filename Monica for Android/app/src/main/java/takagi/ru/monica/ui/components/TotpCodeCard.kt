@@ -91,11 +91,12 @@ fun TotpCodeCard(
     val settings = appSettings ?: AppSettings()
     
     // 解析TOTP数据
-    val totpData = try {
+    val parsedTotpData = try {
         Json.decodeFromString<TotpData>(item.itemData)
     } catch (e: Exception) {
         TotpData(secret = "")
     }
+    val totpData = remember(parsedTotpData) { normalizeTotpData(parsedTotpData) }
     
     // 共享定时器（外部传入时不再单独启动）
     val internalTickSeconds by produceState(initialValue = System.currentTimeMillis() / 1000, key1 = sharedTickSeconds) {
@@ -583,20 +584,12 @@ fun TotpCodeCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 闪烁动画（倒计时<=5秒时启用）
-                // 保持 transition 在组合树中稳定，避免条件创建动画对象导致布局异常。
-                val blinkTransition = rememberInfiniteTransition(label = "blink")
-                val animatedBlinkAlpha by blinkTransition.animateFloat(
-                    initialValue = 1f,
-                    targetValue = 0.5f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(durationMillis = 500, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "blink_alpha"
-                )
                 val shouldBlink = remainingSeconds <= 5 && totpData.otpType != OtpType.HOTP
-                val blinkAlpha = if (shouldBlink) animatedBlinkAlpha else 1f
+                val blinkAlpha = if (shouldBlink) {
+                    if (((progressTimeMillis / 500L) % 2L) == 0L) 1f else 0.5f
+                } else {
+                    1f
+                }
                 
                 // 验证码（等宽字体）
                 // 统一进度条模式下放大验证码
@@ -631,13 +624,6 @@ fun TotpCodeCard(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        val nextCode = remember(currentSeconds, totpData, settings.totpTimeOffset) {
-                            TotpGenerator.generateOtp(
-                                totpData = totpData,
-                                timeOffset = settings.totpTimeOffset,
-                                currentSeconds = currentSeconds + totpData.period
-                            )
-                        }
                         Text(
                             text = formatOtpCode(nextCode, totpData.otpType),
                             style = MaterialTheme.typography.labelSmall,
@@ -769,7 +755,8 @@ private fun M3EProgressIndicator(
     modifier: Modifier = Modifier,
     trackHeight: Dp = 12.dp
 ) {
-    val clampedProgress = progress.coerceIn(0f, 1f)
+    val safeProgress = if (progress.isFinite()) progress else 0f
+    val clampedProgress = safeProgress.coerceIn(0f, 1f)
     val animatedProgress by animateFloatAsState(
         targetValue = clampedProgress,
         animationSpec = tween(
@@ -779,16 +766,20 @@ private fun M3EProgressIndicator(
         label = "m3e_progress"
     )
 
-    val waveTransition = rememberInfiniteTransition(label = "m3e_wave")
-    val waveOffset by waveTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 2f * PI.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "m3e_wave_offset"
-    )
+    val waveOffset = if (style == ProgressBarStyle.WAVE) {
+        val waveTransition = rememberInfiniteTransition(label = "m3e_wave")
+        waveTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 2f * PI.toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "m3e_wave_offset"
+        ).value
+    } else {
+        0f
+    }
 
     val fillFraction = animatedProgress.coerceIn(0f, 1f)
     val trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -803,6 +794,7 @@ private fun M3EProgressIndicator(
             if (width <= 0f || height <= 0f) return@Canvas
 
             val progressWidth = width * fillFraction
+            if (!progressWidth.isFinite()) return@Canvas
             val centerY = height / 2f
             val gap = 8.dp.toPx()
 
@@ -830,12 +822,14 @@ private fun M3EProgressIndicator(
                             var x = 0f
                             val startY = centerY + amplitude * sin(waveOffset)
                             moveTo(0f, startY)
-
-                            while (x <= progressWidth) {
+                            var safetySteps = 0
+                            while (x <= progressWidth && safetySteps < 4000) {
                                 val phase = (x / wavelength) * 2f * PI.toFloat() + waveOffset
                                 val y = centerY + amplitude * sin(phase)
+                                if (!y.isFinite()) break
                                 lineTo(x, y)
                                 x += 2f
+                                safetySteps++
                             }
                         }
                         drawPath(
@@ -876,6 +870,16 @@ private fun M3EProgressIndicator(
                 }
             }
         }
+    }
+}
+
+private fun normalizeTotpData(data: TotpData): TotpData {
+    val safePeriod = data.period.takeIf { it > 0 } ?: 30
+    val safeDigits = data.digits.coerceIn(4, 10)
+    return if (safePeriod == data.period && safeDigits == data.digits) {
+        data
+    } else {
+        data.copy(period = safePeriod, digits = safeDigits)
     }
 }
 

@@ -1349,7 +1349,7 @@ private fun ResultCard(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = if (copied) stringResource(R.string.copied) else stringResource(R.string.copy),
+                                text = if (copied) stringResource(R.string.generator_copied) else stringResource(R.string.copy),
                                 style = MaterialTheme.typography.labelLarge
                             )
                         }

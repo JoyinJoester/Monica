@@ -164,6 +164,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateSecurityAnalysisAutoEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateSecurityAnalysisAutoEnabled(enabled)
+        }
+    }
+
     fun updateBitwardenBottomStatusBarEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBitwardenBottomStatusBarEnabled(enabled)

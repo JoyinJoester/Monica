@@ -1,154 +1,806 @@
 package takagi.ru.monica.ui.screens
 
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
-import takagi.ru.monica.data.*
+import takagi.ru.monica.data.CompromisedPassword
+import takagi.ru.monica.data.DuplicatePasswordGroup
+import takagi.ru.monica.data.DuplicateUrlGroup
+import takagi.ru.monica.data.InactivePasskeyAccount
+import takagi.ru.monica.data.No2FAAccount
+import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordStrengthDistribution
+import takagi.ru.monica.data.SecurityAnalysisData
+import takagi.ru.monica.data.SecurityAnalysisScopeOption
+import takagi.ru.monica.data.SecurityAnalysisScopeType
 
-/**
- * 安全分析界面
- */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+private enum class SecurityIssueType {
+    DUPLICATE_PASSWORDS,
+    DUPLICATE_URLS,
+    COMPROMISED,
+    NO_2FA,
+    INACTIVE_PASSKEY
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SecurityAnalysisScreen(
     analysisData: SecurityAnalysisData,
+    autoAnalysisEnabled: Boolean,
     onStartAnalysis: () -> Unit,
+    onAutoAnalysisEnabledChange: (Boolean) -> Unit,
     onNavigateBack: () -> Unit,
-    onNavigateToPassword: (Long) -> Unit
+    onNavigateToPassword: (Long) -> Unit,
+    onSelectScope: (String) -> Unit
+) {
+    var selectedIssue by rememberSaveable { mutableStateOf<SecurityIssueType?>(null) }
+
+    if (selectedIssue != null) {
+        SecurityIssueDetailScreen(
+            issueType = selectedIssue ?: SecurityIssueType.DUPLICATE_PASSWORDS,
+            analysisData = analysisData,
+            onNavigateBack = { selectedIssue = null },
+            onNavigateToPassword = onNavigateToPassword
+        )
+        return
+    }
+
+    val duplicatePasswordGroupCount = analysisData.duplicatePasswords.size
+    val duplicatePasswordItemCount = analysisData.duplicatePasswords.sumOf { it.count }
+    val duplicateUrlGroupCount = analysisData.duplicateUrls.size
+    val duplicateUrlItemCount = analysisData.duplicateUrls.sumOf { it.count }
+    val compromisedCount = analysisData.compromisedPasswords.size
+    val no2faCount = analysisData.no2FAAccounts.count { it.supports2FA }
+    val inactivePasskeyCount = analysisData.inactivePasskeyAccounts.size
+
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(
+                    title = { Text(text = stringResource(R.string.security_analysis)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back)
+                            )
+                        }
+                    },
+                    actions = {
+                        if (analysisData.isAnalyzing) {
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = { Text(stringResource(R.string.security_analysis_in_progress_short)) }
+                            )
+                        }
+                        IconButton(onClick = onStartAnalysis) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.refresh)
+                            )
+                        }
+                    }
+                )
+                if (analysisData.isAnalyzing) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                    )
+                }
+            }
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                CompactOverviewCard(
+                    duplicatePasswordsCount = duplicatePasswordItemCount,
+                    duplicateUrlsCount = duplicateUrlItemCount,
+                    compromisedCount = compromisedCount,
+                    no2faCount = no2faCount,
+                    inactivePasskeyCount = inactivePasskeyCount,
+                    isAnalyzing = analysisData.isAnalyzing
+                )
+            }
+
+            item {
+                AutoAnalysisToggleCard(
+                    autoAnalysisEnabled = autoAnalysisEnabled,
+                    onAutoAnalysisEnabledChange = onAutoAnalysisEnabledChange
+                )
+            }
+
+            item {
+                ScopeSelectorCard(
+                    scopes = analysisData.availableScopes,
+                    selectedScopeKey = analysisData.selectedScopeKey,
+                    onSelectScope = onSelectScope
+                )
+            }
+
+            item {
+                SecurityStrengthDistributionCard(
+                    distribution = analysisData.passwordStrengthDistribution
+                )
+            }
+
+            item {
+                Text(
+                    text = stringResource(R.string.security_risk_cards_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            item {
+                SecurityIssueSummaryCard(
+                    icon = Icons.Default.ContentCopy,
+                    title = stringResource(R.string.duplicate_passwords),
+                    subtitle = stringResource(
+                        R.string.security_issue_duplicate_password_subtitle,
+                        duplicatePasswordGroupCount,
+                        duplicatePasswordItemCount
+                    ),
+                    onClick = { selectedIssue = SecurityIssueType.DUPLICATE_PASSWORDS }
+                )
+            }
+
+            item {
+                SecurityIssueSummaryCard(
+                    icon = Icons.Default.Link,
+                    title = stringResource(R.string.duplicate_urls),
+                    subtitle = stringResource(
+                        R.string.security_issue_duplicate_url_subtitle,
+                        duplicateUrlGroupCount,
+                        duplicateUrlItemCount
+                    ),
+                    onClick = { selectedIssue = SecurityIssueType.DUPLICATE_URLS }
+                )
+            }
+
+            item {
+                SecurityIssueSummaryCard(
+                    icon = Icons.Default.Warning,
+                    title = stringResource(R.string.compromised_passwords),
+                    subtitle = stringResource(
+                        R.string.security_issue_simple_count_subtitle,
+                        compromisedCount
+                    ),
+                    onClick = { selectedIssue = SecurityIssueType.COMPROMISED }
+                )
+            }
+
+            item {
+                SecurityIssueSummaryCard(
+                    icon = Icons.Default.Security,
+                    title = stringResource(R.string.no_twofa),
+                    subtitle = stringResource(
+                        R.string.security_issue_simple_count_subtitle,
+                        no2faCount
+                    ),
+                    onClick = { selectedIssue = SecurityIssueType.NO_2FA }
+                )
+            }
+
+            item {
+                SecurityIssueSummaryCard(
+                    icon = Icons.Default.VpnKey,
+                    title = stringResource(R.string.inactive_passkeys),
+                    subtitle = stringResource(
+                        R.string.security_issue_simple_count_subtitle,
+                        inactivePasskeyCount
+                    ),
+                    onClick = { selectedIssue = SecurityIssueType.INACTIVE_PASSKEY }
+                )
+            }
+        }
+
+        analysisData.error?.let { error ->
+            Snackbar(modifier = Modifier.padding(16.dp)) {
+                Text(error)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoAnalysisToggleCard(
+    autoAnalysisEnabled: Boolean,
+    onAutoAnalysisEnabledChange: (Boolean) -> Unit
+) {
+    OutlinedCard(shape = RoundedCornerShape(16.dp)) {
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = stringResource(R.string.security_analysis_auto_toggle_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            supportingContent = {
+                Text(
+                    text = stringResource(R.string.security_analysis_auto_toggle_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            trailingContent = {
+                Switch(
+                    checked = autoAnalysisEnabled,
+                    onCheckedChange = onAutoAnalysisEnabledChange
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun CompactOverviewCard(
+    duplicatePasswordsCount: Int,
+    duplicateUrlsCount: Int,
+    compromisedCount: Int,
+    no2faCount: Int,
+    inactivePasskeyCount: Int,
+    isAnalyzing: Boolean
+) {
+    val colorScheme = MaterialTheme.colorScheme
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            colorScheme.primaryContainer.copy(alpha = 0.36f),
+                            colorScheme.secondaryContainer.copy(alpha = 0.20f)
+                        )
+                    )
+                )
+                .padding(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.security_overview),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = if (isAnalyzing) {
+                            stringResource(R.string.security_analysis_in_progress_short)
+                        } else {
+                            stringResource(R.string.security_analysis_realtime)
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.security_risk_cards_title),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("${stringResource(R.string.duplicate_short)} $duplicatePasswordsCount") }
+                    )
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("${stringResource(R.string.duplicate_url_short)} $duplicateUrlsCount") }
+                    )
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("${stringResource(R.string.compromised_short)} $compromisedCount") }
+                    )
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("${stringResource(R.string.no_2fa_short)} $no2faCount") }
+                    )
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("${stringResource(R.string.inactive_passkeys_short)} $inactivePasskeyCount") }
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScopeSelectorCard(
+    scopes: List<SecurityAnalysisScopeOption>,
+    selectedScopeKey: String,
+    onSelectScope: (String) -> Unit
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableStateOf(0) }
-    
-    // 检查是否从未分析过（所有数据为空且没有错误）
-    val isInitialState = !analysisData.isAnalyzing && 
-        analysisData.duplicatePasswords.isEmpty() && 
-        analysisData.duplicateUrls.isEmpty() && 
-        analysisData.compromisedPasswords.isEmpty() && 
-        analysisData.no2FAAccounts.isEmpty() &&
-        analysisData.error == null
-    
-    // 准备共享元素 Modifier
-    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
-    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
-    
-    var sharedModifier: Modifier = Modifier
-    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            sharedModifier = Modifier.sharedBounds(
-                sharedContentState = rememberSharedContentState(key = "security_analysis_card"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+    val selectedScope = scopes.firstOrNull { it.key == selectedScopeKey } ?: scopes.firstOrNull() ?: SecurityAnalysisScopeOption.all()
+    var expanded by remember { mutableStateOf(false) }
+
+    OutlinedCard(shape = RoundedCornerShape(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = stringResource(R.string.security_analysis_scope_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded }
+            ) {
+                OutlinedTextField(
+                    value = scopeDisplayName(selectedScope, context),
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.security_analysis_scope_label)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    scopes.forEach { scope ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "${scopeDisplayName(scope, context)} (${scope.itemCount})"
+                                )
+                            },
+                            onClick = {
+                                expanded = false
+                                onSelectScope(scope.key)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecurityStrengthDistributionCard(
+    distribution: PasswordStrengthDistribution
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val total = distribution.total
+    OutlinedCard(shape = RoundedCornerShape(16.dp)) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.security_strength_distribution),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .background(colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
+            ) {
+                val segments = listOf(
+                    Pair(distribution.weak, colorScheme.error),
+                    Pair(distribution.medium, colorScheme.tertiary),
+                    Pair(distribution.strong, colorScheme.secondary),
+                    Pair(distribution.veryStrong, colorScheme.primary)
+                )
+                if (total > 0) {
+                    segments.forEach { (count, color) ->
+                        if (count > 0) {
+                            val rawWeight = count / total.toFloat()
+                            val weight = if (rawWeight < 0.08f) 0.08f else rawWeight
+                            Box(
+                                modifier = Modifier
+                                    .weight(weight)
+                                    .fillMaxSize()
+                                    .background(color = color)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StrengthLegendChip(
+                    label = stringResource(R.string.strength_weak),
+                    count = distribution.weak,
+                    color = colorScheme.error
+                )
+                StrengthLegendChip(
+                    label = stringResource(R.string.security_strength_medium),
+                    count = distribution.medium,
+                    color = colorScheme.tertiary
+                )
+                StrengthLegendChip(
+                    label = stringResource(R.string.strength_strong),
+                    count = distribution.strong,
+                    color = colorScheme.secondary
+                )
+                StrengthLegendChip(
+                    label = stringResource(R.string.security_strength_very_strong),
+                    count = distribution.veryStrong,
+                    color = colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StrengthLegendChip(
+    label: String,
+    count: Int,
+    color: Color
+) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = color.copy(alpha = 0.20f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+    ) {
+        Text(
+            text = "$label $count",
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun SecurityIssueSummaryCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
-    
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SecurityIssueDetailScreen(
+    issueType: SecurityIssueType,
+    analysisData: SecurityAnalysisData,
+    onNavigateBack: () -> Unit,
+    onNavigateToPassword: (Long) -> Unit
+) {
     Scaffold(
-        modifier = sharedModifier,
         topBar = {
             TopAppBar(
-                title = { Text(context.getString(R.string.security_analysis)) },
+                title = {
+                    Text(
+                        when (issueType) {
+                            SecurityIssueType.DUPLICATE_PASSWORDS -> stringResource(R.string.duplicate_passwords)
+                            SecurityIssueType.DUPLICATE_URLS -> stringResource(R.string.duplicate_urls)
+                            SecurityIssueType.COMPROMISED -> stringResource(R.string.compromised_passwords)
+                            SecurityIssueType.NO_2FA -> stringResource(R.string.no_twofa)
+                            SecurityIssueType.INACTIVE_PASSKEY -> stringResource(R.string.inactive_passkeys)
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back)
+                        )
                     }
                 }
             )
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            when {
-                // 显示分析进度
-                analysisData.isAnalyzing -> {
-                    AnalysisProgressView(analysisData.analysisProgress)
-                }
-                // 显示初始欢迎界面
-                isInitialState -> {
-                    InitialAnalysisView(onStartAnalysis = onStartAnalysis)
-                }
-                // 显示分析结果
-                else -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // 统计卡片 - 精简显示
-                        SecurityStatisticsCardsCompact(
-                            duplicatePasswordsCount = analysisData.duplicatePasswords.sumOf { it.count },
-                            duplicateUrlsCount = analysisData.duplicateUrls.sumOf { it.count },
-                            compromisedPasswordsCount = analysisData.compromisedPasswords.size,
-                            no2FAAccountsCount = analysisData.no2FAAccounts.filter { it.supports2FA }.size,
-                            onStartAnalysis = onStartAnalysis
+        when (issueType) {
+            SecurityIssueType.DUPLICATE_PASSWORDS -> DuplicatePasswordsFlatList(
+                groups = analysisData.duplicatePasswords,
+                onNavigateToPassword = onNavigateToPassword,
+                modifier = Modifier.padding(paddingValues)
+            )
+            SecurityIssueType.DUPLICATE_URLS -> DuplicateUrlsFlatList(
+                groups = analysisData.duplicateUrls,
+                onNavigateToPassword = onNavigateToPassword,
+                modifier = Modifier.padding(paddingValues)
+            )
+            SecurityIssueType.COMPROMISED -> CompromisedFlatList(
+                items = analysisData.compromisedPasswords,
+                onNavigateToPassword = onNavigateToPassword,
+                modifier = Modifier.padding(paddingValues)
+            )
+            SecurityIssueType.NO_2FA -> No2faFlatList(
+                items = analysisData.no2FAAccounts,
+                onNavigateToPassword = onNavigateToPassword,
+                modifier = Modifier.padding(paddingValues)
+            )
+            SecurityIssueType.INACTIVE_PASSKEY -> InactivePasskeyFlatList(
+                items = analysisData.inactivePasskeyAccounts,
+                onNavigateToPassword = onNavigateToPassword,
+                modifier = Modifier.padding(paddingValues)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DuplicatePasswordsFlatList(
+    groups: List<DuplicatePasswordGroup>,
+    onNavigateToPassword: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (groups.isEmpty()) {
+        EmptyStateView(
+            icon = Icons.Default.CheckCircle,
+            message = stringResource(R.string.no_duplicate_passwords),
+            modifier = modifier
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(groups) { group ->
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.outlinedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                        
-                        // Tab 选择器
-                        TabRow(
-                            selectedTabIndex = selectedTab,
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ) {
-                            Tab(
-                                selected = selectedTab == 0,
-                                onClick = { selectedTab = 0 },
-                                text = { Text(context.getString(R.string.duplicate_passwords)) }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.used_in_accounts, group.count),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("${group.entries.size}") }
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        group.entries.forEach { entry ->
+                            SecurityDetailEntryCard(
+                                title = entry.title,
+                                subtitle = entry.username,
+                                detail = entry.website,
+                                icon = Icons.Default.VpnKey,
+                                onClick = { onNavigateToPassword(entry.id) }
                             )
-                            Tab(
-                                selected = selectedTab == 1,
-                                onClick = { selectedTab = 1 },
-                                text = { Text(context.getString(R.string.duplicate_urls)) }
-                            )
-                            Tab(
-                                selected = selectedTab == 2,
-                                onClick = { selectedTab = 2 },
-                                text = { Text(context.getString(R.string.compromised_passwords)) }
-                            )
-                            Tab(
-                                selected = selectedTab == 3,
-                                onClick = { selectedTab = 3 },
-                                text = { Text(context.getString(R.string.no_twofa)) }
-                            )
-                        }
-                        
-                        // 详细列表
-                        when (selectedTab) {
-                            0 -> DuplicatePasswordsList(analysisData.duplicatePasswords, onNavigateToPassword)
-                            1 -> DuplicateUrlsList(analysisData.duplicateUrls, onNavigateToPassword)
-                            2 -> CompromisedPasswordsList(analysisData.compromisedPasswords, onNavigateToPassword)
-                            3 -> No2FAAccountsList(analysisData.no2FAAccounts, onNavigateToPassword)
                         }
                     }
                 }
             }
-            
-            // 错误提示
-            analysisData.error?.let { error ->
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                ) {
-                    Text(error)
+        }
+    }
+}
+
+@Composable
+private fun DuplicateUrlsFlatList(
+    groups: List<DuplicateUrlGroup>,
+    onNavigateToPassword: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (groups.isEmpty()) {
+        EmptyStateView(
+            icon = Icons.Default.CheckCircle,
+            message = stringResource(R.string.no_duplicate_urls),
+            modifier = modifier
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(groups) { group ->
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.outlinedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Public,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = group.url,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("${group.count}") }
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        group.entries.forEach { entry ->
+                            SecurityDetailEntryCard(
+                                title = entry.title,
+                                subtitle = entry.username,
+                                detail = entry.website,
+                                icon = Icons.Default.Link,
+                                onClick = { onNavigateToPassword(entry.id) }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -156,854 +808,227 @@ fun SecurityAnalysisScreen(
 }
 
 @Composable
-fun InitialAnalysisView(onStartAnalysis: () -> Unit) {
-    val context = LocalContext.current
-    val colorScheme = MaterialTheme.colorScheme
-    
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+private fun CompromisedFlatList(
+    items: List<CompromisedPassword>,
+    onNavigateToPassword: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) {
+        EmptyStateView(
+            icon = Icons.Default.CheckCircle,
+            message = stringResource(R.string.no_compromised_passwords),
+            modifier = modifier
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 大图标
-        Icon(
-            imageVector = Icons.Default.Shield,
-            contentDescription = null,
-            modifier = Modifier.size(120.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        // 标题
-        Text(
-            text = context.getString(R.string.security_analysis),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 描述
-        Text(
-            text = context.getString(R.string.security_analysis_description),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 功能列表
-        Column(
-            modifier = Modifier.padding(vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            FeatureItem(
-                icon = Icons.Default.ContentCopy,
-                text = context.getString(R.string.duplicate_passwords),
-                color = securityDuplicatePasswordColor(colorScheme)
-            )
-            FeatureItem(
-                icon = Icons.Default.Link,
-                text = context.getString(R.string.duplicate_urls),
-                color = securityDuplicateUrlColor(colorScheme)
-            )
-            FeatureItem(
+        items(items) { item ->
+            SecurityDetailEntryCard(
+                title = item.entry.title,
+                subtitle = item.entry.username,
+                detail = stringResource(R.string.breached_times, item.breachCount),
                 icon = Icons.Default.Warning,
-                text = context.getString(R.string.compromised_passwords),
-                color = securityCompromisedColor(colorScheme)
-            )
-            FeatureItem(
-                icon = Icons.Default.Security,
-                text = context.getString(R.string.no_twofa),
-                color = securityTwoFaColor(colorScheme)
+                onClick = { onNavigateToPassword(item.entry.id) }
             )
         }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        // 开始分析按钮
-        Button(
-            onClick = onStartAnalysis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = context.getString(R.string.start_security_analysis),
-                style = MaterialTheme.typography.titleMedium
+    }
+}
+
+@Composable
+private fun No2faFlatList(
+    items: List<No2FAAccount>,
+    onNavigateToPassword: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) {
+        EmptyStateView(
+            icon = Icons.Default.CheckCircle,
+            message = stringResource(R.string.all_accounts_have_twofa),
+            modifier = modifier
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(items) { item ->
+            SecurityDetailEntryCard(
+                title = item.entry.title,
+                subtitle = item.entry.username,
+                detail = item.domain,
+                icon = Icons.Default.Lock,
+                onClick = { onNavigateToPassword(item.entry.id) }
             )
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 提示文本
-        Text(
-            text = context.getString(R.string.analysis_may_take_time),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+    }
+}
+
+@Composable
+private fun InactivePasskeyFlatList(
+    items: List<InactivePasskeyAccount>,
+    onNavigateToPassword: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) {
+        EmptyStateView(
+            icon = Icons.Default.CheckCircle,
+            message = stringResource(R.string.all_accounts_have_passkeys),
+            modifier = modifier
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(items) { item ->
+            SecurityDetailEntryCard(
+                title = item.entry.title,
+                subtitle = item.entry.username,
+                detail = item.domain,
+                icon = Icons.Default.VpnKey,
+                onClick = { onNavigateToPassword(item.entry.id) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecurityDetailEntryCard(
+    title: String,
+    subtitle: String?,
+    detail: String?,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
+        )
+    ) {
+        ListItem(
+            leadingContent = {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                            shape = RoundedCornerShape(10.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            },
+            headlineContent = {
+                Text(
+                    text = title.ifBlank { "—" },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (!subtitle.isNullOrBlank()) {
+                        Text(
+                            text = subtitle,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    if (!detail.isNullOrBlank()) {
+                        Text(
+                            text = detail,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            trailingContent = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         )
     }
 }
 
 @Composable
-fun FeatureItem(icon: ImageVector, text: String, color: Color) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
+private fun EmptyStateView(
+    icon: ImageVector,
+    message: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(24.dp)
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(52.dp)
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge
-        )
-    }
-}
-
-@Composable
-fun SecurityStatisticsCardsCompact(
-    duplicatePasswordsCount: Int,
-    duplicateUrlsCount: Int,
-    compromisedPasswordsCount: Int,
-    no2FAAccountsCount: Int,
-    onStartAnalysis: () -> Unit
-) {
-    val context = LocalContext.current
-    val colorScheme = MaterialTheme.colorScheme
-    
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = context.getString(R.string.security_overview),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = onStartAnalysis) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = context.getString(R.string.refresh),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // 使用 FlowRow 布局，自动换行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CompactStatCard(
-                    icon = Icons.Default.ContentCopy,
-                    count = duplicatePasswordsCount,
-                    label = context.getString(R.string.duplicate_short),
-                    color = securityDuplicatePasswordColor(colorScheme),
-                    modifier = Modifier.weight(1f, fill = true)
-                )
-                CompactStatCard(
-                    icon = Icons.Default.Link,
-                    count = duplicateUrlsCount,
-                    label = context.getString(R.string.duplicate_url_short),
-                    color = securityDuplicateUrlColor(colorScheme),
-                    modifier = Modifier.weight(1f, fill = true)
-                )
-                CompactStatCard(
-                    icon = Icons.Default.Warning,
-                    count = compromisedPasswordsCount,
-                    label = context.getString(R.string.compromised_short),
-                    color = securityCompromisedColor(colorScheme),
-                    modifier = Modifier.weight(1f, fill = true)
-                )
-                CompactStatCard(
-                    icon = Icons.Default.Security,
-                    count = no2FAAccountsCount,
-                    label = context.getString(R.string.no_2fa_short),
-                    color = securityTwoFaColor(colorScheme),
-                    modifier = Modifier.weight(1f, fill = true)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun CompactStatCard(
-    icon: ImageVector,
-    count: Int,
-    label: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.1f)
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = color,
-                maxLines = 1,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-fun AnalysisProgressView(progress: Int) {
-    val context = LocalContext.current
-    
-    // 平滑的进度动画
-    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = progress / 100f,
-        animationSpec = androidx.compose.animation.core.tween(
-            durationMillis = 600,
-            easing = androidx.compose.animation.core.FastOutSlowInEasing
-        ),
-        label = "progress"
-    )
-    
-    // 呼吸动画 - 图标大小（放大缩小）
-    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "breathing")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(
-                durationMillis = 1500,
-                easing = androidx.compose.animation.core.FastOutSlowInEasing
-            ),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "breathing_scale"
-    )
-    
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            contentAlignment = Alignment.Center
-        ) {
-            // 背景圆环
-            CircularProgressIndicator(
-                progress = { 1f },
-                modifier = Modifier.size(120.dp),
-                strokeWidth = 8.dp,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            )
-            
-            // 进度圆环 - 使用动画进度
-            CircularProgressIndicator(
-                progress = { animatedProgress },
-                modifier = Modifier.size(120.dp),
-                strokeWidth = 8.dp,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            
-            // 中心呼吸图标（只有缩放动画）
-            Icon(
-                imageVector = Icons.Default.Shield,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp * scale),
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        // 分析文本
-        Text(
-            text = context.getString(R.string.analyzing_security),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // 进度百分比
-        Text(
-            text = "$progress%",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 进度阶段提示
-        Text(
-            text = getProgressMessage(progress, context),
-            style = MaterialTheme.typography.bodyMedium,
+            text = message,
+            style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
     }
 }
 
-private fun getProgressMessage(progress: Int, context: android.content.Context): String {
-    return when {
-        progress < 25 -> context.getString(R.string.checking_duplicate_passwords)
-        progress < 50 -> context.getString(R.string.checking_duplicate_urls)
-        progress < 75 -> context.getString(R.string.checking_compromised_passwords)
-        progress < 100 -> context.getString(R.string.checking_2fa_status)
-        else -> context.getString(R.string.analysis_complete)
-    }
-}
-
-@Composable
-fun SecurityStatisticsCards(
-    duplicatePasswordsCount: Int,
-    duplicateUrlsCount: Int,
-    compromisedPasswordsCount: Int,
-    no2FAAccountsCount: Int
-) {
-    val context = LocalContext.current
-    val colorScheme = MaterialTheme.colorScheme
-    
-    Column(modifier = Modifier.padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            StatCard(
-                icon = Icons.Default.ContentCopy,
-                title = context.getString(R.string.duplicate_passwords),
-                count = duplicatePasswordsCount,
-                color = if (duplicatePasswordsCount > 0) {
-                    securityDuplicatePasswordColor(colorScheme)
-                } else {
-                    securitySafeColor(colorScheme)
-                },
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                icon = Icons.Default.Link,
-                title = context.getString(R.string.duplicate_urls),
-                count = duplicateUrlsCount,
-                color = if (duplicateUrlsCount > 0) {
-                    securityDuplicateUrlColor(colorScheme)
-                } else {
-                    securitySafeColor(colorScheme)
-                },
-                modifier = Modifier.weight(1f)
-            )
+private fun scopeDisplayName(
+    scope: SecurityAnalysisScopeOption,
+    context: android.content.Context
+): String {
+    return when (scope.type) {
+        SecurityAnalysisScopeType.ALL -> context.getString(R.string.security_analysis_scope_all)
+        SecurityAnalysisScopeType.LOCAL -> context.getString(R.string.security_analysis_scope_local)
+        SecurityAnalysisScopeType.KEEPASS -> {
+            val name = scope.displayName
+            if (!name.isNullOrBlank()) {
+                "KeePass · $name"
+            } else {
+                context.getString(R.string.security_analysis_scope_keepass, scope.sourceId ?: 0L)
+            }
         }
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            StatCard(
-                icon = Icons.Default.Warning,
-                title = context.getString(R.string.compromised_passwords),
-                count = compromisedPasswordsCount,
-                color = if (compromisedPasswordsCount > 0) {
-                    securityCompromisedColor(colorScheme)
-                } else {
-                    securitySafeColor(colorScheme)
-                },
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                icon = Icons.Default.Security,
-                title = context.getString(R.string.no_twofa),
-                count = no2FAAccountsCount,
-                color = if (no2FAAccountsCount > 0) {
-                    securityTwoFaColor(colorScheme)
-                } else {
-                    securitySafeColor(colorScheme)
-                },
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-fun StatCard(
-    icon: ImageVector,
-    title: String,
-    count: Int,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.height(120.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.1f)
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(32.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-@Composable
-fun DuplicatePasswordsList(
-    groups: List<DuplicatePasswordGroup>,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    
-    if (groups.isEmpty()) {
-        EmptyStateView(
-            icon = Icons.Default.CheckCircle,
-            message = context.getString(R.string.no_duplicate_passwords)
-        )
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(groups) { group ->
-                DuplicatePasswordCard(group, onNavigateToPassword)
+        SecurityAnalysisScopeType.BITWARDEN -> {
+            val name = scope.displayName
+            if (!name.isNullOrBlank()) {
+                "Bitwarden · $name"
+            } else {
+                context.getString(R.string.security_analysis_scope_bitwarden, scope.sourceId ?: 0L)
             }
         }
     }
 }
-
-@Composable
-fun DuplicatePasswordCard(
-    group: DuplicatePasswordGroup,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    var expanded by remember { mutableStateOf(false) }
-    
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = context.getString(R.string.used_in_accounts, group.count),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "● ● ● ● ● ● ● ●",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { expanded = !expanded }) {
-                    Icon(
-                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null
-                    )
-                }
-            }
-            
-            if (expanded) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Divider()
-                group.entries.forEach { entry ->
-                    PasswordItemRow(entry, onNavigateToPassword)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun DuplicateUrlsList(
-    groups: List<DuplicateUrlGroup>,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    
-    if (groups.isEmpty()) {
-        EmptyStateView(
-            icon = Icons.Default.CheckCircle,
-            message = context.getString(R.string.no_duplicate_urls)
-        )
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(groups) { group ->
-                DuplicateUrlCard(group, onNavigateToPassword)
-            }
-        }
-    }
-}
-
-@Composable
-fun DuplicateUrlCard(
-    group: DuplicateUrlGroup,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    var expanded by remember { mutableStateOf(false) }
-    
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = group.url,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = context.getString(R.string.count_accounts, group.count),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { expanded = !expanded }) {
-                    Icon(
-                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null
-                    )
-                }
-            }
-            
-            if (expanded) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Divider()
-                group.entries.forEach { entry ->
-                    PasswordItemRow(entry, onNavigateToPassword)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun CompromisedPasswordsList(
-    passwords: List<CompromisedPassword>,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    
-    if (passwords.isEmpty()) {
-        EmptyStateView(
-            icon = Icons.Default.CheckCircle,
-            message = context.getString(R.string.no_compromised_passwords)
-        )
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(passwords) { item ->
-                CompromisedPasswordCard(item, onNavigateToPassword)
-            }
-        }
-    }
-}
-
-@Composable
-fun CompromisedPasswordCard(
-    item: CompromisedPassword,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    val alertColor = MaterialTheme.colorScheme.error
-    
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onNavigateToPassword(item.entry.id) },
-        colors = CardDefaults.cardColors(
-            containerColor = alertColor.copy(alpha = 0.1f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.entry.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                if (item.entry.username.isNotBlank()) {
-                    Text(
-                        text = item.entry.username,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = alertColor,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = context.getString(R.string.breached_times, item.breachCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = alertColor
-                    )
-                }
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-fun No2FAAccountsList(
-    accounts: List<No2FAAccount>,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    
-    if (accounts.isEmpty()) {
-        EmptyStateView(
-            icon = Icons.Default.CheckCircle,
-            message = context.getString(R.string.all_accounts_have_twofa)
-        )
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(accounts) { account ->
-                No2FAAccountCard(account, onNavigateToPassword)
-            }
-        }
-    }
-}
-
-@Composable
-fun No2FAAccountCard(
-    account: No2FAAccount,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    val context = LocalContext.current
-    val twoFaColor = securityTwoFaColor(MaterialTheme.colorScheme)
-    
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onNavigateToPassword(account.entry.id) },
-        colors = CardDefaults.cardColors(
-            containerColor = if (account.supports2FA) 
-                twoFaColor.copy(alpha = 0.1f)
-            else 
-                MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = account.entry.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = account.domain,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (account.supports2FA) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = context.getString(R.string.supports_twofa),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = twoFaColor
-                    )
-                }
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-fun PasswordItemRow(
-    entry: PasswordEntry,
-    onNavigateToPassword: (Long) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onNavigateToPassword(entry.id) }
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = entry.title,
-                style = MaterialTheme.typography.bodyLarge
-            )
-            if (entry.username.isNotBlank()) {
-                Text(
-                    text = entry.username,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Icon(
-            Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
-        )
-    }
-}
-
-@Composable
-fun EmptyStateView(
-    icon: ImageVector,
-    message: String
-) {
-    val safeColor = securitySafeColor(MaterialTheme.colorScheme)
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = safeColor
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = message,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-private fun securityDuplicatePasswordColor(colorScheme: ColorScheme): Color = colorScheme.tertiary
-
-private fun securityDuplicateUrlColor(colorScheme: ColorScheme): Color = colorScheme.secondary
-
-private fun securityCompromisedColor(colorScheme: ColorScheme): Color = colorScheme.error
-
-private fun securityTwoFaColor(colorScheme: ColorScheme): Color = colorScheme.primary
-
-private fun securitySafeColor(colorScheme: ColorScheme): Color = colorScheme.primary

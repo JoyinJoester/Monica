@@ -97,6 +97,7 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY = stringPreferencesKey("password_list_quick_folder_style") // 密码列表快捷文件夹展示样式
         private val PASSWORD_LIST_TOP_MODULES_ORDER_KEY = stringPreferencesKey("password_list_top_modules_order") // 密码列表顶部模块顺序
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
+        private val SECURITY_ANALYSIS_AUTO_ENABLED_KEY = booleanPreferencesKey("security_analysis_auto_enabled") // 安全分析自动分析
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
         private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
         
@@ -299,6 +300,7 @@ class SettingsManager(private val context: Context) {
             validatorSmoothProgress = preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] ?: true,
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
             hideFabOnScroll = preferences[HIDE_FAB_ON_SCROLL_KEY] ?: false,
+            securityAnalysisAutoEnabled = preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] ?: false,
             bitwardenBottomStatusBarEnabled = preferences[BITWARDEN_BOTTOM_STATUS_BAR_ENABLED_KEY] ?: false,
             copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
             notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
@@ -505,6 +507,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateHideFabOnScroll(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[HIDE_FAB_ON_SCROLL_KEY] = enabled
+        }
+    }
+
+    suspend fun updateSecurityAnalysisAutoEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] = enabled
         }
     }
 

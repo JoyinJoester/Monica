@@ -1197,6 +1197,27 @@
     <string name="duplicate_url_short">Dup URLs</string>
     <string name="compromised_short">Breached</string>
     <string name="no_2fa_short">No 2FA</string>
+    <string name="inactive_passkeys">Available Passkeys</string>
+    <string name="inactive_passkeys_short">Passkeys</string>
+    <string name="security_analysis_realtime">Live</string>
+    <string name="security_analysis_in_progress_short">Analyzing</string>
+    <string name="security_analysis_score">Security score</string>
+    <string name="security_analysis_score_short">Score</string>
+    <string name="security_analysis_auto_toggle_title">Auto analysis</string>
+    <string name="security_analysis_auto_toggle_subtitle">Enable to analyze automatically; disable for manual analyze only.</string>
+    <string name="security_strength_distribution">Password strength distribution</string>
+    <string name="security_strength_medium">Medium</string>
+    <string name="security_strength_very_strong">Very strong</string>
+    <string name="security_analysis_scope_title">Analysis scope</string>
+    <string name="security_analysis_scope_label">Database scope</string>
+    <string name="security_analysis_scope_all">All databases</string>
+    <string name="security_analysis_scope_local">Monica database</string>
+    <string name="security_analysis_scope_keepass">KeePass DB #%1$d</string>
+    <string name="security_analysis_scope_bitwarden">Bitwarden Vault #%1$d</string>
+    <string name="security_risk_cards_title">Risk categories</string>
+    <string name="security_issue_duplicate_password_subtitle">%1$d groups · %2$d items</string>
+    <string name="security_issue_duplicate_url_subtitle">%1$d groups · %2$d items</string>
+    <string name="security_issue_simple_count_subtitle">%1$d items</string>
     <string name="checking_duplicate_passwords">Checking for duplicate passwords…</string>
     <string name="checking_duplicate_urls">Checking for duplicate URLs…</string>
     <string name="checking_compromised_passwords">Checking for password breaches…</string>
@@ -1210,6 +1231,7 @@
     <string name="no_duplicate_urls">Great! No duplicate URLs found</string>
     <string name="no_compromised_passwords">Excellent! No compromised passwords found</string>
     <string name="all_accounts_have_twofa">All important accounts have 2FA enabled</string>
+    <string name="all_accounts_have_passkeys">Great! No accounts are waiting for passkey setup</string>
     <string name="pwned_passwords_attribution">Powered by Have I Been Pwned</string>
     <string name="twofa_directory_attribution">Reference: 2FA Directory</string>
     
