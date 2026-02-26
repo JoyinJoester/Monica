@@ -589,6 +589,7 @@ fun SimpleMainScreen(
     var onSelectAllPasswords by remember { mutableStateOf({}) }
     var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
     var onMoveToCategoryPasswords by remember { mutableStateOf({}) }
+    var onManualStackPasswords by remember { mutableStateOf({}) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     
     val appSettings by settingsViewModel.settings.collectAsState()
@@ -1331,13 +1332,14 @@ fun SimpleMainScreen(
                                 onPasswordClick = { password ->
                                     handlePasswordDetailOpen(password.id)
                                 },
-                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
+                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
                                     isPasswordSelectionMode = isSelectionMode
                                     selectedPasswordCount = count
                                     onExitPasswordSelection = onExit
                                     onSelectAllPasswords = onSelectAll
                                     onFavoriteSelectedPasswords = onFavorite
                                     onMoveToCategoryPasswords = onMoveToCategory
+                                    onManualStackPasswords = onStack
                                     onDeleteSelectedPasswords = onDelete
                                 }
                             )
@@ -1444,6 +1446,7 @@ fun SimpleMainScreen(
                                 onSelectAll = onSelectAllPasswords,
                                 onFavorite = onFavoriteSelectedPasswords,
                                 onMoveToCategory = onMoveToCategoryPasswords,
+                                onStack = onManualStackPasswords,
                                 onDelete = onDeleteSelectedPasswords
                             )
                         }
@@ -1587,13 +1590,14 @@ fun SimpleMainScreen(
                             onPasswordClick = { password ->
                                 handlePasswordDetailOpen(password.id)
                             },
-                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onDelete ->
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
                                 isPasswordSelectionMode = isSelectionMode
                                 selectedPasswordCount = count
                                 onExitPasswordSelection = onExit
                                 onSelectAllPasswords = onSelectAll
                                 onFavoriteSelectedPasswords = onFavorite
                                 onMoveToCategoryPasswords = onMoveToCategory
+                                onManualStackPasswords = onStack
                                 onDeleteSelectedPasswords = onDelete
                             }
                         )
@@ -1932,6 +1936,7 @@ fun SimpleMainScreen(
                         onSelectAll = onSelectAllPasswords,
                         onFavorite = onFavoriteSelectedPasswords,
                         onMoveToCategory = onMoveToCategoryPasswords,
+                        onStack = onManualStackPasswords,
                         onDelete = onDeleteSelectedPasswords
                     )
                 }

@@ -321,7 +321,10 @@ enum class PasswordListQuickFilterItem {
     TWO_FA,
     NOTES,
     UNCATEGORIZED,
-    LOCAL_ONLY;
+    LOCAL_ONLY,
+    MANUAL_STACK_ONLY,
+    NEVER_STACK,
+    UNSTACKED;
 
     companion object {
         val DEFAULT_ORDER: List<PasswordListQuickFilterItem> = listOf(

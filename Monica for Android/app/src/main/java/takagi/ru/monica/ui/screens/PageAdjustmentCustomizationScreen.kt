@@ -199,12 +199,15 @@ fun PasswordListCustomizationScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val supportedQuickFilterItems = remember {
-        setOf(
+        listOf(
             PasswordListQuickFilterItem.FAVORITE,
             PasswordListQuickFilterItem.TWO_FA,
             PasswordListQuickFilterItem.NOTES,
             PasswordListQuickFilterItem.UNCATEGORIZED,
-            PasswordListQuickFilterItem.LOCAL_ONLY
+            PasswordListQuickFilterItem.LOCAL_ONLY,
+            PasswordListQuickFilterItem.MANUAL_STACK_ONLY,
+            PasswordListQuickFilterItem.NEVER_STACK,
+            PasswordListQuickFilterItem.UNSTACKED
         )
     }
     val selectedQuickFilterItems = remember(settings.passwordListQuickFilterItems) {
@@ -265,6 +268,21 @@ fun PasswordListCustomizationScreen(
             item = PasswordListQuickFilterItem.LOCAL_ONLY,
             title = stringResource(R.string.password_list_quick_filter_local_only),
             icon = Icons.Default.Key
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.MANUAL_STACK_ONLY,
+            title = stringResource(R.string.password_list_quick_filter_manual_stack_only),
+            icon = Icons.Default.Apps
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.NEVER_STACK,
+            title = stringResource(R.string.password_list_quick_filter_never_stack),
+            icon = Icons.Default.LinearScale
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.UNSTACKED,
+            title = stringResource(R.string.password_list_quick_filter_unstacked),
+            icon = Icons.Default.Straighten
         )
     )
 
@@ -382,6 +400,30 @@ fun PasswordListCustomizationScreen(
                                                 selected = false,
                                                 onClick = {},
                                                 label = { Text(text = stringResource(R.string.password_list_quick_filter_local_only)) }
+                                            )
+                                        }
+
+                                        PasswordListQuickFilterItem.MANUAL_STACK_ONLY -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_manual_stack_only)) }
+                                            )
+                                        }
+
+                                        PasswordListQuickFilterItem.NEVER_STACK -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_never_stack)) }
+                                            )
+                                        }
+
+                                        PasswordListQuickFilterItem.UNSTACKED -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_unstacked)) }
                                             )
                                         }
                                     }

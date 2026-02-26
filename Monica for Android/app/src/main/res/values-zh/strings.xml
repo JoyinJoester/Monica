@@ -1031,6 +1031,18 @@
     <string name="deleted_items">已删除 %d 项</string>
     <string name="deleted">已删除</string>
     <string name="batch_favorite">批量收藏</string>
+    <string name="batch_stack">堆叠</string>
+    <string name="batch_stack_confirm_title">设置选中密码的堆叠模式？</string>
+    <string name="batch_stack_confirm_message">将对选中的 %1$d 个密码应用以下模式。</string>
+    <string name="batch_stack_mode_stack">堆叠</string>
+    <string name="batch_stack_mode_stack_desc">将选中密码归为一个自定义堆叠，手动堆叠优先级高于自动堆叠。</string>
+    <string name="batch_stack_mode_auto">取消堆叠模式</string>
+    <string name="batch_stack_mode_auto_desc">取消自定义堆叠，回到自动堆叠逻辑。</string>
+    <string name="batch_stack_mode_never">不堆叠</string>
+    <string name="batch_stack_mode_never_desc">选中密码将永不参与堆叠，始终以独立卡片显示。</string>
+    <string name="batch_stack_success">已堆叠 %1$d 个密码</string>
+    <string name="batch_stack_auto_success">已将 %1$d 个密码恢复为自动堆叠</string>
+    <string name="batch_stack_never_success">已将 %1$d 个密码设为不堆叠</string>
     <string name="batch_favorited">已将 %d 个密码添加到收藏</string>
     <string name="batch_unfavorited">已将 %d 个密码从收藏中移除</string>
     <string name="group_favorited">已将整组 %d 个密码添加到收藏</string>
@@ -2392,7 +2404,7 @@
     <string name="password_list_preview_desc">预览会根据当前开启项与排序实时更新。</string>
     <string name="password_list_preview_empty">当前未开启任何顶部模块，请在下方打开至少一项。</string>
     <string name="password_list_quick_filters_switch_title">快捷筛选开关</string>
-    <string name="password_list_quick_filters_switch_desc">开启后在密码列表顶部显示快捷筛选按钮，支持收藏、2FA、备注、未分类、仅本地。</string>
+    <string name="password_list_quick_filters_switch_desc">开启后在密码列表顶部显示快捷筛选按钮，支持收藏、2FA、备注、未分类、仅本地、仅自定义堆叠、不堆叠、未堆叠。</string>
     <string name="password_list_quick_filters_content_title">快捷筛选显示内容</string>
     <string name="password_list_quick_filters_content_desc">可单独开关筛选项，并拖拽调整显示顺序。</string>
     <string name="password_list_quick_folders_switch_title">快捷文件夹开关</string>
@@ -2405,6 +2417,9 @@
     <string name="password_list_quick_filter_notes">备注</string>
     <string name="password_list_quick_filter_uncategorized">未分类</string>
     <string name="password_list_quick_filter_local_only">仅本地</string>
+    <string name="password_list_quick_filter_manual_stack_only">仅自定义堆叠</string>
+    <string name="password_list_quick_filter_never_stack">不堆叠</string>
+    <string name="password_list_quick_filter_unstacked">未堆叠</string>
     <string name="password_list_quick_folder_back">返回上一级目录</string>
     <string name="password_list_quick_folder_back_subtitle">返回到父目录</string>
     <string name="password_list_quick_folder_subtitle">进入子目录</string>

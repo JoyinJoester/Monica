@@ -214,6 +214,7 @@ fun PasswordListContent(
         onSelectAll: () -> Unit,
         onFavorite: () -> Unit,
         onMoveToCategory: () -> Unit,
+        onStack: () -> Unit,
         onDelete: () -> Unit
     ) -> Unit
 ) {
@@ -257,6 +258,8 @@ fun PasswordListContent(
     var selectedPasswords by remember { mutableStateOf(setOf<Long>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var showMoveToCategoryDialog by remember { mutableStateOf(false) }
+    var showManualStackConfirmDialog by remember { mutableStateOf(false) }
+    var selectedManualStackMode by remember { mutableStateOf(ManualStackDialogMode.STACK) }
     
     // 详情对话框状态
     var showDetailDialog by remember { mutableStateOf(false) }
@@ -327,6 +330,11 @@ fun PasswordListContent(
     var quickFilterNotes by rememberSaveable { mutableStateOf(false) }
     var quickFilterUncategorized by rememberSaveable { mutableStateOf(false) }
     var quickFilterLocalOnly by rememberSaveable { mutableStateOf(false) }
+    var quickFilterManualStackOnly by rememberSaveable { mutableStateOf(false) }
+    var quickFilterNeverStack by rememberSaveable { mutableStateOf(false) }
+    var quickFilterUnstacked by rememberSaveable { mutableStateOf(false) }
+    var manualStackGroupByEntryId by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val configuredQuickFilterItems = appSettings.passwordListQuickFilterItems
     val quickFolderStyle = appSettings.passwordListQuickFolderStyle
     var quickFolderRootKey by rememberSaveable { mutableStateOf(QUICK_FOLDER_ROOT_ALL) }
@@ -345,6 +353,9 @@ fun PasswordListContent(
             quickFilterNotes = false
             quickFilterUncategorized = false
             quickFilterLocalOnly = false
+            quickFilterManualStackOnly = false
+            quickFilterNeverStack = false
+            quickFilterUnstacked = false
         }
     }
 
@@ -363,6 +374,15 @@ fun PasswordListContent(
         }
         if (takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY !in configuredQuickFilterItems) {
             quickFilterLocalOnly = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY !in configuredQuickFilterItems) {
+            quickFilterManualStackOnly = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK !in configuredQuickFilterItems) {
+            quickFilterNeverStack = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED !in configuredQuickFilterItems) {
+            quickFilterUnstacked = false
         }
     }
 
@@ -493,6 +513,107 @@ fun PasswordListContent(
             crumbs
         }
     }
+
+    val buildGroupedPasswordsForEntries: (List<takagi.ru.monica.data.PasswordEntry>) -> Map<String, List<takagi.ru.monica.data.PasswordEntry>> =
+        { sourceEntries ->
+            val filteredEntries = sourceEntries
+
+            // 步骤1: 先按"除密码外的信息"合并；始终展开模式下跳过合并，逐条显示
+            val mergedByInfo = if (effectiveStackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+                filteredEntries.sortedBy { it.sortOrder }.map { listOf(it) }
+            } else {
+                filteredEntries
+                    .groupBy { entry ->
+                        if (entry.id in noStackEntryIds) {
+                            "$NO_STACK_GROUP_KEY_PREFIX${entry.id}"
+                        } else {
+                            manualStackGroupByEntryId[entry.id]
+                                ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
+                                ?: getPasswordInfoKey(entry)
+                        }
+                    }
+                    .map { (_, entries) ->
+                        entries.sortedBy { it.sortOrder }
+                    }
+            }
+
+            // 步骤2: 再按显示模式分组
+            val groupedAndSorted = if (isLocalOnlyView) {
+                filteredEntries
+                    .sortedBy { it.sortOrder }
+                    .associate { entry -> "entry_${entry.id}" to listOf(entry) }
+            } else {
+                when (effectiveGroupMode) {
+                    "title" -> {
+                        mergedByInfo
+                            .groupBy { entries ->
+                                val first = entries.first()
+                                if (first.id in noStackEntryIds) {
+                                    "$NO_STACK_GROUP_KEY_PREFIX${first.id}"
+                                } else {
+                                    manualStackGroupByEntryId[first.id]
+                                        ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
+                                        ?: first.title.ifBlank { context.getString(R.string.untitled) }
+                                }
+                            }
+                            .mapValues { (_, groups) -> groups.flatten() }
+                            .toList()
+                            .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
+                                val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
+                                val cardType = when {
+                                    infoKeyGroups.size > 1 -> 3
+                                    infoKeyGroups.size == 1 && passwords.size > 1 -> 2
+                                    else -> 1
+                                }
+                                val anyFavorited = passwords.any { it.isFavorite }
+                                val favoriteBonus = if (anyFavorited) 10 else 0
+                                favoriteBonus.toDouble() + cardType.toDouble()
+                            }.thenBy { (title, _) ->
+                                title
+                            })
+                            .toMap()
+                    }
+
+                    else -> {
+                        mergedByInfo
+                            .groupBy { entries ->
+                                val first = entries.first()
+                                if (first.id in noStackEntryIds) {
+                                    "$NO_STACK_GROUP_KEY_PREFIX${first.id}"
+                                } else {
+                                    manualStackGroupByEntryId[first.id]
+                                        ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
+                                        ?: getGroupKeyForMode(first, effectiveGroupMode)
+                                }
+                            }
+                            .mapValues { (_, groups) -> groups.flatten() }
+                            .toList()
+                            .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
+                                val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
+                                val cardType = when {
+                                    infoKeyGroups.size > 1 -> 3
+                                    infoKeyGroups.size == 1 && passwords.size > 1 -> 2
+                                    else -> 1
+                                }
+                                val anyFavorited = passwords.any { it.isFavorite }
+                                val favoriteBonus = if (anyFavorited) 10 else 0
+                                favoriteBonus.toDouble() + cardType.toDouble()
+                            }.thenBy { (_, passwords) ->
+                                passwords.firstOrNull()?.sortOrder ?: Int.MAX_VALUE
+                            })
+                            .toMap()
+                    }
+                }
+            }
+
+            if (effectiveStackCardMode == StackCardMode.ALWAYS_EXPANDED) {
+                groupedAndSorted.values.flatten()
+                    .map { entry -> "entry_${entry.id}" to listOf(entry) }
+                    .toMap()
+            } else {
+                groupedAndSorted
+            }
+        }
     
     val visiblePasswordEntries = remember(
         passwordEntries,
@@ -503,7 +624,15 @@ fun PasswordListContent(
         quickFilter2fa,
         quickFilterNotes,
         quickFilterUncategorized,
-        quickFilterLocalOnly
+        quickFilterLocalOnly,
+        quickFilterManualStackOnly,
+        quickFilterNeverStack,
+        quickFilterUnstacked,
+        effectiveGroupMode,
+        effectiveStackCardMode,
+        isLocalOnlyView,
+        manualStackGroupByEntryId,
+        noStackEntryIds
     ) {
         var filtered = passwordEntries.filter { it.id !in deletedItemIds }
         if (appSettings.passwordListQuickFiltersEnabled) {
@@ -524,6 +653,22 @@ fun PasswordListContent(
                     it.keepassDatabaseId == null && it.bitwardenVaultId == null
                 }
             }
+            if (quickFilterManualStackOnly && takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems) {
+                filtered = filtered.filter { manualStackGroupByEntryId.containsKey(it.id) }
+            }
+            if (quickFilterNeverStack && takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) {
+                filtered = filtered.filter { it.id in noStackEntryIds }
+            }
+            if (quickFilterUnstacked && takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems) {
+                val singleCardEntryIds = buildGroupedPasswordsForEntries(filtered)
+                    .values
+                    .asSequence()
+                    .filter { group -> group.size == 1 }
+                    .flatten()
+                    .map { it.id }
+                    .toSet()
+                filtered = filtered.filter { it.id in singleCardEntryIds }
+            }
         }
         filtered
     }
@@ -533,110 +678,42 @@ fun PasswordListContent(
         val visibleIds = visiblePasswordEntries.map { it.id }.toSet()
         selectedPasswords = selectedPasswords.intersect(visibleIds)
     }
+
+    LaunchedEffect(passwordEntries, deletedItemIds) {
+        val allIds = passwordEntries
+            .asSequence()
+            .map { it.id }
+            .filter { id -> id !in deletedItemIds }
+            .toList()
+        if (allIds.isEmpty()) {
+            manualStackGroupByEntryId = emptyMap()
+            noStackEntryIds = emptySet()
+            return@LaunchedEffect
+        }
+        val fieldMap = viewModel.getCustomFieldsByEntryIds(allIds)
+        manualStackGroupByEntryId = fieldMap.mapNotNull { (entryId, fields) ->
+            val groupId = fields.firstOrNull {
+                it.title == MONICA_MANUAL_STACK_GROUP_FIELD_TITLE
+            }?.value?.takeIf { value -> value.isNotBlank() }
+            groupId?.let { entryId to it }
+        }.toMap()
+        noStackEntryIds = fieldMap.mapNotNull { (entryId, fields) ->
+            val hasNoStack = fields.any {
+                it.title == MONICA_NO_STACK_FIELD_TITLE && it.value != "0"
+            }
+            if (hasNoStack) entryId else null
+        }.toSet()
+    }
     
     // 根据分组模式对密码进行分组
-    val groupedPasswords = remember(visiblePasswordEntries, effectiveGroupMode, effectiveStackCardMode) {
-        val filteredEntries = visiblePasswordEntries
-        
-        // 步骤1: 先按"除密码外的信息"合并；始终展开模式下跳过合并，逐条显示
-        val mergedByInfo = if (effectiveStackCardMode == StackCardMode.ALWAYS_EXPANDED) {
-            filteredEntries.sortedBy { it.sortOrder }.map { listOf(it) }
-        } else {
-            filteredEntries
-                .groupBy { getPasswordInfoKey(it) }
-                .map { (_, entries) -> 
-                    // 如果有多个密码,保留所有但标记为合并组
-                    entries.sortedBy { it.sortOrder }
-                }
-        }
-        
-        // 步骤2: 再按显示模式分组
-        val groupedAndSorted = if (isLocalOnlyView) {
-            // 本筛选是“待上传清单”，直接扁平显示，禁止堆叠/二次分组。
-            filteredEntries
-                .sortedBy { it.sortOrder }
-                .associate { entry -> "entry_${entry.id}" to listOf(entry) }
-        } else {
-            when (effectiveGroupMode) {
-                "title" -> {
-                    // 按完整标题分组
-                    mergedByInfo
-                        .groupBy { entries -> entries.first().title.ifBlank { context.getString(R.string.untitled) } }
-                        .mapValues { (_, groups) -> groups.flatten() }
-                        .toList()
-                        .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
-                            // 计算卡片类型优先级
-                            val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
-                            val cardType = when {
-                                // 堆叠卡片: 多个不同信息的密码
-                                infoKeyGroups.size > 1 -> 3
-                                // 多密码卡片: 除密码外信息相同的多个密码
-                                infoKeyGroups.size == 1 && passwords.size > 1 -> 2
-                                // 单密码卡片: 只有一个密码
-                                else -> 1
-                            }
-                            
-                            // 计算收藏优先级 (收藏状态为主要优先级)
-                            val anyFavorited = passwords.any { it.isFavorite }
-                            val favoriteBonus = if (anyFavorited) 10 else 0
-                            
-                            // 组合分数: 收藏状态(主要) + 卡片类型(次要)
-                            favoriteBonus.toDouble() + cardType.toDouble()
-                        }.thenBy { (title, _) ->
-                            // 同优先级内按标题排序
-                            title
-                        })
-                        .toMap()
-                }
-                
-                else -> {
-                    // 按所选维度分组，并按优先级排序
-                    mergedByInfo
-                        .groupBy { entries -> getGroupKeyForMode(entries.first(), effectiveGroupMode) }
-                        .mapValues { (_, groups) -> groups.flatten() }
-                        .toList()
-                        .sortedWith(compareByDescending<Pair<String, List<takagi.ru.monica.data.PasswordEntry>>> { (_, passwords) ->
-                            // 计算卡片类型优先级
-                            val infoKeyGroups = passwords.groupBy { getPasswordInfoKey(it) }
-                            val cardType = when {
-                                // 堆叠卡片: 多个不同信息的密码
-                                infoKeyGroups.size > 1 -> 3
-                                // 多密码卡片: 除密码外信息相同的多个密码
-                                infoKeyGroups.size == 1 && passwords.size > 1 -> 2
-                                // 单密码卡片: 只有一个密码
-                                else -> 1
-                            }
-                            
-                            // 计算收藏优先级
-                            val favoriteCount = passwords.count { it.isFavorite }
-                            val totalCount = passwords.size
-                            
-                            // 计算收藏优先级 (收藏状态为主要优先级)
-                            val anyFavorited = passwords.any { it.isFavorite }
-                            val favoriteBonus = if (anyFavorited) 10 else 0
-                            
-                            // 组合分数: 收藏状态(主要) + 卡片类型(次要)
-                            favoriteBonus.toDouble() + cardType.toDouble()
-                        }.thenBy { (_, passwords) ->
-                            // 同优先级内按第一个卡片的 sortOrder 排序
-                            passwords.firstOrNull()?.sortOrder ?: Int.MAX_VALUE
-                        })
-                        .toMap()
-                }
-            }
-        }
-
-        // 如果是始终展开模式，强制拆分为单项列表，但保持排序顺序
-        if (effectiveStackCardMode == StackCardMode.ALWAYS_EXPANDED) {
-            groupedAndSorted.values.flatten()
-                .map { entry -> 
-                    // 使用唯一ID作为键，确保LazyColumn正确渲染
-                    "entry_${entry.id}" to listOf(entry)
-                }
-                .toMap()
-        } else {
-            groupedAndSorted
-        }
+    val groupedPasswords = remember(
+        visiblePasswordEntries,
+        effectiveGroupMode,
+        effectiveStackCardMode,
+        manualStackGroupByEntryId,
+        noStackEntryIds
+    ) {
+        buildGroupedPasswordsForEntries(visiblePasswordEntries)
     }
     
     // 定义回调函数
@@ -690,6 +767,19 @@ fun PasswordListContent(
     val moveToCategory = {
         showMoveToCategoryDialog = true
     }
+
+    val stackSelected = {
+        if (selectedPasswords.isEmpty()) {
+            android.widget.Toast.makeText(
+                context,
+                context.getString(R.string.multi_del_select_items),
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            selectedManualStackMode = ManualStackDialogMode.STACK
+            showManualStackConfirmDialog = true
+        }
+    }
     
     val deleteSelected = {
         showBatchDeleteDialog = true
@@ -704,6 +794,7 @@ fun PasswordListContent(
             selectAll,
             favoriteSelected,
             moveToCategory,
+            stackSelected,
             deleteSelected
         )
     }
@@ -1589,7 +1680,55 @@ fun PasswordListContent(
                                             FilterChip(
                                                 selected = quickFilterLocalOnly,
                                                 onClick = { quickFilterLocalOnly = !quickFilterLocalOnly },
-                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_local_only)) }
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_local_only)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Key,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY -> {
+                                            FilterChip(
+                                                selected = quickFilterManualStackOnly,
+                                                onClick = { quickFilterManualStackOnly = !quickFilterManualStackOnly },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_manual_stack_only)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Apps,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK -> {
+                                            FilterChip(
+                                                selected = quickFilterNeverStack,
+                                                onClick = { quickFilterNeverStack = !quickFilterNeverStack },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_never_stack)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.LinearScale,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED -> {
+                                            FilterChip(
+                                                selected = quickFilterUnstacked,
+                                                onClick = { quickFilterUnstacked = !quickFilterUnstacked },
+                                                label = { Text(text = stringResource(R.string.password_list_quick_filter_unstacked)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Straighten,
+                                                        contentDescription = null
+                                                    )
+                                                }
                                             )
                                         }
                                     }
@@ -1954,6 +2093,88 @@ fun PasswordListContent(
         }
     }
     
+    if (showManualStackConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showManualStackConfirmDialog = false },
+            title = { Text(text = stringResource(R.string.batch_stack_confirm_title)) },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.batch_stack_confirm_message,
+                            selectedPasswords.size
+                        )
+                    )
+                    ManualStackDialogMode.values().forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedManualStackMode = mode },
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            RadioButton(
+                                selected = selectedManualStackMode == mode,
+                                onClick = { selectedManualStackMode = mode }
+                            )
+                            Column(
+                                modifier = Modifier.padding(top = 10.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(mode.titleRes),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = stringResource(mode.descRes),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            val selectedIds = selectedPasswords.toList()
+                            val mode = when (selectedManualStackMode) {
+                                ManualStackDialogMode.STACK -> PasswordViewModel.ManualStackMode.STACK
+                                ManualStackDialogMode.AUTO_STACK -> PasswordViewModel.ManualStackMode.AUTO_STACK
+                                ManualStackDialogMode.NEVER_STACK -> PasswordViewModel.ManualStackMode.NEVER_STACK
+                            }
+                            val handledCount = viewModel.applyManualStackMode(selectedIds, mode)
+                            if (handledCount > 0) {
+                                val toastRes = when (selectedManualStackMode) {
+                                    ManualStackDialogMode.STACK -> R.string.batch_stack_success
+                                    ManualStackDialogMode.AUTO_STACK -> R.string.batch_stack_auto_success
+                                    ManualStackDialogMode.NEVER_STACK -> R.string.batch_stack_never_success
+                                }
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(toastRes, handledCount),
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                isSelectionMode = false
+                                selectedPasswords = emptySet()
+                            }
+                            showManualStackConfirmDialog = false
+                        }
+                    }
+                ) {
+                    Text(text = stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualStackConfirmDialog = false }) {
+                    Text(text = stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     // 批量删除验证对话框（统一 M3 身份验证弹窗）
     if (showBatchDeleteDialog) {
         val biometricAction = if (canUseBiometric) {
@@ -2122,6 +2343,28 @@ private const val QUICK_FOLDER_ROOT_STARRED = "starred"
 private const val QUICK_FOLDER_ROOT_UNCATEGORIZED = "uncategorized"
 private const val QUICK_FOLDER_ROOT_LOCAL_STARRED = "local_starred"
 private const val QUICK_FOLDER_ROOT_LOCAL_UNCATEGORIZED = "local_uncategorized"
+private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
+private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
+private const val MANUAL_STACK_GROUP_KEY_PREFIX = "manual_stack:"
+private const val NO_STACK_GROUP_KEY_PREFIX = "no_stack:"
+
+private enum class ManualStackDialogMode(
+    val titleRes: Int,
+    val descRes: Int
+) {
+    STACK(
+        titleRes = R.string.batch_stack_mode_stack,
+        descRes = R.string.batch_stack_mode_stack_desc
+    ),
+    AUTO_STACK(
+        titleRes = R.string.batch_stack_mode_auto,
+        descRes = R.string.batch_stack_mode_auto_desc
+    ),
+    NEVER_STACK(
+        titleRes = R.string.batch_stack_mode_never,
+        descRes = R.string.batch_stack_mode_never_desc
+    )
+}
 
 private data class PasswordQuickFolderNode(
     val category: Category,

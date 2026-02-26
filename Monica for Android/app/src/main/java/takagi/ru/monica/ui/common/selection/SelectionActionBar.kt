@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -37,6 +38,7 @@ fun SelectionActionBar(
     onSelectAll: () -> Unit,
     onFavorite: (() -> Unit)? = null,
     onMoveToCategory: (() -> Unit)? = null,
+    onStack: (() -> Unit)? = null,
     onDelete: () -> Unit,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest,
     contentColor: Color = MaterialTheme.colorScheme.onSurface
@@ -86,6 +88,14 @@ fun SelectionActionBar(
                 ActionIcon(
                     icon = Icons.Default.Folder,
                     contentDescription = stringResource(id = R.string.move_to_category),
+                    onClick = it
+                )
+            }
+
+            onStack?.let {
+                ActionIcon(
+                    icon = Icons.Default.Layers,
+                    contentDescription = stringResource(id = R.string.batch_stack),
                     onClick = it
                 )
             }

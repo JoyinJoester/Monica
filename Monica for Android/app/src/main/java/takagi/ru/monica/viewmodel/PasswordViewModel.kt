@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.Date
 import java.net.URI
 import java.util.Locale
+import java.util.UUID
 
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
@@ -81,6 +82,14 @@ class PasswordViewModel(
         private const val SAVED_FILTER_BITWARDEN_FOLDER = "bitwarden_folder"
         private const val SAVED_FILTER_BITWARDEN_VAULT_STARRED = "bitwarden_vault_starred"
         private const val SAVED_FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
+        private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
+        private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
+    }
+
+    enum class ManualStackMode {
+        STACK,
+        AUTO_STACK,
+        NEVER_STACK
     }
     
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
@@ -1714,6 +1723,70 @@ class PasswordViewModel(
      */
     suspend fun getCustomFieldsByEntryIds(entryIds: List<Long>): Map<Long, List<CustomField>> {
         return customFieldRepository?.getFieldsByEntryIds(entryIds) ?: emptyMap()
+    }
+
+    /**
+     * 为选中的密码条目应用同一个手动堆叠分组。
+     * 使用内部自定义字段持久化，优先级高于自动堆叠规则。
+     *
+     * @return 实际写入的条目数量
+     */
+    suspend fun applyManualStack(entryIds: List<Long>): Int {
+        return applyManualStackMode(entryIds, ManualStackMode.STACK)
+    }
+
+    /**
+     * 设置选中条目的堆叠模式：
+     * STACK: 写入同一手动堆叠组
+     * AUTO_STACK: 清除手动堆叠/不堆叠标记，回归自动堆叠
+     * NEVER_STACK: 标记为永不参与堆叠
+     */
+    suspend fun applyManualStackMode(entryIds: List<Long>, mode: ManualStackMode): Int {
+        val validIds = entryIds.distinct().filter { it > 0L }
+        if (validIds.isEmpty()) return 0
+
+        val stackGroupId = if (mode == ManualStackMode.STACK) UUID.randomUUID().toString() else null
+        val existingFieldsByEntry = getCustomFieldsByEntryIds(validIds)
+
+        validIds.forEach { entryId ->
+            val keptFields = existingFieldsByEntry[entryId]
+                .orEmpty()
+                .asSequence()
+                .filterNot {
+                    it.title == MONICA_MANUAL_STACK_GROUP_FIELD_TITLE ||
+                        it.title == MONICA_NO_STACK_FIELD_TITLE
+                }
+                .map { field ->
+                    CustomFieldDraft(
+                        title = field.title,
+                        value = field.value,
+                        isProtected = field.isProtected
+                    )
+                }
+                .toMutableList()
+
+            when (mode) {
+                ManualStackMode.STACK -> {
+                    keptFields += CustomFieldDraft(
+                        title = MONICA_MANUAL_STACK_GROUP_FIELD_TITLE,
+                        value = stackGroupId.orEmpty(),
+                        isProtected = false
+                    )
+                }
+                ManualStackMode.NEVER_STACK -> {
+                    keptFields += CustomFieldDraft(
+                        title = MONICA_NO_STACK_FIELD_TITLE,
+                        value = "1",
+                        isProtected = false
+                    )
+                }
+                ManualStackMode.AUTO_STACK -> Unit
+            }
+
+            saveCustomFieldsForEntry(entryId, keptFields)
+        }
+
+        return validIds.size
     }
     
     /**

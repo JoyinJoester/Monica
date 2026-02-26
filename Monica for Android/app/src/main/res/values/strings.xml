@@ -1090,6 +1090,18 @@
     <string name="deleted_items">Deleted %d items</string>
     <string name="deleted">Deleted</string>
     <string name="batch_favorite">Batch Favorite</string>
+    <string name="batch_stack">Stack</string>
+    <string name="batch_stack_confirm_title">Set stack mode for selected passwords?</string>
+    <string name="batch_stack_confirm_message">Apply one of the following modes to %1$d selected passwords.</string>
+    <string name="batch_stack_mode_stack">Stack</string>
+    <string name="batch_stack_mode_stack_desc">Group selected passwords into one custom stack. Manual stack has higher priority than auto stack.</string>
+    <string name="batch_stack_mode_auto">Auto stack</string>
+    <string name="batch_stack_mode_auto_desc">Cancel custom stack mode and return to automatic stacking behavior.</string>
+    <string name="batch_stack_mode_never">Never stack</string>
+    <string name="batch_stack_mode_never_desc">Selected passwords will never be stacked and will always stay as independent cards.</string>
+    <string name="batch_stack_success">Stacked %1$d passwords</string>
+    <string name="batch_stack_auto_success">Switched %1$d passwords back to auto stack</string>
+    <string name="batch_stack_never_success">Set %1$d passwords to never stack</string>
     <string name="batch_favorited">Added %d passwords to favorites</string>
     <string name="batch_unfavorited">Removed %d passwords from favorites</string>
     <string name="group_favorited">Added entire group of %d passwords to favorites</string>
@@ -2551,7 +2563,7 @@
     <string name="password_list_preview_desc">Preview reflects currently enabled top modules and their order.</string>
     <string name="password_list_preview_empty">No top modules enabled. Turn on at least one item below.</string>
     <string name="password_list_quick_filters_switch_title">Quick Filters Switch</string>
-    <string name="password_list_quick_filters_switch_desc">Show quick filter chips at the top of the password list for Favorites, 2FA, Notes, Uncategorized, and Local only.</string>
+    <string name="password_list_quick_filters_switch_desc">Show quick filter chips at the top of the password list for Favorites, 2FA, Notes, Uncategorized, Local only, Manual stack only, Never stack, and Unstacked.</string>
     <string name="password_list_quick_filters_content_title">Quick Filter Items</string>
     <string name="password_list_quick_filters_content_desc">Toggle each quick filter item and drag to reorder.</string>
     <string name="password_list_quick_folders_switch_title">Quick Folder Switch</string>
@@ -2564,6 +2576,9 @@
     <string name="password_list_quick_filter_notes">Notes</string>
     <string name="password_list_quick_filter_uncategorized">Uncategorized</string>
     <string name="password_list_quick_filter_local_only">Local only</string>
+    <string name="password_list_quick_filter_manual_stack_only">Manual stack only</string>
+    <string name="password_list_quick_filter_never_stack">Never stack</string>
+    <string name="password_list_quick_filter_unstacked">Unstacked</string>
     <string name="password_list_quick_folder_back">Back to parent folder</string>
     <string name="password_list_quick_folder_back_subtitle">Go to parent directory</string>
     <string name="password_list_quick_folder_subtitle">Open child directory</string>
