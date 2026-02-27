@@ -5,6 +5,11 @@ import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -31,14 +36,17 @@ class MonicaApplication : Application() {
     
     companion object {
         private const val TAG = "MonicaApplication"
+        private const val CREDENTIAL_REFRESH_DELAY_MS = 1500L
     }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     
     override fun onCreate() {
         super.onCreate()
         
         initKoin()
         initBitwardenSyncInfrastructure()
-        maybeRefreshCredentialProviderService()
+        scheduleCredentialProviderRefresh()
     }
     
     /**
@@ -169,6 +177,14 @@ class MonicaApplication : Application() {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to read versionCode", e)
             -1L
+        }
+    }
+
+    private fun scheduleCredentialProviderRefresh() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        appScope.launch {
+            delay(CREDENTIAL_REFRESH_DELAY_MS)
+            maybeRefreshCredentialProviderService()
         }
     }
 

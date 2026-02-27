@@ -615,7 +615,6 @@ fun SimpleMainScreen(
     val stackCardMode = remember(stackCardModeKey) {
         runCatching { StackCardMode.valueOf(stackCardModeKey) }.getOrDefault(StackCardMode.AUTO)
     }
-    var displayMenuExpanded by remember { mutableStateOf(false) }
     
     // TOTP的选择模式状态
     var isTotpSelectionMode by remember { mutableStateOf(false) }
@@ -694,7 +693,6 @@ fun SimpleMainScreen(
     }
 
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
-    val currentTabLabel = stringResource(currentTab.fullLabelRes())
     var selectedPasswordId by rememberSaveable { mutableStateOf<Long?>(null) }
     var inlinePasswordEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
     var isAddingPasswordInline by rememberSaveable { mutableStateOf(false) }
@@ -794,17 +792,29 @@ fun SimpleMainScreen(
         }
     }
 
-    val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
-    val allPasswords by passwordViewModel.allPasswordsForUi.collectAsState(initial = emptyList())
+    val isPasskeyDataNeeded = currentTab == BottomNavItem.Passkey ||
+        selectedPasskey != null ||
+        pendingPasskeyDelete != null
+    val isQuickAccessDataNeeded = appSettings.passwordListQuickAccessEnabled || showPasswordQuickAccessSheet
+    val shouldCollectAllPasswords = isQuickAccessDataNeeded || isPasskeyDataNeeded
+    val allPasswords = if (shouldCollectAllPasswords) {
+        passwordViewModel.allPasswordsForUi.collectAsState(initial = emptyList()).value
+    } else {
+        emptyList()
+    }
     val passwordQuickAccessManager = remember(context) { PasswordQuickAccessManager(context) }
-    val passwordQuickAccessStats by passwordQuickAccessManager.statsFlow.collectAsState(initial = emptyMap())
+    val passwordQuickAccessStats = if (isQuickAccessDataNeeded) {
+        passwordQuickAccessManager.statsFlow.collectAsState(initial = emptyMap()).value
+    } else {
+        emptyMap()
+    }
     val passwordQuickAccessItems = remember(
         allPasswords,
         passwordQuickAccessStats,
-        appSettings.passwordListQuickAccessEnabled
+        isQuickAccessDataNeeded
     ) {
-        if (!appSettings.passwordListQuickAccessEnabled) {
+        if (!isQuickAccessDataNeeded) {
             emptyList()
         } else {
             allPasswords.mapNotNull { entry ->
@@ -830,10 +840,20 @@ fun SimpleMainScreen(
             )
             .take(80)
     }
-    val localPasskeys by passkeyViewModel.allPasskeys.collectAsState(initial = emptyList())
+    val localPasskeys = if (isPasskeyDataNeeded) {
+        passkeyViewModel.allPasskeys.collectAsState(initial = emptyList()).value
+    } else {
+        emptyList()
+    }
     val passkeyTotalCount = localPasskeys.size
     val passkeyBoundCount = localPasskeys.count { it.boundPasswordId != null }
-    val passwordById = remember(allPasswords) { allPasswords.associateBy { it.id } }
+    val passwordById = remember(allPasswords, isPasskeyDataNeeded) {
+        if (isPasskeyDataNeeded) {
+            allPasswords.associateBy { it.id }
+        } else {
+            emptyMap()
+        }
+    }
     val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
     val bitwardenVaults by bitwardenViewModel.vaults.collectAsState()
     // 可拖拽导航栏模式开关 (将来可从设置中读取)
@@ -852,84 +872,6 @@ fun SimpleMainScreen(
         }
     }
     
-    // 获取颜色（在 Composable 上下文中）
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-    val secondaryColor = MaterialTheme.colorScheme.secondary
-    
-    // 构建快捷操作列表
-    val quickActions = remember(
-        onNavigateToAddPassword,
-        onNavigateToAddTotp,
-        onNavigateToQuickTotpScan,
-        onNavigateToAddBankCard,
-        onNavigateToAddDocument,
-        onNavigateToAddNote,
-        onSecurityAnalysis,
-        onNavigateToSyncBackup,
-        tertiaryColor,
-        secondaryColor
-    ) {
-        listOf(
-            QuickActionItem(
-                icon = Icons.Default.Lock,
-                labelRes = R.string.quick_action_add_password,
-                onClick = { onNavigateToAddPassword(null) }
-            ),
-            QuickActionItem(
-                icon = Icons.Default.Security,
-                labelRes = R.string.quick_action_add_totp,
-                onClick = { onNavigateToAddTotp(null) }
-            ),
-            QuickActionItem(
-                icon = Icons.Default.QrCodeScanner,
-                labelRes = R.string.quick_action_scan_qr,
-                onClick = onNavigateToQuickTotpScan
-            ),
-            QuickActionItem(
-                icon = Icons.Default.CreditCard,
-                labelRes = R.string.quick_action_add_card,
-                onClick = { onNavigateToAddBankCard(null) }
-            ),
-            QuickActionItem(
-                icon = Icons.Default.Badge,
-                labelRes = R.string.quick_action_add_document,
-                onClick = { onNavigateToAddDocument(null) }
-            ),
-            QuickActionItem(
-                icon = Icons.Default.Note,
-                labelRes = R.string.quick_action_add_note,
-                onClick = { onNavigateToAddNote(null) }
-            ),
-            QuickActionItem(
-                icon = Icons.Default.AutoAwesome,
-                labelRes = R.string.quick_action_generator,
-                onClick = { selectedTabKey = BottomNavItem.Generator.key }
-            ),
-            QuickActionItem(
-                icon = Icons.Default.Shield,
-                labelRes = R.string.quick_action_security,
-                onClick = onSecurityAnalysis,
-                tint = tertiaryColor
-            ),
-            QuickActionItem(
-                icon = Icons.Default.CloudUpload,
-                labelRes = R.string.quick_action_backup,
-                onClick = onNavigateToSyncBackup,
-                tint = secondaryColor
-            ),
-            QuickActionItem(
-                icon = Icons.Default.Download,
-                labelRes = R.string.quick_action_import,
-                onClick = onNavigateToSyncBackup
-            ),
-            QuickActionItem(
-                icon = Icons.Default.Settings,
-                labelRes = R.string.quick_action_settings,
-                onClick = { selectedTabKey = BottomNavItem.Settings.key }
-            )
-        )
-    }
-
     val activity = LocalContext.current.findActivity()
     val widthSizeClass = activity?.let { calculateWindowSizeClass(it).widthSizeClass }
     val isCompactWidth = widthSizeClass == null || widthSizeClass == WindowWidthSizeClass.Compact
@@ -1542,243 +1484,69 @@ fun SimpleMainScreen(
         val scaffoldBody: @Composable BoxScope.() -> Unit = {
             when (currentTab) {
                 BottomNavItem.Passwords -> {
-                    val listPaneContent: @Composable ColumnScope.() -> Unit = {
-                        PasswordListContent(
-                            viewModel = passwordViewModel,
-                            settingsViewModel = settingsViewModel, // Pass SettingsViewModel
-                            securityManager = securityManager,
-                            keepassDatabases = keepassDatabases,
-                            bitwardenVaults = bitwardenVaults,
-                            localKeePassViewModel = localKeePassViewModel,
-                            groupMode = passwordGroupMode,
-                            stackCardMode = stackCardMode,
-                            onRenameCategory = { category ->
-                                passwordViewModel.updateCategory(category)
-                            },
-                            onDeleteCategory = { category ->
-                                passwordViewModel.deleteCategory(category)
-                            },
-                            onPasswordClick = { password ->
-                                handlePasswordDetailOpen(password.id)
-                            },
-                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
-                                isPasswordSelectionMode = isSelectionMode
-                                selectedPasswordCount = count
-                                onExitPasswordSelection = onExit
-                                onSelectAllPasswords = onSelectAll
-                                onFavoriteSelectedPasswords = onFavorite
-                                onMoveToCategoryPasswords = onMoveToCategory
-                                onManualStackPasswords = onStack
-                                onDeleteSelectedPasswords = onDelete
-                            },
-                            onBackToTopVisibilityChange = { visible ->
-                                passwordListShowBackToTop = visible
-                            },
-                            scrollToTopRequestKey = passwordScrollToTopRequestKey
-                        )
-                    }
-
-                    if (isCompactWidth) {
-                        ListPane(
-                            modifier = Modifier.fillMaxSize(),
-                            content = listPaneContent
-                        )
-                    } else {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            ListPane(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .width(wideListPaneWidth),
-                                content = listPaneContent
-                            )
-                            DetailPane(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                            ) {
-                                if (isAddingPasswordInline || inlinePasswordEditorId != null) {
-                                    AddEditPasswordScreen(
-                                        viewModel = passwordViewModel,
-                                        totpViewModel = totpViewModel,
-                                        bankCardViewModel = bankCardViewModel,
-                                        localKeePassViewModel = localKeePassViewModel,
-                                        passwordId = inlinePasswordEditorId,
-                                        onNavigateBack = handleInlinePasswordEditorBack
-                                    )
-                                } else if (selectedPasswordId == null) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Select an item to view details",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else {
-                                    CompositionLocalProvider(
-                                        LocalSharedTransitionScope provides null,
-                                        LocalAnimatedVisibilityScope provides null
-                                    ) {
-                                        PasswordDetailScreen(
-                                            viewModel = passwordViewModel,
-                                            passkeyViewModel = passkeyViewModel,
-                                            passwordId = selectedPasswordId!!,
-                                            disablePasswordVerification = appSettings.disablePasswordVerification,
-                                            biometricEnabled = appSettings.biometricEnabled,
-                                            iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
-                                            unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
-                                            onNavigateBack = { selectedPasswordId = null },
-                                            onEditPassword = handlePasswordEditOpen,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    PasswordTabPane(
+                        isCompactWidth = isCompactWidth,
+                        wideListPaneWidth = wideListPaneWidth,
+                        passwordViewModel = passwordViewModel,
+                        settingsViewModel = settingsViewModel,
+                        securityManager = securityManager,
+                        keepassDatabases = keepassDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        localKeePassViewModel = localKeePassViewModel,
+                        groupMode = passwordGroupMode,
+                        stackCardMode = stackCardMode,
+                        onPasswordOpen = handlePasswordDetailOpen,
+                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
+                            isPasswordSelectionMode = isSelectionMode
+                            selectedPasswordCount = count
+                            onExitPasswordSelection = onExit
+                            onSelectAllPasswords = onSelectAll
+                            onFavoriteSelectedPasswords = onFavorite
+                            onMoveToCategoryPasswords = onMoveToCategory
+                            onManualStackPasswords = onStack
+                            onDeleteSelectedPasswords = onDelete
+                        },
+                        onBackToTopVisibilityChange = { visible ->
+                            passwordListShowBackToTop = visible
+                        },
+                        scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                        isAddingPasswordInline = isAddingPasswordInline,
+                        inlinePasswordEditorId = inlinePasswordEditorId,
+                        selectedPasswordId = selectedPasswordId,
+                        onInlinePasswordEditorBack = handleInlinePasswordEditorBack,
+                        totpViewModel = totpViewModel,
+                        bankCardViewModel = bankCardViewModel,
+                        passkeyViewModel = passkeyViewModel,
+                        disablePasswordVerification = appSettings.disablePasswordVerification,
+                        biometricEnabled = appSettings.biometricEnabled,
+                        iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
+                        unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
+                        onClearSelectedPassword = { selectedPasswordId = null },
+                        onEditPassword = handlePasswordEditOpen
+                    )
                 }
                 BottomNavItem.Authenticator -> {
-                    val listPaneContent: @Composable ColumnScope.() -> Unit = {
-                        TotpListContent(
-                            viewModel = totpViewModel,
-                            passwordViewModel = passwordViewModel,
-                            onTotpClick = { totpId ->
-                                handleTotpOpen(totpId)
-                            },
-                            onDeleteTotp = { totp ->
-                                totpViewModel.deleteTotpItem(totp)
-                            },
-                            onQuickScanTotp = onNavigateToQuickTotpScan,
-                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
-                                isTotpSelectionMode = isSelectionMode
-                                selectedTotpCount = count
-                                onExitTotpSelection = onExit
-                                onSelectAllTotp = onSelectAll
-                                onMoveToCategoryTotp = onMoveToCategory
-                                onDeleteSelectedTotp = onDelete
-                            }
-                        )
-                    }
-
-                    if (isCompactWidth) {
-                        ListPane(
-                            modifier = Modifier.fillMaxSize(),
-                            content = listPaneContent
-                        )
-                    } else {
-                        val totpItems by totpViewModel.totpItems.collectAsState()
-                        val selectedTotpItem = remember(selectedTotpId, totpItems) {
-                            selectedTotpId?.let { selectedId ->
-                                totpItems.firstOrNull { it.id == selectedId }
-                            }
-                        }
-                        val selectedTotpData = remember(selectedTotpItem?.itemData) {
-                            selectedTotpItem?.itemData?.let { itemData ->
-                                runCatching {
-                                    kotlinx.serialization.json.Json.decodeFromString<takagi.ru.monica.data.model.TotpData>(itemData)
-                                }.getOrNull()
-                            }
-                        }
-                        val totpCategories by totpViewModel.categories.collectAsState()
-
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            ListPane(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .width(wideListPaneWidth),
-                                content = listPaneContent
-                            )
-                            DetailPane(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                            ) {
-                                if (isAddingTotpInline) {
-                                    AddEditTotpScreen(
-                                        totpId = null,
-                                        initialData = null,
-                                        initialTitle = "",
-                                        initialNotes = "",
-                                        initialCategoryId = totpNewItemDefaults.categoryId,
-                                        initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
-                                        initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
-                                        initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
-                                        categories = totpCategories,
-                                        passwordViewModel = passwordViewModel,
-                                        localKeePassViewModel = localKeePassViewModel,
-                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
-                                            totpViewModel.saveTotpItem(
-                                                id = null,
-                                                title = title,
-                                                notes = notes,
-                                                totpData = totpData,
-                                                categoryId = categoryId,
-                                                keepassDatabaseId = keepassDatabaseId,
-                                                bitwardenVaultId = bitwardenVaultId,
-                                                bitwardenFolderId = bitwardenFolderId
-                                            )
-                                            handleInlineTotpEditorBack()
-                                        },
-                                        onNavigateBack = handleInlineTotpEditorBack,
-                                        onScanQrCode = onNavigateToQuickTotpScan,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else if (selectedTotpId == null) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Select an item to view details",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else if (selectedTotpItem == null || selectedTotpItem.id <= 0L || selectedTotpData == null) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "This item is not available for inline editing",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else {
-                                    AddEditTotpScreen(
-                                        totpId = selectedTotpItem.id,
-                                        initialData = selectedTotpData,
-                                        initialTitle = selectedTotpItem.title,
-                                        initialNotes = selectedTotpItem.notes,
-                                        initialCategoryId = selectedTotpData.categoryId,
-                                        initialBitwardenVaultId = selectedTotpItem.bitwardenVaultId,
-                                        initialBitwardenFolderId = selectedTotpItem.bitwardenFolderId,
-                                        categories = totpCategories,
-                                        passwordViewModel = passwordViewModel,
-                                        localKeePassViewModel = localKeePassViewModel,
-                                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
-                                            totpViewModel.saveTotpItem(
-                                                id = selectedTotpItem.id,
-                                                title = title,
-                                                notes = notes,
-                                                totpData = totpData,
-                                                categoryId = categoryId,
-                                                keepassDatabaseId = keepassDatabaseId,
-                                                bitwardenVaultId = bitwardenVaultId,
-                                                bitwardenFolderId = bitwardenFolderId
-                                            )
-                                        },
-                                        onNavigateBack = handleInlineTotpEditorBack,
-                                        onScanQrCode = onNavigateToQuickTotpScan,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    AuthenticatorTabPane(
+                        isCompactWidth = isCompactWidth,
+                        wideListPaneWidth = wideListPaneWidth,
+                        totpViewModel = totpViewModel,
+                        passwordViewModel = passwordViewModel,
+                        localKeePassViewModel = localKeePassViewModel,
+                        onTotpOpen = handleTotpOpen,
+                        onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                        onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
+                            isTotpSelectionMode = isSelectionMode
+                            selectedTotpCount = count
+                            onExitTotpSelection = onExit
+                            onSelectAllTotp = onSelectAll
+                            onMoveToCategoryTotp = onMoveToCategory
+                            onDeleteSelectedTotp = onDelete
+                        },
+                        isAddingTotpInline = isAddingTotpInline,
+                        selectedTotpId = selectedTotpId,
+                        totpNewItemDefaults = totpNewItemDefaults,
+                        onInlineTotpEditorBack = handleInlineTotpEditorBack
+                    )
                 }
                 BottomNavItem.CardWallet -> {
                     CardWalletPane(
@@ -2257,6 +2025,288 @@ fun SimpleMainScreen(
         )
     }
 
+}
+
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@Composable
+private fun PasswordTabPane(
+    isCompactWidth: Boolean,
+    wideListPaneWidth: Dp,
+    passwordViewModel: PasswordViewModel,
+    settingsViewModel: SettingsViewModel,
+    securityManager: SecurityManager,
+    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    groupMode: String,
+    stackCardMode: StackCardMode,
+    onPasswordOpen: (Long) -> Unit,
+    onSelectionModeChange: (
+        Boolean,
+        Int,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit
+    ) -> Unit,
+    onBackToTopVisibilityChange: (Boolean) -> Unit,
+    scrollToTopRequestKey: Int,
+    isAddingPasswordInline: Boolean,
+    inlinePasswordEditorId: Long?,
+    selectedPasswordId: Long?,
+    onInlinePasswordEditorBack: () -> Unit,
+    totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
+    passkeyViewModel: PasskeyViewModel,
+    disablePasswordVerification: Boolean,
+    biometricEnabled: Boolean,
+    iconCardsEnabled: Boolean,
+    unmatchedIconHandlingStrategy: takagi.ru.monica.data.UnmatchedIconHandlingStrategy,
+    onClearSelectedPassword: () -> Unit,
+    onEditPassword: (Long) -> Unit
+) {
+    val listPaneContent: @Composable ColumnScope.() -> Unit = {
+        PasswordListContent(
+            viewModel = passwordViewModel,
+            settingsViewModel = settingsViewModel,
+            securityManager = securityManager,
+            keepassDatabases = keepassDatabases,
+            bitwardenVaults = bitwardenVaults,
+            localKeePassViewModel = localKeePassViewModel,
+            groupMode = groupMode,
+            stackCardMode = stackCardMode,
+            onRenameCategory = { category ->
+                passwordViewModel.updateCategory(category)
+            },
+            onDeleteCategory = { category ->
+                passwordViewModel.deleteCategory(category)
+            },
+            onPasswordClick = { password ->
+                onPasswordOpen(password.id)
+            },
+            onSelectionModeChange = onSelectionModeChange,
+            onBackToTopVisibilityChange = onBackToTopVisibilityChange,
+            scrollToTopRequestKey = scrollToTopRequestKey
+        )
+    }
+
+    if (isCompactWidth) {
+        ListPane(
+            modifier = Modifier.fillMaxSize(),
+            content = listPaneContent
+        )
+    } else {
+        Row(modifier = Modifier.fillMaxSize()) {
+            ListPane(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(wideListPaneWidth),
+                content = listPaneContent
+            )
+            DetailPane(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                if (isAddingPasswordInline || inlinePasswordEditorId != null) {
+                    AddEditPasswordScreen(
+                        viewModel = passwordViewModel,
+                        totpViewModel = totpViewModel,
+                        bankCardViewModel = bankCardViewModel,
+                        localKeePassViewModel = localKeePassViewModel,
+                        passwordId = inlinePasswordEditorId,
+                        onNavigateBack = onInlinePasswordEditorBack
+                    )
+                } else if (selectedPasswordId == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Select an item to view details",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    CompositionLocalProvider(
+                        LocalSharedTransitionScope provides null,
+                        LocalAnimatedVisibilityScope provides null
+                    ) {
+                        PasswordDetailScreen(
+                            viewModel = passwordViewModel,
+                            passkeyViewModel = passkeyViewModel,
+                            passwordId = selectedPasswordId,
+                            disablePasswordVerification = disablePasswordVerification,
+                            biometricEnabled = biometricEnabled,
+                            iconCardsEnabled = iconCardsEnabled,
+                            unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
+                            enableSharedBounds = false,
+                            onNavigateBack = onClearSelectedPassword,
+                            onEditPassword = onEditPassword,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthenticatorTabPane(
+    isCompactWidth: Boolean,
+    wideListPaneWidth: Dp,
+    totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    passwordViewModel: PasswordViewModel,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    onTotpOpen: (Long) -> Unit,
+    onNavigateToQuickTotpScan: () -> Unit,
+    onSelectionModeChange: (
+        Boolean,
+        Int,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit
+    ) -> Unit,
+    isAddingTotpInline: Boolean,
+    selectedTotpId: Long?,
+    totpNewItemDefaults: NewItemStorageDefaults,
+    onInlineTotpEditorBack: () -> Unit
+) {
+    val listPaneContent: @Composable ColumnScope.() -> Unit = {
+        TotpListContent(
+            viewModel = totpViewModel,
+            passwordViewModel = passwordViewModel,
+            onTotpClick = onTotpOpen,
+            onDeleteTotp = { totp ->
+                totpViewModel.deleteTotpItem(totp)
+            },
+            onQuickScanTotp = onNavigateToQuickTotpScan,
+            onSelectionModeChange = onSelectionModeChange
+        )
+    }
+
+    if (isCompactWidth) {
+        ListPane(
+            modifier = Modifier.fillMaxSize(),
+            content = listPaneContent
+        )
+    } else {
+        val totpItems by totpViewModel.totpItems.collectAsState()
+        val selectedTotpItem = remember(selectedTotpId, totpItems) {
+            selectedTotpId?.let { selectedId ->
+                totpItems.firstOrNull { it.id == selectedId }
+            }
+        }
+        val selectedTotpData = remember(selectedTotpItem?.itemData) {
+            selectedTotpItem?.itemData?.let { itemData ->
+                runCatching {
+                    kotlinx.serialization.json.Json.decodeFromString<takagi.ru.monica.data.model.TotpData>(itemData)
+                }.getOrNull()
+            }
+        }
+        val totpCategories by totpViewModel.categories.collectAsState()
+
+        Row(modifier = Modifier.fillMaxSize()) {
+            ListPane(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(wideListPaneWidth),
+                content = listPaneContent
+            )
+            DetailPane(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                if (isAddingTotpInline) {
+                    AddEditTotpScreen(
+                        totpId = null,
+                        initialData = null,
+                        initialTitle = "",
+                        initialNotes = "",
+                        initialCategoryId = totpNewItemDefaults.categoryId,
+                        initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                        initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
+                        initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
+                        categories = totpCategories,
+                        passwordViewModel = passwordViewModel,
+                        localKeePassViewModel = localKeePassViewModel,
+                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                            totpViewModel.saveTotpItem(
+                                id = null,
+                                title = title,
+                                notes = notes,
+                                totpData = totpData,
+                                categoryId = categoryId,
+                                keepassDatabaseId = keepassDatabaseId,
+                                bitwardenVaultId = bitwardenVaultId,
+                                bitwardenFolderId = bitwardenFolderId
+                            )
+                            onInlineTotpEditorBack()
+                        },
+                        onNavigateBack = onInlineTotpEditorBack,
+                        onScanQrCode = onNavigateToQuickTotpScan,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else if (selectedTotpId == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Select an item to view details",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else if (selectedTotpItem == null || selectedTotpItem.id <= 0L || selectedTotpData == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "This item is not available for inline editing",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    AddEditTotpScreen(
+                        totpId = selectedTotpItem.id,
+                        initialData = selectedTotpData,
+                        initialTitle = selectedTotpItem.title,
+                        initialNotes = selectedTotpItem.notes,
+                        initialCategoryId = selectedTotpData.categoryId,
+                        initialBitwardenVaultId = selectedTotpItem.bitwardenVaultId,
+                        initialBitwardenFolderId = selectedTotpItem.bitwardenFolderId,
+                        categories = totpCategories,
+                        passwordViewModel = passwordViewModel,
+                        localKeePassViewModel = localKeePassViewModel,
+                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                            totpViewModel.saveTotpItem(
+                                id = selectedTotpItem.id,
+                                title = title,
+                                notes = notes,
+                                totpData = totpData,
+                                categoryId = categoryId,
+                                keepassDatabaseId = keepassDatabaseId,
+                                bitwardenVaultId = bitwardenVaultId,
+                                bitwardenFolderId = bitwardenFolderId
+                            )
+                        },
+                        onNavigateBack = onInlineTotpEditorBack,
+                        onScanQrCode = onNavigateToQuickTotpScan,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -4,8 +4,15 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
@@ -130,6 +137,10 @@ class SettingsManager(private val context: Context) {
         private val AUTOFILL_SOURCES_KEY = stringPreferencesKey("autofill_sources")
         private val AUTOFILL_PRIORITY_KEY = stringPreferencesKey("autofill_priority")
 
+        private val sharedSettingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        private val sharedSettingsFlowLock = Any()
+        @Volatile
+        private var sharedSettingsFlow: SharedFlow<AppSettings>? = null
     }
 
     object StorageTargetScope {
@@ -234,7 +245,21 @@ class SettingsManager(private val context: Context) {
         return PasswordListQuickFilterItem.sanitizeOrder(parsed)
     }
     
-    val settingsFlow: Flow<AppSettings> = dataStore.data.map { preferences ->
+    val settingsFlow: Flow<AppSettings> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        sharedSettingsFlow ?: synchronized(sharedSettingsFlowLock) {
+            sharedSettingsFlow ?: dataStore.data
+                .map { preferences -> mapPreferencesToAppSettings(preferences) }
+                .distinctUntilChanged()
+                .shareIn(
+                    scope = sharedSettingsScope,
+                    started = SharingStarted.Eagerly,
+                    replay = 1
+                )
+                .also { sharedSettingsFlow = it }
+        }
+    }
+
+    private fun mapPreferencesToAppSettings(preferences: Preferences): AppSettings {
         val storedOrder = preferences[BOTTOM_NAV_ORDER_KEY]
         val parsedOrder = storedOrder
             ?.split(",")
@@ -250,7 +275,7 @@ class SettingsManager(private val context: Context) {
             preferences[PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY]
         ) ?: PasswordListQuickFilterItem.DEFAULT_ORDER
 
-        AppSettings(
+        return AppSettings(
             themeMode = ThemeMode.valueOf(
                 preferences[THEME_MODE_KEY] ?: ThemeMode.SYSTEM.name
             ),
@@ -272,9 +297,8 @@ class SettingsManager(private val context: Context) {
             biometricEnabled = preferences[BIOMETRIC_ENABLED_KEY] ?: false,
             autoLockMinutes = preferences[AUTO_LOCK_MINUTES_KEY] ?: 5,
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
-            dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true, // 默认启用动态颜色
+            dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true,
             bottomNavVisibility = BottomNavVisibility(
-                // vault = preferences[SHOW_VAULT_TAB_KEY] ?: true,
                 passwords = preferences[SHOW_PASSWORDS_TAB_KEY] ?: true,
                 authenticator = preferences[SHOW_AUTHENTICATOR_TAB_KEY] ?: true,
                 cardWallet = preferences[SHOW_CARD_WALLET_TAB_KEY] ?: true,
@@ -288,14 +312,13 @@ class SettingsManager(private val context: Context) {
             useDraggableBottomNav = preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] ?: false,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
             validatorProgressBarStyle = runCatching {
-                val styleString = preferences[VALIDATOR_PROGRESS_BAR_STYLE_KEY] ?: takagi.ru.monica.data.ProgressBarStyle.LINEAR.name
-                android.util.Log.d("SettingsManager", "Loading progress bar style from DataStore: $styleString")
-                val style = takagi.ru.monica.data.ProgressBarStyle.valueOf(styleString)
-                android.util.Log.d("SettingsManager", "Parsed progress bar style: $style")
-                style
+                val styleString = preferences[VALIDATOR_PROGRESS_BAR_STYLE_KEY]
+                    ?: takagi.ru.monica.data.ProgressBarStyle.LINEAR.name
+                takagi.ru.monica.data.ProgressBarStyle.valueOf(styleString)
             }.getOrDefault(takagi.ru.monica.data.ProgressBarStyle.LINEAR),
             validatorUnifiedProgressBar = runCatching {
-                val modeString = preferences[VALIDATOR_UNIFIED_PROGRESS_BAR_KEY] ?: takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED.name
+                val modeString = preferences[VALIDATOR_UNIFIED_PROGRESS_BAR_KEY]
+                    ?: takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED.name
                 takagi.ru.monica.data.UnifiedProgressBarMode.valueOf(modeString)
             }.getOrDefault(takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED),
             validatorSmoothProgress = preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] ?: true,
@@ -327,7 +350,8 @@ class SettingsManager(private val context: Context) {
                 )
             }.getOrDefault(takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON),
             passwordCardDisplayMode = runCatching {
-                val modeString = preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] ?: takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name
+                val modeString = preferences[PASSWORD_CARD_DISPLAY_MODE_KEY]
+                    ?: takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name
                 takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(modeString)
             }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL),
             passwordCardDisplayFields = parsePasswordCardDisplayFields(preferences[PASSWORD_CARD_DISPLAY_FIELDS_KEY])
@@ -354,7 +378,7 @@ class SettingsManager(private val context: Context) {
             passwordListQuickAccessEnabled = preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] ?: true,
             passwordListTopModulesOrder = parsedTopModulesOrder,
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
-            autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true, // 默认开启
+            autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true,
             passwordFieldVisibility = takagi.ru.monica.data.PasswordFieldVisibility(
                 securityVerification = preferences[FIELD_SECURITY_VERIFICATION_KEY] ?: true,
                 categoryAndNotes = preferences[FIELD_CATEGORY_AND_NOTES_KEY] ?: true,
@@ -371,17 +395,16 @@ class SettingsManager(private val context: Context) {
             lastPasswordCategoryFilterSecondaryId = preferences[LAST_PASSWORD_CATEGORY_FILTER_SECONDARY_ID_KEY],
             lastPasswordCategoryFilterText = preferences[LAST_PASSWORD_CATEGORY_FILTER_TEXT_KEY],
             bitwardenUploadAll = preferences[BITWARDEN_UPLOAD_ALL_KEY] ?: false,
-            
             autofillSources = runCatching {
                 val sourcesStr = preferences[AUTOFILL_SOURCES_KEY] ?: AutofillSource.V1_LOCAL.name
-                sourcesStr.split(",").mapNotNull { 
-                    runCatching { AutofillSource.valueOf(it.trim()) }.getOrNull() 
+                sourcesStr.split(",").mapNotNull {
+                    runCatching { AutofillSource.valueOf(it.trim()) }.getOrNull()
                 }.toSet()
             }.getOrDefault(setOf(AutofillSource.V1_LOCAL)),
             autofillPriority = runCatching {
                 val priorityStr = preferences[AUTOFILL_PRIORITY_KEY] ?: AutofillSource.V1_LOCAL.name
-                priorityStr.split(",").mapNotNull { 
-                    runCatching { AutofillSource.valueOf(it.trim()) }.getOrNull() 
+                priorityStr.split(",").mapNotNull {
+                    runCatching { AutofillSource.valueOf(it.trim()) }.getOrNull()
                 }
             }.getOrDefault(listOf(AutofillSource.V1_LOCAL))
         )

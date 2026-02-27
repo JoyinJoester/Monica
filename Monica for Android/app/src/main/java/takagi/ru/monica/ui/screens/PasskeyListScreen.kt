@@ -1163,8 +1163,9 @@ fun PasskeyListScreen(
         }
     }
 
-    UnifiedCategoryFilterBottomSheet(
-        visible = showCategoryFilterDialog,
+    if (showCategoryFilterDialog) {
+        UnifiedCategoryFilterBottomSheet(
+        visible = true,
         onDismiss = { showCategoryFilterDialog = false },
         selected = selectedCategoryFilter,
         onSelect = { selection ->
@@ -1221,7 +1222,8 @@ fun PasskeyListScreen(
                 }
             }
         }
-    )
+        )
+    }
 
     if (showDeleteConfirmDialog) {
         val deleteTargets = if (pendingDeletePasskey != null) {

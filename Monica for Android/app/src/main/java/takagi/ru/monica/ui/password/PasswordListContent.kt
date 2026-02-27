@@ -72,6 +72,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
@@ -194,6 +195,11 @@ import takagi.ru.monica.ui.theme.MonicaTheme
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+
+private val stringSetSaver = Saver<Set<String>, ArrayList<String>>(
+    save = { value -> ArrayList(value) },
+    restore = { saved -> saved.toSet() }
+)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -330,7 +336,9 @@ fun PasswordListContent(
     var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
     
     // 堆叠展开状态 - 记录哪些分组已展开
-    var expandedGroups by remember { mutableStateOf(setOf<String>()) }
+    var expandedGroups by rememberSaveable(stateSaver = stringSetSaver) {
+        mutableStateOf(setOf<String>())
+    }
     var quickFilterFavorite by rememberSaveable { mutableStateOf(false) }
     var quickFilter2fa by rememberSaveable { mutableStateOf(false) }
     var quickFilterNotes by rememberSaveable { mutableStateOf(false) }
@@ -572,6 +580,14 @@ fun PasswordListContent(
         }
     }
 
+    val shouldLoadManualStackMetadata = quickFilterManualStackOnly ||
+        quickFilterNeverStack ||
+        quickFilterUnstacked
+    val effectiveManualStackGroupByEntryId =
+        if (shouldLoadManualStackMetadata) manualStackGroupByEntryId else emptyMap()
+    val effectiveNoStackEntryIds =
+        if (shouldLoadManualStackMetadata) noStackEntryIds else emptySet()
+
     val buildGroupedPasswordsForEntries: (List<takagi.ru.monica.data.PasswordEntry>) -> Map<String, List<takagi.ru.monica.data.PasswordEntry>> =
         { sourceEntries ->
             val filteredEntries = sourceEntries
@@ -582,10 +598,10 @@ fun PasswordListContent(
             } else {
                 filteredEntries
                     .groupBy { entry ->
-                        if (entry.id in noStackEntryIds) {
+                        if (entry.id in effectiveNoStackEntryIds) {
                             "$NO_STACK_GROUP_KEY_PREFIX${entry.id}"
                         } else {
-                            manualStackGroupByEntryId[entry.id]
+                            effectiveManualStackGroupByEntryId[entry.id]
                                 ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
                                 ?: getPasswordInfoKey(entry)
                         }
@@ -606,10 +622,10 @@ fun PasswordListContent(
                         mergedByInfo
                             .groupBy { entries ->
                                 val first = entries.first()
-                                if (first.id in noStackEntryIds) {
+                                if (first.id in effectiveNoStackEntryIds) {
                                     "$NO_STACK_GROUP_KEY_PREFIX${first.id}"
                                 } else {
-                                    manualStackGroupByEntryId[first.id]
+                                    effectiveManualStackGroupByEntryId[first.id]
                                         ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
                                         ?: first.title.ifBlank { context.getString(R.string.untitled) }
                                 }
@@ -636,10 +652,10 @@ fun PasswordListContent(
                         mergedByInfo
                             .groupBy { entries ->
                                 val first = entries.first()
-                                if (first.id in noStackEntryIds) {
+                                if (first.id in effectiveNoStackEntryIds) {
                                     "$NO_STACK_GROUP_KEY_PREFIX${first.id}"
                                 } else {
-                                    manualStackGroupByEntryId[first.id]
+                                    effectiveManualStackGroupByEntryId[first.id]
                                         ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
                                         ?: getGroupKeyForMode(first, effectiveGroupMode)
                                 }
@@ -687,8 +703,8 @@ fun PasswordListContent(
         quickFilterNeverStack,
         quickFilterUnstacked,
         effectiveStackCardMode,
-        manualStackGroupByEntryId,
-        noStackEntryIds
+        effectiveManualStackGroupByEntryId,
+        effectiveNoStackEntryIds
     ) {
         var filtered = passwordEntries.filter { it.id !in deletedItemIds }
         if (appSettings.passwordListQuickFiltersEnabled) {
@@ -710,10 +726,10 @@ fun PasswordListContent(
                 }
             }
             if (quickFilterManualStackOnly && takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems) {
-                filtered = filtered.filter { manualStackGroupByEntryId.containsKey(it.id) }
+                filtered = filtered.filter { effectiveManualStackGroupByEntryId.containsKey(it.id) }
             }
             if (quickFilterNeverStack && takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) {
-                filtered = filtered.filter { it.id in noStackEntryIds }
+                filtered = filtered.filter { it.id in effectiveNoStackEntryIds }
             }
             if (quickFilterUnstacked &&
                 takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems &&
@@ -738,12 +754,22 @@ fun PasswordListContent(
         selectedPasswords = selectedPasswords.intersect(visibleIds)
     }
 
-    LaunchedEffect(passwordEntries, deletedItemIds) {
-        val allIds = passwordEntries
-            .asSequence()
-            .map { it.id }
-            .filter { id -> id !in deletedItemIds }
-            .toList()
+    LaunchedEffect(passwordEntries, deletedItemIds, shouldLoadManualStackMetadata) {
+        if (!shouldLoadManualStackMetadata) {
+            manualStackGroupByEntryId = emptyMap()
+            noStackEntryIds = emptySet()
+            lastCustomFieldEntryIds = emptyList()
+            return@LaunchedEffect
+        }
+        val entriesSnapshot = passwordEntries
+        val deletedIdsSnapshot = deletedItemIds
+        val allIds = withContext(Dispatchers.Default) {
+            entriesSnapshot
+                .asSequence()
+                .map { it.id }
+                .filter { id -> id !in deletedIdsSnapshot }
+                .toList()
+        }
         if (allIds.isEmpty()) {
             manualStackGroupByEntryId = emptyMap()
             noStackEntryIds = emptySet()
@@ -754,31 +780,40 @@ fun PasswordListContent(
             return@LaunchedEffect
         }
         lastCustomFieldEntryIds = allIds
-        val fieldMap = viewModel.getCustomFieldsByEntryIds(allIds)
-        manualStackGroupByEntryId = fieldMap.mapNotNull { (entryId, fields) ->
-            val groupId = fields.firstOrNull {
-                it.title == MONICA_MANUAL_STACK_GROUP_FIELD_TITLE
-            }?.value?.takeIf { value -> value.isNotBlank() }
-            groupId?.let { entryId to it }
-        }.toMap()
-        noStackEntryIds = fieldMap.mapNotNull { (entryId, fields) ->
-            val hasNoStack = fields.any {
-                it.title == MONICA_NO_STACK_FIELD_TITLE && it.value != "0"
-            }
-            if (hasNoStack) entryId else null
-        }.toSet()
+        val fieldMap = withContext(Dispatchers.IO) {
+            viewModel.getCustomFieldsByEntryIds(allIds)
+        }
+        val (manualStackMap, noStackIds) = withContext(Dispatchers.Default) {
+            val manualStack = fieldMap.mapNotNull { (entryId, fields) ->
+                val groupId = fields.firstOrNull {
+                    it.title == MONICA_MANUAL_STACK_GROUP_FIELD_TITLE
+                }?.value?.takeIf { value -> value.isNotBlank() }
+                groupId?.let { entryId to it }
+            }.toMap()
+            val noStack = fieldMap.mapNotNull { (entryId, fields) ->
+                val hasNoStack = fields.any {
+                    it.title == MONICA_NO_STACK_FIELD_TITLE && it.value != "0"
+                }
+                if (hasNoStack) entryId else null
+            }.toSet()
+            manualStack to noStack
+        }
+        manualStackGroupByEntryId = manualStackMap
+        noStackEntryIds = noStackIds
     }
     
     // 根据分组模式对密码进行分组（后台线程计算，避免阻塞首滑）
     var groupedPasswords by remember {
-        mutableStateOf<Map<String, List<takagi.ru.monica.data.PasswordEntry>>>(emptyMap())
+        mutableStateOf<Map<String, List<takagi.ru.monica.data.PasswordEntry>>>(
+            buildGroupedPasswordsForEntries(visiblePasswordEntries)
+        )
     }
     LaunchedEffect(
         visiblePasswordEntries,
         effectiveGroupMode,
         effectiveStackCardMode,
-        manualStackGroupByEntryId,
-        noStackEntryIds
+        effectiveManualStackGroupByEntryId,
+        effectiveNoStackEntryIds
     ) {
         val sourceEntries = visiblePasswordEntries
         if (sourceEntries.isEmpty()) {
@@ -789,7 +824,7 @@ fun PasswordListContent(
             buildGroupedPasswordsForEntries(sourceEntries)
         }
     }
-    
+
     // 定义回调函数
     val exitSelection = {
         isSelectionMode = false
@@ -1171,8 +1206,9 @@ fun PasswordListContent(
                 is CategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
                 is CategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
             }
-            UnifiedCategoryFilterBottomSheet(
-                visible = isCategorySheetVisible,
+            if (isCategorySheetVisible) {
+                UnifiedCategoryFilterBottomSheet(
+                    visible = true,
                 onDismiss = { isCategorySheetVisible = false },
                 selected = unifiedSelectedFilter,
                 showLocalOnlyQuickFilter = true,
@@ -1308,7 +1344,8 @@ fun PasswordListContent(
                         }
                     }
                 }
-            )
+                )
+            }
 
     // Display Options Bottom Sheet
     if (displayMenuExpanded) {
@@ -1999,6 +2036,7 @@ fun PasswordListContent(
                             passwords = passwords,
                             isExpanded = isExpanded,
                             stackCardMode = effectiveStackCardMode,
+                            enableSharedBounds = false,
                             swipedItemId = itemToDelete?.id,
                             onToggleExpand = {
                                 if (effectiveStackCardMode == StackCardMode.AUTO) {
@@ -2151,8 +2189,7 @@ fun PasswordListContent(
                         showAuthenticator = appSettings.passwordCardShowAuthenticator,
                         hideOtherContentWhenAuthenticator = appSettings.passwordCardHideOtherContentWhenAuthenticator,
                         totpTimeOffsetSeconds = appSettings.totpTimeOffset,
-                        smoothAuthenticatorProgress = appSettings.validatorSmoothProgress,
-                        enableSharedBounds = !isLocalOnlyView
+                        smoothAuthenticatorProgress = appSettings.validatorSmoothProgress
                     )
                     
                     Spacer(modifier = Modifier.height(12.dp))

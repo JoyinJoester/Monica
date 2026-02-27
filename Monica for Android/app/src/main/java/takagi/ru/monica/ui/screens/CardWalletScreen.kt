@@ -1166,8 +1166,9 @@ fun CardWalletScreen(
         )
     }
 
-    UnifiedCategoryFilterBottomSheet(
-        visible = showCategoryFilterDialog,
+    if (showCategoryFilterDialog) {
+        UnifiedCategoryFilterBottomSheet(
+        visible = true,
         onDismiss = { showCategoryFilterDialog = false },
         selected = selectedCategoryFilter,
         onSelect = { selection -> selectedCategoryFilter = selection },
@@ -1176,10 +1177,12 @@ fun CardWalletScreen(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups
-    )
+        )
+    }
 
-    UnifiedMoveToCategoryBottomSheet(
-        visible = showBatchMoveCategoryDialog,
+    if (showBatchMoveCategoryDialog) {
+        UnifiedMoveToCategoryBottomSheet(
+        visible = true,
         onDismiss = { showBatchMoveCategoryDialog = false },
         categories = categories,
         keepassDatabases = keepassDatabases,
@@ -1188,7 +1191,8 @@ fun CardWalletScreen(
         getKeePassGroups = getKeePassGroups,
         allowCopy = true,
         onTargetSelected = ::performBatchMove
-    )
+        )
+    }
 }
 
 private fun encodeCardWalletCategoryFilter(filter: UnifiedCategoryFilterSelection): SavedCategoryFilterState = when (filter) {

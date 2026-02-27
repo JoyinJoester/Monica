@@ -116,6 +116,7 @@ fun PasswordDetailScreen(
     biometricEnabled: Boolean,
     iconCardsEnabled: Boolean = false,
     unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON,
+    enableSharedBounds: Boolean = true,
     onNavigateBack: () -> Unit,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
@@ -339,7 +340,7 @@ fun PasswordDetailScreen(
     val reduceAnimations = takagi.ru.monica.ui.LocalReduceAnimations.current
     var sharedModifier: Modifier = Modifier
     // 当减少动画模式开启时，不使用 sharedBounds 以解决部分设备上的动画卡顿问题
-    if (!reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
+    if (enableSharedBounds && !reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "password_card_${passwordId}"),

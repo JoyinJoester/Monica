@@ -48,7 +48,7 @@ fun ChangePasswordScreen(
     val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
     val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
     var sharedModifier: Modifier = Modifier
-    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+    if (false && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "reset_password_card"),
@@ -327,3 +327,4 @@ fun ChangePasswordScreen(
         )
     }
 }
+

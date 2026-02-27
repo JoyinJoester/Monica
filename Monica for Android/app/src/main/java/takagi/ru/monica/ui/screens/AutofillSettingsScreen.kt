@@ -60,7 +60,7 @@ fun AutofillSettingsScreen(
     val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
     
     var scaffoldModifier: Modifier = Modifier
-    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+    if (false && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             scaffoldModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "autofill_settings_card"),
@@ -1051,4 +1051,5 @@ fun InfoCard() {
         }
     }
 }
+
 

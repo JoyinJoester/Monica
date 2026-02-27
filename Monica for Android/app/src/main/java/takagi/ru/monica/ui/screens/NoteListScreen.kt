@@ -434,8 +434,9 @@ fun NoteListScreen(
                 is NoteCategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
                 is NoteCategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
             }
-            UnifiedCategoryFilterBottomSheet(
-                visible = isCategorySheetVisible,
+            if (isCategorySheetVisible) {
+                UnifiedCategoryFilterBottomSheet(
+                visible = true,
                 onDismiss = { isCategorySheetVisible = false },
                 selected = selectedUnifiedFilter,
                 onSelect = { selection ->
@@ -566,7 +567,8 @@ fun NoteListScreen(
                         }
                     }
                 }
-            )
+                )
+            }
         },
         bottomBar = {
             if (isSelectionMode) {

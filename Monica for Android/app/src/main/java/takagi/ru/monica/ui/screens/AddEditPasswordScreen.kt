@@ -7,6 +7,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -968,7 +970,11 @@ fun AddEditPasswordScreen(
                             )
                         }
 
-                        AnimatedVisibility(visible = settings.separateUsernameAccountEnabled) {
+                        AnimatedVisibility(
+                            visible = settings.separateUsernameAccountEnabled,
+                            enter = EnterTransition.None,
+                            exit = ExitTransition.None
+                        ) {
                             OutlinedTextField(
                                 value = separatedUsername,
                                 onValueChange = { separatedUsername = it },
@@ -993,7 +999,11 @@ fun AddEditPasswordScreen(
                         )
 
                         // Passwords (仅在账号密码模式下显示)
-                        AnimatedVisibility(visible = loginType == "PASSWORD") {
+                        AnimatedVisibility(
+                            visible = loginType == "PASSWORD",
+                            enter = EnterTransition.None,
+                            exit = ExitTransition.None
+                        ) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 passwords.forEachIndexed { index, pwd ->
                                     Column {
@@ -1149,7 +1159,11 @@ fun AddEditPasswordScreen(
                                 }
                             )
                             
-                            AnimatedVisibility(visible = appPackageName.isNotEmpty()) {
+                            AnimatedVisibility(
+                                visible = appPackageName.isNotEmpty(),
+                                enter = EnterTransition.None,
+                                exit = ExitTransition.None
+                            ) {
                                 Column(modifier = Modifier.padding(top = 8.dp)) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1690,8 +1704,8 @@ private fun CollapsibleCard(
             
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                enter = EnterTransition.None,
+                exit = ExitTransition.None
             ) {
                 Column(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
@@ -1830,7 +1844,11 @@ private fun LoginTypeSelector(
         }
         
         // SSO 详细设置
-        AnimatedVisibility(visible = loginType == "SSO") {
+        AnimatedVisibility(
+            visible = loginType == "SSO",
+            enter = EnterTransition.None,
+            exit = ExitTransition.None
+        ) {
             Column(
                 modifier = Modifier.padding(top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2157,7 +2175,11 @@ private fun VaultSelector(
                     }
                 )
 
-                AnimatedVisibility(visible = localExpanded) {
+                AnimatedVisibility(
+                    visible = localExpanded,
+                    enter = EnterTransition.None,
+                    exit = ExitTransition.None
+                ) {
                     Column(
                         modifier = Modifier.padding(start = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -2219,7 +2241,11 @@ private fun VaultSelector(
                         }
                     )
 
-                    AnimatedVisibility(visible = vaultExpanded) {
+                    AnimatedVisibility(
+                        visible = vaultExpanded,
+                        enter = EnterTransition.None,
+                        exit = ExitTransition.None
+                    ) {
                         Column(
                             modifier = Modifier.padding(start = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)

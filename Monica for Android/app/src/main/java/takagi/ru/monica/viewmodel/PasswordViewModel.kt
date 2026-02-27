@@ -1065,6 +1065,17 @@ class PasswordViewModel(
         }
         return isValid
     }
+
+    /**
+     * Mark the session authenticated when developer bypass is already enabled.
+     * This avoids re-running password verification during startup hydration.
+     */
+    fun markAuthenticatedForBypass() {
+        if (!_isAuthenticated.value) {
+            _isAuthenticated.value = true
+            SessionManager.markUnlocked()
+        }
+    }
     
     fun setMasterPassword(password: String) {
         securityManager.setMasterPassword(password)

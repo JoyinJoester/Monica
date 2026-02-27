@@ -557,8 +557,9 @@ fun TotpListContent(
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultStarred -> UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(filter.vaultId)
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized -> UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(filter.vaultId)
         }
-        UnifiedCategoryFilterBottomSheet(
-            visible = isCategorySheetVisible,
+        if (isCategorySheetVisible) {
+            UnifiedCategoryFilterBottomSheet(
+            visible = true,
             onDismiss = { isCategorySheetVisible = false },
             selected = totpSelectedFilter,
             onSelect = { selection ->
@@ -722,7 +723,8 @@ fun TotpListContent(
                     }
                 }
             }
-        )
+            )
+        }
         
         // 统一进度条 - 在顶栏下方显示
         if (appSettings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED && 

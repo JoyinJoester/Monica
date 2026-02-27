@@ -46,12 +46,9 @@ import takagi.ru.monica.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.rotate
@@ -131,15 +128,7 @@ fun SettingsScreen(
     
     @Composable
     fun getSharedModifier(key: String): Modifier {
-        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-            with(sharedTransitionScope) {
-                 return Modifier.sharedBounds(
-                     sharedContentState = rememberSharedContentState(key = key),
-                     animatedVisibilityScope = animatedVisibilityScope,
-                     resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
-                 )
-            }
-        }
+        // Disable card-to-page shared bounds for settings entries.
         return Modifier
     }
 
@@ -1811,7 +1800,7 @@ fun BottomNavSettingsScreen(
     val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
     
     var sharedModifier: Modifier = Modifier
-    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+    if (false && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "bottom_nav_settings_card"),
@@ -1963,9 +1952,7 @@ fun NotificationValidatorCard(
             }
         )
     ) {
-        Column(
-            modifier = Modifier.animateContentSize()
-        ) {
+        Column {
             // Header with Switch
             Row(
                 modifier = Modifier
@@ -2003,20 +1990,30 @@ fun NotificationValidatorCard(
             }
             
             // Expanded Content
-            if (expanded && enabled) {
-                Divider(modifier = Modifier.padding(horizontal = 16.dp))
-                
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    run {
+            AnimatedVisibility(
+                visible = expanded && enabled,
+                enter = slideInHorizontally(
+                    initialOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(220)
+                ),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth / 3 },
+                    animationSpec = tween(180)
+                )
+            ) {
+                Column {
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
                         Text(
                             text = stringResource(R.string.select_validator_to_display),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        
+
                         if (totpItems.isEmpty()) {
                             Text(
                                 text = stringResource(R.string.no_validators_available),
@@ -2121,9 +2118,7 @@ private fun CommonAccountCard() {
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         )
     ) {
-        Column(
-            modifier = Modifier.animateContentSize()
-        ) {
+        Column {
             // Header
             Row(
                 modifier = Modifier
@@ -2164,96 +2159,108 @@ private fun CommonAccountCard() {
             }
             
             // Expanded Content
-            if (expanded) {
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = context.getString(R.string.common_account_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    // 常用邮箱
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = { Text(context.getString(R.string.common_account_email)) },
-                        placeholder = { Text("name@example.com") },
-                        leadingIcon = { Icon(Icons.Default.Email, null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    
-                    // 常用手机号
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { if (it.all { c -> c.isDigit() } && it.length <= 15) phone = it },
-                        label = { Text(context.getString(R.string.common_account_phone)) },
-                        placeholder = { Text("13800000000") },
-                        leadingIcon = { Icon(Icons.Default.Phone, null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-                    )
-                    
-                    // 常用用户名
-                    OutlinedTextField(
-                        value = username,
-                        onValueChange = { username = it },
-                        label = { Text(context.getString(R.string.common_account_username)) },
-                        placeholder = { Text(context.getString(R.string.common_account_username_hint)) },
-                        leadingIcon = { Icon(Icons.Default.AccountCircle, null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    
-                    // 自动填入开关
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { autoFillEnabled = !autoFillEnabled }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+            AnimatedVisibility(
+                visible = expanded,
+                enter = slideInHorizontally(
+                    initialOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(220)
+                ),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth / 3 },
+                    animationSpec = tween(180)
+                )
+            ) {
+                Column {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Checkbox(
-                            checked = autoFillEnabled,
-                            onCheckedChange = { autoFillEnabled = it }
+                        Text(
+                            text = context.getString(R.string.common_account_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = context.getString(R.string.common_account_auto_fill),
-                                style = MaterialTheme.typography.bodyMedium
+
+                        // 常用邮箱
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = { email = it },
+                            label = { Text(context.getString(R.string.common_account_email)) },
+                            placeholder = { Text("name@example.com") },
+                            leadingIcon = { Icon(Icons.Default.Email, null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        // 常用手机号
+                        OutlinedTextField(
+                            value = phone,
+                            onValueChange = { if (it.all { c -> c.isDigit() } && it.length <= 15) phone = it },
+                            label = { Text(context.getString(R.string.common_account_phone)) },
+                            placeholder = { Text("13800000000") },
+                            leadingIcon = { Icon(Icons.Default.Phone, null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                        )
+
+                        // 常用用户名
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            label = { Text(context.getString(R.string.common_account_username)) },
+                            placeholder = { Text(context.getString(R.string.common_account_username_hint)) },
+                            leadingIcon = { Icon(Icons.Default.AccountCircle, null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        // 自动填入开关
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { autoFillEnabled = !autoFillEnabled }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = autoFillEnabled,
+                                onCheckedChange = { autoFillEnabled = it }
                             )
-                            Text(
-                                text = context.getString(R.string.common_account_auto_fill_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    
-                    // 保存按钮
-                    Button(
-                        onClick = {
-                            coroutineScope.launch {
-                                commonAccountPreferences.setDefaultEmail(email)
-                                commonAccountPreferences.setDefaultPhone(phone)
-                                commonAccountPreferences.setDefaultUsername(username)
-                                commonAccountPreferences.setAutoFillEnabled(autoFillEnabled)
-                                Toast.makeText(context, context.getString(R.string.common_account_saved), Toast.LENGTH_SHORT).show()
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = context.getString(R.string.common_account_auto_fill),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = context.getString(R.string.common_account_auto_fill_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        },
-                        modifier = Modifier.align(Alignment.End),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(context.getString(R.string.save))
+                        }
+
+                        // 保存按钮
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    commonAccountPreferences.setDefaultEmail(email)
+                                    commonAccountPreferences.setDefaultPhone(phone)
+                                    commonAccountPreferences.setDefaultUsername(username)
+                                    commonAccountPreferences.setAutoFillEnabled(autoFillEnabled)
+                                    Toast.makeText(context, context.getString(R.string.common_account_saved), Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.End),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(context.getString(R.string.save))
+                        }
                     }
                 }
             }
