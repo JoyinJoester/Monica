@@ -84,6 +84,8 @@ import java.util.Locale
 private const val MONICA_USERNAME_ALIAS_FIELD_TITLE = "__monica_username_alias"
 private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_alias_meta"
 private const val MONICA_USERNAME_ALIAS_META_VALUE = "migrated_v1"
+private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
+private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
 
 /**
  * 密码详情页 (Password Detail Screen)
@@ -166,6 +168,10 @@ fun PasswordDetailScreen(
     ) {
         customFields
             .asSequence()
+            .filterNot {
+                it.title == MONICA_MANUAL_STACK_GROUP_FIELD_TITLE ||
+                    it.title == MONICA_NO_STACK_FIELD_TITLE
+            }
             .filterNot { it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE }
             .filterNot {
                 settings.separateUsernameAccountEnabled &&
